@@ -6,3 +6,6 @@ Thumbs.db
 node_modules/
 .env
 .env.*
+
+# โฟลเดอร์ชั่วคราวจากการแก้ git lock (ลบทิ้งได้)
+_gitlock_trash/
