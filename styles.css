@@ -1,18 +1,18 @@
 :root {
-  --bg: #f4f8ff;
+  --bg: #f3f9ff;
   --surface: #ffffff;
-  --surface-2: #eef5ff;
-  --text: #10233f;
-  --muted: #66758c;
-  --line: #d8e4f3;
-  --green: #1769d2;
-  --green-dark: #0b4fa8;
+  --surface-2: #eaf5ff;
+  --text: #0f2238;
+  --muted: #63748a;
+  --line: #d5e8fb;
+  --green: #0080ff;
+  --green-dark: #0066cc;
   --amber: #bd7b16;
   --red: #b93d32;
-  --blue: #1769d2;
-  --navy: #073763;
-  --sky: #dcecff;
-  --shadow: 0 18px 46px rgba(21, 72, 140, 0.08);
+  --blue: #0080ff;
+  --navy: #004b93;
+  --sky: #d9ecff;
+  --shadow: 0 18px 46px rgba(0, 128, 255, 0.09);
 }
 
 * {
@@ -45,7 +45,7 @@ select {
   top: 0;
   height: 100vh;
   padding: 24px;
-  background: linear-gradient(180deg, #073763 0%, #0b4fa8 100%);
+  background: linear-gradient(180deg, #004b93 0%, #0080ff 100%);
   color: #eef6ff;
   display: flex;
   flex-direction: column;
@@ -81,7 +81,7 @@ select {
 }
 
 .brand span {
-  color: #c9ddf7;
+  color: #d7ebff;
   font-size: 12px;
 }
 
@@ -91,7 +91,7 @@ select {
 }
 
 .nav-label {
-  color: #a9c8ed;
+  color: #bfe0ff;
   font-size: 11px;
   font-weight: 600;
   margin: 12px 12px 2px;
@@ -99,7 +99,7 @@ select {
 }
 
 .nav-list a {
-  color: #d7e7fb;
+  color: #e2f1ff;
   text-decoration: none;
   padding: 11px 12px;
   border-radius: 8px;
@@ -127,7 +127,7 @@ select {
 
 .source-panel span {
   display: block;
-  color: #d7e7fb;
+  color: #e2f1ff;
   font-size: 13px;
   padding: 6px 0;
 }
@@ -198,7 +198,7 @@ select {
 input,
 select,
 button {
-  outline-color: #7ab6ff;
+  outline-color: #0080ff;
 }
 
 .primary-button {
@@ -290,8 +290,8 @@ button {
   gap: 10px;
   min-height: 58px;
   padding: 10px;
-  background: #eaf3ff;
-  border: 1px solid #c8dcf7;
+  background: #e6f3ff;
+  border: 1px solid #b9dcff;
   border-radius: 8px;
 }
 
@@ -425,8 +425,8 @@ th {
 
 .message.user {
   align-self: flex-end;
-  background: #dcecff;
-  border-color: #b8d3f6;
+  background: #d9ecff;
+  border-color: #abd6ff;
 }
 
 .ask-form {
@@ -460,7 +460,7 @@ th {
 }
 
 .health.ok {
-  background: #e6f0ff;
+  background: #e5f2ff;
   color: var(--green-dark);
 }
 
@@ -527,7 +527,7 @@ th {
   width: var(--value);
   height: 16px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--green-dark), #4da3ff);
+  background: linear-gradient(90deg, var(--green-dark), #0080ff);
 }
 
 .shift-chart span {
