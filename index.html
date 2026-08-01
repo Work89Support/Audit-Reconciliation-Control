@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audit AI Reconciliation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div>
+            <p>Audit AI</p>
+            <span>Reconciliation Control</span>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Main navigation">
+          <a class="active" href="#dashboard">แดชบอร์ดวันนี้</a>
+          <a href="#exceptions">รายการผิดปกติ</a>
+          <a href="#matching">3-Point Match</a>
+          <a href="#approvals">อนุมัติแก้ไข</a>
+          <a href="#kpi">KPI & Shift</a>
+          <a href="#rules">Bank Rules</a>
+        </nav>
+
+        <div class="source-panel">
+          <p>Data Sources</p>
+          <span>Email กลาง</span>
+          <span>CSV / Excel</span>
+          <span>Back-office Export</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">ประจำวันที่ 1 ส.ค. 2026</p>
+            <h1>ศูนย์ควบคุม Audit และตรวจจับ Diff อัตโนมัติ</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button">Export Report</button>
+            <button class="primary-button">Run Reconcile</button>
+          </div>
+        </header>
+
+        <section class="status-strip" id="dashboard" aria-label="Daily status">
+          <article>
+            <span>Transactions</span>
+            <strong>184,392</strong>
+            <small>นำเข้าแล้ว 98.7%</small>
+          </article>
+          <article>
+            <span>Matched</span>
+            <strong>181,944</strong>
+            <small>ผ่าน 3-point match</small>
+          </article>
+          <article class="warning">
+            <span>Diff / Missing</span>
+            <strong>2,448</strong>
+            <small>ต้องตรวจภายในวันนี้</small>
+          </article>
+          <article>
+            <span>Avg Latency</span>
+            <strong>1.4 hr</strong>
+            <small>เป้าหมาย T+0 / T+1</small>
+          </article>
+        </section>
+
+        <section class="work-grid">
+          <div class="panel exception-panel" id="exceptions">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Exception Queue</p>
+                <h2>รายการที่ต้องตรวจสอบ</h2>
+              </div>
+              <select aria-label="Filter exception type">
+                <option>ทั้งหมด</option>
+                <option>ยอดเงินไม่ตรง</option>
+                <option>รายการหาย</option>
+                <option>เวลาเกินเกณฑ์</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>เวลา</th>
+                    <th>บัญชี</th>
+                    <th>ยอดระบบ</th>
+                    <th>ยอดธนาคาร</th>
+                    <th>Diff</th>
+                    <th>ผู้รับผิดชอบ</th>
+                    <th>สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody id="exceptionRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel ask-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Talk to Data</p>
+                <h2>ถามข้อมูลวันนี้</h2>
+              </div>
+            </div>
+            <div class="chat-box" id="chatBox">
+              <div class="message system">ลองถามว่า "ยอดผิดปกติกะดึกมีเท่าไหร่" หรือ "สาเหตุหลักวันนี้คืออะไร"</div>
+            </div>
+            <form class="ask-form" id="askForm">
+              <input id="askInput" type="text" placeholder="พิมพ์คำถามถึงข้อมูล..." autocomplete="off" />
+              <button type="submit">ถาม</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="lower-grid">
+          <div class="panel" id="matching">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Matching Logic</p>
+                <h2>3-Point Match</h2>
+              </div>
+              <span class="health ok">พร้อมใช้งาน</span>
+            </div>
+            <div class="match-flow">
+              <div>
+                <strong>Bank Account</strong>
+                <span>เลขบัญชี / ช่องทางรับเงิน</span>
+              </div>
+              <div>
+                <strong>Time Window</strong>
+                <span>จับคู่ตามวินาทีและ tolerance</span>
+              </div>
+              <div>
+                <strong>Amount</strong>
+                <span>ยอดฝาก-ถอนและค่าความต่าง</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="approvals">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Approval Control</p>
+                <h2>คำขอแก้ไขรออนุมัติ</h2>
+              </div>
+              <span class="health attention">7 รายการ</span>
+            </div>
+            <div class="approval-list">
+              <div>
+                <span>เติมเงินผิด 100 เป็น 1,000</span>
+                <strong>รอผู้บริหารอนุมัติ</strong>
+              </div>
+              <div>
+                <span>Manual Note เพิ่มเหตุผล Diff</span>
+                <strong>Audit ตรวจแล้ว</strong>
+              </div>
+              <div>
+                <span>ถอนเงินเกินจากรายการซ้ำ</span>
+                <strong>ต้องแนบหลักฐาน</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" id="kpi">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">KPI & Shift</p>
+                <h2>ความผิดพลาดตามกะ</h2>
+              </div>
+            </div>
+            <div class="shift-chart" aria-label="Shift error chart">
+              <div style="--value: 42%"><span>กะเช้า</span><strong>42</strong></div>
+              <div style="--value: 27%"><span>กะบ่าย</span><strong>27</strong></div>
+              <div style="--value: 61%"><span>กะดึก</span><strong>61</strong></div>
+            </div>
+          </div>
+
+          <div class="panel" id="rules">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Bank Rules</p>
+                <h2>เงื่อนไขก่อนจับคู่</h2>
+              </div>
+            </div>
+            <div class="rule-list">
+              <div><strong>SCB</strong><span>X1 รับเงิน, X2 โอนออก, XB ปรับปรุงยอด</span></div>
+              <div><strong>KBANK</strong><span>กรองยอดยกมา และตรวจช่วง 00:00-23:59</span></div>
+              <div><strong>GSB</strong><span>กรองรอบวันที่ และแยกช่วง 23:00-23:59 ข้ามวัน</span></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
