@@ -10,6 +10,7 @@ Prototype เว็บสำหรับระบบ Audit ที่สรุป
 - `SYSTEM_REQUIREMENTS.md` - requirements จาก MOM และเอกสารงานออดิท
 - `ARCHITECTURE.md` - architecture, flowchart และ database schema draft
 - `IMPLEMENTATION_ROADMAP.md` - แผนพัฒนาเป็น phase
+- `AUDIT_IMPROVEMENT_NOTES.md` - checklist สิ่งที่ Audit ควรเพิ่มและแก้กระบวนการ
 
 ## Deploy ขึ้น GitHub Pages
 

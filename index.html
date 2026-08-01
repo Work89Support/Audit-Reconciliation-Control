@@ -21,14 +21,19 @@
         </div>
 
         <nav class="nav-list" aria-label="Main navigation">
+          <span class="nav-label">งานประจำวัน</span>
           <a class="active" href="#dashboard">แดชบอร์ดวันนี้</a>
           <a href="#exceptions">รายการผิดปกติ</a>
+          <a href="#intake">Intake Control</a>
+          <span class="nav-label">ตรวจสอบ</span>
           <a href="#matching">3-Point Match</a>
           <a href="#approvals">อนุมัติแก้ไข</a>
           <a href="#kpi">KPI & Shift</a>
-          <a href="#intake">Intake Control</a>
           <a href="#rules">Bank Rules</a>
           <a href="#pm">PM Monitor</a>
+          <span class="nav-label">ระบบ</span>
+          <a href="#settings">ตั้งค่าระบบ</a>
+          <a href="#audit-next">สิ่งที่ Audit ต้องเพิ่ม</a>
         </nav>
 
         <div class="source-panel">
@@ -44,12 +49,48 @@
           <div>
             <p class="eyebrow">ประจำวันที่ 1 ส.ค. 2026</p>
             <h1>ศูนย์ควบคุม Audit และตรวจจับ Diff อัตโนมัติ</h1>
+            <p class="top-summary">โหมดทำงานประจำวัน: ตรวจไฟล์ให้ครบก่อน, จับคู่รายการ, ส่งชี้แจง, ปิดความเสียหาย และออก report</p>
           </div>
           <div class="top-actions">
             <button class="ghost-button">Export Report</button>
             <button class="primary-button">Run Reconcile</button>
           </div>
         </header>
+
+        <section class="quick-controls" aria-label="Quick controls">
+          <label>
+            วันที่ตรวจ
+            <input type="date" value="2026-08-01" />
+          </label>
+          <label>
+            บริษัท
+            <select>
+              <option>ทุกบริษัท</option>
+              <option>ระบบ 123</option>
+              <option>AUTOPEER</option>
+              <option>AZPAY</option>
+              <option>Cyberplus</option>
+            </select>
+          </label>
+          <label>
+            ประเภทบัญชี
+            <select>
+              <option>ฝากและถอน</option>
+              <option>ฝาก</option>
+              <option>ถอน</option>
+              <option>PM</option>
+            </select>
+          </label>
+          <label>
+            กะ
+            <select>
+              <option>ทุกกะ</option>
+              <option>กะเช้า</option>
+              <option>กะบ่าย</option>
+              <option>กะดึก</option>
+            </select>
+          </label>
+        </section>
 
         <section class="status-strip" id="dashboard" aria-label="Daily status">
           <article>
@@ -259,6 +300,54 @@
               <div><strong>รอบ 1</strong><span>วันที่ 1-15 ให้ชี้แจง 2-3 วัน</span></div>
               <div><strong>รอบ 2</strong><span>วันที่ 16-25 รวบรวมหลักฐาน</span></div>
               <div><strong>รอบ 3</strong><span>วันที่ 26-สิ้นเดือน ส่งสรุปการเงิน/บุคคล</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-grid" id="settings">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">System Settings</p>
+                <h2>ตั้งค่าการตรวจสอบ</h2>
+              </div>
+              <span class="health ok">บันทึกอัตโนมัติ</span>
+            </div>
+            <div class="setting-list">
+              <label><span>Time tolerance ฝาก</span><input type="number" value="90" /> <b>วินาที</b></label>
+              <label><span>Time tolerance ถอน</span><input type="number" value="180" /> <b>วินาที</b></label>
+              <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" value="1" /> <b>บาทขึ้นไป</b></label>
+              <label><span>กำหนด SLA ไฟล์ชี้แจง</span><input type="number" value="3" /> <b>วัน</b></label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Rule Presets</p>
+                <h2>เปิด/ปิดกฎสำคัญ</h2>
+              </div>
+            </div>
+            <div class="toggle-list">
+              <label><input type="checkbox" checked /> ตรวจช่วงข้ามวัน 23:00-23:59</label>
+              <label><input type="checkbox" checked /> กันพนักงานลบข้อมูลหลัง import</label>
+              <label><input type="checkbox" checked /> บังคับแนบหลักฐานก่อนปิดเคส</label>
+              <label><input type="checkbox" /> แจ้งเตือน Telegram เมื่อ severity สูง</label>
+            </div>
+          </div>
+
+          <div class="panel" id="audit-next">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Audit View</p>
+                <h2>สิ่งที่ควรเพิ่มจากมุม Audit</h2>
+              </div>
+            </div>
+            <div class="audit-next-list">
+              <div><strong>Evidence Timeline</strong><span>เห็น raw STM, BO, note, คนแก้ไข และหลักฐานในหน้าเดียว</span></div>
+              <div><strong>Duplicate & Pattern Risk</strong><span>จับยอดซ้ำ, เติมย้อนหลัง, user เดิมผิดซ้ำ, บัญชีปลายทางซ้ำ</span></div>
+              <div><strong>Close Checklist</strong><span>ก่อนปิดเคสต้องมีสาเหตุ, ผู้รับผิดชอบ, ยอดเสียหาย, approval</span></div>
+              <div><strong>Monthly Lock</strong><span>ล็อกรอบที่ส่งการเงิน/บุคคลแล้ว เพื่อกันแก้ย้อนหลังโดยไม่มีเหตุผล</span></div>
             </div>
           </div>
         </section>
