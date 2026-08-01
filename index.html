@@ -4,356 +4,91 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Audit AI Reconciliation</title>
+    <meta name="description" content="ศูนย์ควบคุมงานออดิทตรวจบัญชีฝาก-ถอน จับคู่ STM กับ BO อัตโนมัติ" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#viewRoot">ข้ามไปเนื้อหาหลัก</a>
+
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="brand-mark">A</div>
           <div>
             <p>Audit AI</p>
             <span>Reconciliation Control</span>
           </div>
+          <button class="nav-toggle" id="navToggle" aria-label="เปิด/ปิดเมนู" aria-expanded="false">☰</button>
         </div>
 
-        <nav class="nav-list" aria-label="Main navigation">
-          <span class="nav-label">งานประจำวัน</span>
-          <a class="active" href="#dashboard">แดชบอร์ดวันนี้</a>
-          <a href="#exceptions">รายการผิดปกติ</a>
-          <a href="#intake">Intake Control</a>
-          <span class="nav-label">ตรวจสอบ</span>
-          <a href="#matching">3-Point Match</a>
-          <a href="#approvals">อนุมัติแก้ไข</a>
-          <a href="#kpi">KPI & Shift</a>
-          <a href="#rules">Bank Rules</a>
-          <a href="#pm">PM Monitor</a>
-          <span class="nav-label">ระบบ</span>
-          <a href="#settings">ตั้งค่าระบบ</a>
-          <a href="#audit-next">สิ่งที่ Audit ต้องเพิ่ม</a>
-        </nav>
+        <nav class="nav-list" id="navList" aria-label="เมนูหลัก"></nav>
 
         <div class="source-panel">
           <p>Data Sources</p>
-          <span>Email กลาง</span>
-          <span>CSV / Excel</span>
-          <span>Back-office Export</span>
+          <span>Email กลาง (ไฟล์ประจำวัน)</span>
+          <span>STM ธนาคาร / BO Export</span>
+          <span>STM PM 3 บริษัท</span>
         </div>
       </aside>
 
       <main class="main">
         <header class="topbar">
-          <div>
-            <p class="eyebrow">ประจำวันที่ 1 ส.ค. 2026</p>
-            <h1>ศูนย์ควบคุม Audit และตรวจจับ Diff อัตโนมัติ</h1>
-            <p class="top-summary">โหมดทำงานประจำวัน: ตรวจไฟล์ให้ครบก่อน, จับคู่รายการ, ส่งชี้แจง, ปิดความเสียหาย และออก report</p>
+          <div class="topbar-title">
+            <p class="eyebrow" id="crumb">งานประจำวัน</p>
+            <h1 id="pageTitle">แดชบอร์ด</h1>
+            <p class="top-summary" id="pageDesc"></p>
           </div>
           <div class="top-actions">
-            <button class="ghost-button">Export Report</button>
-            <button class="primary-button">Run Reconcile</button>
+            <button class="bell" id="btnBell" aria-label="การแจ้งเตือน">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-5.3V11a7 7 0 0 0-5.2-6.77V3.5a1.8 1.8 0 1 0-3.6 0v.73A7 7 0 0 0 5 11v5.7L3.2 18.5v.9h17.6v-.9L19 16.7Z"/></svg>
+              <b id="bellCount" hidden>0</b>
+            </button>
+            <label class="role-switch">
+              <span>มุมมองสิทธิ์</span>
+              <select id="roleSelect" aria-label="เลือก role ที่ต้องการทดสอบสิทธิ์"></select>
+            </label>
+            <button class="ghost-button" id="btnExport">Export</button>
+            <div class="auto-status" id="autoStatus" title="ระบบกระทบยอดให้อัตโนมัติเมื่อไฟล์เข้าครบ">
+              <i></i><span>อัตโนมัติ</span><b id="autoStatusText">รอไฟล์</b>
+            </div>
           </div>
         </header>
 
-        <section class="quick-controls" aria-label="Quick controls">
-          <label>
-            วันที่ตรวจ
-            <input type="date" value="2026-08-01" />
-          </label>
-          <label>
-            บริษัท
-            <select>
-              <option>ทุกบริษัท</option>
-              <option>ระบบ 123</option>
-              <option>AUTOPEER</option>
-              <option>AZPAY</option>
-              <option>Cyberplus</option>
-            </select>
-          </label>
-          <label>
-            ประเภทบัญชี
-            <select>
-              <option>ฝากและถอน</option>
-              <option>ฝาก</option>
-              <option>ถอน</option>
-              <option>PM</option>
-            </select>
-          </label>
-          <label>
-            กะ
-            <select>
-              <option>ทุกกะ</option>
-              <option>กะเช้า</option>
-              <option>กะบ่าย</option>
-              <option>กะดึก</option>
-            </select>
-          </label>
-        </section>
+        <section class="quick-controls" id="globalFilters" aria-label="ตัวกรองหลัก"></section>
 
-        <section class="status-strip" id="dashboard" aria-label="Daily status">
-          <article>
-            <span>Transactions</span>
-            <strong>184,392</strong>
-            <small>นำเข้าแล้ว 98.7%</small>
-          </article>
-          <article>
-            <span>Matched</span>
-            <strong>181,944</strong>
-            <small>ผ่าน 3-point match</small>
-          </article>
-          <article class="warning">
-            <span>Diff / Missing</span>
-            <strong>2,448</strong>
-            <small>ต้องตรวจภายในวันนี้</small>
-          </article>
-          <article>
-            <span>Avg Latency</span>
-            <strong>1.4 hr</strong>
-            <small>เป้าหมาย T+0 / T+1</small>
-          </article>
-          <article>
-            <span>Files Checked</span>
-            <strong>126/132</strong>
-            <small>รอ STM / BO 6 ไฟล์</small>
-          </article>
-        </section>
-
-        <section class="pipeline" aria-label="Audit workflow">
-          <div><strong>1</strong><span>รับไฟล์จาก Email</span></div>
-          <div><strong>2</strong><span>ตรวจความครบถ้วน</span></div>
-          <div><strong>3</strong><span>Normalize STM / BO</span></div>
-          <div><strong>4</strong><span>3-Point Match</span></div>
-          <div><strong>5</strong><span>ส่งชี้แจง / อนุมัติ</span></div>
-          <div><strong>6</strong><span>สรุปความเสียหาย</span></div>
-        </section>
-
-        <section class="work-grid">
-          <div class="panel exception-panel" id="exceptions">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Exception Queue</p>
-                <h2>รายการที่ต้องตรวจสอบ</h2>
-              </div>
-              <select aria-label="Filter exception type">
-                <option>ทั้งหมด</option>
-                <option>ยอดเงินไม่ตรง</option>
-                <option>รายการหาย</option>
-                <option>เวลาเกินเกณฑ์</option>
-              </select>
-            </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>เวลา</th>
-                    <th>บัญชี</th>
-                    <th>ยอดระบบ</th>
-                    <th>ยอดธนาคาร</th>
-                    <th>Diff</th>
-                    <th>ผู้รับผิดชอบ</th>
-                    <th>สถานะ</th>
-                  </tr>
-                </thead>
-                <tbody id="exceptionRows"></tbody>
-              </table>
-            </div>
-          </div>
-
-          <div class="panel ask-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Talk to Data</p>
-                <h2>ถามข้อมูลวันนี้</h2>
-              </div>
-            </div>
-            <div class="chat-box" id="chatBox">
-              <div class="message system">ลองถามว่า "ยอดผิดปกติกะดึกมีเท่าไหร่" หรือ "สาเหตุหลักวันนี้คืออะไร"</div>
-            </div>
-            <form class="ask-form" id="askForm">
-              <input id="askInput" type="text" placeholder="พิมพ์คำถามถึงข้อมูล..." autocomplete="off" />
-              <button type="submit">ถาม</button>
-            </form>
-          </div>
-        </section>
-
-        <section class="lower-grid">
-          <div class="panel" id="matching">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Matching Logic</p>
-                <h2>3-Point Match</h2>
-              </div>
-              <span class="health ok">พร้อมใช้งาน</span>
-            </div>
-            <div class="match-flow">
-              <div>
-                <strong>Bank Account</strong>
-                <span>เลขบัญชี / ช่องทางรับเงิน</span>
-              </div>
-              <div>
-                <strong>Time Window</strong>
-                <span>จับคู่ตามวินาทีและ tolerance</span>
-              </div>
-              <div>
-                <strong>Amount</strong>
-                <span>ยอดฝาก-ถอนและค่าความต่าง</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel" id="approvals">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Approval Control</p>
-                <h2>คำขอแก้ไขรออนุมัติ</h2>
-              </div>
-              <span class="health attention">7 รายการ</span>
-            </div>
-            <div class="approval-list">
-              <div>
-                <span>เติมเงินผิด 100 เป็น 1,000</span>
-                <strong>รอผู้บริหารอนุมัติ</strong>
-              </div>
-              <div>
-                <span>Manual Note เพิ่มเหตุผล Diff</span>
-                <strong>Audit ตรวจแล้ว</strong>
-              </div>
-              <div>
-                <span>ถอนเงินเกินจากรายการซ้ำ</span>
-                <strong>ต้องแนบหลักฐาน</strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel" id="kpi">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">KPI & Shift</p>
-                <h2>ความผิดพลาดตามกะ</h2>
-              </div>
-            </div>
-            <div class="shift-chart" aria-label="Shift error chart">
-              <div style="--value: 42%"><span>กะเช้า</span><strong>42</strong></div>
-              <div style="--value: 27%"><span>กะบ่าย</span><strong>27</strong></div>
-              <div style="--value: 61%"><span>กะดึก</span><strong>61</strong></div>
-            </div>
-          </div>
-
-          <div class="panel" id="rules">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Bank Rules</p>
-                <h2>เงื่อนไขก่อนจับคู่</h2>
-              </div>
-            </div>
-            <div class="rule-list">
-              <div><strong>SCB</strong><span>X1 รับเงิน, X2 โอนออก, XB ปรับปรุงยอด</span></div>
-              <div><strong>KBANK</strong><span>กรองยอดยกมา และตรวจช่วง 00:00-23:59</span></div>
-              <div><strong>GSB</strong><span>กรองรอบวันที่ และแยกช่วง 23:00-23:59 ข้ามวัน</span></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="detail-grid">
-          <div class="panel" id="intake">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Intake Control</p>
-                <h2>ตรวจไฟล์ที่พนักงานส่งมา</h2>
-              </div>
-              <span class="health attention">6 ไฟล์ขาด</span>
-            </div>
-            <div class="check-list">
-              <label><input type="checkbox" checked /> STM ฝาก-ถอนครบทุกบริษัท</label>
-              <label><input type="checkbox" checked /> รายงาน BO ฝาก-ถอนถูกบริษัท</label>
-              <label><input type="checkbox" checked /> ไฟล์แก้ไขฝากมือ / ถอนมือ</label>
-              <label><input type="checkbox" /> ไฟล์ชี้แจงประจำวันครบทุกหัวหน้ากะ</label>
-              <label><input type="checkbox" /> PM STM แยกฝาก-ถอนครบ 3 บริษัท</label>
-            </div>
-          </div>
-
-          <div class="panel" id="pm">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">PM Monitor</p>
-                <h2>บัญชี PM ระบบ 123</h2>
-              </div>
-            </div>
-            <div class="pm-grid">
-              <div><strong>AUTOPEER</strong><span>Success only, filter วันที่ปน</span><b>98.4%</b></div>
-              <div><strong>AZPAY</strong><span>ฝาก-ถอนในบัญชีเดียว</span><b>96.9%</b></div>
-              <div><strong>Cyberplus</strong><span>ต้องแนบชี้แจงยอดถอน</span><b>94.1%</b></div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Damage Cycle</p>
-                <h2>รอบชี้แจงและสรุปความเสียหาย</h2>
-              </div>
-            </div>
-            <div class="cycle-list">
-              <div><strong>รอบ 1</strong><span>วันที่ 1-15 ให้ชี้แจง 2-3 วัน</span></div>
-              <div><strong>รอบ 2</strong><span>วันที่ 16-25 รวบรวมหลักฐาน</span></div>
-              <div><strong>รอบ 3</strong><span>วันที่ 26-สิ้นเดือน ส่งสรุปการเงิน/บุคคล</span></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-grid" id="settings">
-          <div class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">System Settings</p>
-                <h2>ตั้งค่าการตรวจสอบ</h2>
-              </div>
-              <span class="health ok">บันทึกอัตโนมัติ</span>
-            </div>
-            <div class="setting-list">
-              <label><span>Time tolerance ฝาก</span><input type="number" value="90" /> <b>วินาที</b></label>
-              <label><span>Time tolerance ถอน</span><input type="number" value="180" /> <b>วินาที</b></label>
-              <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" value="1" /> <b>บาทขึ้นไป</b></label>
-              <label><span>กำหนด SLA ไฟล์ชี้แจง</span><input type="number" value="3" /> <b>วัน</b></label>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Rule Presets</p>
-                <h2>เปิด/ปิดกฎสำคัญ</h2>
-              </div>
-            </div>
-            <div class="toggle-list">
-              <label><input type="checkbox" checked /> ตรวจช่วงข้ามวัน 23:00-23:59</label>
-              <label><input type="checkbox" checked /> กันพนักงานลบข้อมูลหลัง import</label>
-              <label><input type="checkbox" checked /> บังคับแนบหลักฐานก่อนปิดเคส</label>
-              <label><input type="checkbox" /> แจ้งเตือน Telegram เมื่อ severity สูง</label>
-            </div>
-          </div>
-
-          <div class="panel" id="audit-next">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Audit View</p>
-                <h2>สิ่งที่ควรเพิ่มจากมุม Audit</h2>
-              </div>
-            </div>
-            <div class="audit-next-list">
-              <div><strong>Evidence Timeline</strong><span>เห็น raw STM, BO, note, คนแก้ไข และหลักฐานในหน้าเดียว</span></div>
-              <div><strong>Duplicate & Pattern Risk</strong><span>จับยอดซ้ำ, เติมย้อนหลัง, user เดิมผิดซ้ำ, บัญชีปลายทางซ้ำ</span></div>
-              <div><strong>Close Checklist</strong><span>ก่อนปิดเคสต้องมีสาเหตุ, ผู้รับผิดชอบ, ยอดเสียหาย, approval</span></div>
-              <div><strong>Monthly Lock</strong><span>ล็อกรอบที่ส่งการเงิน/บุคคลแล้ว เพื่อกันแก้ย้อนหลังโดยไม่มีเหตุผล</span></div>
-            </div>
-          </div>
-        </section>
+        <div id="viewRoot" class="view-root" tabindex="-1"></div>
       </main>
     </div>
 
+    <div class="drawer-overlay" id="drawerOverlay" hidden></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden></aside>
+    <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+
+    <div class="modal-overlay" id="modalOverlay" hidden></div>
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden></div>
+
+    <div class="progress-overlay" id="progressOverlay" hidden>
+      <div class="progress-card">
+        <h2 id="progTitle">กำลังประมวลผล</h2>
+        <p id="progLabel">เตรียมข้อมูล...</p>
+        <div class="progress-bar"><i id="progFill"></i></div>
+        <span id="progPct">0%</span>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="data.js"></script>
+    <script src="sample.js"></script>
+    <script src="engine.js"></script>
+    <script src="store.js"></script>
+    <script src="charts.js"></script>
+    <script src="xlsx-writer.js"></script>
+    <script src="export.js"></script>
     <script src="app.js"></script>
+    <script src="manual.js"></script>
   </body>
 </html>
