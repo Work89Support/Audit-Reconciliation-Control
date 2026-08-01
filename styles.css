@@ -190,7 +190,7 @@ select {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -223,6 +223,41 @@ select {
   color: var(--amber);
 }
 
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.pipeline div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 10px;
+  background: #e9f3ee;
+  border: 1px solid #cfe0d6;
+  border-radius: 8px;
+}
+
+.pipeline strong {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--green-dark);
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.pipeline span {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .work-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.8fr);
@@ -234,6 +269,13 @@ select {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
 }
 
 .panel {
@@ -436,6 +478,52 @@ th {
   text-align: right;
 }
 
+.check-list,
+.pm-grid,
+.cycle-list {
+  display: grid;
+  gap: 10px;
+}
+
+.check-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.check-list input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+.pm-grid div,
+.cycle-list div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.pm-grid span,
+.cycle-list span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.pm-grid b {
+  color: var(--green-dark);
+  font-size: 22px;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -456,7 +544,9 @@ th {
 
   .work-grid,
   .lower-grid,
-  .status-strip {
+  .status-strip,
+  .pipeline,
+  .detail-grid {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -484,7 +574,9 @@ th {
   .nav-list,
   .work-grid,
   .lower-grid,
-  .status-strip {
+  .status-strip,
+  .pipeline,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 

@@ -26,7 +26,9 @@
           <a href="#matching">3-Point Match</a>
           <a href="#approvals">อนุมัติแก้ไข</a>
           <a href="#kpi">KPI & Shift</a>
+          <a href="#intake">Intake Control</a>
           <a href="#rules">Bank Rules</a>
+          <a href="#pm">PM Monitor</a>
         </nav>
 
         <div class="source-panel">
@@ -70,6 +72,20 @@
             <strong>1.4 hr</strong>
             <small>เป้าหมาย T+0 / T+1</small>
           </article>
+          <article>
+            <span>Files Checked</span>
+            <strong>126/132</strong>
+            <small>รอ STM / BO 6 ไฟล์</small>
+          </article>
+        </section>
+
+        <section class="pipeline" aria-label="Audit workflow">
+          <div><strong>1</strong><span>รับไฟล์จาก Email</span></div>
+          <div><strong>2</strong><span>ตรวจความครบถ้วน</span></div>
+          <div><strong>3</strong><span>Normalize STM / BO</span></div>
+          <div><strong>4</strong><span>3-Point Match</span></div>
+          <div><strong>5</strong><span>ส่งชี้แจง / อนุมัติ</span></div>
+          <div><strong>6</strong><span>สรุปความเสียหาย</span></div>
         </section>
 
         <section class="work-grid">
@@ -196,6 +212,53 @@
               <div><strong>SCB</strong><span>X1 รับเงิน, X2 โอนออก, XB ปรับปรุงยอด</span></div>
               <div><strong>KBANK</strong><span>กรองยอดยกมา และตรวจช่วง 00:00-23:59</span></div>
               <div><strong>GSB</strong><span>กรองรอบวันที่ และแยกช่วง 23:00-23:59 ข้ามวัน</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-grid">
+          <div class="panel" id="intake">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Intake Control</p>
+                <h2>ตรวจไฟล์ที่พนักงานส่งมา</h2>
+              </div>
+              <span class="health attention">6 ไฟล์ขาด</span>
+            </div>
+            <div class="check-list">
+              <label><input type="checkbox" checked /> STM ฝาก-ถอนครบทุกบริษัท</label>
+              <label><input type="checkbox" checked /> รายงาน BO ฝาก-ถอนถูกบริษัท</label>
+              <label><input type="checkbox" checked /> ไฟล์แก้ไขฝากมือ / ถอนมือ</label>
+              <label><input type="checkbox" /> ไฟล์ชี้แจงประจำวันครบทุกหัวหน้ากะ</label>
+              <label><input type="checkbox" /> PM STM แยกฝาก-ถอนครบ 3 บริษัท</label>
+            </div>
+          </div>
+
+          <div class="panel" id="pm">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">PM Monitor</p>
+                <h2>บัญชี PM ระบบ 123</h2>
+              </div>
+            </div>
+            <div class="pm-grid">
+              <div><strong>AUTOPEER</strong><span>Success only, filter วันที่ปน</span><b>98.4%</b></div>
+              <div><strong>AZPAY</strong><span>ฝาก-ถอนในบัญชีเดียว</span><b>96.9%</b></div>
+              <div><strong>Cyberplus</strong><span>ต้องแนบชี้แจงยอดถอน</span><b>94.1%</b></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Damage Cycle</p>
+                <h2>รอบชี้แจงและสรุปความเสียหาย</h2>
+              </div>
+            </div>
+            <div class="cycle-list">
+              <div><strong>รอบ 1</strong><span>วันที่ 1-15 ให้ชี้แจง 2-3 วัน</span></div>
+              <div><strong>รอบ 2</strong><span>วันที่ 16-25 รวบรวมหลักฐาน</span></div>
+              <div><strong>รอบ 3</strong><span>วันที่ 26-สิ้นเดือน ส่งสรุปการเงิน/บุคคล</span></div>
             </div>
           </div>
         </section>

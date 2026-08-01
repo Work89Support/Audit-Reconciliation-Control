@@ -7,6 +7,9 @@ Prototype เว็บสำหรับระบบ Audit ที่สรุป
 - `index.html` - โครงหน้าเว็บ static พร้อมฟอนต์ Kanit
 - `styles.css` - design system และ responsive layout
 - `app.js` - sample data และ interaction ของ Talk to Data
+- `SYSTEM_REQUIREMENTS.md` - requirements จาก MOM และเอกสารงานออดิท
+- `ARCHITECTURE.md` - architecture, flowchart และ database schema draft
+- `IMPLEMENTATION_ROADMAP.md` - แผนพัฒนาเป็น phase
 
 ## Deploy ขึ้น GitHub Pages
 
