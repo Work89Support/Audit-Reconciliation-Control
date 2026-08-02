@@ -1,0 +1,292 @@
+/* =============================================================
+   Sb - เชื่อมระบบเข้ากับ Supabase (คลังไฟล์ที่ n8n ส่งเข้ามา)
+
+   สถาปัตยกรรม
+     Gmail (label AUDIT 2) → n8n → Supabase Storage + Google Drive
+                                 → ทะเบียน mail_batches / source_files
+     ระบบนี้ → อ่านทะเบียน → โหลดไฟล์ต้นฉบับจาก Storage
+             → แปลงในเบราว์เซอร์ด้วยตัวอ่านเดิม (formats/pdf-stm/xlsx-reader)
+             → เขียนผลกลับ recon_runs / exceptions / fx_rates / damages
+
+   ความปลอดภัย
+     - ใช้ anon key เท่านั้น ห้ามใส่ service_role key ในหน้าเว็บ
+     - ทุกตารางเปิด RLS ต้องล็อกอินด้วย Supabase Auth ก่อนจึงอ่านได้
+   ============================================================= */
+
+const Sb = (() => {
+  let session = null; // { access_token, refresh_token, expires_at, user }
+
+  /* ---------------- config ---------------- */
+  const cfg = () => {
+    const d = Store.data;
+    if (!d.supabase) d.supabase = { url: "", anonKey: "", bucket: "audit-files", email: "", autoSync: false, lastSync: null };
+    return d.supabase;
+  };
+  function saveConfig(patch) {
+    Object.assign(cfg(), patch);
+    Store.persist();
+    return cfg();
+  }
+  const configured = () => !!(cfg().url && cfg().anonKey);
+  const signedIn = () => !!session && session.expires_at > Date.now() / 1000 + 30;
+  const currentEmail = () => (session && session.user ? session.user.email : "");
+
+  /* เก็บ session ไว้ให้รีเฟรชแล้วไม่ต้องล็อกอินใหม่ (เก็บใน Store เดียวกับ state อื่น) */
+  function restore() {
+    const s = Store.data.sbSession;
+    if (s && s.expires_at > Date.now() / 1000 + 30) session = s;
+    return signedIn();
+  }
+  function keep(s) {
+    session = s;
+    Store.data.sbSession = s;
+    Store.persist();
+  }
+
+  /* ---------------- HTTP ---------------- */
+  function base() {
+    const u = String(cfg().url || "").trim().replace(/\/+$/, "");
+    if (!u) throw new Error("ยังไม่ได้ใส่ Supabase URL ในหน้าตั้งค่า");
+    return u;
+  }
+  const headers = (extra) =>
+    Object.assign(
+      {
+        apikey: cfg().anonKey,
+        Authorization: "Bearer " + (session ? session.access_token : cfg().anonKey),
+      },
+      extra || {},
+    );
+
+  async function req(path, opts = {}) {
+    const res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("ไม่มีสิทธิ์อ่านข้อมูล — ล็อกอิน Supabase ก่อน (RLS เปิดอยู่)");
+    }
+    if (!res.ok) {
+      let msg = `Supabase ตอบกลับ ${res.status}`;
+      try {
+        const j = await res.json();
+        msg = j.message || j.error_description || j.error || msg;
+      } catch (e) {}
+      throw new Error(msg);
+    }
+    return res;
+  }
+  const json = async (path, opts) => (await req(path, opts)).json();
+
+  /* ---------------- Auth ---------------- */
+  async function signIn(email, password) {
+    const res = await fetch(base() + "/auth/v1/token?grant_type=password", {
+      method: "POST",
+      headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ล็อกอินไม่สำเร็จ");
+    keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
+    saveConfig({ email });
+    return j.user;
+  }
+
+  function signOut() {
+    session = null;
+    delete Store.data.sbSession;
+    Store.persist();
+  }
+
+  /* ---------------- ทะเบียนไฟล์ ---------------- */
+  const q = (o) =>
+    Object.entries(o)
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
+
+  /* สรุปรายวัน (view) */
+  const dailyStatus = (limit = 30) => json(`/rest/v1/v_daily_status?${q({ limit, order: "business_date.desc" })}`);
+
+  /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
+  async function batches({ from, to, company } = {}) {
+    const filters = ["select=*,source_files(*)", "order=received_at.desc"];
+    if (from) filters.push(`business_date=gte.${from}`);
+    if (to) filters.push(`business_date=lte.${to}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${company}`);
+    return json(`/rest/v1/mail_batches?${filters.join("&")}`);
+  }
+
+  /* ---------------- Storage ---------------- */
+  async function download(storagePath) {
+    const res = await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`);
+    return res.arrayBuffer();
+  }
+
+  /* ลิงก์ชั่วคราวไว้ให้ผู้ใช้เปิดดูไฟล์เอง */
+  async function signedUrl(storagePath, seconds = 300) {
+    const j = await json(`/storage/v1/object/sign/${cfg().bucket}/${encodeURI(storagePath)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: seconds }),
+    });
+    return base() + "/storage/v1" + j.signedURL;
+  }
+
+  /* ---------------- เขียนผลกลับ ---------------- */
+  const post = (table, rows, prefer = "return=representation") =>
+    json(`/rest/v1/${table}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: prefer },
+      body: JSON.stringify(rows),
+    });
+
+  const patch = (table, filter, body) =>
+    req(`/rest/v1/${table}?${filter}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(body),
+    });
+
+  async function markParsed(fileId, rowCount, error) {
+    return patch("source_files", `id=eq.${fileId}`, {
+      parsed: !error,
+      parsed_at: new Date().toISOString(),
+      row_count: rowCount ?? null,
+      parse_error: error || null,
+    });
+  }
+
+  /* บันทึกผลการกระทบยอด 1 ครั้ง พร้อม exception ทั้งหมด */
+  async function saveRun(run, exceptions, opts = {}) {
+    const rows = await post("recon_runs", [
+      {
+        business_date: run.businessDate,
+        company: opts.company || null,
+        run_by: opts.by || currentEmail() || "-",
+        elapsed_ms: run.elapsedMs || 0,
+        stm_count: run.stmCount || 0,
+        bo_count: run.boCount || 0,
+        matched: run.matched || 0,
+        match_rate: Number((run.matchRate || 0).toFixed(3)),
+        exception_count: (exceptions || []).length,
+        no_stm_count: run.noStmCount || 0,
+        file_ids: opts.fileIds || null,
+        summary: opts.summary || null,
+      },
+    ]);
+    const runId = rows[0].id;
+    const chunk = 500;
+    for (let i = 0; i < (exceptions || []).length; i += chunk) {
+      await post(
+        "exceptions",
+        exceptions.slice(i, i + chunk).map((e) => ({
+          run_id: runId,
+          code: e.id,
+          business_date: e.date,
+          occurred_at: e.time,
+          company: e.company,
+          bank: e.bank,
+          account: e.account,
+          direction: e.direction,
+          member_code: e.member || null,
+          ex_type: e.type,
+          type_name: e.typeName,
+          severity: e.severity,
+          status: e.status,
+          track: e.track,
+          system_amount: e.systemAmount,
+          bank_amount: e.bankAmount,
+          amount_diff: e.amountDiff,
+          risk_amount: e.riskAmount,
+          currency: e.currency || "THB",
+          fx_rate: e.fxRate || null,
+          time_diff_sec: e.timeDiffSec,
+          employee: e.employee,
+          shift: e.shift,
+          cause: e.cause,
+          detail: e.detail || null,
+          stm_raw: String(e.stmRaw || "").slice(0, 4000),
+          bo_raw: String(e.boRaw || "").slice(0, 4000),
+        })),
+        "return=minimal",
+      );
+    }
+    saveConfig({ lastSync: new Date().toISOString() });
+    return runId;
+  }
+
+  async function pushFxRates(list) {
+    if (!list || !list.length) return 0;
+    await post(
+      "fx_rates",
+      list.map((r) => ({
+        rate_date: r.date,
+        quote: r.quote || "USDT",
+        base: r.base || "THB",
+        rate: r.rate,
+        recorded_by: r.by,
+        note: r.note || null,
+        ref_source: r.ref ? r.ref.name : null,
+        ref_rate: r.ref ? r.ref.rate : null,
+      })),
+      "resolution=merge-duplicates,return=minimal",
+    );
+    return list.length;
+  }
+
+  async function pullFxRates() {
+    const rows = await json(`/rest/v1/fx_rates?select=*&order=rate_date.desc&limit=400`);
+    return rows.map((r) => ({
+      date: r.rate_date,
+      quote: r.quote,
+      base: r.base,
+      rate: Number(r.rate),
+      by: r.recorded_by || "-",
+      at: r.recorded_at,
+      note: r.note || "",
+      ref: r.ref_rate ? { name: r.ref_source, rate: Number(r.ref_rate) } : null,
+      revisions: r.revisions || [],
+    }));
+  }
+
+  const log = (actor, action, entity, target, detail, meta) =>
+    post("audit_log", [{ actor, action, entity, target, detail, meta: meta || null }], "return=minimal").catch(() => {});
+
+  /* ---------------- ทดสอบการเชื่อมต่อ ---------------- */
+  async function ping() {
+    const out = { url: !!cfg().url, key: !!cfg().anonKey, auth: false, tables: false, storage: false, error: null };
+    try {
+      out.auth = signedIn();
+      await json(`/rest/v1/mail_batches?select=id&limit=1`);
+      out.tables = true;
+      await json(`/storage/v1/bucket/${cfg().bucket}`);
+      out.storage = true;
+    } catch (e) {
+      out.error = e.message;
+    }
+    return out;
+  }
+
+  return {
+    cfg,
+    saveConfig,
+    configured,
+    signedIn,
+    currentEmail,
+    restore,
+    signIn,
+    signOut,
+    dailyStatus,
+    batches,
+    download,
+    signedUrl,
+    markParsed,
+    saveRun,
+    pushFxRates,
+    pullFxRates,
+    log,
+    ping,
+    post,
+    patch,
+  };
+})();
+
+if (typeof window !== "undefined") window.Sb = Sb;

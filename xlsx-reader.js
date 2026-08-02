@@ -252,7 +252,90 @@ const XlsxReader = (() => {
     return best.rows.filter((r) => r.some((c) => String(c).trim() !== "")).map((r) => r.map((c) => String(c ?? "")));
   }
 
-  return { read, readWorkbook };
+  /* -------------------------------------------------------------
+     เปิด API แตก zip ให้โมดูลอื่นใช้ (ไฟล์แนบจากเมลมักมาเป็น .zip)
+     ชื่อไฟล์ใน zip จากโปรแกรมไทยมักเป็น cp874 ไม่ใช่ utf-8
+     ------------------------------------------------------------- */
+  function decodeName(bytes, utf8Flag) {
+    if (utf8Flag) return dec.decode(bytes);
+    const tryEnc = (enc) => {
+      try {
+        const t = new TextDecoder(enc, { fatal: true }).decode(bytes);
+        return t;
+      } catch (e) {
+        return null;
+      }
+    };
+    // ถ้าเป็น utf-8 ที่ถูกต้องอยู่แล้วให้ใช้เลย ไม่งั้นลองภาษาไทยแล้วค่อยตกไป latin
+    return tryEnc("utf-8") || tryEnc("windows-874") || new TextDecoder("windows-1252").decode(bytes);
+  }
+
+  function zipEntries(arrayBuffer) {
+    const u8 = new Uint8Array(arrayBuffer);
+    const dv = new DataView(arrayBuffer);
+    const eocd = findEOCD(dv, u8.length);
+    if (eocd < 0) throw new Error("ไฟล์นี้ไม่ใช่ .zip ที่อ่านได้");
+    let count = dv.getUint16(eocd + 10, true);
+    let cdOfs = dv.getUint32(eocd + 16, true);
+    if (count === 0xffff || cdOfs === 0xffffffff) {
+      for (let i = eocd - 20; i >= 0; i--) {
+        if (dv.getUint32(i, true) === 0x07064b50) {
+          const z64 = Number(dv.getBigUint64(i + 8, true));
+          if (dv.getUint32(z64, true) === 0x06064b50) {
+            count = Number(dv.getBigUint64(z64 + 32, true));
+            cdOfs = Number(dv.getBigUint64(z64 + 48, true));
+          }
+          break;
+        }
+      }
+    }
+    const out = [];
+    let p = cdOfs;
+    for (let i = 0; i < count && p + 46 <= u8.length; i++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) break;
+      const flags = dv.getUint16(p + 8, true);
+      const method = dv.getUint16(p + 10, true);
+      const compSize = dv.getUint32(p + 20, true);
+      const uncompSize = dv.getUint32(p + 24, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const cmtLen = dv.getUint16(p + 32, true);
+      const localOfs = dv.getUint32(p + 42, true);
+      const name = decodeName(u8.subarray(p + 46, p + 46 + nameLen), !!(flags & 0x800));
+      if (!name.endsWith("/")) out.push({ name, method, compSize, size: uncompSize, localOfs });
+      p += 46 + nameLen + extraLen + cmtLen;
+    }
+    return { u8, dv, entries: out };
+  }
+
+  async function zipRead(zip, entry) {
+    const { u8, dv } = zip;
+    const lo = entry.localOfs;
+    if (dv.getUint32(lo, true) !== 0x04034b50) throw new Error("อ่านไฟล์ใน zip ไม่ได้: " + entry.name);
+    const nameLen = dv.getUint16(lo + 26, true);
+    const extraLen = dv.getUint16(lo + 28, true);
+    const start = lo + 30 + nameLen + extraLen;
+    const raw = u8.subarray(start, start + entry.compSize);
+    const data = entry.method === 0 ? raw.slice() : await inflateRaw(raw);
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  }
+
+  /* แตก zip เป็นรายการ { name, buffer } — ข้ามโฟลเดอร์และไฟล์ระบบของ macOS */
+  async function unzip(arrayBuffer) {
+    const zip = zipEntries(arrayBuffer);
+    const out = [];
+    for (const e of zip.entries) {
+      if (/^__MACOSX\/|\/\._|^\._|\.DS_Store$/.test(e.name)) continue;
+      try {
+        out.push({ name: e.name.split("/").pop(), path: e.name, size: e.size, buffer: await zipRead(zip, e) });
+      } catch (err) {
+        out.push({ name: e.name.split("/").pop(), path: e.name, size: e.size, error: err.message });
+      }
+    }
+    return out;
+  }
+
+  return { read, readWorkbook, unzip, zipEntries, zipRead };
 })();
 
 if (typeof window !== "undefined") window.XlsxReader = XlsxReader;

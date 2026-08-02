@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>คู่มือติดตั้ง n8n + Supabase — Audit AI Reconciliation</title>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{--ink:#22384f;--muted:#6b7f93;--line:#e3e8ef;--soft:#f6f9fc;--blue:#0066cc;--green:#1a8a5a;--amber:#b45309;--red:#c02626}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Kanit,system-ui,sans-serif;color:var(--ink);background:#eef3f8;line-height:1.75;font-weight:300}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 20px 80px}
+  header{background:linear-gradient(135deg,#0b3d70,#0066cc);color:#fff;border-radius:14px;padding:28px 30px;margin-bottom:26px}
+  header h1{margin:0 0 6px;font-size:26px;font-weight:600}
+  header p{margin:0;opacity:.9;font-size:14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px 26px;margin-bottom:18px}
+  h2{font-size:19px;font-weight:600;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .n{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;font-size:14px;font-weight:600;flex:0 0 auto}
+  h3{font-size:15px;font-weight:500;margin:20px 0 6px;color:#2f4a63}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 14px;padding-left:38px}
+  ol,ul{margin:8px 0 8px 0;padding-left:22px}
+  li{margin:6px 0;font-size:14px}
+  code{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#0b3d70;font-weight:400}
+  pre{background:#0f2233;color:#dbe7f2;border-radius:9px;padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.6;font-family:ui-monospace,Menlo,Consolas,monospace}
+  pre .c{color:#7d94a8}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--soft);font-weight:500}
+  .note{border-left:3px solid var(--blue);background:#f2f8ff;border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .warn{border-left:3px solid var(--red);background:#fff5f5;border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .ok{border-left:3px solid var(--green);background:#f1faf5;border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0;font-size:13.5px}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0;font-size:12.5px}
+  .flow span{background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:6px 13px}
+  .flow i{color:var(--muted);font-style:normal}
+  b{font-weight:500}
+  .kbd{background:#fff;border:1px solid #cfdae6;border-bottom-width:2px;border-radius:5px;padding:1px 7px;font-size:12px}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ติดตั้ง n8n + Supabase ให้ดึงไฟล์จากเมลเข้าระบบเอง</h1>
+  <p>Audit AI Reconciliation — ทำครั้งเดียว ใช้ได้ตลอด ประมาณ 40–60 นาที</p>
+</header>
+
+<div class="card">
+  <h2><span class="n">·</span>ภาพรวมว่าอะไรทำงานตรงไหน</h2>
+  <div class="flow">
+    <span>Gmail <b>work.ltd89</b> label <b>AUDIT 2</b></span><i>→</i>
+    <span>n8n Cloud (ทุก 10 นาที)</span><i>→</i>
+    <span>แตก .zip</span><i>→</i>
+    <span>Supabase Storage + Google Drive</span><i>→</i>
+    <span>ทะเบียนไฟล์ใน Supabase</span><i>→</i>
+    <span>ระบบ Audit อ่านและกระทบยอด</span>
+  </div>
+  <table>
+    <tr><th style="width:150px">ส่วน</th><th>ทำอะไร</th></tr>
+    <tr><td><b>n8n Cloud</b></td><td>เฝ้าเมล ดึงไฟล์แนบ แตก zip อัปขึ้น Storage และ Drive แล้วบันทึกทะเบียนว่ามีไฟล์อะไรเข้ามาของบริษัทไหน วันไหน</td></tr>
+    <tr><td><b>Supabase</b></td><td>เก็บไฟล์ต้นฉบับ (Storage) + ฐานข้อมูลทะเบียนไฟล์ ผลกระทบยอด รายการผิดปกติ อัตราแลกเปลี่ยน ความเสียหาย และ audit log</td></tr>
+    <tr><td><b>Google Drive</b></td><td>สำเนาไฟล์ต้นฉบับไว้ให้คนเปิดดูเองได้ตามปกติ</td></tr>
+    <tr><td><b>ระบบ Audit</b></td><td>ดึงไฟล์จาก Storage มาแปลงในเบราว์เซอร์ กระทบยอด ออกเอกสารชี้แจง แล้วเขียนผลกลับ Supabase</td></tr>
+  </table>
+  <div class="note">ตัวอ่านไฟล์ทั้งหมด (xlsx, statement PDF, กฎธุรกิจ) อยู่ในระบบ Audit อยู่แล้วและทดสอบกับไฟล์จริงวันที่ 19/07 ผ่านแล้ว จึงไม่ต้องย้ายโค้ดไป n8n — n8n ทำหน้าที่ขนไฟล์กับทำทะเบียนอย่างเดียว ซึ่งพังยากกว่ามาก</div>
+</div>
+
+<div class="card">
+  <h2><span class="n">1</span>สร้างโปรเจกต์ Supabase</h2>
+  <p class="lead">ฟรีสำหรับปริมาณงานระดับนี้ (ฐานข้อมูล 500 MB + Storage 1 GB)</p>
+  <ol>
+    <li>เข้า <code>supabase.com</code> → <b>Start your project</b> → ล็อกอินด้วย GitHub หรือ Google</li>
+    <li>กด <b>New project</b>
+      <ul>
+        <li>Name: <code>audit-reconciliation</code></li>
+        <li>Database Password: ตั้งรหัสยาว ๆ แล้ว<b>เก็บไว้ให้ดี</b></li>
+        <li>Region: <b>Southeast Asia (Singapore)</b> — ใกล้ไทยที่สุด</li>
+      </ul>
+    </li>
+    <li>รอสร้างเสร็จประมาณ 2 นาที</li>
+  </ol>
+
+  <h3>สร้างตารางทั้งหมด</h3>
+  <ol>
+    <li>เมนูซ้าย → <b>SQL Editor</b> → <b>New query</b></li>
+    <li>เปิดไฟล์ <code>supabase/schema.sql</code> ที่ให้มา คัดลอกทั้งไฟล์ วางลงไป</li>
+    <li>กด <b>Run</b> (หรือ <span class="kbd">Ctrl</span>+<span class="kbd">Enter</span>)</li>
+    <li>ควรขึ้น <b>Success. No rows returned</b></li>
+  </ol>
+  <p>สคริปต์นี้สร้างให้ครบ: ตาราง 8 ตาราง, view 2 อัน, Storage bucket <code>audit-files</code>, RLS ทุกตาราง และ trigger เก็บประวัติการแก้อัตราแลกเปลี่ยน — รันซ้ำได้ไม่พัง</p>
+
+  <h3>สร้างผู้ใช้สำหรับทีมออดิท</h3>
+  <ol>
+    <li><b>Authentication</b> → <b>Users</b> → <b>Add user</b> → <b>Create new user</b></li>
+    <li>ใส่อีเมลและรหัสผ่านของแต่ละคน ติ๊ก <b>Auto Confirm User</b></li>
+    <li>ทำซ้ำให้ครบทุกคนที่ต้องใช้ระบบ</li>
+  </ol>
+  <div class="warn"><b>สำคัญ:</b> ทุกตารางเปิด RLS ไว้ ถ้าไม่ล็อกอินจะอ่านข้อมูลไม่ได้เลย — ตั้งใจให้เป็นแบบนี้ เพราะเป็นข้อมูลบัญชีธนาคารของลูกค้าจริง</div>
+
+  <h3>เก็บค่า 3 อย่างนี้ไว้</h3>
+  <p><b>Project Settings</b> → <b>API</b></p>
+  <table>
+    <tr><th style="width:190px">ค่า</th><th>เอาไปใส่ที่</th></tr>
+    <tr><td><b>Project URL</b><br><code>https://xxxx.supabase.co</code></td><td>ทั้ง n8n และหน้าเว็บระบบ Audit</td></tr>
+    <tr><td><b>anon public</b></td><td><b>หน้าเว็บระบบ Audit เท่านั้น</b></td></tr>
+    <tr><td><b>service_role</b> (secret)</td><td><b>n8n เท่านั้น</b></td></tr>
+  </table>
+  <div class="warn"><b>ห้ามเด็ดขาด:</b> อย่าเอา <code>service_role</code> ไปใส่ในหน้าเว็บหรือ push ขึ้น GitHub เพราะคีย์นี้ข้าม RLS ทั้งหมด ใครได้ไปจะอ่านข้อมูลลูกค้าได้หมด</div>
+</div>
+
+<div class="card">
+  <h2><span class="n">2</span>เตรียมโฟลเดอร์ใน Google Drive</h2>
+  <ol>
+    <li>สร้างโฟลเดอร์ใน Drive เช่น <code>Audit ไฟล์ประจำวัน</code></li>
+    <li>เปิดโฟลเดอร์ แล้วดู URL: <code>drive.google.com/drive/folders/<b>1AbCdEf...</b></code></li>
+    <li>ส่วนที่หนาคือ <b>Folder ID</b> เก็บไว้ใช้ในขั้นถัดไป</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h2><span class="n">3</span>แก้ค่าในไฟล์ workflow ก่อน import</h2>
+  <p class="lead">เปิด <code>n8n/audit-mail-ingest.json</code> ด้วย Notepad แล้วใช้ Find &amp; Replace</p>
+  <table>
+    <tr><th style="width:250px">ค้นหา</th><th>แทนที่ด้วย</th></tr>
+    <tr><td><code>{{ $vars.SUPABASE_URL }}</code></td><td>Project URL ของคุณ เช่น <code>https://xxxx.supabase.co</code></td></tr>
+    <tr><td><code>{{ $vars.SUPABASE_SERVICE_KEY }}</code></td><td>service_role key</td></tr>
+    <tr><td><code>{{ $vars.DRIVE_FOLDER_ID }}</code></td><td>Folder ID จากขั้นที่ 2</td></tr>
+  </table>
+  <div class="note">ถ้าแพ็กเกจ n8n Cloud ของคุณมีเมนู <b>Variables</b> จะตั้งค่าตัวแปรทั้ง 3 ตัวไว้ตรงนั้นแทนก็ได้ ไม่ต้องแก้ไฟล์ (Variables เป็นฟีเจอร์ของแพ็กเกจแบบเสียเงิน)</div>
+</div>
+
+<div class="card">
+  <h2><span class="n">4</span>ตั้งค่า n8n Cloud</h2>
+
+  <h3>4.1 สร้าง Credentials 3 ตัว</h3>
+  <p>เมนูซ้าย → <b>Credentials</b> → <b>Add credential</b></p>
+  <table>
+    <tr><th style="width:210px">ชนิด</th><th>ตั้งค่ายังไง</th></tr>
+    <tr>
+      <td><b>Gmail OAuth2</b></td>
+      <td>n8n Cloud มีปุ่ม <b>Sign in with Google</b> ให้เลย กดแล้วเลือกบัญชี <code>work.ltd89@gmail.com</code> → อนุญาตสิทธิ์อ่านเมล<br>ตั้งชื่อว่า <code>Gmail (work.ltd89)</code></td>
+    </tr>
+    <tr>
+      <td><b>Google Drive OAuth2</b></td>
+      <td>เหมือนกัน เลือกบัญชีที่เป็นเจ้าของโฟลเดอร์จากขั้นที่ 2<br>ตั้งชื่อว่า <code>Google Drive</code></td>
+    </tr>
+    <tr>
+      <td><b>Header Auth</b></td>
+      <td>Name: <code>Authorization</code><br>Value: <code>Bearer &lt;service_role key&gt;</code> (มีคำว่า Bearer เว้นวรรคแล้วตามด้วยคีย์)<br>ตั้งชื่อว่า <code>Supabase service_role</code></td>
+    </tr>
+  </table>
+
+  <h3>4.2 Import workflow</h3>
+  <ol>
+    <li><b>Workflows</b> → <b>Add workflow</b> → จุดสามจุดมุมขวาบน → <b>Import from File</b></li>
+    <li>เลือกไฟล์ <code>audit-mail-ingest.json</code> ที่แก้ค่าแล้ว</li>
+    <li>เปิดทีละโหนดที่ขึ้นสามเหลี่ยมเตือนสีแดง แล้วเลือก Credential ที่สร้างไว้ให้ตรง
+      <ul>
+        <li><b>Gmail: เมลใหม่ใน AUDIT 2</b> → Gmail (work.ltd89)</li>
+        <li><b>Supabase: …</b> ทั้ง 3 โหนด → Supabase service_role</li>
+        <li><b>Google Drive: สำรองไฟล์</b> → Google Drive</li>
+      </ul>
+    </li>
+    <li>ที่โหนด Gmail Trigger กด <b>Label Names or IDs</b> แล้วเลือก <b>AUDIT 2</b> จากรายการ (n8n จะดึงชื่อ label มาให้เอง)</li>
+  </ol>
+
+  <h3>4.3 ทดสอบ</h3>
+  <ol>
+    <li>กด <b>Test workflow</b> ที่มุมล่าง</li>
+    <li>ควรเห็นข้อมูลไหลผ่านทุกโหนดเป็นสีเขียว</li>
+    <li>ไปดูที่ Supabase → <b>Table Editor</b> → <code>mail_batches</code> และ <code>source_files</code> ควรมีแถวขึ้นมา</li>
+    <li>ไปดู <b>Storage</b> → <code>audit-files</code> ควรมีโฟลเดอร์ <code>2026-07-20/AT4/</code> พร้อมไฟล์</li>
+  </ol>
+
+  <h3>4.4 เปิดใช้จริง</h3>
+  <p>สลับสวิตช์ <b>Inactive → Active</b> มุมขวาบน จากนี้ n8n จะเช็คเมลให้ทุก 10 นาทีเอง</p>
+  <div class="ok">ปรับความถี่ได้ที่โหนด Gmail Trigger → <b>Poll Times</b> เช่น ถ้าเมลเข้าวันละครั้งตอนเช้า ตั้งเป็นทุก 1 ชั่วโมงก็พอ ประหยัดโควตา</div>
+</div>
+
+<div class="card">
+  <h2><span class="n">5</span>ต่อระบบ Audit เข้ากับ Supabase</h2>
+  <ol>
+    <li>เปิดระบบ Audit → เมนู <b>คลังไฟล์จากเมล</b></li>
+    <li>กรอก
+      <ul>
+        <li><b>Supabase URL</b> — Project URL</li>
+        <li><b>anon public key</b> — <b>ไม่ใช่</b> service_role</li>
+        <li><b>Storage bucket</b> — <code>audit-files</code></li>
+        <li><b>อีเมล / รหัสผ่าน</b> — ผู้ใช้ที่สร้างไว้ในขั้นที่ 1</li>
+      </ul>
+    </li>
+    <li>กด <b>ทดสอบการเชื่อมต่อ</b> ควรติ๊กเขียวครบ 5 ข้อ</li>
+    <li>กด <b>บันทึกและล็อกอิน</b></li>
+  </ol>
+  <p>จากนั้นหน้านี้จะขึ้นรายการเมลที่ n8n ดึงมาแล้ว พร้อมไฟล์ทั้งหมดของแต่ละเมล กด <b>เลือกที่ยังไม่ได้อ่าน</b> → <b>ดึงเข้าระบบ</b> ระบบจะโหลดไฟล์จาก Storage มาแปลงและกระทบยอดให้ทันที</p>
+</div>
+
+<div class="card">
+  <h2><span class="n">6</span>ตรวจว่าใช้ได้จริง</h2>
+  <table>
+    <tr><th style="width:230px">ตรวจอะไร</th><th>ต้องเห็นอะไร</th></tr>
+    <tr><td>Supabase → Table Editor → <code>mail_batches</code></td><td>มีแถวของเมล พร้อม <code>company</code> เป็น AT4/SK8/FR8 และ <code>business_date</code> ถูกต้อง</td></tr>
+    <tr><td><code>source_files</code></td><td>ไฟล์ครบทุกไฟล์ รวมไฟล์ที่อยู่ใน .zip และคอลัมน์ <code>kind</code> ระบุชนิดถูก</td></tr>
+    <tr><td>Storage → audit-files</td><td>โฟลเดอร์แยกตามวันที่และบริษัท</td></tr>
+    <tr><td>Google Drive</td><td>ไฟล์เดียวกันอยู่ในโฟลเดอร์ที่ตั้งไว้</td></tr>
+    <tr><td>ระบบ Audit → คลังไฟล์จากเมล</td><td>เห็นเมลทุกฉบับ กดดึงเข้าระบบแล้วอัตราจับคู่ขึ้นในแดชบอร์ด</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2><span class="n">?</span>ปัญหาที่เจอบ่อย</h2>
+  <table>
+    <tr><th style="width:270px">อาการ</th><th>สาเหตุและวิธีแก้</th></tr>
+    <tr><td>n8n ไม่เห็นเมลใหม่</td><td>Gmail Trigger ดึงเฉพาะเมลที่เข้า<b>หลัง</b>ตอนเปิด Active — ทดสอบด้วยการส่งต่อเมลเก่าเข้ามาใหม่ หรือกด Test workflow ซึ่งจะดึงเมลล่าสุดมาให้</td></tr>
+    <tr><td>อัปไฟล์แล้ว 400 Bad Request</td><td>ชื่อไฟล์มีอักขระที่ Storage ไม่รับ — โหนด <b>เดาชนิดไฟล์และตั้ง path</b> กรองให้แล้ว ถ้ายังเจอให้ดูค่า <code>storage_path</code> ในผลลัพธ์ของโหนดนั้น</td></tr>
+    <tr><td>ระบบ Audit ขึ้น "ไม่มีสิทธิ์อ่านข้อมูล"</td><td>ยังไม่ได้ล็อกอิน หรือใส่ service_role แทน anon key — ออกแล้วล็อกอินใหม่ด้วย anon key</td></tr>
+    <tr><td>ไฟล์ใน zip ชื่อเพี้ยนเป็นตัวประหลาด</td><td>zip จากโปรแกรมไทยใช้รหัส cp874 — ตัวแตก zip ในระบบ Audit รองรับแล้ว ส่วนใน n8n ถ้าเจอให้ดึงไฟล์ผ่านหน้าคลังไฟล์แทน</td></tr>
+    <tr><td>เมลหนึ่งฉบับเข้าซ้ำหลายรอบ</td><td>ตาราง <code>mail_batches</code> ตั้ง unique ที่ <code>gmail_message_id</code> และ <code>source_files</code> unique ที่ (batch, ชื่อไฟล์, zip) จึงกันซ้ำให้เองอยู่แล้ว</td></tr>
+    <tr><td>Storage เต็ม</td><td>แพ็กเกจฟรีให้ 1 GB — ไฟล์วันละประมาณ 3–5 MB อยู่ได้ราว 6 เดือน หลังจากนั้นย้ายไฟล์เก่าไป Drive อย่างเดียวแล้วลบใน Storage ได้ เพราะ <code>drive_url</code> ยังอยู่ในทะเบียน</td></tr>
+  </table>
+</div>
+
+<footer>Audit AI Reconciliation · เอกสารติดตั้งระบบดึงไฟล์อัตโนมัติ</footer>
+</div>
+</body>
+</html>

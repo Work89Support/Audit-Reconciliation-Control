@@ -1174,3 +1174,27 @@ tr.on { background: #f0f7ff; }
   .fx-calc-row { grid-template-columns: 1fr; }
 }
 .mn-h4 { margin: 18px 0 8px; font-size: 14.5px; font-weight: 600; color: #22384f; }
+
+/* ---------------- คลังไฟล์จากเมล ---------------- */
+.mail-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.mail-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 12px 14px; background: var(--surface-3); border-bottom: 1px solid var(--line-soft);
+}
+.mail-head strong { display: block; font-size: 13.5px; color: #22384f; line-height: 1.5; }
+.mail-head span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.mail-tags { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
+.mail-card table { font-size: 12.5px; }
+.mail-card tr.bad { background: #fff5f5; }
+.mail-card input[type="checkbox"] { width: 15px; height: 15px; }
+.tick-list li.no { color: var(--red-txt); }
+.tick-list li.no::before { content: "✕"; }
+@media (max-width: 760px) {
+  .mail-head { flex-direction: column; }
+}

@@ -27,6 +27,7 @@ const ICONS = {
   approvals: "M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z",
   damage: "M12 2 2 20h20L12 2Zm0 5 6 11H6l6-11Zm-1 3v4h2v-4h-2Z",
   fx: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Zm-1.2 3v1.3c-1.3.2-2.2 1-2.2 2.2 0 1.4 1.1 2 2.6 2.4 1.1.3 1.5.6 1.5 1.1 0 .5-.5.9-1.3.9-.9 0-1.6-.4-2.1-1l-1.2 1.2c.6.7 1.5 1.2 2.7 1.4V18h1.6v-1.4c1.5-.2 2.4-1.1 2.4-2.4 0-1.4-1-2.1-2.7-2.5-1-.3-1.4-.5-1.4-1 0-.5.4-.8 1.2-.8.8 0 1.4.3 1.9.9l1.2-1.2c-.6-.6-1.3-1-2.2-1.2V7h-1.6Z",
+  cloud: "M6.5 19a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 17.7 9.2 4.25 4.25 0 0 1 17.25 19H6.5Zm5-8.6-3.2 3.2 1.4 1.4 1.3-1.3V17h2v-3.3l1.3 1.3 1.4-1.4-3.2-3.2Z",
   pm: "M3 3h18v4H3V3Zm0 6h8v12H3V9Zm10 0h8v5h-8V9Zm0 7h8v5h-8v-5Z",
   kpi: "M4 20h3v-7H4v7Zm6.5 0h3V4h-3v16ZM17 20h3v-11h-3v11Z",
   reports: "M6 2h8l4 4v16H6V2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v2H8v-2Zm0 4h8v2H8v-2Z",
@@ -47,6 +48,7 @@ const ROUTES = [
     group: "งานประจำวัน",
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ, ผลจับคู่, exception ตามประเภท/กะ และ SLA ที่ต้องตามวันนี้", filters: true },
+      { id: "cloud", label: "คลังไฟล์จากเมล", icon: "cloud", title: "คลังไฟล์จากเมล (n8n + Supabase)", desc: "ไฟล์จากเมล AUDIT 2 ถูก n8n ดึงมาเก็บใน Supabase และ Google Drive ให้อัตโนมัติ — เลือกไฟล์แล้วกดดึงเข้าระบบเพื่อกระทบยอดได้ทันที", filters: true },
       { id: "import", label: "นำเข้าข้อมูล", icon: "import", title: "นำเข้าไฟล์และกระทบยอดอัตโนมัติ", desc: "ดึงไฟล์จาก email กลาง หรืออัปโหลดเอง แล้วระบบจะ parse, ใช้กฎธนาคาร และกระทบยอด 3 จุดให้เองทันทีที่ไฟล์ครบทั้งสองฝั่ง", filters: false },
       { id: "intake", label: "Intake Control", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "เช็คว่า STM / BO / ไฟล์แก้ไขมือ / ไฟล์ชี้แจง / PM ครบและถูกบริษัทหรือไม่ ถ้ายังไม่ครบระบบจะรอ ไม่กระทบยอดเงียบ ๆ", filters: true },
       { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
@@ -2024,6 +2026,262 @@ VIEWS["audit-log"] = (root) => {
       },
     ]),
   );
+};
+
+/* =============================================================
+   VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
+   ============================================================= */
+const cloudState = { batches: null, daily: null, loading: false, error: null, picked: {}, busy: "" };
+
+async function cloudLoad() {
+  cloudState.loading = true;
+  cloudState.error = null;
+  render();
+  try {
+    const to = state.filters.to || DB.BUSINESS_DATE;
+    const from = state.filters.from || to;
+    const [b, d] = await Promise.all([Sb.batches({ from, to, company: state.filters.company }), Sb.dailyStatus(30)]);
+    cloudState.batches = b;
+    cloudState.daily = d;
+  } catch (e) {
+    cloudState.error = e.message;
+  }
+  cloudState.loading = false;
+  render();
+}
+
+/* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
+async function cloudImport(files) {
+  if (!files.length) return toast("ยังไม่ได้เลือกไฟล์", "warn");
+  showProgress("กำลังดึงไฟล์จากคลังและอ่านเข้าระบบ");
+  let ok = 0;
+  const failed = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    setProgress((i + 1) / files.length, f.file_name);
+    try {
+      const buf = await Sb.download(f.storage_path);
+      const norm = await ingestRaw(f.file_name, buf, buf.byteLength);
+      const n = norm.records.length + (norm.aux || []).length;
+      ok++;
+      Sb.markParsed(f.id, n, null).catch(() => {});
+    } catch (e) {
+      failed.push(`${f.file_name}: ${e.message}`);
+      Sb.markParsed(f.id, null, e.message).catch(() => {});
+    }
+  }
+  hideProgress();
+  logAction("cloud_import", "source_file", `${ok} ไฟล์`, `ดึงจากคลัง Supabase ${ok} ไฟล์${failed.length ? ` · ผิดพลาด ${failed.length}` : ""}`);
+  toast(`อ่านเข้าระบบแล้ว ${ok} ไฟล์${failed.length ? ` · ไม่สำเร็จ ${failed.length}` : ""}`);
+  if (failed.length) console.warn(failed);
+  cloudState.picked = {};
+  await runReconcileFromImport({ reason: "ดึงจากคลังไฟล์" });
+}
+
+VIEWS.cloud = (root) => {
+  const c = Sb.cfg();
+  const ready = Sb.configured();
+  const inSession = Sb.signedIn();
+
+  if (!ready || !inSession) {
+    root.innerHTML = `
+      <section class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Cloud Inbox</p><h2>เชื่อมต่อคลังไฟล์</h2></div>
+          <span class="health ${ready ? "attention" : "attention"}">${ready ? "ยังไม่ได้ล็อกอิน" : "ยังไม่ได้ตั้งค่า"}</span>
+        </div>
+        <p class="hint">ไฟล์จากเมล <b>AUDIT 2</b> จะถูก n8n ดึงมาเก็บไว้ใน Supabase Storage และ Google Drive ให้อัตโนมัติ หน้านี้ใช้ดึงไฟล์เหล่านั้นเข้ามาตรวจโดยไม่ต้องดาวน์โหลดเอง</p>
+        <div class="setting-list mt">
+          <label><span>Supabase URL</span><input type="text" id="sbUrl" value="${h(c.url || "")}" placeholder="https://xxxx.supabase.co" /><b></b></label>
+          <label class="wide"><span>anon public key</span><input type="password" id="sbKey" value="${h(c.anonKey || "")}" placeholder="eyJhbGciOi..." /><b></b></label>
+          <label><span>Storage bucket</span><input type="text" id="sbBucket" value="${h(c.bucket || "audit-files")}" /><b></b></label>
+        </div>
+        <div class="setting-list">
+          <label><span>อีเมลผู้ใช้</span><input type="email" id="sbEmail" value="${h(c.email || "")}" placeholder="audit@company.com" /><b></b></label>
+          <label><span>รหัสผ่าน</span><input type="password" id="sbPass" placeholder="••••••••" /><b></b></label>
+        </div>
+        <div class="inline-actions">
+          <button class="primary-button" id="sbLogin">บันทึกและล็อกอิน</button>
+          <button class="ghost-button" id="sbPing">ทดสอบการเชื่อมต่อ</button>
+        </div>
+        <div id="sbPingOut"></div>
+        <p class="chart-note">ใส่ได้เฉพาะ <b>anon public key</b> เท่านั้น — <b>service_role key</b> ต้องอยู่ใน n8n เท่านั้น ห้ามใส่ในหน้าเว็บ เพราะจะข้าม RLS และเปิดข้อมูลลูกค้าทั้งหมด</p>
+      </section>`;
+
+    $("#sbLogin").addEventListener("click", async () => {
+      Sb.saveConfig({ url: $("#sbUrl").value.trim(), anonKey: $("#sbKey").value.trim(), bucket: $("#sbBucket").value.trim() || "audit-files" });
+      try {
+        await Sb.signIn($("#sbEmail").value.trim(), $("#sbPass").value);
+        toast("ล็อกอิน Supabase สำเร็จ");
+        logAction("cloud_login", "supabase", $("#sbEmail").value.trim(), "เชื่อมต่อคลังไฟล์");
+        cloudLoad();
+      } catch (e) {
+        toast(e.message, "warn");
+      }
+    });
+    $("#sbPing").addEventListener("click", async () => {
+      Sb.saveConfig({ url: $("#sbUrl").value.trim(), anonKey: $("#sbKey").value.trim(), bucket: $("#sbBucket").value.trim() || "audit-files" });
+      const r = await Sb.ping();
+      $("#sbPingOut").innerHTML = `<ul class="tick-list mt">
+        <li class="${r.url ? "" : "no"}">URL ${r.url ? "ใส่แล้ว" : "ยังไม่ได้ใส่"}</li>
+        <li class="${r.key ? "" : "no"}">anon key ${r.key ? "ใส่แล้ว" : "ยังไม่ได้ใส่"}</li>
+        <li class="${r.auth ? "" : "no"}">ล็อกอิน ${r.auth ? "แล้ว" : "ยังไม่ได้ล็อกอิน"}</li>
+        <li class="${r.tables ? "" : "no"}">อ่านตารางทะเบียน ${r.tables ? "ได้" : "ไม่ได้"}</li>
+        <li class="${r.storage ? "" : "no"}">อ่าน bucket ${r.storage ? "ได้" : "ไม่ได้"}</li>
+        ${r.error ? `<li class="no">${h(r.error)}</li>` : ""}
+      </ul>`;
+    });
+    return;
+  }
+
+  if (cloudState.batches === null && !cloudState.loading) {
+    cloudLoad();
+  }
+
+  const batches = cloudState.batches || [];
+  const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: b.company })));
+  const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
+  const pickedFiles = readable.filter((f) => cloudState.picked[f.id]);
+  const daily = cloudState.daily || [];
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article class="ok"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
+      <article><span>ไฟล์ในคลัง</span><strong>${num(allFiles.length)}</strong><small>อ่านเข้าระบบได้ ${num(readable.length)} ไฟล์</small></article>
+      <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} ไฟล์</small></article>
+      <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "ดูสาเหตุในตาราง" : "ไม่มีปัญหา"}</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
+        <div class="inline-actions">
+          <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
+          <button class="ghost-button sm" id="cPickNew">เลือกที่ยังไม่ได้อ่าน</button>
+          <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>ดึงเข้าระบบ ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
+          <button class="ghost-button sm" id="cLogout">ออกจากระบบคลัง</button>
+        </div>
+      </div>
+      ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : ""}
+      ${
+        batches.length
+          ? batches
+              .map(
+                (b) => `<div class="mail-card">
+        <div class="mail-head">
+          <div>
+            <strong>${h(b.subject || "(ไม่มีหัวข้อ)")}</strong>
+            <span>${h(b.sender || "-")} · รับเมื่อ ${h(String(b.received_at || "").replace("T", " ").slice(0, 16))}</span>
+          </div>
+          <div class="mail-tags">
+            ${b.company ? `<span class="badge violet">${h(b.company)}</span>` : ""}
+            ${b.business_date ? `<span class="badge blue">${h(b.business_date)}</span>` : ""}
+            ${b.is_supplement ? `<span class="badge amber">เพิ่มเติม</span>` : ""}
+            <span class="badge ${b.status === "stored" ? "green" : "grey"}">${h(b.status)}</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:34px"></th><th>ไฟล์</th><th>ชนิดที่ระบบเดา</th><th class="right">ขนาด</th><th>สถานะ</th><th></th></tr></thead>
+            <tbody>
+              ${(b.source_files || [])
+                .sort((x, y) => String(x.file_name).localeCompare(String(y.file_name), "th"))
+                .map((f) => {
+                  const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
+                  return `<tr class="${f.parse_error ? "bad" : ""}">
+                  <td>${canRead ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
+                  <td><b>${h(f.file_name)}</b>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
+                  <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
+                  <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
+                  <td>${
+                    f.parse_error
+                      ? `<span class="badge red" title="${h(f.parse_error)}">อ่านไม่ได้</span>`
+                      : f.parsed
+                        ? `<span class="badge green">อ่านแล้ว${f.row_count ? " " + num(f.row_count) + " แถว" : ""}</span>`
+                        : `<span class="badge grey">ยังไม่อ่าน</span>`
+                  }</td>
+                  <td class="right">${f.drive_url ? `<a class="link-btn" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""} <button class="link-btn" data-open="${h(f.storage_path)}">เปิดไฟล์</button></td>
+                </tr>`;
+                })
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>`,
+              )
+              .join("")
+          : `<p class="empty-box">${cloudState.loading ? "กำลังโหลด..." : "ยังไม่มีเมลในช่วงวันที่นี้ — ลองขยายช่วงวันที่ในแถบตัวกรองด้านบน หรือตรวจว่า workflow ใน n8n รันแล้ว"}</p>`
+      }
+    </section>
+
+    ${
+      daily.length
+        ? `<section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Coverage</p><h2>ไฟล์เข้าครบรายวัน</h2></div><span class="health ok">${num(daily.length)} รายการ</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>วันที่</th><th>บริษัท</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">อ่านแล้ว</th><th class="right">มีปัญหา</th><th>เมลล่าสุด</th></tr></thead>
+          <tbody>
+            ${daily
+              .map(
+                (d) => `<tr>
+              <td><b>${h(d.business_date || "-")}</b></td>
+              <td>${h(d.company || "-")}</td>
+              <td class="right tnum">${num(d.mail_count)}</td>
+              <td class="right tnum">${num(d.file_count)}</td>
+              <td class="right tnum">${num(d.parsed_count)}</td>
+              <td class="right tnum ${d.error_count ? "danger" : ""}">${num(d.error_count)}</td>
+              <td class="muted">${h(String(d.last_mail_at || "").replace("T", " ").slice(0, 16))}</td>
+            </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>`
+        : ""
+    }`;
+
+  $("#cReload").addEventListener("click", cloudLoad);
+  $("#cLogout").addEventListener("click", () => {
+    Sb.signOut();
+    cloudState.batches = null;
+    toast("ออกจากระบบคลังไฟล์แล้ว");
+    render();
+  });
+  $("#cPickNew").addEventListener("click", () => {
+    readable.filter((f) => !f.parsed).forEach((f) => (cloudState.picked[f.id] = true));
+    render();
+  });
+  $("#cImport").addEventListener("click", () => cloudImport(pickedFiles));
+  root.querySelectorAll("[data-pick]").forEach((cb) =>
+    cb.addEventListener("change", () => {
+      cloudState.picked[cb.dataset.pick] = cb.checked;
+      render();
+    }),
+  );
+  root.querySelectorAll("[data-open]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try {
+        const url = await Sb.signedUrl(b.dataset.open, 300);
+        window.open(url, "_blank", "noopener");
+      } catch (e) {
+        toast(e.message, "warn");
+      }
+    }),
+  );
+};
+
+const KIND_LABEL = {
+  bo_main: "รายงานบัญชีฝาก-ถอน",
+  manual_credit: "ฝากมือ - เครดิต",
+  manual_payment: "ฝากมือ - Payment",
+  manual_bonus: "ฝากมือ - โบนัส",
+  comm_req: "ขอถอนค่าคอมมิชชั่น",
+  credit_out: "รายงานถอนเครดิต",
+  stm_pdf: "Statement ธนาคาร (PDF)",
+  doc_clarify: "เอกสารชี้แจง",
+  unknown: "ยังระบุไม่ได้",
 };
 
 /* =============================================================
