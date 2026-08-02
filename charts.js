@@ -76,17 +76,25 @@ const Charts = (() => {
     const ih = H - m.t - m.b;
     const series = opt.series;
     const n = opt.xLabels.length;
-    const maxV = niceMax(Math.max(...series.flatMap((s) => s.values)) * 1.08);
+    const allV = series.flatMap((s) => s.values);
+    /* zoom: ใช้กับค่าที่แกว่งน้อยแต่ไกลจากศูนย์ เช่น อัตราแลกเปลี่ยน ไม่งั้นเส้นจะแบนอ่านไม่ออก */
+    const lo0 = Math.min(...allV);
+    const hi0 = Math.max(...allV);
+    const zoom = opt.zoomY && hi0 > 0 && (hi0 - lo0) / hi0 < 0.5;
+    const padZ = Math.max((hi0 - lo0) * 0.35, hi0 * 0.004);
+    const minV = zoom ? lo0 - padZ : 0;
+    const maxV = zoom ? hi0 + padZ : niceMax(hi0 * 1.08);
+    const span = maxV - minV || 1;
     const x = (i) => m.l + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
-    const y = (v) => m.t + ih - (v / maxV) * ih;
-    const ticks = [4, 5, 3, 2].find((t) => (maxV / t) % 1 === 0) || 4;
+    const y = (v) => m.t + ih - ((v - minV) / span) * ih;
+    const ticks = zoom ? 4 : [4, 5, 3, 2].find((t) => (maxV / t) % 1 === 0) || 4;
 
     let g = "";
     for (let i = 0; i <= ticks; i++) {
-      const v = (maxV / ticks) * i;
+      const v = minV + (span / ticks) * i;
       const yy = y(v);
       g += `<line x1="${m.l}" y1="${yy}" x2="${W - m.r}" y2="${yy}" stroke="${PALETTE.grid}" stroke-width="1"/>`;
-      g += `<text x="${m.l - 8}" y="${yy + 4}" text-anchor="end" class="c-axis">${opt.short ? shortNum(v) : fmtInt(v)}</text>`;
+      g += `<text x="${m.l - 8}" y="${yy + 4}" text-anchor="end" class="c-axis">${zoom ? v.toFixed(opt.decimals ?? 2) : opt.short ? shortNum(v) : fmtInt(v)}</text>`;
     }
     if (!opt.hideXLabels) {
       const every = Math.ceil(n / (iw < 420 ? 6 : 12));
@@ -105,7 +113,7 @@ const Charts = (() => {
     series.forEach((s) => {
       const pts = s.values.map((v, i) => `${x(i)},${y(v)}`).join(" L");
       if (s.area) {
-        paths += `<path d="M${x(0)},${y(0)} L${pts} L${x(n - 1)},${y(0)} Z" fill="${s.color}" opacity="0.10"/>`;
+        paths += `<path d="M${x(0)},${y(minV)} L${pts} L${x(n - 1)},${y(minV)} Z" fill="${s.color}" opacity="0.10"/>`;
       }
       paths += `<path d="M${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     });

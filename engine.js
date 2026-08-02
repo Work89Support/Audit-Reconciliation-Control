@@ -42,8 +42,10 @@ const Engine = (() => {
     return rows.filter((r) => r.some((c) => String(c).trim() !== ""));
   }
 
-  function parseSheet(arrayBuffer) {
-    if (typeof XLSX === "undefined") throw new Error("ยังโหลดตัวอ่านไฟล์ Excel ไม่ได้ (ต้องต่ออินเทอร์เน็ต) — กรุณาใช้ไฟล์ .csv แทน");
+  /* อ่าน .xlsx — ใช้ตัวอ่านในตัว (XlsxReader) ทำงานได้แม้ออฟไลน์ */
+  async function parseSheet(arrayBuffer) {
+    if (typeof XlsxReader !== "undefined") return XlsxReader.read(arrayBuffer);
+    if (typeof XLSX === "undefined") throw new Error("ยังโหลดตัวอ่านไฟล์ Excel ไม่ได้ — กรุณาใช้ไฟล์ .csv แทน");
     const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: false, raw: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
     return XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: "" }).map((r) => r.map((c) => String(c ?? "")));
@@ -151,6 +153,35 @@ const Engine = (() => {
   const CYCLE_LINE = ["รอบวันที่", "statement period", "รอบบัญชี"];
 
   function normalize(fileName, rows, settings, businessDate) {
+    /* 1) ลองรูปแบบรายงานจริงของแผนกก่อน (AT4 / FR8 / บริษัทอื่นใช้ร่วมกัน) */
+    if (typeof Formats !== "undefined") {
+      const real = Formats.parse(fileName, rows, businessDate);
+      if (real) {
+        const pmOnly = Object.entries(real.channels).filter(([, c]) => c.isPm);
+        const warnings = real.warnings.slice();
+        if (pmOnly.length) {
+          warnings.push("ช่องทาง PM ที่พบ: " + pmOnly.map(([k, c]) => `${k} ${c.count} รายการ`).join(", ") + " — ต้องมีไฟล์ statement ของช่องทางนี้จึงจะจับคู่ได้");
+        }
+        return {
+          fileName,
+          format: {
+            source: real.side === "aux" ? "aux" : "bo",
+            bank: null,
+            company: real.company,
+            headerIdx: 0,
+            map: {},
+            realCode: real.code,
+            realLabel: real.label,
+            channels: real.channels,
+          },
+          records: real.records,
+          aux: real.aux,
+          dropped: real.dropped,
+          warnings,
+        };
+      }
+    }
+
     const fmt = detectFormat(fileName, rows);
     const map = fmt.map;
     const records = [];
@@ -273,7 +304,7 @@ const Engine = (() => {
     missing_bo: "STM มากกว่า BO",
     missing_stm: "BO มากกว่า STM",
     amount_diff: "ยอดเงินไม่ตรง",
-    cross_day: "รายการข้ามวัน 23:00-23:59",
+    cross_day: "รายการข้ามวัน (BO กับธนาคารคนละวัน)",
     duplicate: "เติมซ้ำ / รายการซ้ำ",
     wrong_bank: "เลือกธนาคารผิด",
     wrong_account: "ลูกค้าฝากผิดบัญชี",
@@ -310,8 +341,20 @@ const Engine = (() => {
     const t0 = performance.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
-    const tolOf = (d) => (d === "withdraw" ? tolWit : tolDep);
+    /* statement ของ KBANK/SCB ให้เวลาแค่ HH:MM — ต้องเผื่ออย่างน้อย 1 นาที */
+    const minuteFloor = settings.minuteTolerance ?? 60;
+    const tolOf = (d, s, b) => {
+      const base = d === "withdraw" ? tolWit : tolDep;
+      const coarse = (s && s.minutePrecision) || (b && b.minutePrecision);
+      return coarse ? Math.max(base, minuteFloor) : base;
+    };
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
+
+    /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
+    const stmAccounts = new Set(stmRecords.map((r) => r.account));
+    const stmChannels = new Set(stmRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
+    const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
+    const noStmSide = [];
 
     // index BO
     const exactIdx = new Map();
@@ -356,10 +399,11 @@ const Engine = (() => {
             }
           }
         }
-        if (best >= 0 && bestDt <= tolOf(s.direction)) {
+        const tol = tolOf(s.direction, s, best >= 0 ? boRecords[best] : null);
+        if (best >= 0 && bestDt <= tol) {
           boUsed[best] = 1;
           matched.push({ s, b: boRecords[best], dt: bestDt });
-          if (bestDt > tolOf(s.direction) * 0.6) timeDiffCount++;
+          if (bestDt > tol * 0.6) timeDiffCount++;
         } else if (best >= 0 && bestDt < 3600) {
           boUsed[best] = 1;
           exceptions.push(mkException("time_diff", s, boRecords[best], bestDt));
@@ -390,7 +434,7 @@ const Engine = (() => {
             }
           }
         }
-        if (best >= 0 && bestDt <= tolOf(s.direction)) {
+        if (best >= 0 && bestDt <= tolOf(s.direction, s, boRecords[best])) {
           boUsed[best] = 1;
           exceptions.push(mkException("amount_diff", s, boRecords[best], bestDt));
         } else {
@@ -412,8 +456,13 @@ const Engine = (() => {
       20000,
       (b, i) => {
         if (boUsed[i]) return;
+        if (!hasStmSide(b)) {
+          noStmSide.push(b);
+          return;
+        }
         const dup = seenPair.has(key2(b.account, b.amount));
-        exceptions.push(mkException(dup ? "duplicate" : b.crossDay ? "cross_day" : "missing_stm", null, b, 0));
+        /* รายการ 23:00-23:59 หรือข้ามวัน ให้ถือเป็น cross_day ก่อน แม้ยอดจะซ้ำกับรายการอื่น */
+        exceptions.push(mkException(b.lateNight || b.crossDay ? "cross_day" : dup ? "duplicate" : "missing_stm", null, b, 0));
       },
       onProgress,
       "ตรวจรายการที่ไม่มีฝั่ง STM",
@@ -421,10 +470,24 @@ const Engine = (() => {
 
     // pass 5: กฎเพิ่มเติมบนคู่ที่จับได้ — เทียบกับ master list ของบัญชี ไม่ใช่ธนาคารที่เดาจากชื่อไฟล์
     const masterBank = new Map((masterAccounts || []).map((a) => [a.id, a.bank]));
+    /* ข้อความในสลิปธนาคาร: 'จาก GSB X3463 ...' / 'รับโอนจาก KBANK x4845 ...' */
+    const FROM_RE = /(?:จาก|ไป|from|to)\s*([A-Z]{2,6})?\s*[xX](\d{3,4})/;
+    const BANK_ALIAS = { KBANK: "KBANK", KPLUS: "KBANK", SCB: "SCB", GSB: "GSB", BBL: "BBL", KTB: "KTB", BAAC: "BAAC", TTB: "TTB", BAY: "BAY", KK: "KKP", KKP: "KKP", UOB: "UOB", CIMB: "CIMB", LHB: "LHB", TISCO: "TISCO", GHB: "GHB" };
     matched.forEach((m) => {
       const truth = masterBank.get(m.s.account);
-      if (masterSet.size && !truth) exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
-      else if (truth && m.b.bank && m.b.bank !== truth) exceptions.push(mkException("wrong_bank", m.s, m.b, m.dt));
+      if (masterSet.size && !truth) {
+        exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
+        return;
+      }
+      /* จุดตรวจที่ 4: ธนาคารและเลขบัญชีปลายทางของลูกค้าต้องตรงกับที่สลิปธนาคารระบุ */
+      const hit = String(m.s.desc || m.s.raw || "").match(FROM_RE);
+      if (!hit) return;
+      const stmBank = BANK_ALIAS[(hit[1] || "").toUpperCase()] || (hit[1] || "").toUpperCase();
+      const stmTail = hit[2];
+      const boBank = BANK_ALIAS[String(m.b.custBank || "").toUpperCase()] || String(m.b.custBank || "").toUpperCase();
+      const boTail = String(m.b.custAccount || "").replace(/\D/g, "").slice(-stmTail.length);
+      if (boBank && stmBank && boBank !== stmBank) exceptions.push(mkException("wrong_bank", m.s, m.b, m.dt));
+      else if (boTail && stmTail && boTail !== stmTail) exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
     });
 
     // สถิติรายชั่วโมงเพื่อให้ dashboard ตรงกับผลจับคู่จริง
@@ -453,7 +516,23 @@ const Engine = (() => {
       hourlyStm,
       hourlyMatched,
       crossDayWindow,
+      noStmSide: summarizeNoStm(noStmSide),
+      noStmCount: noStmSide.length,
     };
+
+    function summarizeNoStm(list) {
+      const by = {};
+      list.forEach((b) => {
+        const k = (b.channel || b.bank || b.account || "ไม่ระบุ") + " / " + (b.company || "-");
+        const g = by[k] || (by[k] = { key: k, channel: b.channel || b.bank || "-", company: b.company || "-", count: 0, amount: 0, accounts: new Set() });
+        g.count++;
+        g.amount += b.amount;
+        g.accounts.add(b.account);
+      });
+      return Object.values(by)
+        .map((g) => ({ ...g, amount: Math.round(g.amount * 100) / 100, accounts: [...g.accounts] }))
+        .sort((a, b) => b.count - a.count);
+    }
 
     function mkException(type, s, b, dt) {
       const src = s || b;
@@ -488,6 +567,7 @@ const Engine = (() => {
         shift: shiftOf(hour),
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
         assignee: "audit_som",
+        track: severity === "critical" || severity === "high" ? "daily" : "cycle",
         cause: causeOf(type),
         ageHours,
         slaHours,

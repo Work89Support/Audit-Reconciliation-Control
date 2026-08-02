@@ -26,6 +26,7 @@ const ICONS = {
   matching: "M4 6h7v3H4V6Zm0 9h7v3H4v-3Zm9-9h7v3h-7V6Zm0 9h7v3h-7v-3Zm-2-4.5h2v3h-2v-3Z",
   approvals: "M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z",
   damage: "M12 2 2 20h20L12 2Zm0 5 6 11H6l6-11Zm-1 3v4h2v-4h-2Z",
+  fx: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Zm-1.2 3v1.3c-1.3.2-2.2 1-2.2 2.2 0 1.4 1.1 2 2.6 2.4 1.1.3 1.5.6 1.5 1.1 0 .5-.5.9-1.3.9-.9 0-1.6-.4-2.1-1l-1.2 1.2c.6.7 1.5 1.2 2.7 1.4V18h1.6v-1.4c1.5-.2 2.4-1.1 2.4-2.4 0-1.4-1-2.1-2.7-2.5-1-.3-1.4-.5-1.4-1 0-.5.4-.8 1.2-.8.8 0 1.4.3 1.9.9l1.2-1.2c-.6-.6-1.3-1-2.2-1.2V7h-1.6Z",
   pm: "M3 3h18v4H3V3Zm0 6h8v12H3V9Zm10 0h8v5h-8V9Zm0 7h8v5h-8v-5Z",
   kpi: "M4 20h3v-7H4v7Zm6.5 0h3V4h-3v16ZM17 20h3v-11h-3v11Z",
   reports: "M6 2h8l4 4v16H6V2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v2H8v-2Zm0 4h8v2H8v-2Z",
@@ -38,6 +39,7 @@ const ICONS = {
   import: "M12 3v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3h2ZM4 19h16v2H4v-2Z",
   bell: "M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-5.3V11a7 7 0 0 0-5.2-6.77V3.5a1.8 1.8 0 1 0-3.6 0v.73A7 7 0 0 0 5 11v5.7L3.2 18.5v.9h17.6v-.9L19 16.7Z",
   clock: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 4 2.4-1 1.7-5-3V6h2v6.6Z",
+  clarify: "M4 3h16v13H8l-4 4V3Zm3 3v2h10V6H7Zm0 4v2h7v-2H7Zm11.5 6L22 19.5 20.5 21 17 17.5 18.5 16Z",
 };
 
 const ROUTES = [
@@ -54,8 +56,10 @@ const ROUTES = [
   {
     group: "ตรวจสอบและอนุมัติ",
     items: [
+      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงและกำหนดส่ง", desc: "สายรายวันส่งหัวหน้ากะภายใน 17:00 · สายรายรอบตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน ให้เวลาชี้แจง 2-3 วัน", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
+      { id: "fx", label: "ค่าเงิน USDT", icon: "fx", title: "อัตราแลกเปลี่ยนประจำวัน", desc: "ระบบมีทั้งเงินบาทและ USDT — ทุกยอดที่เป็น USDT ต้องอ้างอิงเรตของวันนั้น จึงต้องบันทึกเรตทุกวันและเก็บ log ไว้ตรวจย้อนหลังได้", filters: false },
       { id: "pm", label: "PM Monitor", icon: "pm", title: "บัญชี PM ระบบ 123", desc: "AUTOPEER / AZPAY / Cyberplus กรองเฉพาะรายการสำเร็จและวันที่ที่ตรวจ", filters: false },
     ],
   },
@@ -85,9 +89,9 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["dashboard", "import", "intake", "exceptions", "matching", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "roadmap"],
+  monitor: ["dashboard", "import", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "roadmap"],
   lead: Object.keys(ROUTE_MAP),
-  shift_lead: ["dashboard", "exceptions", "approvals", "damage", "talk", "notifications", "roadmap"],
+  shift_lead: ["dashboard", "exceptions", "clarify", "approvals", "damage", "talk", "notifications", "roadmap"],
   exec: ["dashboard", "kpi", "reports", "damage", "talk", "notifications", "roadmap"],
   admin: Object.keys(ROUTE_MAP),
 };
@@ -109,6 +113,18 @@ const state = {
 };
 
 const can = (cap) => DB.roles[state.role].can.includes(cap);
+
+/* รายชื่อประเภท exception ทั้งหมด = ที่ตั้งไว้ในระบบ + ที่เกิดจริงจากกฎธุรกิจ */
+function allExceptionTypes() {
+  const out = DB.exceptionTypes.map((t) => ({ code: t.code, name: t.name }));
+  const seen = new Set(out.map((t) => t.code));
+  DB.exceptions.forEach((e) => {
+    if (seen.has(e.type)) return;
+    seen.add(e.type);
+    out.push({ code: e.type, name: e.typeName || e.type });
+  });
+  return out;
+}
 const currentUser = () => DB.users.find((u) => u.role === state.role) || DB.users[0];
 
 /* ---------------- audit log + toast ---------------- */
@@ -426,7 +442,30 @@ function render() {
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
   addPanelCaptureButtons();
+  updateFxChip();
   $("#sidebar").classList.remove("open");
+}
+
+/* ชิปอัตราแลกเปลี่ยนบนแถบบน — บอกทันทีว่าวันที่ตรวจอยู่ลงเรตแล้วหรือยัง */
+function updateFxChip() {
+  const chip = $("#fxChip");
+  if (!chip || typeof Fx === "undefined") return;
+  const day = state.filters.date || DB.BUSINESS_DATE;
+  const eff = Fx.effectiveRate(day);
+  const val = $("#fxChipVal");
+  if (!eff) {
+    chip.className = "fx-chip missing";
+    val.textContent = "ยังไม่ลงเรต";
+    chip.title = `ยังไม่ได้บันทึกอัตรา ${Fx.QUOTE} ของวันที่ ${day} — คลิกเพื่อไปบันทึก`;
+  } else if (!eff.exact) {
+    chip.className = "fx-chip stale";
+    val.textContent = Fx.fmtQuote(eff.rate);
+    chip.title = `วันที่ ${day} ยังไม่มีเรตของตัวเอง ใช้ของวันที่ ${eff.date} ไปก่อน — คลิกเพื่อบันทึก`;
+  } else {
+    chip.className = "fx-chip";
+    val.textContent = Fx.fmtQuote(eff.rate);
+    chip.title = `1 ${Fx.QUOTE} = ${eff.rate} บาท (วันที่ ${eff.date} · บันทึกโดย ${eff.by})`;
+  }
 }
 
 /* =============================================================
@@ -434,17 +473,31 @@ function render() {
    ============================================================= */
 VIEWS.dashboard = (root) => {
   const ex = scopedExceptions();
-  const totalTx = DB.hourly.reduce((a, c) => a + c.total, 0);
+  const run = DB.currentRun;
+  const totalTx = run ? run.stmCount + (run.noStmCount || 0) : DB.hourly.reduce((a, c) => a + c.total, 0);
   const totalEx = DB.hourly.reduce((a, c) => a + c.exception, 0);
-  const matched = totalTx - totalEx;
+  const matched = run ? run.matched : totalTx - totalEx;
+  const matchBase = run ? run.stmCount || 1 : totalTx || 1;
   const filesOk = DB.files.filter((f) => f.status === "received").length;
   const filesBad = DB.files.length - filesOk;
   const damageSum = DB.damages.reduce((a, c) => a + c.amount, 0);
   const overSla = ex.filter((e) => e.overSla).length;
 
   const tiles = [
-    { label: "Transactions วันนี้", value: num(totalTx), sub: "นำเข้าแล้ว 98.7% ของไฟล์ที่รับ", spark: DB.hourly.map((x) => x.total), color: Charts.PALETTE.s1 },
-    { label: "Matched (3-point)", value: num(matched), sub: `อัตราจับคู่ ${((matched / totalTx) * 100).toFixed(2)}%`, spark: DB.hourly.map((x) => x.matched), color: Charts.PALETTE.s3 },
+    {
+      label: "Transactions วันนี้",
+      value: num(totalTx),
+      sub: run ? `ฝั่งธนาคาร ${num(run.stmCount)} · ฝั่ง BO ${num(run.boCount)}` : "นำเข้าแล้ว 98.7% ของไฟล์ที่รับ",
+      spark: DB.hourly.map((x) => x.total),
+      color: Charts.PALETTE.s1,
+    },
+    {
+      label: "Matched (3-point)",
+      value: num(matched),
+      sub: `อัตราจับคู่ ${((matched / matchBase) * 100).toFixed(2)}%${run && run.noStmCount ? ` · รอไฟล์ธนาคารอีก ${num(run.noStmCount)}` : ""}`,
+      spark: DB.hourly.map((x) => x.matched),
+      color: Charts.PALETTE.s3,
+    },
     { label: "Diff / Missing", value: num(totalEx), sub: `เปิดค้าง ${num(ex.filter((e) => !["closed", "approved"].includes(e.status)).length)} เคสในคิว`, spark: DB.hourly.map((x) => x.exception), color: Charts.PALETTE.s2, tone: "warn" },
     { label: "เกิน SLA", value: num(overSla), sub: "ต้องเร่งติดตามชี้แจงวันนี้", spark: DB.hourly.map((x) => Math.round(x.exception * 0.3)), color: "#d03b3b", tone: overSla ? "bad" : "" },
     { label: "ไฟล์ที่ตรวจแล้ว", value: `${filesOk}/${DB.files.length}`, sub: filesBad ? `ยังมีปัญหา ${filesBad} ไฟล์` : "ครบทุกไฟล์", color: Charts.PALETTE.s4, tone: filesBad ? "warn" : "" },
@@ -737,7 +790,7 @@ VIEWS.exceptions = (root) => {
         <input type="search" id="exSearch" placeholder="ค้นหาเลขเคส บัญชี พนักงาน หรือสาเหตุ..." value="${h(x.q)}" />
         <select id="exType">
           <option value="ALL">ทุกประเภท</option>
-          ${DB.exceptionTypes.map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
+          ${allExceptionTypes().map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
         </select>
         <select id="exSeverity">
           <option value="ALL">ทุกระดับ</option>
@@ -872,13 +925,21 @@ function openException(id) {
         <div><span>ผลต่างเวลา</span><b>${e.timeDiffSec} วินาที</b></div>
         <div><span>พนักงานที่ทำรายการ</span><b>${h(e.employee)}</b></div>
         <div><span>SLA</span><b class="${e.overSla ? "danger" : ""}">${e.ageHours} ชม. / เกณฑ์ ${e.slaHours} ชม.</b></div>
+        <div><span>สายการชี้แจง</span><b>${h(trackMeta(e.track).short)}</b></div>
+        <div><span>กำหนดส่งคืน</span><b class="${e.overSla ? "danger" : ""}">${h(dueOf(e).short)}</b></div>
       </div>
+      <p class="hint" style="margin-top:8px">${h(dueOf(e).detail)}</p>
+      ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
 
       <h3 class="drawer-h3">Evidence Timeline</h3>
       <ol class="timeline">
         <li><span class="t-dot"></span><div><b>Raw STM</b><code>${h(e.stmRaw)}</code></div></li>
         <li><span class="t-dot"></span><div><b>Raw BO</b><code>${h(e.boRaw)}</code></div></li>
-        <li><span class="t-dot"></span><div><b>ผลการจับคู่</b><span>ไม่ผ่านเกณฑ์: ${h(e.typeName)} — tolerance ที่ใช้ ${e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit} วินาที</span></div></li>
+        <li><span class="t-dot"></span><div><b>ผลการจับคู่</b><span>${
+          e.ruleBased
+            ? `ตรวจด้วยกฎธุรกิจจากรายงานหลังบ้าน (ไม่ต้องใช้ statement): ${h(e.typeName)}`
+            : `ไม่ผ่านเกณฑ์: ${h(e.typeName)} — tolerance ที่ใช้ ${e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit} วินาที`
+        }</span></div></li>
         <li><span class="t-dot"></span><div><b>สาเหตุที่บันทึกไว้</b><span>${h(e.cause)}</span></div></li>
         ${e.hasEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>สลิป / ไฟล์ชี้แจงจากหัวหน้ากะ (2 ไฟล์)</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
         ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(n.at)}</b><span>${h(n.text)}</span></div></li>`).join("")}
@@ -916,6 +977,8 @@ function openException(id) {
     </div>
 
     <footer class="drawer-foot">
+      <button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button>
+      <button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button>
       <button class="ghost-button" id="btnClarify">ส่งให้หัวหน้ากะชี้แจง</button>
       <button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button>
       <button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button>
@@ -952,6 +1015,19 @@ function openException(id) {
     toast("บันทึก note แล้ว");
     openException(id);
   });
+  $("#btnDocReq").addEventListener("click", () => {
+    const d = dueOf(e);
+    issueRequestDoc([e], {
+      key: e.id,
+      shiftName: (DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift,
+      toName: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
+      periodLabel: `วันที่ ${e.date} · เคส ${e.id}`,
+    });
+  });
+  $("#btnDocClr").addEventListener("click", () =>
+    issueClarificationDoc(e, ($("#noteText").value || "").trim() || (e.notes || []).map((n) => n.text).join("\n")),
+  );
+
   $("#btnClarify").addEventListener("click", () => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     e.status = "clarifying";
@@ -984,6 +1060,8 @@ function openException(id) {
         employee: e.employee,
         shift: e.shift,
         amount: e.riskAmount || Math.abs(e.amountDiff),
+        currency: Fx.BASE,
+        fxRate: (Fx.effectiveRate(e.date) || {}).rate || null,
         cause: e.cause,
         cycle: "C1",
         evidence: true,
@@ -1008,7 +1086,7 @@ function openException(id) {
     render();
   });
 
-  const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve" };
+  const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve", btnDocReq: "request_clarify" };
   Object.entries(gate).forEach(([btn, cap]) => {
     const el = $("#" + btn);
     if (!can(cap)) {
@@ -1236,15 +1314,34 @@ VIEWS.approvals = (root) => {
 /* =============================================================
    VIEW: Damage register
    ============================================================= */
+/* ยอดความเสียหายในหน่วยบาทเสมอ (ถ้าบันทึกเป็น USDT จะแปลงด้วยเรตของวันนั้น) */
+function dmgTHB(d) {
+  if ((d.currency || Fx.BASE).toUpperCase() === Fx.BASE) return d.amount;
+  const r = Fx.toTHB(d.amount, d.currency, d.date);
+  return r.ok ? r.value : 0;
+}
+/* ป้ายยอด USDT บนการ์ดรอบ (เว้นว่างถ้ายังไม่มีเรต) */
+function cycleQuoteLabel(records) {
+  if (!records.length) return "";
+  const thb = records.reduce((a, c) => a + dmgTHB(c), 0);
+  const q = Fx.toQuote(thb, records[0].date);
+  return q.ok ? `≈ ${Fx.fmtQuote(q.value)} ${Fx.QUOTE} · ` : "";
+}
+function dmgQuote(d) {
+  if ((d.currency || Fx.BASE).toUpperCase() !== Fx.BASE) return d.amount;
+  const r = Fx.toQuote(dmgTHB(d), d.date);
+  return r.ok ? r.value : null;
+}
+
 VIEWS.damage = (root) => {
-  const sum = (arr) => arr.reduce((a, c) => a + c.amount, 0);
+  const sum = (arr) => arr.reduce((a, c) => a + dmgTHB(c), 0);
   const byCycle = DB.damageCycles.map((c) => ({ ...c, records: DB.damages.filter((d) => d.cycle === c.code && inRange(d.date)) }));
   const cycle = DB.damageCycles.find((c) => c.code === state.damageCycle) || DB.damageCycles[0];
   const rows = DB.damages.filter((d) => d.cycle === cycle.code && inRange(d.date));
   const byShift = DB.shifts.map((s) => ({ label: s.name, value: sum(rows.filter((d) => d.shift === s.code)) }));
   const byEmp = Object.entries(
     rows.reduce((a, d) => {
-      a[d.employee] = (a[d.employee] || 0) + d.amount;
+      a[d.employee] = (a[d.employee] || 0) + dmgTHB(d);
       return a;
     }, {}),
   )
@@ -1260,7 +1357,7 @@ VIEWS.damage = (root) => {
         <p class="eyebrow">${c.status === "open" ? "รอบที่เปิดอยู่" : "ปิดรอบแล้ว"}</p>
         <h2>${h(c.name)}</h2>
         <strong>${money0(sum(c.records))} บาท</strong>
-        <small>${c.records.length} เคส · ให้เวลาแนบหลักฐาน ${DB.settings.slaEvidenceDays} วัน</small>
+        <small>${cycleQuoteLabel(c.records)}${c.records.length} เคส · ให้เวลาแนบหลักฐาน ${DB.settings.slaEvidenceDays} วัน</small>
         ${
           c.status === "open"
             ? `<button class="primary-button sm" data-close-cycle="${c.code}">ปิดรอบและส่งการเงิน/บุคคล</button>`
@@ -1294,7 +1391,7 @@ VIEWS.damage = (root) => {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
+          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย (บาท)</th><th class="right">≈ ${h(Fx.QUOTE)}</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
           <tbody>
             ${rows
               .map(
@@ -1304,7 +1401,8 @@ VIEWS.damage = (root) => {
               <td>${h(DB.companies.find((c) => c.code === d.company)?.name || d.company)}</td>
               <td>${h(d.employee)}</td>
               <td>${h(DB.shifts.find((s) => s.code === d.shift).name)}</td>
-              <td class="right tnum">${money(d.amount)}</td>
+              <td class="right tnum">${money(dmgTHB(d))}${(d.currency || Fx.BASE) !== Fx.BASE ? `<small class="sub">บันทึกเป็น ${h(d.currency)} ${Fx.fmtQuote(d.amount)}</small>` : ""}</td>
+              <td class="right tnum">${dmgQuote(d) === null ? '<span class="muted" title="ยังไม่ได้บันทึกอัตราของวันนี้">ยังไม่มีเรต</span>' : Fx.fmtQuote(dmgQuote(d))}</td>
               <td>${h(d.cause)}</td>
               <td>${d.evidence ? '<span class="badge green">ครบ</span>' : '<span class="badge amber">รอ</span>'}</td>
               <td>${h(d.hrStatus)}</td>
@@ -1312,7 +1410,10 @@ VIEWS.damage = (root) => {
               )
               .join("")}
           </tbody>
-          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td colspan="3"></td></tr></tfoot>
+          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td class="right tnum"><b>${(() => {
+            const q = Fx.toQuote(sum(rows), state.filters.date || DB.BUSINESS_DATE);
+            return q.ok ? Fx.fmtQuote(q.value) : "-";
+          })()}</b></td><td colspan="3"></td></tr></tfoot>
         </table>
       </div>
     </section>`;
@@ -1926,6 +2027,249 @@ VIEWS["audit-log"] = (root) => {
 };
 
 /* =============================================================
+   VIEW: Fx - อัตราแลกเปลี่ยน USDT/THB ประจำวัน
+   ============================================================= */
+const fxState = { ref: null, refLoading: false, refError: null };
+
+function fxDateInScope() {
+  return state.filters.date || DB.BUSINESS_DATE;
+}
+
+VIEWS.fx = (root) => {
+  const editable = can("fx");
+  const day = fxDateInScope();
+  const today = Fx.rateOf(day);
+  const eff = Fx.effectiveRate(day);
+  const list = Fx.all();
+  const st = Fx.stats();
+  const missing = Fx.missingRateDates(currentBoRecords());
+  const ref = fxState.ref;
+
+  const refRows = (ref || [])
+    .map(
+      (r) => `<div class="fx-ref ${r.ok ? "" : "bad"}">
+        <div>
+          <b>${h(r.name)}</b>
+          <small>${h(r.note)}</small>
+        </div>
+        <div class="fx-ref-val">
+          ${r.ok ? `<strong>${Fx.fmtQuote(r.rate)}</strong><small>ดึงเมื่อ ${h(String(r.at).slice(11, 19))}</small>` : `<span class="danger">ดึงไม่ได้</span><small>${h(r.error || "")}</small>`}
+        </div>
+        ${r.ok && editable ? `<button class="ghost-button xs" data-usefx="${r.rate}">ใช้ค่านี้</button>` : "<span></span>"}
+      </div>`,
+    )
+    .join("");
+
+  const diffVsRef = () => {
+    if (!today || !ref) return "";
+    const okRefs = ref.filter((r) => r.ok);
+    if (!okRefs.length) return "";
+    const market = okRefs[0];
+    const d = today.rate - market.rate;
+    const pct = (d / market.rate) * 100;
+    const tone = Math.abs(pct) > 2 ? "danger" : "muted";
+    return `<p class="hint ${tone}">ต่างจาก ${h(market.name)} ${d >= 0 ? "+" : ""}${d.toFixed(4)} บาท (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)${Math.abs(pct) > 2 ? " — ห่างจากตลาดเกิน 2% ควรตรวจซ้ำ" : ""}</p>`;
+  };
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article class="${today ? "ok" : "warn"}">
+        <span>อัตราของวันที่ ${h(day)}</span>
+        <strong>${today ? Fx.fmtQuote(today.rate) : "ยังไม่บันทึก"}</strong>
+        <small>${today ? `บาท ต่อ 1 ${Fx.QUOTE} · โดย ${h(today.by)}` : `ต้องกรอกก่อนจึงจะแปลงยอด ${Fx.QUOTE} ได้`}</small>
+      </article>
+      <article><span>จำนวนวันที่บันทึกไว้</span><strong>${num(st.count || 0)}</strong><small>${st.count ? `ล่าสุด ${h(st.latest.date)}` : "ยังไม่มีประวัติ"}</small></article>
+      <article><span>ช่วงอัตราที่เคยบันทึก</span><strong>${st.count ? `${Fx.fmtQuote(st.min)} – ${Fx.fmtQuote(st.max)}` : "-"}</strong><small>${st.count ? `เฉลี่ย ${Fx.fmtQuote(st.avg)}` : "-"}</small></article>
+      <article class="${missing.length ? "danger" : "ok"}"><span>วันที่ยังไม่ลงอัตรา</span><strong>${num(missing.length)}</strong><small>${missing.length ? h(missing.slice(0, 3).join(", ")) : "ครบทุกวันที่มีรายการ USDT"}</small></article>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Daily Rate</p><h2>บันทึกอัตราประจำวัน</h2></div>
+          <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span>
+        </div>
+        <div class="setting-list">
+          <label><span>วันที่</span><input type="date" id="fxDate" value="${h(day)}" ${editable ? "" : "disabled"} /><b></b></label>
+          <label><span>1 ${Fx.QUOTE} เท่ากับ</span><input type="number" step="0.0001" id="fxRate" value="${today ? today.rate : ""}" placeholder="เช่น 33.80" ${editable ? "" : "disabled"} /><b>บาท</b></label>
+          <label class="wide"><span>หมายเหตุ / ที่มาของเรต</span><input type="text" id="fxNote" value="${today ? h(today.note || "") : ""}" placeholder="เช่น เรตที่ใช้ปิดยอดกับหลัก B10" ${editable ? "" : "disabled"} /><b></b></label>
+        </div>
+        ${diffVsRef()}
+        <div class="inline-actions">
+          <button class="primary-button" id="fxSave" ${editable ? "" : "disabled"}>บันทึกอัตราของวันนี้</button>
+          <button class="ghost-button" id="fxFetch" ${fxState.refLoading ? "disabled" : ""}>${fxState.refLoading ? "กำลังดึง..." : "ดึงเรตอ้างอิงจากเว็บ"}</button>
+        </div>
+        ${today && (today.revisions || []).length ? `<p class="hint">แก้ไขมาแล้ว ${today.revisions.length} ครั้ง — ค่าก่อนหน้า ${today.revisions.map((r) => `${Fx.fmtQuote(r.rate)} (${h(r.by)})`).join(", ")}</p>` : ""}
+        ${eff && !eff.exact ? `<p class="hint danger">วันที่ ${h(day)} ยังไม่มีอัตราของตัวเอง ระบบใช้อัตราของวันที่ ${h(eff.date)} (${Fx.fmtQuote(eff.rate)}) ไปก่อน</p>` : ""}
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Market Reference</p><h2>เรตตลาดไว้เทียบ</h2></div>
+          <span class="health ${ref ? "ok" : "attention"}">${ref ? "ดึงมาแล้ว" : "ยังไม่ได้ดึง"}</span>
+        </div>
+        ${
+          ref
+            ? `<div class="fx-refs">${refRows}</div>`
+            : `<p class="empty-box">${fxState.refError ? h(fxState.refError) : "กดปุ่ม ดึงเรตอ้างอิงจากเว็บ เพื่อดูราคาตลาด — ใช้เทียบเท่านั้น ค่าที่ระบบใช้จริงคือค่าที่กรอกเอง"}</p>`
+        }
+        <p class="chart-note">ระบบ<b>ไม่</b>เอาเรตจากเว็บมาใช้เอง เพราะเรตที่ถูกต้องคือเรตที่บริษัทใช้ปิดยอดจริง เรตจากเว็บมีไว้ให้เห็นว่าห่างจากตลาดมากผิดปกติหรือไม่</p>
+        <div class="fx-calc">
+          <h3 class="drawer-h3">เครื่องคิดเลขแปลงยอด</h3>
+          <div class="fx-calc-row">
+            <input type="number" id="fxCalcIn" placeholder="0.00" step="0.01" />
+            <select id="fxCalcCur"><option value="THB">บาท → ${Fx.QUOTE}</option><option value="${Fx.QUOTE}">${Fx.QUOTE} → บาท</option></select>
+            <output id="fxCalcOut" class="fx-calc-out">-</output>
+          </div>
+          <small class="muted">ใช้อัตราของวันที่ ${h(day)}${eff ? ` (${Fx.fmtQuote(eff.rate)}${eff.exact ? "" : " — ของวันที่ " + h(eff.date)})` : " — ยังไม่มีอัตรา"}</small>
+        </div>
+      </div>
+    </section>
+
+    ${
+      list.length > 1
+        ? `<section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Trend</p><h2>อัตราย้อนหลัง</h2></div><span class="health ok">${num(list.length)} วัน</span></div>
+      <div class="chart" id="fxChart"></div>
+    </section>`
+        : ""
+    }
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Rate Log</p><h2>ประวัติการบันทึกอัตรา</h2></div>
+        <button class="ghost-button sm" id="fxExport" ${list.length ? "" : "disabled"}>Export Excel</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>วันที่</th><th class="right">1 ${Fx.QUOTE} = (บาท)</th><th>ผู้บันทึก</th><th>บันทึกเมื่อ</th><th class="right">เรตตลาดตอนนั้น</th><th class="right">ส่วนต่าง</th><th>หมายเหตุ</th><th class="right">แก้ไข</th></tr></thead>
+          <tbody>
+            ${
+              list
+                .map((r) => {
+                  const m = r.ref && r.ref.rate ? r.ref.rate : null;
+                  const d = m ? r.rate - m : null;
+                  return `<tr class="${r.date === day ? "on" : ""}">
+                <td><b>${h(r.date)}</b></td>
+                <td class="right tnum">${Fx.fmtQuote(r.rate)}</td>
+                <td>${h(r.by)}</td>
+                <td class="muted">${h(String(r.at).replace("T", " ").slice(0, 19))}</td>
+                <td class="right tnum">${m ? Fx.fmtQuote(m) + (r.ref.name ? `<small class="sub">${h(r.ref.name)}</small>` : "") : '<span class="muted">-</span>'}</td>
+                <td class="right tnum ${d !== null && Math.abs(d / (m || 1)) > 0.02 ? "danger" : ""}">${d === null ? "-" : (d >= 0 ? "+" : "") + d.toFixed(4)}</td>
+                <td class="wrap">${h(r.note || "")}</td>
+                <td class="right">${(r.revisions || []).length ? `<span class="badge amber">${r.revisions.length} ครั้ง</span>` : '<span class="muted">-</span>'}</td>
+              </tr>`;
+                })
+                .join("") || `<tr><td colspan="8" class="empty">ยังไม่มีการบันทึกอัตรา — กรอกอัตราของวันนี้ด้านบน</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="chart-note">ทุกครั้งที่บันทึกหรือแก้อัตรา ระบบเก็บลง Audit Log ว่าใครทำ เวลาไหน และค่าเดิมคืออะไร — ใช้อ้างอิงย้อนหลังได้เมื่อการเงินตรวจสอบ</p>
+    </section>`;
+
+  if (list.length > 1) {
+    const series = list.slice().reverse();
+    Charts.draw("#fxChart", "line", {
+      label: `อัตรา ${Fx.QUOTE} ย้อนหลัง`,
+      xLabels: series.map((r) => r.date.slice(5)),
+      series: [{ name: `1 ${Fx.QUOTE} (บาท)`, values: series.map((r) => r.rate), color: Charts.PALETTE.s1 }],
+      metric: "บาท",
+      height: 240,
+      zoomY: true,
+      decimals: 2,
+    });
+  }
+
+  const calc = () => {
+    const v = parseFloat($("#fxCalcIn").value);
+    const cur = $("#fxCalcCur").value;
+    if (!Number.isFinite(v)) return ($("#fxCalcOut").textContent = "-");
+    const r = cur === "THB" ? Fx.toQuote(v, day) : Fx.toTHB(v, Fx.QUOTE, day);
+    $("#fxCalcOut").textContent = r.ok ? (cur === "THB" ? `${Fx.fmtQuote(r.value)} ${Fx.QUOTE}` : `${Fx.fmtTHB(r.value)} บาท`) : r.error;
+  };
+  $("#fxCalcIn").addEventListener("input", calc);
+  $("#fxCalcCur").addEventListener("change", calc);
+
+  root.querySelectorAll("[data-usefx]").forEach((b) =>
+    b.addEventListener("click", () => {
+      $("#fxRate").value = b.dataset.usefx;
+      $("#fxRate").focus();
+      toast(`ใส่ค่า ${b.dataset.usefx} ให้แล้ว — ตรวจอีกครั้งก่อนกดบันทึก`);
+    }),
+  );
+
+  $("#fxFetch").addEventListener("click", async () => {
+    fxState.refLoading = true;
+    fxState.refError = null;
+    render();
+    try {
+      fxState.ref = await Fx.fetchReference();
+      const ok = fxState.ref.filter((r) => r.ok).length;
+      if (!ok) fxState.refError = "ดึงเรตจากเว็บไม่ได้เลย — อาจไม่มีอินเทอร์เน็ตหรือถูกไฟร์วอลล์บล็อก กรอกเองได้ตามปกติ";
+    } catch (e) {
+      fxState.refError = "ดึงเรตไม่สำเร็จ: " + e.message;
+    }
+    fxState.refLoading = false;
+    render();
+  });
+
+  const saveBtn = $("#fxSave");
+  if (saveBtn)
+    saveBtn.addEventListener("click", () => {
+      if (!can("fx")) return deny("บันทึกอัตราแลกเปลี่ยน");
+      const d = $("#fxDate").value;
+      const v = $("#fxRate").value;
+      const best = (fxState.ref || []).find((r) => r.ok);
+      const res = Fx.setRate(d, v, {
+        by: currentUser().username,
+        note: $("#fxNote").value.trim(),
+        ref: best ? { source: best.code, name: best.name, rate: best.rate, at: best.at } : null,
+        log: (action, entity, target, detail) => logAction(action, entity, target, detail),
+      });
+      if (!res.ok) return toast(res.error);
+      if (res.unchanged) return toast("อัตราเดิมอยู่แล้ว ไม่มีการเปลี่ยนแปลง");
+      Store.notify("fx", `บันทึกอัตรา ${Fx.QUOTE} วันที่ ${d}`, `1 ${Fx.QUOTE} = ${v} บาท โดย ${currentUser().username}`, "#/fx");
+      toast(`บันทึกอัตราวันที่ ${d} = ${v} บาท แล้ว`);
+      render();
+    });
+
+  const ex = $("#fxExport");
+  if (ex)
+    ex.addEventListener("click", () =>
+      exportSheets("fx-rates", [
+        {
+          name: "อัตราแลกเปลี่ยน",
+          title: `อัตรา ${Fx.QUOTE}/${Fx.BASE} รายวัน`,
+          headers: ["วันที่", `1 ${Fx.QUOTE} = (บาท)`, "ผู้บันทึก", "บันทึกเมื่อ", "เรตตลาด", "แหล่งอ้างอิง", "ส่วนต่าง", "หมายเหตุ", "จำนวนครั้งที่แก้"],
+          widths: [12, 16, 18, 22, 14, 26, 12, 42, 14],
+          rows: list.map((r) => [
+            r.date,
+            r.rate,
+            r.by,
+            String(r.at).replace("T", " ").slice(0, 19),
+            r.ref && r.ref.rate ? r.ref.rate : "",
+            r.ref && r.ref.name ? r.ref.name : "",
+            r.ref && r.ref.rate ? Math.round((r.rate - r.ref.rate) * 10000) / 10000 : "",
+            r.note || "",
+            (r.revisions || []).length,
+          ]),
+        },
+      ]),
+    );
+};
+
+/* รายการฝั่ง BO ที่นำเข้าล่าสุด — ใช้ตรวจว่าวันไหนมีรายการ USDT แต่ยังไม่ลงเรต */
+function currentBoRecords() {
+  const out = [];
+  ImportState.files.forEach((f) => {
+    (f.records || []).forEach((r) => out.push(r));
+    (f.aux || []).forEach((r) => out.push(r));
+  });
+  return out;
+}
+
+/* =============================================================
    VIEW: Settings
    ============================================================= */
 VIEWS.settings = (root) => {
@@ -1942,6 +2286,22 @@ VIEWS.settings = (root) => {
           <label><span>SLA ไฟล์ชี้แจง</span><input type="number" id="sS" value="${DB.settings.slaEvidenceDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
         </div>
         <button class="primary-button" id="sSave" ${editable ? "" : "disabled"}>บันทึกการตั้งค่า</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Clarification</p><h2>สายงานและกำหนดเวลาชี้แจง</h2></div>
+        <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span></div>
+        <div class="setting-list">
+          <label><span>สายรายวัน: ส่งหัวหน้ากะภายในเวลา</span><input type="time" id="cCut" value="${DB.settings.clarify.dailyCutoff}" ${editable ? "" : "disabled"} /><b>น.</b></label>
+          <label><span>สายรายวัน: ชี้แจงกลับภายใน</span><input type="number" id="cResp" value="${DB.settings.clarify.dailyRespondHours}" ${editable ? "" : "disabled"} /><b>ชั่วโมง</b></label>
+          <label><span>สายรายรอบ: ให้เวลาชี้แจงหลังปิดรอบ</span><input type="number" id="cDays" value="${DB.settings.clarify.cycleRespondDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
+        </div>
+        <ul class="tick-list">
+          <li>สายรายวัน — Critical และ High ส่งให้หัวหน้ากะภายในเวลาที่ตั้งไว้ของทุกวัน</li>
+          <li>สายรายรอบ — ออดิทตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน</li>
+          <li>ทุกใบที่ออกจากระบบถูกบันทึกเลขที่เอกสารและผู้ออกไว้ใน Audit Log</li>
+        </ul>
+        <button class="primary-button mt" id="cSave" ${editable ? "" : "disabled"}>บันทึกกำหนดเวลาชี้แจง</button>
       </div>
 
       <div class="panel">
@@ -1972,6 +2332,18 @@ VIEWS.settings = (root) => {
         </table>
       </div>
     </section>`;
+
+  $("#cSave")?.addEventListener("click", () => {
+    if (!editable) return deny("แก้กำหนดเวลาชี้แจง");
+    DB.settings.clarify.dailyCutoff = $("#cCut").value || "17:00";
+    DB.settings.clarify.dailyRespondHours = +$("#cResp").value || 24;
+    DB.settings.clarify.cycleRespondDays = +$("#cDays").value || 3;
+    Store.data.settings = { ...DB.settings };
+    Store.persist();
+    logAction("update", "settings", "clarify", `รายวัน ${DB.settings.clarify.dailyCutoff} · รายรอบ ${DB.settings.clarify.cycleRespondDays} วัน`);
+    toast("บันทึกกำหนดเวลาชี้แจงแล้ว");
+    render();
+  });
 
   $("#sSave").addEventListener("click", () => {
     if (!editable) return deny("บันทึกการตั้งค่า");
@@ -2113,6 +2485,48 @@ function buildInbox() {
   return ImportState.inbox;
 }
 
+/* วันไหนมีรายการเกี่ยวกับ USDT หรือยังไม่ลงเรตเลย ต้องเตือนให้บันทึกก่อนสรุปยอด */
+function checkFxCoverage(dates) {
+  if (typeof Fx === "undefined") return;
+  /* กันแจ้งซ้ำเรื่องเดิม */
+  const already = (title) => (Store.data.notifications || []).some((n) => n.kind === "fx" && n.title === title);
+  const notifyOnce = (title, detail) => {
+    if (already(title)) return;
+    Store.notify("fx", title, detail, "#/fx");
+  };
+  /* เตือนเฉพาะวันที่ตรวจหลัก ไม่ต้องเตือนวันข้างเคียงที่ติดมาจากรายการข้ามวัน */
+  const days = [state.filters.date || DB.BUSINESS_DATE].filter(Boolean);
+  const usdDays = Fx.missingRateDates(currentBoRecords());
+  const noRate = days.filter((d) => !Fx.rateOf(d));
+  const urgent = [...new Set(usdDays)];
+  if (urgent.length) {
+    notifyOnce(
+      `ยังไม่ได้บันทึกอัตรา ${Fx.QUOTE} ของ ${urgent.length} วัน`,
+      `วันที่ ${urgent.slice(0, 5).join(", ")} มีรายการที่เกี่ยวกับ ${Fx.QUOTE} แต่ยังไม่มีอัตราแลกเปลี่ยน — ยอดที่เป็น ${Fx.QUOTE} จะแปลงเป็นบาทไม่ได้`,
+    );
+  } else if (noRate.length) {
+    notifyOnce(`ยังไม่ได้ลงอัตรา ${Fx.QUOTE} วันที่ ${noRate.join(", ")}`, `ควรบันทึกอัตราไว้ทุกวันเพื่อให้ตรวจย้อนหลังได้ แม้วันนั้นจะไม่มีรายการ ${Fx.QUOTE}`);
+  }
+}
+
+/* บัญชีที่มี statement เข้ามา ถือเป็นบัญชีของบริษัทโดยอัตโนมัติ
+   ไม่งั้นกฎ "ลูกค้าฝากผิดบัญชี" จะฟ้องทุกแถวเพราะยังไม่มีในทะเบียนบัญชี */
+function registerAccountFromStatement(norm) {
+  const h = norm.header || {};
+  if (!h.account) return;
+  if (DB.accounts.some((a) => a.id === h.account)) return;
+  DB.accounts.push({
+    id: h.account,
+    bank: h.bank || "-",
+    company: norm.format.company || "-",
+    type: "deposit",
+    active: true,
+    holder: h.holder || "",
+    autoAdded: true,
+  });
+  logAction("account_add", "account", h.account, `เพิ่มบัญชีอัตโนมัติจาก statement ${h.bank || ""} ${h.holder || ""}`.trim());
+}
+
 function readFileText(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -2131,43 +2545,70 @@ function readFileBuffer(file) {
 }
 
 async function ingestRaw(name, text, size) {
-  let rows;
-  if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = Engine.parseSheet(text);
-  else rows = Engine.parseCSV(text);
-  const norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
+  let rows = [];
+  let norm;
+  if (/\.pdf$/i.test(name)) {
+    /* statement ธนาคารเป็น PDF — ใช้ตัวอ่านเฉพาะ */
+    norm = await PdfStm.parse(name, text, state.filters.date);
+    registerAccountFromStatement(norm);
+  } else {
+    if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
+    else rows = Engine.parseCSV(text);
+    norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
+  }
   ImportState.files = ImportState.files.filter((f) => f.name !== name);
   ImportState.files.push({
     name,
-    size: size ?? text.length,
+    size: size ?? (text.byteLength || text.length),
     rowCount: rows.length,
     rows, // เก็บแถวดิบไว้ เพื่อ normalize ใหม่เมื่อกฎธนาคารเปลี่ยน
     format: norm.format,
     records: norm.records,
+    aux: norm.aux || [],
     dropped: norm.dropped,
     warnings: norm.warnings,
   });
-  logAction("import", "source_file", name, `นำเข้า ${norm.records.length} รายการ (${norm.format.source.toUpperCase()}${norm.format.bank ? " / " + norm.format.bank : ""})`);
+  const kind = norm.format.realLabel || norm.format.source.toUpperCase() + (norm.format.bank ? " / " + norm.format.bank : "");
+  logAction("import", "source_file", name, `นำเข้า ${(norm.records.length || (norm.aux || []).length)} รายการ (${kind})`);
   return norm;
 }
 
 /* อ่านไฟล์เดิมใหม่ด้วยกฎปัจจุบัน — ใช้เมื่อผู้ใช้เปลี่ยนกฎธนาคารหรือ tolerance */
 function renormalizeAll() {
   ImportState.files = ImportState.files.map((f) => {
-    if (!f.rows) return f;
+    if (!f.rows || !f.rows.length) return f;
     const norm = Engine.normalize(f.name, f.rows, DB.settings, state.filters.date);
-    return { ...f, format: norm.format, records: norm.records, dropped: norm.dropped, warnings: norm.warnings };
+    return { ...f, format: norm.format, records: norm.records, aux: norm.aux || [], dropped: norm.dropped, warnings: norm.warnings };
   });
 }
 
 /* เงื่อนไขที่ทำให้ระบบกระทบยอดเองได้ */
 function autoReadiness() {
   const files = ImportState.files;
-  const hasStm = files.some((f) => f.format.source !== "bo" && f.records.length);
+  const hasStm = files.some((f) => f.format.source !== "bo" && f.format.source !== "aux" && f.records.length);
   const hasBo = files.some((f) => f.format.source === "bo" && f.records.length);
+  const hasAux = files.some((f) => (f.aux || []).length);
   if (!files.length) return { ready: false, text: "รอไฟล์", tone: "idle", why: "ยังไม่มีไฟล์เข้าระบบ" };
+  if (!hasStm && (hasBo || hasAux))
+    return {
+      ready: true,
+      rulesOnly: true,
+      text: ImportState.lastRun ? "ตรวจกฎแล้ว" : "ตรวจกฎธุรกิจ",
+      tone: "wait",
+      why: "ยังไม่มีไฟล์ฝั่งธนาคาร — ระบบตรวจกฎธุรกิจจากรายงานหลังบ้านให้ก่อน (ค่าคอม/ตัดเครดิต/ข้ามวัน/ซ้ำ)",
+    };
   if (!hasStm) return { ready: false, text: "รอ STM", tone: "wait", why: "ยังไม่มีไฟล์ฝั่งธนาคาร (STM หรือ PM)" };
   if (!hasBo) return { ready: false, text: "รอ BO", tone: "wait", why: "ยังไม่มีไฟล์ฝั่งระบบหลังบ้าน (BO)" };
   return { ready: true, text: ImportState.lastRun ? "กระทบยอดแล้ว" : "พร้อมกระทบยอด", tone: "ok", why: "ไฟล์ครบทั้งสองฝั่ง ระบบกระทบยอดให้อัตโนมัติ" };
+}
+
+/* รวบรวมผลตรวจกฎธุรกิจจากไฟล์รายงานหลังบ้าน (ไม่ต้องใช้ statement) */
+function runBusinessRules() {
+  if (typeof Rules === "undefined") return { exceptions: [], counts: {} };
+  const parsed = ImportState.files
+    .filter((f) => f.format && (f.format.source === "bo" || f.format.source === "aux"))
+    .map((f) => ({ records: f.format.source === "bo" ? f.records : [], aux: f.aux || [] }));
+  return Rules.run(parsed, DB.settings);
 }
 
 function updateAutoStatus() {
@@ -2192,24 +2633,74 @@ async function runReconcileFromImport(opts = {}) {
   const stm = [];
   const bo = [];
   ImportState.files.forEach((f) => {
+    if (f.format.source === "aux") return;
     if (f.format.source === "bo") bo.push(...f.records);
     else stm.push(...f.records);
   });
-  if (!stm.length || !bo.length) {
+  /* รายการเดียวกันอาจอยู่ในหลายรายงาน (บัญชีฝาก + ฝากมือ) ต้องยุบก่อนจับคู่ */
+  if (typeof Formats !== "undefined" && bo.some((r) => r.formatCode)) {
+    const m = Formats.merge(bo);
+    bo.length = 0;
+    m.sort((a, b) => (a.sec || 0) - (b.sec || 0)).forEach((r) => bo.push(r));
+  }
+  const ready = autoReadiness();
+  if (!ready.ready) {
     updateAutoStatus();
     return;
   }
   ImportState.running = true;
   updateAutoStatus();
-  showProgress("ระบบกำลังกระทบยอดให้อัตโนมัติ");
+  showProgress(ready.rulesOnly ? "กำลังตรวจกฎธุรกิจจากรายงานหลังบ้าน" : "ระบบกำลังกระทบยอดให้อัตโนมัติ");
   await new Promise((r) => setTimeout(r, 40));
-  const result = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (pct, label) => setProgress(pct, label));
+
+  const biz = runBusinessRules();
+  let result;
+  if (ready.rulesOnly) {
+    const hourlyStm = new Array(24).fill(0);
+    const hourlyMatched = new Array(24).fill(0);
+    bo.forEach((r) => hourlyStm[Math.floor(r.sec / 3600)]++);
+    result = {
+      matched: 0,
+      exceptions: [],
+      stmCount: 0,
+      boCount: bo.length,
+      elapsedMs: 0,
+      matchRate: 0,
+      nearTolerance: 0,
+      hourlyStm,
+      hourlyMatched,
+      crossDayWindow: bo.filter((r) => r.crossDay || r.lateNight).length,
+      noStmSide: [],
+      noStmCount: bo.length,
+      rulesOnly: true,
+    };
+  } else {
+    result = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (pct, label) => setProgress(pct, label));
+  }
+  /* รวม exception จากกฎธุรกิจเข้ากับผลจับคู่ แล้วออกรหัสใหม่ให้ต่อเนื่อง */
+  /* รวมแล้วยุบรายการที่ซ้ำกัน (กฎธุรกิจกับการจับคู่อาจจับเคสเดียวกัน) */
+  const bestEx = new Map();
+  result.exceptions.concat(biz.exceptions).forEach((e) => {
+    const k = [e.type, e.account, e.time, e.systemAmount ?? ""].join("|");
+    const prev = bestEx.get(k);
+    /* ถ้าซ้ำกัน เก็บอันที่มีคำอธิบายละเอียดกว่าไว้ */
+    if (!prev || (!prev.detail && e.detail)) bestEx.set(k, e);
+  });
+  result.exceptions = [...bestEx.values()].sort((a, b) => a.sortSec - b.sortSec);
+  result.exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
+  result.ruleExceptions = biz.exceptions.length;
+  result.auxCounts = biz.counts;
+
   hideProgress();
   ImportState.running = false;
   applyRunResult(result, stm, bo);
   ImportState.lastRun.reason = opts.reason || "ไฟล์เข้าใหม่";
   updateAutoStatus();
-  toast(`กระทบยอดอัตโนมัติแล้ว (${opts.reason || "ไฟล์เข้าใหม่"}) · จับคู่ ${num(result.matched)} รายการ · exception ${num(result.exceptions.length)} · ${result.elapsedMs} ms`);
+  toast(
+    result.rulesOnly
+      ? `ตรวจกฎธุรกิจแล้ว · พบ ${num(result.exceptions.length)} รายการต้องชี้แจง · ยังรอไฟล์ฝั่งธนาคารเพื่อจับคู่`
+      : `กระทบยอดอัตโนมัติแล้ว (${opts.reason || "ไฟล์เข้าใหม่"}) · จับคู่ ${num(result.matched)} รายการ · exception ${num(result.exceptions.length)} · ${result.elapsedMs} ms`,
+  );
   if (state.route === "import" || opts.goDashboard) go("dashboard");
   else render();
 }
@@ -2245,7 +2736,17 @@ function applyRunResult(result, stm, bo) {
   };
   state.dataset = "imported";
   state.page = 1;
+  /* เลื่อนตัวกรองไปที่วันที่ของข้อมูลที่เพิ่งนำเข้า ไม่งั้นหน้าจอจะว่างเพราะกรองด้วยวันนี้ */
+  const dates = [...new Set(result.exceptions.map((e) => e.date).concat(stm.map((r) => r.date), bo.map((r) => r.date)).filter(Boolean))].sort();
+  if (dates.length) {
+    const main = dates[Math.floor(dates.length / 2)];
+    state.filters.date = main;
+    state.filters.from = dates[0];
+    state.filters.to = dates[dates.length - 1];
+    state.filters.preset = dates.length > 1 ? "custom" : "day";
+  }
   logAction("auto_reconcile", "match_run", "MR-" + Date.now(), `กระทบยอดอัตโนมัติ: จับคู่ ${result.matched} รายการ, exception ${result.exceptions.length}, ${result.elapsedMs} ms`);
+  checkFxCoverage(dates);
   runNotificationRules();
   Store.persist();
 }
@@ -2257,7 +2758,9 @@ VIEWS.import = (root) => {
   const hasStm = files.some((f) => f.format.source !== "bo");
   const hasBo = files.some((f) => f.format.source === "bo");
   const ready = autoReadiness();
-  const srcName = { stm: "STM ธนาคาร", bo: "รายงาน BO", pm: "STM PM", unknown: "ไม่ทราบชนิด" };
+  const srcName = { stm: "STM ธนาคาร", bo: "รายงาน BO", pm: "STM PM", aux: "รายงานประกอบ", unknown: "ไม่ทราบชนิด" };
+  /* ไฟล์จริงจากแผนกไม่มีข้อบกพร่องที่จงใจใส่ไว้ จึงไม่ต้องแสดงตารางเทียบของไฟล์ตัวอย่าง */
+  const usingRealFiles = files.some((f) => f.format.realCode);
 
   root.innerHTML = `
     <section class="status-strip four">
@@ -2296,9 +2799,9 @@ VIEWS.import = (root) => {
       <div class="panel">
         <div class="panel-heading"><div><p class="eyebrow">Upload</p><h2>อัปโหลดไฟล์ของคุณเอง</h2></div></div>
         <label class="dropzone" id="dropzone">
-          <input type="file" id="fileInput" multiple accept=".csv,.txt,.xlsx,.xls" hidden />
+          <input type="file" id="fileInput" multiple accept=".csv,.txt,.xlsx,.xls,.pdf" hidden />
           <strong>ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์</strong>
-          <span>รองรับ .csv และ .xlsx — ระบบจะตรวจหัวคอลัมน์เองว่าเป็น STM ธนาคารไหน, รายงาน BO หรือ STM PM</span>
+          <span>รองรับ .xlsx .csv และ statement ธนาคารที่เป็น .pdf — ระบบอ่านหัวคอลัมน์เองว่าเป็นรายงานบัญชีฝาก-ถอน, ฝากมือ, ขอถอนค่าคอม, ถอนเครดิต หรือ statement ของธนาคารไหน</span>
         </label>
 
         <div class="auto-banner ${ready.tone}">
@@ -2335,9 +2838,9 @@ VIEWS.import = (root) => {
                 .map(
                   (f) => `<tr>
               <td><b>${h(f.name)}</b>${f.warnings.length ? `<small class="sub danger">${h(f.warnings[0])}</small>` : ""}</td>
-              <td>${h(srcName[f.format.source])}${f.format.bank ? ` <span class="badge blue">${h(f.format.bank)}</span>` : ""}${f.format.company ? ` <span class="badge violet">${h(f.format.company)}</span>` : ""}</td>
-              <td class="right tnum">${num(f.rowCount)}</td>
-              <td class="right tnum">${num(f.records.length)}</td>
+              <td>${h(f.format.realLabel || srcName[f.format.source] || "")}${f.format.bank ? ` <span class="badge blue">${h(f.format.bank)}</span>` : ""}${f.format.company ? ` <span class="badge violet">${h(f.format.company)}</span>` : ""}</td>
+              <td class="right tnum">${num(f.rowCount || (f.records.length + (f.aux || []).length))}</td>
+              <td class="right tnum">${num(f.records.length + (f.aux || []).length)}</td>
               <td class="wrap">${Object.entries(f.dropped).map(([k, v]) => `<span class="drop-tag">${h(k)} ${v}</span>`).join("") || '<span class="muted">ไม่มี</span>'}</td>
               <td><button class="link-btn" data-rm="${h(f.name)}">เอาออก</button></td>
             </tr>`,
@@ -2366,6 +2869,40 @@ VIEWS.import = (root) => {
       <div class="chart mt" id="runByType"></div>
     </section>
 
+    ${
+      (ImportState.lastRun.noStmSide || []).length
+        ? `<section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Coverage</p><h2>ช่องทางที่ยังไม่มีไฟล์ฝั่งธนาคาร</h2></div>
+        <span class="health attention">${num(ImportState.lastRun.noStmCount || 0)} รายการยังตรวจไม่ได้</span>
+      </div>
+      <p class="chart-note">รายการเหล่านี้ <b>ไม่ถูกนับเป็น exception</b> เพราะยังไม่มีไฟล์ statement ของช่องทางนั้นให้เทียบ ถ้าได้ไฟล์ของ Cyberplus / AUTOPEER / AZPAY มาเพิ่ม ระบบจะจับคู่ให้ทันทีโดยไม่ต้องตั้งค่าอะไร</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ช่องทาง</th><th>บริษัท</th><th class="right">จำนวนรายการ</th><th class="right">ยอดรวม (บาท)</th><th>บัญชี/เทอร์มินัล</th></tr></thead>
+          <tbody>
+            ${ImportState.lastRun.noStmSide
+              .map(
+                (g) => `<tr>
+              <td><b>${h(g.channel)}</b></td>
+              <td>${h(g.company)}</td>
+              <td class="right tnum">${num(g.count)}</td>
+              <td class="right tnum">${money(g.amount)}</td>
+              <td class="wrap"><span class="muted">${h(g.accounts.slice(0, 4).join(", "))}${g.accounts.length > 4 ? " +" + (g.accounts.length - 4) : ""}</span></td>
+            </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>`
+        : ""
+    }
+
+    ${
+      usingRealFiles
+        ? ""
+        : `
     <section class="panel">
       <div class="panel-heading">
         <div><p class="eyebrow">Engine Validation</p><h2>ตรวจว่าเครื่องจับคู่ทำงานถูกหรือไม่</h2></div>
@@ -2389,6 +2926,7 @@ VIEWS.import = (root) => {
       </div>
       <p class="chart-note">ตัวเลขสองฝั่งไม่จำเป็นต้องเท่ากันเป๊ะ เพราะข้อบกพร่องบางอย่างซ้อนกันได้ เช่น รายการที่ยอดไม่ตรงและอยู่ช่วงข้ามวันพร้อมกัน ระบบจึงยกเป็นเคสตามกฎที่รุนแรงกว่า</p>
     </section>`
+    }`
         : ""
     }`;
 
@@ -2465,7 +3003,7 @@ VIEWS.import = (root) => {
       const f = list[i];
       setProgress((i + 1) / list.length, f.name);
       try {
-        const payload = /\.(xlsx|xlsm|xls)$/i.test(f.name) ? await readFileBuffer(f) : await readFileText(f);
+        const payload = /\.(xlsx|xlsm|xls|pdf)$/i.test(f.name) ? await readFileBuffer(f) : await readFileText(f);
         await ingestRaw(f.name, payload, f.size);
       } catch (err) {
         toast(`${f.name}: ${err.message}`, "warn");
@@ -2524,8 +3062,8 @@ function updateBell() {
 VIEWS.notifications = (root) => {
   const list = Store.data.notifications;
   const rules = Store.data.notifyRules;
-  const kindTone = { bad: "red", warn: "amber", info: "blue", ok: "green" };
-  const kindLabel = { bad: "ต้องแก้ทันที", warn: "เฝ้าระวัง", info: "แจ้งให้ทราบ", ok: "ปกติ" };
+  const kindTone = { bad: "red", warn: "amber", info: "blue", ok: "green", fx: "violet" };
+  const kindLabel = { bad: "ต้องแก้ทันที", warn: "เฝ้าระวัง", info: "แจ้งให้ทราบ", ok: "ปกติ", fx: "อัตราแลกเปลี่ยน" };
 
   root.innerHTML = `
     <section class="grid-2">
@@ -2812,6 +3350,234 @@ function downloadText(filename, text) {
 }
 
 
+
+/* =============================================================
+   งานชี้แจง — สายรายวัน (17:00) และสายรายรอบ (1-15 / 16-25 / 26-สิ้นเดือน)
+   ============================================================= */
+
+const trackMeta = (code) => DB.clarifyTracks.find((t) => t.code === code) || DB.clarifyTracks[0];
+
+/* รอบชี้แจงที่วันที่นี้ตกอยู่ */
+function cycleOf(iso) {
+  const d = +String(iso).slice(8, 10);
+  const ym = String(iso).slice(0, 7);
+  if (d <= 15) return { code: "C1", name: "รอบ 1 (1-15)", from: ym + "-01", to: ym + "-15", closeDay: 15 };
+  if (d <= 25) return { code: "C2", name: "รอบ 2 (16-25)", from: ym + "-16", to: ym + "-25", closeDay: 25 };
+  const last = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate();
+  return { code: "C3", name: `รอบ 3 (26-${last})`, from: ym + "-26", to: `${ym}-${last}`, closeDay: last };
+}
+
+/* กำหนดส่งคืนของแต่ละสาย */
+function dueOf(e) {
+  const c = DB.settings.clarify;
+  if (e.track === "daily") {
+    return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ออดิทส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ จากนั้นชี้แจงกลับภายใน ${c.dailyRespondHours} ชม.` };
+  }
+  const cy = cycleOf(e.date);
+  const due = shiftDays(cy.to, c.cycleRespondDays);
+  return { label: `${due} (${cy.name})`, short: due, detail: `รวบรวมถึงวันปิดรอบ ${cy.to} แล้วให้เวลาชี้แจง ${c.cycleRespondDays} วัน`, cycle: cy };
+}
+
+/* เอกสาร: สร้างเลขที่ */
+function docNo(prefix, key) {
+  return `${prefix}-${String(state.filters.date).replace(/-/g, "")}-${key}`;
+}
+
+function issueRequestDoc(items, opts) {
+  if (!can("request_clarify") && !can("approve")) return deny("ออกใบขอให้ชี้แจง");
+  if (!items.length) return toast("ไม่มีรายการที่ต้องชี้แจงในกลุ่มนี้", "warn");
+  const shiftName = opts.shiftName || "ทุกกะ";
+  const due = dueOf(items[0]);
+  const html = Docs.requestHtml({
+    docNo: docNo("REQ", opts.key),
+    trackName: trackMeta(items[0].track).name,
+    issuedAt: state.filters.date,
+    periodLabel: opts.periodLabel,
+    dueLabel: due.label,
+    toName: opts.toName || "หัวหน้ากะ " + shiftName,
+    shiftName,
+    companyName: state.filters.company === "ALL" ? "ทุกบริษัท" : state.filters.company,
+    fromName: "แผนกออดิท",
+    issuer: currentUser().name + " (" + currentUser().username + ")",
+    items,
+    date: items[0].date || state.filters.date,
+    stamp: nowStamp(),
+  });
+  Docs.print(html, docNo("REQ", opts.key));
+  items.forEach((e) => {
+    if (e.status === "open") e.status = "clarifying";
+    saveOverride(e);
+  });
+  logAction("issue_doc", "clarification", docNo("REQ", opts.key), `ออกใบขอให้ชี้แจง ${items.length} รายการ · ${opts.periodLabel}`);
+  toast(`ออกใบขอให้ชี้แจง ${items.length} รายการแล้ว — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์`);
+  render();
+}
+
+function issueClarificationDoc(e, narrative) {
+  const cy = cycleOf(e.date);
+  const html = Docs.clarificationHtml({
+    docNo: docNo("CLR", e.id),
+    ex: e,
+    brand: (DB.companies.find((c) => c.code === e.company) || {}).name || e.company,
+    shiftName: (DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift,
+    trackName: trackMeta(e.track).name,
+    cycleName: cy.name,
+    title: `${e.typeName} — ${e.account} ยอด ${money(e.riskAmount || Math.abs(e.amountDiff))} บาท เวลา ${e.time}`,
+    severityName: sevMeta(e.severity).name,
+    statusName: statusMeta(e.status).name,
+    damage: e.status === "damage",
+    narrative: narrative,
+    responder: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
+    issuer: currentUser().name + " (" + currentUser().username + ")",
+    issuedAt: state.filters.date,
+    stamp: nowStamp(),
+  });
+  Docs.print(html, docNo("CLR", e.id));
+  logAction("issue_doc", "clarification", docNo("CLR", e.id), "ออกเอกสารชี้แจงฉบับสมบูรณ์");
+  toast(`ออกเอกสารชี้แจง ${e.id} แล้ว — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์`);
+}
+
+VIEWS.clarify = (root) => {
+  const all = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
+  const daily = all.filter((e) => e.track === "daily");
+  const cyc = all.filter((e) => e.track === "cycle");
+  const c = DB.settings.clarify;
+
+  /* สายรายวัน: จัดกลุ่มตามกะ */
+  const byShift = DB.shifts.map((s) => ({
+    shift: s,
+    items: daily.filter((e) => e.shift === s.code),
+    lead: DB.users.find((u) => u.role === "shift_lead" && u.shift === s.code),
+  }));
+
+  /* สายรายรอบ: จัดกลุ่มตามรอบ */
+  const cycles = {};
+  cyc.forEach((e) => {
+    const cy = cycleOf(e.date);
+    (cycles[cy.code] = cycles[cy.code] || { cy, items: [] }).items.push(e);
+  });
+  const cycleList = Object.values(cycles).sort((a, b) => a.cy.code.localeCompare(b.cy.code));
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article class="${daily.length ? "warn" : "ok"}"><span>สายรายวัน (ส่ง ${h(c.dailyCutoff)})</span><strong>${num(daily.length)}</strong><small>Critical และ High ส่งหัวหน้ากะภายในวัน</small></article>
+      <article><span>สายรายรอบ (ตีไฟล์)</span><strong>${num(cyc.length)}</strong><small>รวบเป็นรอบ ให้เวลาชี้แจง ${c.cycleRespondDays} วัน</small></article>
+      <article><span>ชี้แจงกลับมาแล้ว</span><strong>${num(all.filter((e) => e.status === "answered").length)}</strong><small>รอออดิทตรวจทาน</small></article>
+      <article class="bad"><span>ค้างเกินกำหนด</span><strong>${num(all.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">${h(DB.clarifyTracks[0].name)}</p><h2>รายการที่ต้องส่งหัวหน้ากะวันนี้</h2>
+        <small class="head-sub">${h(DB.clarifyTracks[0].desc)}</small></div>
+        <span class="health ${daily.length ? "attention" : "ok"}">กำหนดส่ง ${h(c.dailyCutoff)} น. ของ ${h(state.filters.date)}</span>
+      </div>
+      <div class="track-grid">
+        ${byShift
+          .map(
+            (g) => `<div class="track-card ${g.items.length ? "" : "empty"}">
+          <div class="track-head">
+            <div><strong>${h(g.shift.name)}</strong><span>${h(g.shift.range)}</span></div>
+            <b>${g.items.length}</b>
+          </div>
+          <div class="track-body">
+            <div class="kv-line"><span>หัวหน้ากะ</span><b>${h(g.lead ? g.lead.name : "-")}</b></div>
+            <div class="kv-line"><span>ยอดที่ต้องตรวจ</span><b>${money0(sumRisk(g.items))} บาท</b></div>
+            <div class="kv-line"><span>Critical</span><b>${g.items.filter((e) => e.severity === "critical").length} รายการ</b></div>
+          </div>
+          <button class="primary-button sm" data-req-shift="${g.shift.code}" ${g.items.length ? "" : "disabled"}>ออกใบขอให้ชี้แจง</button>
+        </div>`,
+          )
+          .join("")}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">${h(DB.clarifyTracks[1].name)}</p><h2>รายการที่รวบเป็นรอบ</h2>
+        <small class="head-sub">${h(DB.clarifyTracks[1].desc)}</small></div>
+      </div>
+      ${
+        cycleList.length
+          ? `<div class="track-grid">${cycleList
+              .map((g) => {
+                const due = shiftDays(g.cy.to, c.cycleRespondDays);
+                const late = due < state.filters.date;
+                return `<div class="track-card">
+              <div class="track-head"><div><strong>${h(g.cy.name)}</strong><span>${h(g.cy.from)} ถึง ${h(g.cy.to)}</span></div><b>${g.items.length}</b></div>
+              <div class="track-body">
+                <div class="kv-line"><span>ปิดรอบ</span><b>${h(g.cy.to)}</b></div>
+                <div class="kv-line"><span>กำหนดชี้แจง</span><b class="${late ? "danger" : ""}">${h(due)}</b></div>
+                <div class="kv-line"><span>ยอดที่ต้องตรวจ</span><b>${money0(sumRisk(g.items))} บาท</b></div>
+              </div>
+              <button class="primary-button sm" data-req-cycle="${g.cy.code}">ออกใบขอให้ชี้แจงทั้งรอบ</button>
+            </div>`;
+              })
+              .join("")}</div>`
+          : `<p class="empty">ไม่มีรายการในสายรายรอบตามตัวกรองนี้</p>`
+      }
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Clarification Queue</p><h2>รายการทั้งหมดพร้อมกำหนดส่ง</h2>
+        <small class="head-sub">กดที่เลขเคสเพื่อเปิดรายละเอียด · ปุ่มขวาสุดออกเอกสารชี้แจงรายเคสเป็น PDF</small></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>เคส</th><th>สาย</th><th>เวลา</th><th>ประเภท</th><th class="right">ยอดที่ต้องตรวจ</th><th>กะ / ผู้เกี่ยวข้อง</th><th>กำหนดส่ง</th><th>สถานะ</th><th class="right">เอกสาร</th></tr></thead>
+          <tbody>
+            ${
+              all
+                .slice(0, 40)
+                .map((e) => {
+                  const d = dueOf(e);
+                  return `<tr>
+                <td><button class="link-btn" data-ex="${e.id}">${e.id}</button></td>
+                <td><span class="badge ${e.track === "daily" ? "amber" : "blue"}">${h(trackMeta(e.track).short)}</span></td>
+                <td class="tnum">${e.time}</td>
+                <td>${h(e.typeName)}</td>
+                <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
+                <td>${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift)}<small class="sub">${h(e.employee)}</small></td>
+                <td class="${e.overSla ? "danger" : ""}">${h(d.short)}</td>
+                <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+                <td class="right nowrap"><button class="ghost-button xs" data-clr="${e.id}">เอกสารชี้แจง</button></td>
+              </tr>`;
+                })
+                .join("") || `<tr><td colspan="9" class="empty">ไม่มีรายการค้างชี้แจง</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+      ${all.length > 40 ? `<p class="hint">แสดง 40 รายการแรกจากทั้งหมด ${num(all.length)} รายการ — ใช้ตัวกรองด้านบนเพื่อลดขอบเขต</p>` : ""}
+    </section>`;
+
+  root.querySelectorAll("[data-req-shift]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const g = byShift.find((x) => x.shift.code === b.dataset.reqShift);
+      issueRequestDoc(g.items, {
+        key: g.shift.code.toUpperCase(),
+        shiftName: g.shift.name,
+        toName: g.lead ? g.lead.name : "หัวหน้ากะ " + g.shift.name,
+        periodLabel: `วันที่ ${state.filters.date} (${g.shift.name} ${g.shift.range})`,
+      });
+    }),
+  );
+  root.querySelectorAll("[data-req-cycle]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const g = cycleList.find((x) => x.cy.code === b.dataset.reqCycle);
+      issueRequestDoc(g.items, { key: g.cy.code, shiftName: "ทุกกะ", periodLabel: `${g.cy.name} · ${g.cy.from} ถึง ${g.cy.to}` });
+    }),
+  );
+  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
+  root.querySelectorAll("[data-clr]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const e = DB.exceptions.find((x) => x.id === b.dataset.clr);
+      issueClarificationDoc(e, (e.notes || []).map((n) => n.text).join("\n"));
+    }),
+  );
+};
+
 /* =============================================================
    Export: Excel หลายชีต + บันทึกเป็นภาพ
    ============================================================= */
@@ -2848,14 +3614,15 @@ const SHEET_BUILDERS = {
       return {
         name: "Exception",
         title: "รายการผิดปกติ",
-        headers: ["เคส", "วันที่", "เวลา", "บริษัท", "บัญชี", "ธนาคาร", "ทิศทาง", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่างยอด", "ยอดที่ต้องตรวจ", "ผลต่างเวลา (วิ)", "ระดับ", "สถานะ", "พนักงาน", "กะ", "อายุเคส (ชม.)", "SLA (ชม.)", "เกิน SLA", "สาเหตุ"],
-        widths: [11, 12, 10, 12, 13, 9, 8, 22, 13, 13, 13, 15, 13, 10, 14, 17, 10, 12, 10, 10, 34],
+        headers: ["เคส", "วันที่", "เวลา", "บริษัท", "บัญชี", "ธนาคาร", "ทิศทาง", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่างยอด", "ยอดที่ต้องตรวจ", "ผลต่างเวลา (วิ)", "ระดับ", "สถานะ", "พนักงาน", "กะ", "สมาชิก", "สายชี้แจง", "กำหนดส่ง", "อายุเคส (ชม.)", "SLA (ชม.)", "เกิน SLA", "สาเหตุ", "สิ่งที่ระบบตรวจพบ"],
+        widths: [11, 12, 10, 12, 13, 9, 8, 22, 13, 13, 13, 15, 13, 10, 14, 17, 10, 14, 12, 14, 12, 10, 10, 34, 70],
         rows: rows.map((e) => [
           e.id, e.date, e.time, e.company, e.account, e.bank, e.direction, e.typeName,
           e.systemAmount ?? "", e.bankAmount ?? "", e.amountDiff, e.riskAmount, e.timeDiffSec,
           sevMeta(e.severity).name, statusMeta(e.status).name, e.employee,
           (DB.shifts.find((sh) => sh.code === e.shift) || {}).name || e.shift,
-          e.ageHours, e.slaHours, e.overSla ? "เกิน" : "ปกติ", e.cause,
+          e.member || "", trackMeta(e.track).short, dueOf(e).short,
+          e.ageHours, e.slaHours, e.overSla ? "เกิน" : "ปกติ", e.cause, e.detail || "",
         ]),
       };
     },
@@ -2867,14 +3634,21 @@ const SHEET_BUILDERS = {
       return {
         name: "ความเสียหาย",
         title: "ทะเบียนความเสียหาย",
-        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "รอบ", "บริษัท", "พนักงาน", "กะ", "ยอดเสียหาย", "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
-        widths: [14, 12, 12, 8, 12, 17, 10, 14, 32, 10, 16, 16],
-        rows: rows.map((d) => [
-          d.id, d.exceptionId, d.date, d.cycle,
-          (DB.companies.find((c) => c.code === d.company) || {}).name || d.company,
-          d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift,
-          d.amount, d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus,
-        ]),
+        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "รอบ", "บริษัท", "พนักงาน", "กะ", "สกุลที่บันทึก", "ยอดตามสกุล", `อัตรา ${Fx.QUOTE}`, "ยอดเสียหาย (บาท)", `ยอดเสียหาย (${Fx.QUOTE})`, "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
+        widths: [14, 12, 12, 8, 12, 17, 10, 13, 14, 12, 17, 17, 32, 10, 16, 16],
+        rows: rows.map((d) => {
+          const cur = (d.currency || Fx.BASE).toUpperCase();
+          const eff = Fx.effectiveRate(d.date);
+          const q = Fx.toQuote(dmgTHB(d), d.date);
+          return [
+            d.id, d.exceptionId, d.date, d.cycle,
+            (DB.companies.find((c) => c.code === d.company) || {}).name || d.company,
+            d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift,
+            cur, d.amount, d.fxRate || (eff ? eff.rate : ""),
+            dmgTHB(d), q.ok ? q.value : "",
+            d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus,
+          ];
+        }),
       };
     },
   },
@@ -2930,6 +3704,23 @@ const SHEET_BUILDERS = {
       rows: DB.files.map((f) => [f.companyName, f.fileType, f.receivedAt, f.rows, f.sender, f.checksum, { received: "รับแล้ว", missing: "ไม่ได้ส่ง", wrong_company: "ผิดบริษัท", late: "ส่งช้า" }[f.status]]),
     }),
   },
+  fx: {
+    label: `อัตราแลกเปลี่ยน ${Fx.QUOTE}`,
+    build: () => ({
+      name: "อัตราแลกเปลี่ยน",
+      title: `อัตรา ${Fx.QUOTE}/${Fx.BASE} รายวัน`,
+      headers: ["วันที่", `1 ${Fx.QUOTE} = (บาท)`, "ผู้บันทึก", "บันทึกเมื่อ", "เรตตลาดตอนบันทึก", "แหล่งอ้างอิง", "ส่วนต่างจากตลาด", "หมายเหตุ", "จำนวนครั้งที่แก้"],
+      widths: [12, 16, 18, 22, 18, 26, 16, 42, 14],
+      rows: Fx.all()
+        .filter((r) => inRange(r.date))
+        .map((r) => [
+          r.date, r.rate, r.by, String(r.at).replace("T", " ").slice(0, 19),
+          r.ref && r.ref.rate ? r.ref.rate : "", r.ref && r.ref.name ? r.ref.name : "",
+          r.ref && r.ref.rate ? Math.round((r.rate - r.ref.rate) * 10000) / 10000 : "",
+          r.note || "", (r.revisions || []).length,
+        ]),
+    }),
+  },
   audit: {
     label: "Audit Log",
     build: () => ({
@@ -2942,7 +3733,7 @@ const SHEET_BUILDERS = {
   },
 };
 
-const DEFAULT_SHEETS = { exceptions: true, damage: true, kpi: true, daily: true, monthly: false, intake: false, audit: false };
+const DEFAULT_SHEETS = { exceptions: true, damage: true, kpi: true, daily: true, monthly: false, intake: false, fx: true, audit: false };
 const exportChoice = { ...DEFAULT_SHEETS };
 
 const FILE_SLUG = {
@@ -3172,6 +3963,7 @@ function boot() {
     render();
   });
   $("#btnExport").addEventListener("click", openExportDialog);
+  $("#fxChip").addEventListener("click", () => go("fx"));
   $("#autoStatus").addEventListener("click", () => go("import"));
   $("#navToggle").addEventListener("click", () => {
     const sb = $("#sidebar");

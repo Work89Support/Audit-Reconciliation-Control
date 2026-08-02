@@ -51,6 +51,9 @@
               <select id="roleSelect" aria-label="เลือก role ที่ต้องการทดสอบสิทธิ์"></select>
             </label>
             <button class="ghost-button" id="btnExport">Export</button>
+            <button class="fx-chip" id="fxChip" title="อัตราแลกเปลี่ยน USDT ของวันที่ตรวจ">
+              <i></i><span class="fx-label">USDT</span><b id="fxChipVal">-</b>
+            </button>
             <div class="auto-status" id="autoStatus" title="ระบบกระทบยอดให้อัตโนมัติเมื่อไฟล์เข้าครบ">
               <i></i><span>อัตโนมัติ</span><b id="autoStatusText">รอไฟล์</b>
             </div>
@@ -81,13 +84,19 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="xlsx-reader.js"></script>
+    <script src="formats.js"></script>
+    <script src="pdf-stm.js"></script>
+    <script src="rules.js"></script>
     <script src="data.js"></script>
     <script src="sample.js"></script>
     <script src="engine.js"></script>
     <script src="store.js"></script>
+    <script src="fx.js"></script>
     <script src="charts.js"></script>
     <script src="xlsx-writer.js"></script>
     <script src="export.js"></script>
+    <script src="docs.js"></script>
     <script src="app.js"></script>
     <script src="manual.js"></script>
   </body>

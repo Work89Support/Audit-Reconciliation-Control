@@ -63,12 +63,12 @@ const DB = (() => {
     monitor: {
       name: "Audit Monitor",
       desc: "ตรวจรายการ ใส่ note ส่งชี้แจง",
-      can: ["view", "note", "status", "request_clarify", "export"],
+      can: ["view", "note", "status", "request_clarify", "export", "fx"],
     },
     lead: {
       name: "Audit Lead",
       desc: "ตรวจทาน อนุมัติ ปิดเคส ปิดรอบความเสียหาย",
-      can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules"],
+      can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules", "fx"],
     },
     shift_lead: {
       name: "Shift Lead",
@@ -79,7 +79,7 @@ const DB = (() => {
     admin: {
       name: "System Admin",
       desc: "ตั้งค่า rule, data source, user, role",
-      can: ["view", "rules", "users", "settings", "export"],
+      can: ["view", "rules", "users", "settings", "export", "fx"],
     },
   };
 
@@ -240,6 +240,8 @@ const DB = (() => {
       ageHours,
       slaHours,
       overSla: ageHours > slaHours && !["closed", "approved"].includes(status),
+      /* Critical/High เร่งด่วนเข้าสายรายวัน ที่เหลือรวบเป็นรอบ */
+      track: severity === "critical" || severity === "high" ? "daily" : "cycle",
       hasEvidence: rnd() > 0.42,
       stmRaw:
         bankAmount === null
@@ -298,6 +300,24 @@ const DB = (() => {
   });
 
   /* ---------- damage records ---------- */
+
+  /* สายงานชี้แจง: รายวัน (ส่งหัวหน้ากะ 17:00) และรายรอบ (ออดิท 1/2/3 ตีไฟล์เป็นรอบ) */
+  const clarifyTracks = [
+    {
+      code: "daily",
+      name: "รายวัน — ส่งหัวหน้ากะ 17:00",
+      short: "รายวัน",
+      desc: "ตรวจเสร็จภายในวัน ส่งรายการให้หัวหน้ากะภายในเวลา 17:00 จากนั้นหัวหน้ากะทำไฟล์ชี้แจงกลับมา",
+      owner: "หัวหน้ากะ",
+    },
+    {
+      code: "cycle",
+      name: "รายรอบ — ออดิท 1/2/3 ตีไฟล์",
+      short: "รายรอบ",
+      desc: "ออดิทรวบรวมรายการเป็นรอบ แล้วตีไฟล์ให้ชี้แจง รอบละ 2-3 วัน ก่อนสรุปความเสียหาย",
+      owner: "หัวหน้ากะ / แอดมิน",
+    },
+  ];
 
   const damageCycles = [
     { code: "C1", name: "รอบ 1 (1-15)", from: "2026-08-01", to: "2026-08-15", status: "open" },
@@ -376,6 +396,12 @@ const DB = (() => {
     toleranceWithdraw: 180,
     diffAlert: 1,
     slaEvidenceDays: 3,
+    /* สายงานชี้แจง 2 แบบตามที่แผนกใช้จริง */
+    clarify: {
+      dailyCutoff: "17:00", // ตรวจเสร็จส่งหัวหน้ากะภายในเวลานี้ของทุกวัน
+      dailyRespondHours: 24, // หัวหน้ากะทำไฟล์ชี้แจงกลับภายในกี่ชั่วโมง
+      cycleRespondDays: 3, // แต่ละรอบให้เวลาชี้แจงกี่วันหลังปิดรอบ
+    },
     rules: {
       crossDay: true,
       lockDelete: true,
@@ -416,6 +442,7 @@ const DB = (() => {
     fileTypes,
     files,
     damageCycles,
+    clarifyTracks,
     damages,
     monthlyTrend,
     auditLog,
