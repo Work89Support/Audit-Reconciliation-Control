@@ -58,7 +58,7 @@ const ROUTES = [
   {
     group: "ตรวจสอบและอนุมัติ",
     items: [
-      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงและกำหนดส่ง", desc: "สายรายวันส่งหัวหน้ากะภายใน 17:00 · สายรายรอบตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน ให้เวลาชี้แจง 2-3 วัน", filters: true },
+      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงและกำหนดส่ง", desc: "แผนกตรวจ 2 ระบบ — ระบบ XB ส่งหัวหน้ากะทุกวันภายใน 17:00 ทุกเคส · ระบบ 123 ออดิท 1/2/3 รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน ให้เวลาชี้แจง 2-3 วัน", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
       { id: "fx", label: "ค่าเงิน USDT", icon: "fx", title: "อัตราแลกเปลี่ยนประจำวัน", desc: "ระบบมีทั้งเงินบาทและ USDT — ทุกยอดที่เป็น USDT ต้องอ้างอิงเรตของวันนั้น จึงต้องบันทึกเรตทุกวันและเก็บ log ไว้ตรวจย้อนหลังได้", filters: false },
@@ -927,7 +927,7 @@ function openException(id) {
         <div><span>ผลต่างเวลา</span><b>${e.timeDiffSec} วินาที</b></div>
         <div><span>พนักงานที่ทำรายการ</span><b>${h(e.employee)}</b></div>
         <div><span>SLA</span><b class="${e.overSla ? "danger" : ""}">${e.ageHours} ชม. / เกณฑ์ ${e.slaHours} ชม.</b></div>
-        <div><span>สายการชี้แจง</span><b>${h(trackMeta(e.track).short)}</b></div>
+        <div><span>ระบบต้นทาง / สายชี้แจง</span><b>${h(trackMeta(e.track).short)}${e.systemUnassigned ? " (ยังไม่กำหนดระบบ)" : ""}</b></div>
         <div><span>กำหนดส่งคืน</span><b class="${e.overSla ? "danger" : ""}">${h(dueOf(e).short)}</b></div>
       </div>
       <p class="hint" style="margin-top:8px">${h(dueOf(e).detail)}</p>
@@ -2550,13 +2550,14 @@ VIEWS.settings = (root) => {
         <div class="panel-heading"><div><p class="eyebrow">Clarification</p><h2>สายงานและกำหนดเวลาชี้แจง</h2></div>
         <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span></div>
         <div class="setting-list">
-          <label><span>สายรายวัน: ส่งหัวหน้ากะภายในเวลา</span><input type="time" id="cCut" value="${DB.settings.clarify.dailyCutoff}" ${editable ? "" : "disabled"} /><b>น.</b></label>
-          <label><span>สายรายวัน: ชี้แจงกลับภายใน</span><input type="number" id="cResp" value="${DB.settings.clarify.dailyRespondHours}" ${editable ? "" : "disabled"} /><b>ชั่วโมง</b></label>
-          <label><span>สายรายรอบ: ให้เวลาชี้แจงหลังปิดรอบ</span><input type="number" id="cDays" value="${DB.settings.clarify.cycleRespondDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
+          <label><span>ระบบ XB: ส่งหัวหน้ากะภายในเวลา</span><input type="time" id="cCut" value="${DB.settings.clarify.dailyCutoff}" ${editable ? "" : "disabled"} /><b>น.</b></label>
+          <label><span>ระบบ XB: ชี้แจงกลับภายใน</span><input type="number" id="cResp" value="${DB.settings.clarify.dailyRespondHours}" ${editable ? "" : "disabled"} /><b>ชั่วโมง</b></label>
+          <label><span>ระบบ 123: ให้เวลาชี้แจงหลังปิดรอบ</span><input type="number" id="cDays" value="${DB.settings.clarify.cycleRespondDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
         </div>
         <ul class="tick-list">
-          <li>สายรายวัน — Critical และ High ส่งให้หัวหน้ากะภายในเวลาที่ตั้งไว้ของทุกวัน</li>
-          <li>สายรายรอบ — ออดิทตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน</li>
+          <li>ระบบ XB — ส่งหัวหน้ากะภายในเวลาที่ตั้งไว้ของทุกวัน <b>ทุกเคส</b> ไม่ดูความรุนแรง</li>
+          <li>ระบบ 123 — ออดิท 1/2/3 ตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน</li>
+          <li>กำหนดว่าบริษัทไหนอยู่ระบบไหนได้ที่หน้า <b>งานชี้แจง</b></li>
           <li>ทุกใบที่ออกจากระบบถูกบันทึกเลขที่เอกสารและผู้ออกไว้ใน Audit Log</li>
         </ul>
         <button class="primary-button mt" id="cSave" ${editable ? "" : "disabled"}>บันทึกกำหนดเวลาชี้แจง</button>
@@ -3004,6 +3005,7 @@ function applyRunResult(result, stm, bo) {
     state.filters.preset = dates.length > 1 ? "custom" : "day";
   }
   logAction("auto_reconcile", "match_run", "MR-" + Date.now(), `กระทบยอดอัตโนมัติ: จับคู่ ${result.matched} รายการ, exception ${result.exceptions.length}, ${result.elapsedMs} ms`);
+  retagTracks();
   checkFxCoverage(dates);
   runNotificationRules();
   Store.persist();
@@ -3610,10 +3612,61 @@ function downloadText(filename, text) {
 
 
 /* =============================================================
-   งานชี้แจง — สายรายวัน (17:00) และสายรายรอบ (1-15 / 16-25 / 26-สิ้นเดือน)
+   งานชี้แจง — ระบบ XB (ส่งทุกวัน 17:00) และระบบ 123 (รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน)
    ============================================================= */
 
-const trackMeta = (code) => DB.clarifyTracks.find((t) => t.code === code) || DB.clarifyTracks[0];
+/* ---------------------------------------------------------------
+   2 ระบบที่แผนกตรวจ — สายชี้แจงมาจาก "ระบบต้นทางของบริษัท" ไม่ใช่ความรุนแรง
+     XB     -> ส่งหัวหน้ากะทุกวัน ทุกเคส
+     SYS123 -> ออดิท 1/2/3 รวบเป็นรอบแล้วตีไฟล์
+   --------------------------------------------------------------- */
+const sysMeta = (code) => DB.systems.find((x) => x.code === code) || null;
+const trackMeta = (code) => DB.systems.find((x) => x.track === code) || DB.systems[1];
+
+/* บริษัทนี้อยู่ระบบไหน (null = ยังไม่ได้กำหนด) */
+function systemOfCompany(code) {
+  const c = DB.companies.find((x) => x.code === code);
+  return c ? c.system || null : null;
+}
+function setCompanySystem(code, system) {
+  let c = DB.companies.find((x) => x.code === code);
+  if (!c) {
+    c = { code, name: code, type: "main", system: null };
+    DB.companies.push(c);
+  }
+  const old = c.system;
+  c.system = system || null;
+  Store.data.companySystems = Store.data.companySystems || {};
+  Store.data.companySystems[code] = c.system;
+  Store.persist();
+  logAction("set_system", "company", code, `กำหนดให้บริษัท ${code} อยู่ระบบ ${system ? sysMeta(system).short : "ยังไม่ระบุ"}${old ? ` (เดิม ${old})` : ""}`);
+  retagTracks();
+}
+
+/* คืนค่าสายชี้แจงของเคสหนึ่ง — ยังไม่ได้กำหนดระบบให้ถือเป็นรายรอบไว้ก่อนและติดธงไว้ */
+function trackOfException(e) {
+  const sys = systemOfCompany(e.company);
+  if (!sys) return { track: "cycle", system: null, unassigned: true };
+  const m = sysMeta(sys);
+  return { track: m.track, system: sys, unassigned: false };
+}
+
+/* เติม track ให้ทุกเคสตามระบบของบริษัท — เรียกทุกครั้งที่ข้อมูลหรือการแมปเปลี่ยน */
+function retagTracks() {
+  (DB.exceptions || []).forEach((e) => {
+    const t = trackOfException(e);
+    e.track = t.track;
+    e.system = t.system;
+    e.systemUnassigned = t.unassigned;
+  });
+}
+
+/* บริษัทที่โผล่ในข้อมูลแต่ยังไม่ได้บอกว่าอยู่ระบบไหน */
+function unassignedCompanies() {
+  const seen = new Set((DB.exceptions || []).map((e) => e.company).filter(Boolean));
+  ImportState.files.forEach((f) => f.format && f.format.company && seen.add(f.format.company));
+  return [...seen].filter((c) => c !== "-" && !systemOfCompany(c));
+}
 
 /* รอบชี้แจงที่วันที่นี้ตกอยู่ */
 function cycleOf(iso) {
@@ -3628,12 +3681,13 @@ function cycleOf(iso) {
 /* กำหนดส่งคืนของแต่ละสาย */
 function dueOf(e) {
   const c = DB.settings.clarify;
-  if (e.track === "daily") {
-    return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ออดิทส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ จากนั้นชี้แจงกลับภายใน ${c.dailyRespondHours} ชม.` };
+  const t = e.track || trackOfException(e).track;
+  if (t === "daily") {
+    return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ระบบ XB — ออดิทส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ จากนั้นชี้แจงกลับภายใน ${c.dailyRespondHours} ชม. (ส่งทุกเคส ไม่ดูความรุนแรง)` };
   }
   const cy = cycleOf(e.date);
   const due = shiftDays(cy.to, c.cycleRespondDays);
-  return { label: `${due} (${cy.name})`, short: due, detail: `รวบรวมถึงวันปิดรอบ ${cy.to} แล้วให้เวลาชี้แจง ${c.cycleRespondDays} วัน`, cycle: cy };
+  return { label: `${due} (${cy.name})`, short: due, detail: `ระบบ 123 — ออดิท 1/2/3 รวบรวมถึงวันปิดรอบ ${cy.to} แล้วตีไฟล์ให้ชี้แจงภายใน ${c.cycleRespondDays} วัน`, cycle: cy };
 }
 
 /* เอกสาร: สร้างเลขที่ */
@@ -3696,19 +3750,25 @@ function issueClarificationDoc(e, narrative) {
 }
 
 VIEWS.clarify = (root) => {
+  retagTracks();
   const all = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
   const daily = all.filter((e) => e.track === "daily");
   const cyc = all.filter((e) => e.track === "cycle");
   const c = DB.settings.clarify;
+  const XB = sysMeta("XB");
+  const S123 = sysMeta("SYS123");
+  const known = [...new Set(DB.companies.map((x) => x.code).concat(all.map((e) => e.company)))].filter((x) => x && x !== "-");
+  const pending = known.filter((code) => !systemOfCompany(code));
+  const pendingActive = unassignedCompanies(); // ที่มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้กำหนด
 
-  /* สายรายวัน: จัดกลุ่มตามกะ */
+  /* ระบบ XB: จัดกลุ่มตามกะเพื่อส่งหัวหน้ากะแต่ละกะ */
   const byShift = DB.shifts.map((s) => ({
     shift: s,
     items: daily.filter((e) => e.shift === s.code),
     lead: DB.users.find((u) => u.role === "shift_lead" && u.shift === s.code),
   }));
 
-  /* สายรายรอบ: จัดกลุ่มตามรอบ */
+  /* ระบบ 123: จัดกลุ่มตามรอบตีไฟล์ */
   const cycles = {};
   cyc.forEach((e) => {
     const cy = cycleOf(e.date);
@@ -3718,16 +3778,42 @@ VIEWS.clarify = (root) => {
 
   root.innerHTML = `
     <section class="status-strip four">
-      <article class="${daily.length ? "warn" : "ok"}"><span>สายรายวัน (ส่ง ${h(c.dailyCutoff)})</span><strong>${num(daily.length)}</strong><small>Critical และ High ส่งหัวหน้ากะภายในวัน</small></article>
-      <article><span>สายรายรอบ (ตีไฟล์)</span><strong>${num(cyc.length)}</strong><small>รวบเป็นรอบ ให้เวลาชี้แจง ${c.cycleRespondDays} วัน</small></article>
+      <article class="${daily.length ? "warn" : "ok"}"><span>ระบบ XB (ส่ง ${h(c.dailyCutoff)} ทุกวัน)</span><strong>${num(daily.length)}</strong><small>ส่งหัวหน้ากะทุกเคส ไม่ดูความรุนแรง</small></article>
+      <article><span>ระบบ 123 (ตีไฟล์เป็นรอบ)</span><strong>${num(cyc.length)}</strong><small>ออดิท 1/2/3 รวบเป็นรอบ ให้เวลาชี้แจง ${c.cycleRespondDays} วัน</small></article>
       <article><span>ชี้แจงกลับมาแล้ว</span><strong>${num(all.filter((e) => e.status === "answered").length)}</strong><small>รอออดิทตรวจทาน</small></article>
       <article class="bad"><span>ค้างเกินกำหนด</span><strong>${num(all.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
     </section>
 
     <section class="panel">
       <div class="panel-heading">
-        <div><p class="eyebrow">${h(DB.clarifyTracks[0].name)}</p><h2>รายการที่ต้องส่งหัวหน้ากะวันนี้</h2>
-        <small class="head-sub">${h(DB.clarifyTracks[0].desc)}</small></div>
+        <div><p class="eyebrow">System Mapping</p><h2>บริษัทไหนอยู่ระบบไหน</h2>
+        <small class="head-sub">สายชี้แจงมาจากระบบต้นทาง ไม่ใช่ความรุนแรง — ตั้งครั้งเดียว ระบบจำไว้ให้</small></div>
+        <span class="health ${pendingActive.length ? "attention" : pending.length ? "" : "ok"}">${pending.length ? `ยังไม่ได้กำหนด ${pending.length} บริษัท` : "กำหนดครบแล้ว"}</span>
+      </div>
+      ${pendingActive.length ? `<p class="hint danger">บริษัท <b>${h(pendingActive.join(", "))}</b> มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้บอกว่าอยู่ระบบไหน — ระบบจัดเป็นรายรอบไว้ก่อน กรุณาเลือกให้ถูก</p>` : ""}
+      <div class="sysmap">
+        ${known
+          .map((code) => {
+            const cur = systemOfCompany(code);
+            const co = DB.companies.find((x) => x.code === code) || { name: code };
+            const n = all.filter((e) => e.company === code).length;
+            return `<div class="sysmap-row ${cur ? "" : "todo"}">
+              <div><strong>${h(co.name || code)}</strong><span>${num(n)} เคสในช่วงนี้</span></div>
+              <div class="sysmap-btns">
+                <button class="chip-btn ${cur === "XB" ? "on amber" : ""}" data-sys="${h(code)}" data-val="XB">XB · รายวัน</button>
+                <button class="chip-btn ${cur === "SYS123" ? "on blue" : ""}" data-sys="${h(code)}" data-val="SYS123">123 · รายรอบ</button>
+                <button class="chip-btn ${cur ? "" : "on"}" data-sys="${h(code)}" data-val="">ยังไม่ระบุ</button>
+              </div>
+            </div>`;
+          })
+          .join("")}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">${h(XB.name)}</p><h2>รายการที่ต้องส่งหัวหน้ากะวันนี้</h2>
+        <small class="head-sub">${h(XB.desc)}</small></div>
         <span class="health ${daily.length ? "attention" : "ok"}">กำหนดส่ง ${h(c.dailyCutoff)} น. ของ ${h(state.filters.date)}</span>
       </div>
       <div class="track-grid">
@@ -3741,7 +3827,7 @@ VIEWS.clarify = (root) => {
           <div class="track-body">
             <div class="kv-line"><span>หัวหน้ากะ</span><b>${h(g.lead ? g.lead.name : "-")}</b></div>
             <div class="kv-line"><span>ยอดที่ต้องตรวจ</span><b>${money0(sumRisk(g.items))} บาท</b></div>
-            <div class="kv-line"><span>Critical</span><b>${g.items.filter((e) => e.severity === "critical").length} รายการ</b></div>
+            <div class="kv-line"><span>Critical / High</span><b>${g.items.filter((e) => e.severity === "critical").length} / ${g.items.filter((e) => e.severity === "high").length}</b></div>
           </div>
           <button class="primary-button sm" data-req-shift="${g.shift.code}" ${g.items.length ? "" : "disabled"}>ออกใบขอให้ชี้แจง</button>
         </div>`,
@@ -3752,8 +3838,8 @@ VIEWS.clarify = (root) => {
 
     <section class="panel">
       <div class="panel-heading">
-        <div><p class="eyebrow">${h(DB.clarifyTracks[1].name)}</p><h2>รายการที่รวบเป็นรอบ</h2>
-        <small class="head-sub">${h(DB.clarifyTracks[1].desc)}</small></div>
+        <div><p class="eyebrow">${h(S123.name)}</p><h2>รายการที่รวบเป็นรอบ</h2>
+        <small class="head-sub">${h(S123.desc)}</small></div>
       </div>
       ${
         cycleList.length
@@ -3772,7 +3858,7 @@ VIEWS.clarify = (root) => {
             </div>`;
               })
               .join("")}</div>`
-          : `<p class="empty">ไม่มีรายการในสายรายรอบตามตัวกรองนี้</p>`
+          : `<p class="empty">ไม่มีรายการของระบบ 123 ตามตัวกรองนี้</p>`
       }
     </section>
 
@@ -3810,6 +3896,14 @@ VIEWS.clarify = (root) => {
       ${all.length > 40 ? `<p class="hint">แสดง 40 รายการแรกจากทั้งหมด ${num(all.length)} รายการ — ใช้ตัวกรองด้านบนเพื่อลดขอบเขต</p>` : ""}
     </section>`;
 
+  root.querySelectorAll("[data-sys]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (!can("rules") && !can("settings") && !can("approve")) return deny("กำหนดระบบของบริษัท");
+      setCompanySystem(b.dataset.sys, b.dataset.val || null);
+      toast(`${b.dataset.sys} → ${b.dataset.val ? sysMeta(b.dataset.val).short : "ยังไม่ระบุ"}`);
+      render();
+    }),
+  );
   root.querySelectorAll("[data-req-shift]").forEach((b) =>
     b.addEventListener("click", () => {
       const g = byShift.find((x) => x.shift.code === b.dataset.reqShift);
@@ -4234,6 +4328,14 @@ function boot() {
   render();
   runNotificationRules();
   updateAutoStatus();
+  /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
+  const savedSys = Store.data.companySystems || {};
+  Object.entries(savedSys).forEach(([code, sysCode]) => {
+    let c = DB.companies.find((x) => x.code === code);
+    if (!c) DB.companies.push((c = { code, name: code, type: "main", system: null }));
+    c.system = sysCode || null;
+  });
+  retagTracks();
   if (typeof Manual !== "undefined") Manual.init();
 }
 document.addEventListener("DOMContentLoaded", boot);

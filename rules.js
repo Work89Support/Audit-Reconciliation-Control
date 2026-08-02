@@ -76,7 +76,7 @@ const Rules = (() => {
       shift: shiftOf(hour),
       employee: o.username || "ไม่ระบุ",
       assignee: "audit_som",
-      track: severity === "critical" || severity === "high" ? "daily" : "cycle",
+      track: null, // แอปจะเติมให้จากระบบต้นทางของบริษัท
       cause: CAUSE[type],
       detail: o.detail || "",
       member: o.memberCode || "",

@@ -567,7 +567,7 @@ const Engine = (() => {
         shift: shiftOf(hour),
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
         assignee: "audit_som",
-        track: severity === "critical" || severity === "high" ? "daily" : "cycle",
+        track: null, // แอปจะเติมให้จากระบบต้นทางของบริษัท (XB = รายวัน, 123 = รายรอบ)
         cause: causeOf(type),
         ageHours,
         slaHours,

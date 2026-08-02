@@ -23,11 +23,16 @@ const DB = (() => {
 
   /* ---------- master data ---------- */
 
+  /* system: บริษัทนี้อยู่ระบบไหน — XB ส่งชี้แจงทุกวัน, SYS123 รวบเป็นรอบ
+     ตั้งค่าได้เองในหน้า "งานชี้แจง" ไม่ต้องแก้โค้ดเวลาเพิ่มบริษัทใหม่ */
   const companies = [
-    { code: "SYS123", name: "ระบบ 123", type: "main" },
-    { code: "AUTOPEER", name: "AUTOPEER", type: "pm" },
-    { code: "AZPAY", name: "AZPAY", type: "pm" },
-    { code: "CYBERPLUS", name: "Cyberplus", type: "pm" },
+    { code: "SYS123", name: "ระบบ 123", type: "main", system: "SYS123" },
+    { code: "AUTOPEER", name: "AUTOPEER", type: "pm", system: "SYS123" },
+    { code: "AZPAY", name: "AZPAY", type: "pm", system: "SYS123" },
+    { code: "CYBERPLUS", name: "Cyberplus", type: "pm", system: "SYS123" },
+    { code: "AT4", name: "AT4", type: "main", system: null },
+    { code: "SK8", name: "SK8", type: "main", system: null },
+    { code: "FR8", name: "FR8", type: "main", system: null },
   ];
 
   const banks = [
@@ -240,8 +245,8 @@ const DB = (() => {
       ageHours,
       slaHours,
       overSla: ageHours > slaHours && !["closed", "approved"].includes(status),
-      /* Critical/High เร่งด่วนเข้าสายรายวัน ที่เหลือรวบเป็นรอบ */
-      track: severity === "critical" || severity === "high" ? "daily" : "cycle",
+      /* สายชี้แจงมาจากระบบต้นทางของบริษัท (XB/123) — แอปเติมให้ตอนโหลด */
+      track: null,
       hasEvidence: rnd() > 0.42,
       stmRaw:
         bankAmount === null
@@ -300,29 +305,35 @@ const DB = (() => {
   });
 
   /* ---------- damage records ---------- */
-
-  /* สายงานชี้แจง: รายวัน (ส่งหัวหน้ากะ 17:00) และรายรอบ (ออดิท 1/2/3 ตีไฟล์เป็นรอบ) */
-  const clarifyTracks = [
-    {
-      code: "daily",
-      name: "รายวัน — ส่งหัวหน้ากะ 17:00",
-      short: "รายวัน",
-      desc: "ตรวจเสร็จภายในวัน ส่งรายการให้หัวหน้ากะภายในเวลา 17:00 จากนั้นหัวหน้ากะทำไฟล์ชี้แจงกลับมา",
-      owner: "หัวหน้ากะ",
-    },
-    {
-      code: "cycle",
-      name: "รายรอบ — ออดิท 1/2/3 ตีไฟล์",
-      short: "รายรอบ",
-      desc: "ออดิทรวบรวมรายการเป็นรอบ แล้วตีไฟล์ให้ชี้แจง รอบละ 2-3 วัน ก่อนสรุปความเสียหาย",
-      owner: "หัวหน้ากะ / แอดมิน",
-    },
+  /* รอบสรุปความเสียหาย — ตรงกับรอบตีไฟล์ของระบบ 123 */
+  const damageCycles = [
+    { code: "C1", name: "รอบ 1 (1-15)", status: "open" },
+    { code: "C2", name: "รอบ 2 (16-25)", status: "closed" },
+    { code: "C3", name: "รอบ 3 (26-สิ้นเดือน)", status: "closed" },
   ];
 
-  const damageCycles = [
-    { code: "C1", name: "รอบ 1 (1-15)", from: "2026-08-01", to: "2026-08-15", status: "open" },
-    { code: "C2", name: "รอบ 2 (16-25)", from: "2026-07-16", to: "2026-07-25", status: "locked" },
-    { code: "C3", name: "รอบ 3 (26-สิ้นเดือน)", from: "2026-07-26", to: "2026-07-31", status: "locked" },
+  /* ---- 2 ระบบที่แผนกตรวจ ----
+     XB     : ตรวจเสร็จส่งหัวหน้ากะทุกวันภายใน 17:00 — ทุกเคส ไม่ดูความรุนแรง
+     SYS123 : ออดิท 1/2/3 รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน แล้วตีไฟล์ให้ชี้แจง */
+  const systems = [
+    {
+      code: "XB",
+      name: "ระบบ XB — ส่งหัวหน้ากะทุกวัน",
+      short: "XB (รายวัน)",
+      track: "daily",
+      desc: "ตรวจให้เสร็จภายในวัน ส่งรายการทั้งหมดให้หัวหน้ากะภายในเวลาที่กำหนด จากนั้นหัวหน้ากะทำไฟล์ชี้แจงกลับมา — ส่งทุกเคสไม่ว่าจะรุนแรงแค่ไหน",
+      owner: "หัวหน้ากะ",
+      tone: "amber",
+    },
+    {
+      code: "SYS123",
+      name: "ระบบ 123 — ออดิท 1/2/3 ตีไฟล์เป็นรอบ",
+      short: "123 (รายรอบ)",
+      track: "cycle",
+      desc: "ออดิทรวบรวมรายการเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน แล้วตีไฟล์ให้ชี้แจง รอบละ 2-3 วัน ก่อนสรุปความเสียหาย",
+      owner: "ออดิท 1 / 2 / 3",
+      tone: "blue",
+    },
   ];
 
   const damages = [];
@@ -442,7 +453,7 @@ const DB = (() => {
     fileTypes,
     files,
     damageCycles,
-    clarifyTracks,
+    systems,
     damages,
     monthlyTrend,
     auditLog,
