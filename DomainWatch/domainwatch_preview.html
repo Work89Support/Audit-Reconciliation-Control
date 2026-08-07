@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DomainWatch — ตัวอย่างหน้าระบบ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --brand-50:#eff6ff; --brand-100:#dbeafe; --brand-200:#bfdbfe; --brand-400:#60a5fa;
+    --brand-500:#3b82f6; --brand-600:#2563eb; --brand-700:#1d4ed8; --brand-800:#1e40af;
+    --green:#10b981; --green-bg:#ecfdf5; --red:#ef4444; --red-bg:#fef2f2;
+    --amber:#f59e0b; --amber-bg:#fffbeb; --slate-400:#94a3b8; --slate-500:#64748b;
+    --slate-600:#475569; --slate-700:#334155; --slate-800:#1e293b;
+  }
+  body{ font-family:'Kanit',sans-serif; background:#f5f8ff; color:#0f172a; }
+  .app{ display:flex; min-height:100vh; }
+  .sidebar{ width:250px; background:var(--brand-800); color:#fff; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; }
+  .brand{ display:flex; gap:12px; align-items:center; padding:22px 22px; border-bottom:1px solid var(--brand-700); }
+  .brand .logo{ width:40px;height:40px;border-radius:12px;background:#fff;color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;}
+  .brand .t1{ font-size:18px;font-weight:600;line-height:1.1;}
+  .brand .t2{ font-size:12px;color:var(--brand-200);}
+  .nav{ padding:14px 12px; display:flex; flex-direction:column; gap:4px; flex:1;}
+  .nav a{ display:flex;gap:12px;align-items:center;padding:10px 14px;border-radius:10px;color:var(--brand-100);text-decoration:none;font-size:14px;font-weight:500;cursor:pointer;transition:.15s;}
+  .nav a:hover{ background:var(--brand-700);}
+  .nav a.active{ background:#fff;color:var(--brand-800);box-shadow:0 2px 8px rgba(0,0,0,.12);}
+  .sidebar .foot{ padding:16px 22px;font-size:12px;color:#93a4d4;border-top:1px solid var(--brand-700);}
+
+  main{ flex:1; min-width:0; padding:30px 34px; max-width:1200px; }
+  .page{ display:none; } .page.active{ display:block; }
+  .head{ display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px;}
+  .head h1{ font-size:24px;font-weight:600;color:var(--slate-800);}
+  .head p{ font-size:14px;color:var(--slate-500);margin-top:4px;}
+  .tools{ display:flex;align-items:center;gap:12px;flex-wrap:wrap; }
+
+  .btn{ border:none;cursor:pointer;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:500;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:.15s;}
+  .btn-primary{ background:var(--brand-600);color:#fff;} .btn-primary:hover{ background:var(--brand-700);}
+  .btn-ghost{ background:var(--brand-50);color:var(--brand-700);} .btn-ghost:hover{ background:var(--brand-100);}
+  .btn-danger{ background:var(--red-bg);color:var(--red);}
+  .sel{ border:1px solid #e2e8f0;border-radius:9px;padding:7px 10px;font-size:14px;font-family:inherit;background:#fff;color:var(--slate-700);}
+  .cfilter{ display:flex;align-items:center;gap:8px;font-size:13px;color:var(--slate-400); }
+
+  .card{ background:#fff;border-radius:18px;border:1px solid #eef2f9;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .grid{ display:grid; gap:16px; } .g4{ grid-template-columns:repeat(4,1fr);} .g3{ grid-template-columns:repeat(3,1fr);} .g2{ grid-template-columns:repeat(2,1fr);}
+  @media(max-width:900px){ .g4{grid-template-columns:repeat(2,1fr);} .g3,.g2{grid-template-columns:1fr;} .sidebar{display:none;} }
+
+  .stat{ padding:20px; } .stat .lbl{ font-size:12px;color:var(--slate-500);font-weight:500;}
+  .stat .val{ font-size:30px;font-weight:700;margin-top:6px;} .stat .hint{ font-size:12px;color:var(--slate-400);margin-top:2px;}
+  .c-brand{color:var(--brand-700);} .c-green{color:var(--green);} .c-red{color:var(--red);} .c-slate{color:var(--slate-700);} .c-amber{color:var(--amber);}
+  .sec-title{ font-size:17px;font-weight:600;color:var(--slate-800);margin-bottom:16px;} .panel{ padding:20px; }
+
+  .bars{ display:flex;align-items:flex-end;gap:8px;height:200px;padding-top:10px;}
+  .bars .col{ flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;}
+  .bars .bar{ width:70%;background:var(--brand-600);border-radius:6px 6px 0 0;min-height:3px;} .bars .bar.red{ background:var(--red);}
+  .bars .cap{ font-size:11px;color:var(--slate-400);}
+  .donut-wrap{ display:flex;align-items:center;justify-content:center;gap:24px;height:200px;}
+  .donut{ width:150px;height:150px;border-radius:50%;background:conic-gradient(var(--green) 0 75%, var(--red) 75% 92%, #cbd5e1 92% 100%);display:flex;align-items:center;justify-content:center; }
+  .donut .hole{ width:96px;height:96px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .donut .hole b{ font-size:22px;color:var(--slate-800);} .donut .hole span{ font-size:11px;color:var(--slate-400);}
+  .legend{ display:flex;flex-direction:column;gap:8px;font-size:13px;} .legend div{ display:flex;align-items:center;gap:8px;}
+  .dot{ width:11px;height:11px;border-radius:3px;display:inline-block;}
+
+  table{ width:100%;border-collapse:collapse;font-size:14px;}
+  thead th{ text-align:left;color:var(--slate-400);font-weight:500;font-size:13px;padding:10px 14px;background:#f8fafc;}
+  tbody td{ padding:12px 14px;border-top:1px solid #f1f5f9;} tbody tr:hover{ background:#f8fbff;}
+  .sub{ font-size:12px;color:var(--slate-400);} .lnk{ font-size:12px;color:var(--brand-600);text-decoration:none;word-break:break-all;cursor:pointer;}
+
+  .badge{ display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:500;}
+  .b-up{ background:var(--green-bg);color:#047857;} .b-down{ background:var(--red-bg);color:var(--red);} .b-unknown{ background:#f1f5f9;color:var(--slate-500);}
+  .b-open{ background:var(--red-bg);color:var(--red);} .b-adm{ background:var(--amber-bg);color:#b45309;} .b-it{ background:var(--brand-50);color:var(--brand-700);} .b-closed{ background:var(--green-bg);color:#047857;}
+  .chip{ background:var(--brand-50);color:var(--brand-700);border-radius:999px;padding:3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;}
+
+  .input{ width:100%;border:1px solid #e2e8f0;border-radius:9px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;}
+  .inc{ padding:20px; } .inc .top{ display:flex;justify-content:space-between;gap:12px;align-items:flex-start;} .inc .name{ font-weight:600;color:var(--slate-800);}
+  .kpipills{ display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;}
+  .pill{ border-radius:10px;padding:8px 12px;font-size:12px;} .pill.done{ background:var(--green-bg);} .pill.wait{ background:var(--amber-bg);}
+  .pill .p1{ color:var(--slate-400);} .pill .p2{ font-weight:600;} .pill.done .p2{ color:#047857;} .pill.wait .p2{ color:#b45309;}
+  .cause{ margin-top:12px;font-size:12px;color:var(--slate-600);background:#f8fafc;border-radius:10px;padding:10px;}
+  .company-card{ padding:20px;margin-bottom:16px; }
+  .company-head{ display:flex;justify-content:space-between;align-items:center;margin-bottom:14px; }
+  .company-head .ci{ display:flex;gap:12px;align-items:center; }
+  .company-head .ico{ width:40px;height:40px;border-radius:12px;background:var(--brand-50);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-size:18px; }
+  .note{ background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:12px 16px;font-size:13px;margin-bottom:18px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">D</div><div><div class="t1">DomainWatch</div><div class="t2">เฝ้าดูสถานะลิงก์</div></div></div>
+    <nav class="nav">
+      <a class="active" data-tab="dash">📊 แดชบอร์ด</a>
+      <a data-tab="companies">🏢 บริษัท / ห้อง LINE</a>
+      <a data-tab="links">🔗 Master Data ลิงก์</a>
+      <a data-tab="inc">🚨 เหตุการณ์ / KPI</a>
+    </nav>
+    <div class="foot">เวอร์ชัน 1.1 · ตัวอย่างหน้าจอ</div>
+  </aside>
+
+  <main>
+    <div class="note">👀 <b>ตัวอย่างหน้าจอ (mockup)</b> ของระบบจริง — ตอนนี้แยกตาม <b>บริษัท → ห้อง LINE → ลิงก์</b> แล้ว กดสลับเมนูซ้าย และลองเปลี่ยน “บริษัท” ที่มุมขวาบนดูได้</div>
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="dash">
+      <div class="head">
+        <div><h1>แดชบอร์ดภาพรวม</h1><p>สรุปสถานะลิงก์ เหตุการณ์ และ KPI การตอบสนอง</p></div>
+        <div class="tools">
+          <div class="cfilter">บริษัท: <select class="sel"><option>ทุกบริษัท</option><option>บริษัท A</option><option>บริษัท B</option></select></div>
+          <button class="btn btn-primary">▶ เช็คตอนนี้</button>
+        </div>
+      </div>
+      <div class="grid g4" style="margin-bottom:16px;">
+        <div class="card stat"><div class="lbl">ลิงก์ทั้งหมด</div><div class="val c-slate">12</div><div class="hint">เฝ้าดูอยู่ 11</div></div>
+        <div class="card stat"><div class="lbl">ใช้งานได้</div><div class="val c-green">9</div></div>
+        <div class="card stat"><div class="lbl">ใช้ไม่ได้</div><div class="val c-red">2</div></div>
+        <div class="card stat"><div class="lbl">ยังไม่เช็ค</div><div class="val c-slate">1</div></div>
+      </div>
+      <div class="grid g4" style="margin-bottom:22px;">
+        <div class="card stat"><div class="lbl">เหตุการณ์เปิดค้าง</div><div class="val c-amber">2</div><div class="hint">รอแอดมิน/IT จัดการ</div></div>
+        <div class="card stat"><div class="lbl">เหตุการณ์ 30 วัน</div><div class="val c-brand">18</div></div>
+        <div class="card stat"><div class="lbl">KPI แอดมิน (เฉลี่ย)</div><div class="val c-brand">8 นาที</div><div class="hint">ตรวจพบ → อัพเดตลิงก์</div></div>
+        <div class="card stat"><div class="lbl">KPI ไอที (เฉลี่ย)</div><div class="val c-brand">22 นาที</div><div class="hint">ตรวจพบ → ชี้แจง/สำรอง</div></div>
+      </div>
+      <div class="grid g3">
+        <div class="card panel" style="grid-column:span 2;">
+          <div class="sec-title">จำนวนเหตุการณ์ลิงก์ล่ม (14 วันล่าสุด)</div><div class="bars" id="bars"></div>
+        </div>
+        <div class="card panel">
+          <div class="sec-title">สัดส่วนสถานะลิงก์</div>
+          <div class="donut-wrap"><div class="donut"><div class="hole"><b>9/12</b><span>ใช้งานได้</span></div></div>
+            <div class="legend"><div><span class="dot" style="background:var(--green)"></span> ใช้งานได้ · 9</div><div><span class="dot" style="background:var(--red)"></span> ใช้ไม่ได้ · 2</div><div><span class="dot" style="background:#cbd5e1"></span> ยังไม่เช็ค · 1</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card panel" style="margin-top:16px;">
+        <div class="sec-title">สรุปแยกตามบริษัท</div>
+        <table>
+          <thead><tr><th>บริษัท</th><th>ลิงก์</th><th>ใช้ได้</th><th>ใช้ไม่ได้</th><th>เคสเปิดค้าง</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><b>บริษัท A</b></td><td class="sub">8</td><td class="c-green">6</td><td class="c-red">2</td><td class="c-amber">2</td><td style="text-align:right;"><a class="lnk">ดูเฉพาะบริษัทนี้ →</a></td></tr>
+            <tr><td><b>บริษัท B</b></td><td class="sub">4</td><td class="c-green">3</td><td class="c-red">0</td><td class="sub">0</td><td style="text-align:right;"><a class="lnk">ดูเฉพาะบริษัทนี้ →</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card panel" style="margin-top:16px;">
+        <div class="sec-title">เหตุการณ์ล่าสุด</div>
+        <table>
+          <thead><tr><th>ลิงก์ / บริษัท</th><th>สถานะ</th><th>ตรวจพบ</th><th>KPI แอดมิน</th><th>KPI ไอที</th></tr></thead>
+          <tbody>
+            <tr><td><b>หน้าสมัครสมาชิก</b><div class="sub">บริษัท A · https://reg.example.com</div></td><td><span class="badge b-open">เปิด (รอจัดการ)</span></td><td class="sub">7 ส.ค. 14:32</td><td class="sub">รอ</td><td class="sub">รอ</td></tr>
+            <tr><td><b>หน้าเข้าเล่นหลัก</b><div class="sub">บริษัท A · https://play.example.com</div></td><td><span class="badge b-adm">แอดมินอัพเดตแล้ว</span></td><td class="sub">7 ส.ค. 11:05</td><td class="sub">6 นาที</td><td class="sub">รอ</td></tr>
+            <tr><td><b>หน้าโปรโมชันเดือนนี้</b><div class="sub">บริษัท A · https://promo.example.com</div></td><td><span class="badge b-closed">ปิดเคส</span></td><td class="sub">6 ส.ค. 20:14</td><td class="sub">9 นาที</td><td class="sub">18 นาที</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- COMPANIES -->
+    <section class="page" id="companies">
+      <div class="head"><div><h1>บริษัท / ห้อง LINE</h1><p>จัดการบริษัทและห้อง LINE — ลิงก์ทุกอันจะสังกัดบริษัท และระบุได้ว่ามาจากห้อง LINE ไหน</p></div></div>
+      <div class="card panel" style="display:flex;gap:8px;margin-bottom:20px;"><input class="input" placeholder="ชื่อบริษัทใหม่..." /><button class="btn btn-primary" style="white-space:nowrap;">+ เพิ่มบริษัท</button></div>
+
+      <div class="card company-card">
+        <div class="company-head"><div class="ci"><div class="ico">🏢</div><div><div class="name">บริษัท A</div><div class="sub">8 ลิงก์ · 2 ห้อง LINE</div></div></div>
+          <div><a class="lnk">เปลี่ยนชื่อ</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></div></div>
+        <div class="sub" style="margin-bottom:8px;">ห้อง LINE</div>
+        <div><span class="chip">ห้องแอดมิน A ✕</span><span class="chip">ห้องการตลาด A ✕</span></div>
+        <div style="display:flex;gap:8px;max-width:420px;margin-top:12px;"><input class="input" style="padding:7px 10px;" placeholder="เพิ่มห้อง LINE เช่น ห้องแอดมิน A" /><button class="btn btn-ghost" style="white-space:nowrap;">+ ห้อง</button></div>
+      </div>
+
+      <div class="card company-card">
+        <div class="company-head"><div class="ci"><div class="ico">🏢</div><div><div class="name">บริษัท B</div><div class="sub">4 ลิงก์ · 1 ห้อง LINE</div></div></div>
+          <div><a class="lnk">เปลี่ยนชื่อ</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></div></div>
+        <div class="sub" style="margin-bottom:8px;">ห้อง LINE</div>
+        <div><span class="chip">ห้องแอดมิน B ✕</span></div>
+        <div style="display:flex;gap:8px;max-width:420px;margin-top:12px;"><input class="input" style="padding:7px 10px;" placeholder="เพิ่มห้อง LINE" /><button class="btn btn-ghost" style="white-space:nowrap;">+ ห้อง</button></div>
+      </div>
+    </section>
+
+    <!-- MASTER DATA -->
+    <section class="page" id="links">
+      <div class="head">
+        <div><h1>Master Data ลิงก์</h1><p>คลังข้อมูลลิงก์ทั้งหมด รู้ทันทีว่าลิงก์ไหนคืออะไร บริษัทอะไร มาจากห้อง LINE ไหน</p></div>
+        <div class="tools">
+          <div class="cfilter">บริษัท: <select class="sel"><option>ทุกบริษัท</option><option>บริษัท A</option><option>บริษัท B</option></select></div>
+          <button class="btn btn-ghost">⬆ นำเข้า CSV</button><button class="btn btn-primary">+ เพิ่มลิงก์</button>
+        </div>
+      </div>
+      <div class="card panel" style="margin-bottom:16px;"><input class="input" placeholder="ค้นหา: ชื่อ / url / หมวด / บริษัท / ห้อง LINE" /></div>
+
+      <!-- การ์ดบริษัท A -->
+      <div class="card" style="overflow:hidden;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--brand-600);color:#fff;padding:12px 18px;">
+          <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🏢</span><b>บริษัท A</b><span style="font-size:12px;color:var(--brand-100);">3 ลิงก์</span></div>
+          <div style="display:flex;gap:6px;font-size:12px;"><span class="badge" style="background:rgba(255,255,255,.2);color:#fff;">ใช้ได้ 2</span><span class="badge" style="background:var(--red);color:#fff;">ใช้ไม่ได้ 1</span></div>
+        </div>
+        <table>
+          <thead><tr><th style="padding-left:28px;">ชื่อ / ลิงก์</th><th>หมวด</th><th>สถานะ</th><th>เช็คล่าสุด</th><th>เฝ้าดู</th><th style="text-align:right;">จัดการ</th></tr></thead>
+          <tbody>
+            <tr style="background:#eff6ff;"><td colspan="6" style="padding:8px 16px;font-size:12px;font-weight:600;color:var(--brand-700);">💬 ห้อง LINE: ห้องแอดมิน A <span style="font-weight:400;color:var(--slate-400);">· 2 ลิงก์</span></td></tr>
+            <tr><td style="padding-left:28px;"><b>หน้าเข้าเล่นหลัก</b><div><a class="lnk">https://play.example.com</a></div><div class="sub">สำรอง: https://play2.example.com</div></td>
+              <td class="sub">ทางเข้า</td><td><span class="badge b-up">● ใช้งานได้</span></td><td class="sub">7 ส.ค. 14:35</td><td><span class="badge b-up">เปิด</span></td><td style="text-align:right;"><a class="lnk">แก้ไข</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></td></tr>
+            <tr><td style="padding-left:28px;"><b>หน้าสมัครสมาชิก</b><div><a class="lnk">https://reg.example.com</a></div></td>
+              <td class="sub">สมัคร</td><td><span class="badge b-down">● ใช้ไม่ได้</span></td><td class="sub">7 ส.ค. 14:35</td><td><span class="badge b-up">เปิด</span></td><td style="text-align:right;"><a class="lnk">แก้ไข</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></td></tr>
+            <tr style="background:#eff6ff;"><td colspan="6" style="padding:8px 16px;font-size:12px;font-weight:600;color:var(--brand-700);">💬 ห้อง LINE: ห้องการตลาด A <span style="font-weight:400;color:var(--slate-400);">· 1 ลิงก์</span></td></tr>
+            <tr><td style="padding-left:28px;"><b>หน้าโปรโมชันเดือนนี้</b><div><a class="lnk">https://promo.example.com</a></div></td>
+              <td class="sub">โปรโมชัน</td><td><span class="badge b-up">● ใช้งานได้</span></td><td class="sub">7 ส.ค. 14:35</td><td><span class="badge b-up">เปิด</span></td><td style="text-align:right;"><a class="lnk">แก้ไข</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- การ์ดบริษัท B -->
+      <div class="card" style="overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--brand-600);color:#fff;padding:12px 18px;">
+          <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🏢</span><b>บริษัท B</b><span style="font-size:12px;color:var(--brand-100);">1 ลิงก์</span></div>
+          <div style="display:flex;gap:6px;font-size:12px;"><span class="badge" style="background:rgba(255,255,255,.2);color:#fff;">ใช้ได้ 0</span></div>
+        </div>
+        <table>
+          <thead><tr><th style="padding-left:28px;">ชื่อ / ลิงก์</th><th>หมวด</th><th>สถานะ</th><th>เช็คล่าสุด</th><th>เฝ้าดู</th><th style="text-align:right;">จัดการ</th></tr></thead>
+          <tbody>
+            <tr style="background:#eff6ff;"><td colspan="6" style="padding:8px 16px;font-size:12px;font-weight:600;color:var(--brand-700);">💬 ห้อง LINE: ห้องแอดมิน B <span style="font-weight:400;color:var(--slate-400);">· 1 ลิงก์</span></td></tr>
+            <tr><td style="padding-left:28px;"><b>หน้าคู่มือการใช้งาน</b><div><a class="lnk">https://help.example.net</a></div></td>
+              <td class="sub">ทั่วไป</td><td><span class="badge b-unknown">● ยังไม่เช็ค</span></td><td class="sub">-</td><td><span class="badge b-unknown">ปิด</span></td><td style="text-align:right;"><a class="lnk">แก้ไข</a> &nbsp; <a class="lnk" style="color:var(--red)">ลบ</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- INCIDENTS -->
+    <section class="page" id="inc">
+      <div class="head">
+        <div><h1>เหตุการณ์ & KPI</h1><p>ติดตามลิงก์ที่ล่ม จับเวลาการตอบสนองของแอดมินและไอที</p></div>
+        <div class="cfilter">บริษัท: <select class="sel"><option>ทุกบริษัท</option><option>บริษัท A</option><option>บริษัท B</option></select></div>
+      </div>
+      <div class="grid g2" style="margin-bottom:22px;">
+        <div class="card inc">
+          <div class="top"><div><div class="name">หน้าสมัครสมาชิก</div><div class="sub" style="color:var(--brand-600)">https://reg.example.com</div><div class="sub" style="margin-top:4px;">🏢 บริษัท A · 🏷️ สมัคร · ตรวจพบ 7 ส.ค. 14:32</div></div><span class="badge b-open">เปิด (รอจัดการ)</span></div>
+          <div class="kpipills"><div class="pill wait"><div class="p1">แอดมินอัพเดต</div><div class="p2">รอดำเนินการ</div></div><div class="pill wait"><div class="p1">ไอทีชี้แจง/สำรอง</div><div class="p2">รอดำเนินการ</div></div></div>
+        </div>
+        <div class="card inc">
+          <div class="top"><div><div class="name">หน้าเข้าเล่นหลัก</div><div class="sub" style="color:var(--brand-600)">https://play.example.com</div><div class="sub" style="margin-top:4px;">🏢 บริษัท A · 🏷️ ทางเข้า · ตรวจพบ 7 ส.ค. 11:05</div></div><span class="badge b-adm">แอดมินอัพเดตแล้ว</span></div>
+          <div class="kpipills"><div class="pill done"><div class="p1">แอดมินอัพเดต</div><div class="p2">6 นาที</div></div><div class="pill wait"><div class="p1">ไอทีชี้แจง/สำรอง</div><div class="p2">รอดำเนินการ</div></div></div>
+          <div class="cause"><b>สาเหตุ (IT):</b> กำลังตรวจสอบ</div>
+        </div>
+      </div>
+
+      <div class="sec-title">ตัวอย่าง: หน้าต่างจัดการเคส</div>
+      <div class="card panel" style="max-width:620px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+          <div><div class="name" style="font-size:17px;">หน้าสมัครสมาชิก</div><div class="sub">🏢 บริษัท A</div><div class="sub" style="color:var(--brand-600)">https://reg.example.com</div></div>
+          <span class="badge b-open">เปิด (รอจัดการ)</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;margin:6px 0 18px;">
+          <div style="display:flex;align-items:center;gap:12px;"><span style="width:11px;height:11px;border-radius:50%;background:var(--green);"></span><span style="color:var(--slate-700)">ตรวจพบล่ม</span><span style="margin-left:auto;font-size:12px;color:var(--slate-400)">7 ส.ค. 14:32</span></div>
+          <div style="display:flex;align-items:center;gap:12px;"><span style="width:11px;height:11px;border-radius:50%;background:var(--green);"></span><span style="color:var(--slate-700)">ส่งแจ้งเตือน Telegram</span><span style="margin-left:auto;font-size:12px;color:var(--slate-400)">7 ส.ค. 14:32</span></div>
+          <div style="display:flex;align-items:center;gap:12px;"><span style="width:11px;height:11px;border-radius:50%;background:var(--red);"></span><span style="color:var(--slate-400)">แอดมินอัพเดตลิงก์ (จบหน้าที่แอดมิน)</span><span style="margin-left:auto;font-size:12px;color:var(--slate-400)">-</span></div>
+          <div style="display:flex;align-items:center;gap:12px;"><span style="width:11px;height:11px;border-radius:50%;background:#e2e8f0;"></span><span style="color:var(--slate-400)">ไอทีชี้แจงสาเหตุ + ลิงก์สำรอง</span><span style="margin-left:auto;font-size:12px;color:var(--slate-400)">-</span></div>
+        </div>
+        <div style="border:1px solid #eef2f9;border-radius:14px;padding:16px;margin-bottom:12px;">
+          <div style="font-weight:600;color:var(--slate-700);margin-bottom:10px;">👤 ส่วนของแอดมิน</div>
+          <div class="sub" style="margin-bottom:4px;">เปลี่ยนเป็นลิงก์ใหม่ (จะอัพเดต Master data ให้บอทอ่านใหม่)</div>
+          <input class="input" placeholder="https://ลิงก์ใหม่..." style="margin-bottom:10px;" />
+          <button class="btn btn-primary" style="width:100%;">บันทึกลิงก์ใหม่ + จบหน้าที่แอดมิน</button>
+        </div>
+        <div style="border:1px solid #eef2f9;border-radius:14px;padding:16px;">
+          <div style="font-weight:600;color:var(--slate-700);margin-bottom:10px;">🛠️ ส่วนของไอที</div>
+          <div class="sub" style="margin-bottom:4px;">สาเหตุ + ลิงก์สำรอง</div>
+          <input class="input" placeholder="เช่น โดเมนถูกบล็อก" style="margin-bottom:10px;" />
+          <input class="input" placeholder="https://ลิงก์สำรอง..." style="margin-bottom:10px;" />
+          <button class="btn btn-primary" style="width:100%;">บันทึกสาเหตุ + ลิงก์สำรอง (จบหน้าที่ไอที)</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  document.querySelectorAll('[data-tab]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const t=el.getAttribute('data-tab');
+      document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.getAttribute('data-tab')===t));
+      document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===t));
+      window.scrollTo(0,0);
+    });
+  });
+  const data=[0,1,0,2,1,0,3,1,0,1,2,0,1,2], max=Math.max(...data,1), bars=document.getElementById('bars'), today=new Date('2026-08-07');
+  data.forEach((v,i)=>{ const d=new Date(today); d.setDate(d.getDate()-(13-i));
+    bars.insertAdjacentHTML('beforeend',`<div class="col"><div class="bar ${v>=3?'red':''}" style="height:${v/max*100}%"></div><div class="cap">${(d.getMonth()+1)}/${d.getDate()}</div></div>`); });
+</script>
+</body>
+</html>

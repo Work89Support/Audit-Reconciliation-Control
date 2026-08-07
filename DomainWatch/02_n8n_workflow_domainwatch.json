@@ -1,0 +1,267 @@
+{
+  "name": "DomainWatch — รับผลตรวจ ยืนยัน และแจ้งเตือน",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "domainwatch/probe",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "n01-webhook",
+      "name": "รับผลตรวจจาก Agent",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-260, 300],
+      "webhookId": "domainwatch-probe",
+      "notes": "Agent ที่ VPS แต่ละจุดตรวจยิง POST เข้ามาที่นี่ทุก 1 นาที",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// แปลงข้อมูลดิบจาก Agent ให้เป็นรูปแบบมาตรฐาน และคำนวณว่ารอบนี้ผ่านหรือไม่\nconst raw = $input.first().json;\nconst b = raw.body ?? raw;\n\nconst dns_ok     = b.dns_ok === true || b.dns_ok === 'true';\nconst tcp_ok     = b.tcp_ok === true || b.tcp_ok === 'true';\nconst http_ok    = b.http_ok === true || b.http_ok === 'true';\nconst keyword_ok = b.keyword_ok === true || b.keyword_ok === 'true';\n\nreturn [{\n  json: {\n    ts: new Date().toISOString(),\n    domain: b.domain,\n    checkpoint: b.checkpoint,\n    isp: b.isp ?? null,\n    region: b.region ?? 'TH',\n    dns_ok,\n    tcp_ok,\n    http_ok,\n    keyword_ok,\n    status_code: Number(b.status_code ?? 0),\n    latency_ms: b.latency_ms == null ? null : Number(b.latency_ms),\n    ssl_days_left: b.ssl_days_left == null ? null : Number(b.ssl_days_left),\n    ok: dns_ok && tcp_ok && http_ok && keyword_ok\n  }\n}];"
+      },
+      "id": "n02-normalize",
+      "name": "แปลงข้อมูลที่ Agent ส่งมา",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-PROJECT.supabase.co/rest/v1/probe_results",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "n03-save-probe",
+      "name": "บันทึกผลตรวจลง Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [180, 300],
+      "notes": "แก้ URL และ service key ก่อนใช้งาน",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "url": "=https://YOUR-PROJECT.supabase.co/rest/v1/probe_results?domain=eq.{{ $('แปลงข้อมูลที่ Agent ส่งมา').first().json.domain }}&order=ts.desc&limit=40",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_KEY" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n04-fetch-history",
+      "name": "ดึงผลตรวจล่าสุดของโดเมนนี้",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// กฎกันแจ้งเตือนหลอน: ต้อง Fail 2 ครั้งติดกัน จากอย่างน้อย 2 จุดตรวจ\nconst rows = $input.all().map(i => i.json).filter(r => r && r.domain);\nconst current = $('แปลงข้อมูลที่ Agent ส่งมา').first().json;\nconst domain = current.domain;\n\nconst byCheckpoint = {};\nfor (const r of rows) {\n  if (r.domain !== domain) continue;\n  (byCheckpoint[r.checkpoint] = byCheckpoint[r.checkpoint] || []).push(r);\n}\n\nconst failing = [];\nfor (const [cp, list] of Object.entries(byCheckpoint)) {\n  const last2 = list\n    .sort((a, b) => new Date(b.ts) - new Date(a.ts))\n    .slice(0, 2);\n  if (last2.length === 2 && last2.every(r => r.ok === false)) {\n    failing.push({ checkpoint: cp, region: last2[0].region, isp: last2[0].isp });\n  }\n}\n\nconst thFail      = failing.filter(c => c.region === 'TH').length;\nconst foreignFail = failing.filter(c => c.region !== 'TH').length;\nconst hasForeign  = rows.some(r => r.region !== 'TH');\nconst sslMin      = Math.min(...rows.map(r => r.ssl_days_left).filter(v => v != null).concat([9999]));\n\nreturn [{\n  json: {\n    domain,\n    confirmed: failing.length >= 2,\n    failing,\n    th_fail: thFail,\n    foreign_fail: foreignFail,\n    has_foreign_probe: hasForeign,\n    ssl_days_left: sslMin === 9999 ? null : sslMin,\n    checked_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "n05-confirm",
+      "name": "กฎยืนยัน 2 ครั้ง 2 จุดตรวจ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 300],
+      "notes": "หัวใจของการกันแจ้งเตือนผิดพลาด",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-confirmed",
+              "leftValue": "={{ $json.confirmed }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n06-if-confirmed",
+      "name": "ยืนยันแล้วว่าผิดปกติหรือไม่",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// แยกประเภทเหตุโดยเทียบผลจากจุดตรวจในไทยกับจุดตรวจต่างประเทศ\nconst d = $json;\nlet type, severity, action;\n\nif (d.th_fail >= 2 && d.foreign_fail === 0 && d.has_foreign_probe) {\n  type     = 'ถูกบล็อกระดับ ISP';\n  action   = 'สลับลิงก์กลางไปโดเมนสำรองถัดไปใน Domain Pool';\n  severity = d.th_fail >= 3 ? 'P1' : 'P2';\n} else if (d.th_fail >= 2 && d.foreign_fail >= 1) {\n  type     = 'เซิร์ฟเวอร์หรือผู้ให้บริการโฮสต์ล่ม';\n  action   = 'กู้เครื่องหรือ failover ไปเครื่องสำรอง และแจ้งผู้ให้บริการโฮสต์';\n  severity = 'P1';\n} else {\n  type     = 'ผิดปกติบางจุดตรวจ ยังสรุปสาเหตุไม่ได้';\n  action   = 'ตรวจสอบด้วยมือก่อน ยังไม่ต้องเปลี่ยนโดเมน';\n  severity = 'P2';\n}\n\nconst icon = severity === 'P1' ? '🔴' : '🟠';\nconst timeTH = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });\n\nconst message = [\n  icon + ' ' + severity + ' · ' + d.domain,\n  'ประเภทเหตุ: ' + type,\n  'จุดตรวจที่ล้มเหลว: ' + d.failing.map(f => f.checkpoint + (f.isp ? ' (' + f.isp + ')' : '')).join(', '),\n  'ในไทยล้มเหลว ' + d.th_fail + ' จุด · ต่างประเทศล้มเหลว ' + d.foreign_fail + ' จุด',\n  'สิ่งที่ต้องทำ: ' + action,\n  'เวลา: ' + timeTH,\n  '',\n  'กรุณากด Acknowledge ภายใน 5 นาที มิฉะนั้นระบบจะ Escalate อัตโนมัติ'\n].join('\\n');\n\nconst code = 'INC-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(Date.now()/1000 % 100000);\n\nreturn [{ json: Object.assign({}, d, { code, type, severity, action, message }) }];"
+      },
+      "id": "n07-classify",
+      "name": "แยกประเภทและระดับความรุนแรง",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-PROJECT.supabase.co/rest/v1/incidents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ code: $json.code, domain: $json.domain, severity: $json.severity, type: $json.type, action: $json.action, failing_checkpoints: $json.failing }) }}",
+        "options": {}
+      },
+      "id": "n08-save-incident",
+      "name": "บันทึก Incident ลง Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botYOUR_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: 'YOUR_WARROOM_CHAT_ID', text: $('แยกประเภทและระดับความรุนแรง').first().json.message }) }}",
+        "options": {}
+      },
+      "id": "n09-telegram",
+      "name": "แจ้งเตือนเข้ากลุ่ม War Room",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 200],
+      "notes": "แก้ bot token และ chat id ก่อนใช้งาน",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-p1",
+              "leftValue": "={{ $('แยกประเภทและระดับความรุนแรง').first().json.severity }}",
+              "rightValue": "P1",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n10-if-p1",
+      "name": "เป็นเหตุระดับ P1 หรือไม่",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1740, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/YOUR_ACCOUNT_SID/Calls.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Basic YOUR_BASE64_SID_COLON_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "To", "value": "+66XXXXXXXXX" },
+            { "name": "From", "value": "+1XXXXXXXXXX" },
+            { "name": "Twiml", "value": "<Response><Say language=\"th-TH\">แจ้งเตือนระดับวิกฤต ระบบตรวจพบว่าโดเมนหลักเข้าใช้งานไม่ได้จากผู้ให้บริการหลายราย กรุณาตรวจสอบและกดรับเรื่องทันที</Say></Response>" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n11-call",
+      "name": "โทรแจ้ง IT เวร (เฉพาะ P1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 120],
+      "notes": "แก้เบอร์ปลายทางและข้อมูล Twilio ก่อนใช้งาน",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "n12-noop-p2",
+      "name": "P2 ขึ้นไป — แจ้งทาง Telegram พอ",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1960, 280]
+    },
+    {
+      "parameters": {},
+      "id": "n13-noop-ok",
+      "name": "ยังไม่เข้าเกณฑ์ — ไม่ต้องแจ้งเตือน",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1080, 420]
+    }
+  ],
+  "connections": {
+    "รับผลตรวจจาก Agent": {
+      "main": [[{ "node": "แปลงข้อมูลที่ Agent ส่งมา", "type": "main", "index": 0 }]]
+    },
+    "แปลงข้อมูลที่ Agent ส่งมา": {
+      "main": [[{ "node": "บันทึกผลตรวจลง Supabase", "type": "main", "index": 0 }]]
+    },
+    "บันทึกผลตรวจลง Supabase": {
+      "main": [[{ "node": "ดึงผลตรวจล่าสุดของโดเมนนี้", "type": "main", "index": 0 }]]
+    },
+    "ดึงผลตรวจล่าสุดของโดเมนนี้": {
+      "main": [[{ "node": "กฎยืนยัน 2 ครั้ง 2 จุดตรวจ", "type": "main", "index": 0 }]]
+    },
+    "กฎยืนยัน 2 ครั้ง 2 จุดตรวจ": {
+      "main": [[{ "node": "ยืนยันแล้วว่าผิดปกติหรือไม่", "type": "main", "index": 0 }]]
+    },
+    "ยืนยันแล้วว่าผิดปกติหรือไม่": {
+      "main": [
+        [{ "node": "แยกประเภทและระดับความรุนแรง", "type": "main", "index": 0 }],
+        [{ "node": "ยังไม่เข้าเกณฑ์ — ไม่ต้องแจ้งเตือน", "type": "main", "index": 0 }]
+      ]
+    },
+    "แยกประเภทและระดับความรุนแรง": {
+      "main": [[{ "node": "บันทึก Incident ลง Supabase", "type": "main", "index": 0 }]]
+    },
+    "บันทึก Incident ลง Supabase": {
+      "main": [[{ "node": "แจ้งเตือนเข้ากลุ่ม War Room", "type": "main", "index": 0 }]]
+    },
+    "แจ้งเตือนเข้ากลุ่ม War Room": {
+      "main": [[{ "node": "เป็นเหตุระดับ P1 หรือไม่", "type": "main", "index": 0 }]]
+    },
+    "เป็นเหตุระดับ P1 หรือไม่": {
+      "main": [
+        [{ "node": "โทรแจ้ง IT เวร (เฉพาะ P1)", "type": "main", "index": 0 }],
+        [{ "node": "P2 ขึ้นไป — แจ้งทาง Telegram พอ", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

@@ -1,0 +1,18 @@
+# PostgreSQL สำหรับรันในเครื่อง (local dev)
+# ใช้งาน: docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: domainwatch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: domainwatch
+      POSTGRES_PASSWORD: domainwatch
+      POSTGRES_DB: domainwatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - domainwatch_pgdata:/var/lib/postgresql/data
+
+volumes:
+  domainwatch_pgdata:

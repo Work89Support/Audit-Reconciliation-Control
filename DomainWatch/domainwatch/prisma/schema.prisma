@@ -1,0 +1,148 @@
+// DomainWatch - Prisma schema (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// บริษัท/ลูกค้า — หนึ่งบริษัทมีได้หลายห้อง LINE และหลายลิงก์
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineGroups LineGroup[]
+  links      Link[]
+
+  @@index([isActive])
+}
+
+/// ห้อง LINE ภายใต้บริษัท (ที่มาของลิงก์)
+model LineGroup {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String // ชื่อห้อง เช่น "ห้องแอดมิน A"
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  links Link[]
+
+  @@index([companyId])
+}
+
+/// Master data ของลิงก์/หน้าเว็บที่ต้องเฝ้าดู
+model Link {
+  id          String   @id @default(cuid())
+  companyId   String // สังกัดบริษัท
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lineGroupId String? // มาจากห้อง LINE ไหน (ถ้าระบุ)
+  lineGroup   LineGroup? @relation(fields: [lineGroupId], references: [id], onDelete: SetNull)
+
+  name        String // ชื่อที่พนักงานเข้าใจง่าย เช่น "หน้าเข้าเล่นหลัก"
+  url         String // ลิงก์หลัก
+  category    String?  @default("ทั่วไป") // หมวดหมู่ เช่น หน้าหลัก / ทางเข้า / โปรโมชัน
+  backupUrl   String? // ลิงก์สำรอง (IT เตรียมไว้)
+  note        String? // หมายเหตุ
+  isActive    Boolean  @default(true) // เปิดการเฝ้าดูหรือไม่
+
+  // สถานะล่าสุดจากการเช็ค
+  lastStatus    LinkStatus @default(UNKNOWN)
+  lastCheckedAt DateTime?
+  lastHttpCode  Int?
+  lastResponseMs Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checkLogs CheckLog[]
+  incidents Incident[]
+
+  @@index([companyId])
+  @@index([lineGroupId])
+  @@index([lastStatus])
+  @@index([category])
+}
+
+enum LinkStatus {
+  UP // ใช้งานได้
+  DOWN // ใช้งานไม่ได้
+  UNKNOWN // ยังไม่เคยเช็ค
+}
+
+/// บันทึกทุกครั้งที่บอทยิงเช็ค (ประวัติ)
+model CheckLog {
+  id         String     @id @default(cuid())
+  linkId     String
+  link       Link       @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  status     LinkStatus
+  httpCode   Int?
+  responseMs Int?
+  error      String?
+  checkedAt  DateTime   @default(now())
+
+  @@index([linkId, checkedAt])
+}
+
+/// เหตุการณ์ลิงก์ล่ม 1 ครั้ง = 1 incident (เปิดตอนล่ม ปิดตอนกลับมาใช้ได้/แก้เสร็จ)
+model Incident {
+  id     String @id @default(cuid())
+  linkId String
+  link   Link   @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  status IncidentStatus @default(OPEN)
+
+  // ---- Timeline หลัก (ใช้คำนวณ KPI) ----
+  detectedAt   DateTime  @default(now()) // บอทตรวจพบว่าล่ม + เริ่มใช้ไม่ได้ตอนไหน
+  notifiedAt   DateTime? // ส่งแจ้งเตือนสำเร็จ
+  adminAckAt   DateTime? // แอดมินรับทราบ (กดรับเรื่อง)
+  adminUpdatedAt DateTime? // แอดมินอัพเดต/บันทึกลิงก์ใหม่ในระบบ = จบหน้าที่แอดมิน
+  itAckAt      DateTime? // IT รับเรื่อง
+  itResolvedAt DateTime? // IT ชี้แจงสาเหตุ + ให้ลิงก์สำรองแล้ว
+  resolvedAt   DateTime? // ปิดเคส (ลิงก์กลับมาใช้ได้)
+
+  // ---- รายละเอียด ----
+  cause       String? // สาเหตุที่ IT ชี้แจง เช่น โดนบล็อกโดเมน
+  newUrl      String? // ลิงก์ใหม่ที่แอดมินเปลี่ยน
+  backupUrl   String? // ลิงก์สำรองที่ IT เตรียม
+  adminUserId String?
+  itUserId    String?
+
+  // ---- KPI ที่คำนวณไว้ (นาที) เพื่อ query เร็ว ----
+  adminResponseMin Int? // detected/notified -> adminUpdated
+  itResponseMin    Int? // detected/notified -> itResolved
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([linkId, detectedAt])
+}
+
+enum IncidentStatus {
+  OPEN // เพิ่งตรวจพบ ยังไม่มีใครจัดการ
+  ADMIN_UPDATED // แอดมินอัพเดตลิงก์ในระบบแล้ว
+  IT_RESOLVED // IT ชี้แจงสาเหตุ/ให้ลิงก์สำรองแล้ว
+  CLOSED // ปิดเคส (ลิงก์กลับมาใช้ได้)
+}
+
+/// ผู้ใช้อย่างง่าย (แอดมิน/ไอที) - เผื่อขยายระบบ auth ภายหลัง
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  IT
+}
