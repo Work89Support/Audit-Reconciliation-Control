@@ -341,6 +341,16 @@ const Engine = (() => {
     const t0 = performance.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
+    /* อายุเคสสำหรับ SLA: ถ้าผู้เรียกส่ง settings.asOf (เวลาจริง เป็น epoch ms) มา จะคิดอายุจากเวลาที่ผ่านจริง
+       ถ้าไม่ส่งมา จะ fallback เป็นสูตรเดิม (สมมติ "ตอนนี้" = ปลายวันที่ตรวจ) เพื่อความเข้ากันได้กับข้อมูลย้อนหลัง/ตัวอย่าง */
+    const asOf = settings && settings.asOf ? Number(settings.asOf) : null;
+    const ageHoursOf = (src) => {
+      if (asOf && src && src.date) {
+        const base = Date.parse(src.date + "T00:00:00");
+        if (Number.isFinite(base)) return Math.max(1, Math.floor((asOf - (base + src.sec * 1000)) / 3600000));
+      }
+      return 1 + Math.floor((86400 - src.sec) / 3600);
+    };
     /* statement ของ KBANK/SCB ให้เวลาแค่ HH:MM — ต้องเผื่ออย่างน้อย 1 นาที */
     const minuteFloor = settings.minuteTolerance ?? 60;
     const tolOf = (d, s, b) => {
@@ -545,7 +555,7 @@ const Engine = (() => {
       let severity = severityBase;
       if (severity !== "critical" && riskAmount > 10000) severity = "critical";
       const slaHours = SLA_OF[severity];
-      const ageHours = 1 + Math.floor((86400 - sec) / 3600);
+      const ageHours = ageHoursOf(src);
       return {
         sortSec: sec,
         date: src.date,

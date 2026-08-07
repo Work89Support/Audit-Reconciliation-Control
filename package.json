@@ -1,0 +1,9 @@
+{
+  "name": "audit-reconciliation-control",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
+  "scripts": {
+    "test": "node tests/engine.test.mjs"
+  }
+}

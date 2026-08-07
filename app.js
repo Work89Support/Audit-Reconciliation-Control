@@ -2934,6 +2934,7 @@ async function runReconcileFromImport(opts = {}) {
       rulesOnly: true,
     };
   } else {
+    DB.settings.asOf = Date.now(); // คิดอายุ SLA จากเวลาจริงของการตรวจ
     result = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (pct, label) => setProgress(pct, label));
   }
   /* รวม exception จากกฎธุรกิจเข้ากับผลจับคู่ แล้วออกรหัสใหม่ให้ต่อเนื่อง */
@@ -3571,6 +3572,7 @@ VIEWS.schedule = (root) => {
     });
     const stm = scn.stm.map((r) => toRec(r, "stm"));
     const bo = scn.bo.map((r) => toRec(r, "bo"));
+    delete DB.settings.asOf; // scenario จำลองใช้สูตรอายุแบบปลายวัน ไม่ผูกเวลาจริง
     const res = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (p, l) => setProgress(0.1 + p * 0.9, l));
     hideProgress();
     const perSec = Math.round((stm.length + bo.length) / (res.elapsedMs / 1000));

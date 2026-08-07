@@ -31,16 +31,33 @@ const Sb = (() => {
   const signedIn = () => !!session && session.expires_at > Date.now() / 1000 + 30;
   const currentEmail = () => (session && session.user ? session.user.email : "");
 
-  /* เก็บ session ไว้ให้รีเฟรชแล้วไม่ต้องล็อกอินใหม่ (เก็บใน Store เดียวกับ state อื่น) */
+  /* เก็บ session ไว้ให้รีเฟรชแล้วไม่ต้องล็อกอินใหม่
+     ใช้ sessionStorage (ล้างอัตโนมัติเมื่อปิดแท็บ/เบราว์เซอร์) แทน localStorage
+     เพื่อลดความเสี่ยงถูกขโมย access_token/refresh_token กรณีเครื่องใช้ร่วมกันหรือมีช่อง XSS
+     ระบบ audit เก็บข้อมูลการเงิน จึงไม่ควรฝัง token ถาวรในเบราว์เซอร์ */
+  const SB_SESSION_KEY = "audit-sb-session";
   function restore() {
-    const s = Store.data.sbSession;
+    /* ล้าง session เก่าที่เวอร์ชันก่อนหน้าเคยเก็บถาวรใน localStorage ทิ้ง (migration ครั้งเดียว) */
+    if (Store.data.sbSession) {
+      delete Store.data.sbSession;
+      Store.persist();
+    }
+    let s = null;
+    try {
+      s = JSON.parse(sessionStorage.getItem(SB_SESSION_KEY) || "null");
+    } catch (e) {
+      s = null;
+    }
     if (s && s.expires_at > Date.now() / 1000 + 30) session = s;
     return signedIn();
   }
   function keep(s) {
     session = s;
-    Store.data.sbSession = s;
-    Store.persist();
+    try {
+      sessionStorage.setItem(SB_SESSION_KEY, JSON.stringify(s));
+    } catch (e) {
+      /* sessionStorage ใช้ไม่ได้ก็เก็บแค่ในหน่วยความจำ — ปลอดภัยกว่าเก็บถาวร */
+    }
   }
 
   /* ---------------- HTTP ---------------- */
@@ -91,8 +108,13 @@ const Sb = (() => {
 
   function signOut() {
     session = null;
-    delete Store.data.sbSession;
-    Store.persist();
+    try {
+      sessionStorage.removeItem(SB_SESSION_KEY);
+    } catch (e) {}
+    if (Store.data.sbSession) {
+      delete Store.data.sbSession;
+      Store.persist();
+    }
   }
 
   /* ---------------- ทะเบียนไฟล์ ---------------- */

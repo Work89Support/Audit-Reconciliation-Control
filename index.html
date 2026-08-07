@@ -82,8 +82,15 @@
       </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!--
+      หมายเหตุความปลอดภัย/ออฟไลน์:
+      เดิมโหลด SheetJS (xlsx) และ html2canvas จาก cdnjs — ตัดออกแล้ว เพราะ
+        • อ่าน/เขียน Excel ใช้ XlsxReader/XlsxWriter ที่เขียนเอง(ด้านล่าง) ทำงานออฟไลน์ได้เต็มรูปแบบ
+        • จับภาพรายงานใช้ตัวจับภาพในตัว (SVG foreignObject) ใน export.js เป็น fallback อยู่แล้ว
+      ผลลัพธ์: ไม่มี dependency ภายนอกตอนรัน = ไม่เสี่ยง supply-chain และใช้งานได้แม้ไม่มีเน็ต
+      ถ้าต้องการ SheetJS/html2canvas เต็มรูปแบบในอนาคต ให้ดาวน์โหลดมาไว้ใน vendor/ พร้อมใส่ integrity (SRI)
+      แล้วค่อยเพิ่ม <script src="vendor/..."> — อย่าอ้างอิง CDN ตรงๆ โดยไม่มี SRI
+    -->
     <script src="xlsx-reader.js"></script>
     <script src="formats.js"></script>
     <script src="pdf-stm.js"></script>
