@@ -139,7 +139,7 @@ const XlsxReader = (() => {
     if (Number.isNaN(d.getTime())) return String(v);
     const date = `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
     if (!withTime && frac < 1e-9) return date;
-    let sec = Math.round(frac * 86400);
+    let sec = Math.min(Math.round(frac * 86400), 86399); // กันปัดขึ้นเป็น 24:00:00
     const h = Math.floor(sec / 3600);
     sec -= h * 3600;
     const mi = Math.floor(sec / 60);
@@ -186,7 +186,9 @@ const XlsxReader = (() => {
           else if (type === "b") val = v === "1" ? "TRUE" : "FALSE";
           else {
             const num = parseFloat(v);
-            val = dstyles.has(style) && Number.isFinite(num) && num > 20000 ? serialToText(num, true) : v;
+            /* ถ้า style เป็นรูปแบบวันที่/เวลาอยู่แล้ว ให้เชื่อ style และแปลงทุกค่าที่ > 0
+               (เดิมตัดค่าที่ ≤ 20000 ทิ้ง ทำให้คอลัมน์เวลาอย่างเดียว/วันที่ก่อนปี 1954 อ่านเป็นเลขดิบ) */
+            val = dstyles.has(style) && Number.isFinite(num) && num > 0 ? serialToText(num, true) : v;
           }
         }
         while (cells.length < idx) cells.push("");

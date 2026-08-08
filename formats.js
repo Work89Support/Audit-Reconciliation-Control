@@ -97,7 +97,11 @@ const Formats = (() => {
     if (!s) return null;
     let date = null;
     let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (m) date = `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+    if (m) {
+      let y = +m[1];
+      if (y > 2400) y -= 543; // พ.ศ. -> ค.ศ. (กรณี BO ส่งปี พ.ศ. มาในรูปแบบ ISO)
+      date = `${y}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+    }
     if (!date) {
       m = s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
       if (m) {

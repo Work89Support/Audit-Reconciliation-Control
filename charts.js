@@ -204,7 +204,7 @@ const Charts = (() => {
       p.addEventListener("mousemove", (e) => {
         const it = items[+p.dataset.i];
         showTip(
-          `<p class="tip-title">${esc(String(it.label).replace("\n", " "))}</p><div class="tip-row"><i style="background:${it.color || opt.color || PALETTE.s1}"></i><span>${esc(opt.metric || "จำนวน")}</span><b>${opt.money ? fmtMoney(it.value) : fmtInt(it.value)}${opt.unit || ""}</b></div>${it.hint ? `<p class="tip-note">${esc(it.hint)}</p>` : ""}`,
+          `<p class="tip-title">${esc(String(it.label).replace(/\n/g, " "))}</p><div class="tip-row"><i style="background:${it.color || opt.color || PALETTE.s1}"></i><span>${esc(opt.metric || "จำนวน")}</span><b>${opt.money ? fmtMoney(it.value) : fmtInt(it.value)}${opt.unit || ""}</b></div>${it.hint ? `<p class="tip-note">${esc(it.hint)}</p>` : ""}`,
           e,
         );
       });
@@ -283,10 +283,12 @@ const Charts = (() => {
   function spark(values, color) {
     const W = 96;
     const H = 28;
+    if (!values || !values.length) return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"></svg>`;
     const max = Math.max(...values);
     const min = Math.min(...values);
     const span = max - min || 1;
-    const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - ((v - min) / span) * (H - 6)}`).join(" L");
+    const denom = values.length - 1 || 1; // กันหาร 0 เมื่อมีจุดเดียว
+    const pts = values.map((v, i) => `${(i / denom) * W},${H - 2 - ((v - min) / span) * (H - 6)}`).join(" L");
     return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="M${pts}" fill="none" stroke="${color || PALETTE.s1}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 

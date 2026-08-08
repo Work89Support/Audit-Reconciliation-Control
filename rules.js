@@ -217,9 +217,9 @@ const Rules = (() => {
     const seen = new Map();
     /* นับเฉพาะรายการที่คนกดเอง (เติมมือ/ถอนมือ/manual) — auto ที่ลูกค้าฝากซ้ำเป็นเรื่องปกติ */
     records.filter(isManual).forEach((r) => {
-      const k = [r.account, r.amount.toFixed(2), r.direction, r.memberCode || r.custAccount || ""].join("|");
+      const k = [r.date, r.account, r.amount.toFixed(2), r.direction, r.memberCode || r.custAccount || ""].join("|");
       const prev = seen.get(k);
-      if (prev && Math.abs(r.boSec - prev.boSec) <= windowSec && r.ref !== prev.ref) {
+      if (prev && r.date === prev.date && Math.abs(r.boSec - prev.boSec) <= windowSec && r.ref !== prev.ref) {
         out.push(
           mk("duplicate", {
             ...r,

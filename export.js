@@ -113,8 +113,10 @@ const Exporter = (() => {
       const scale = opts.scale || 2;
 
       const clone = el.cloneNode(true);
-      clone.querySelectorAll(".no-capture, .panel-cam").forEach((n) => n.remove());
+      /* ต้อง inline สไตล์ตอนโครงสร้างยังตรงกับต้นฉบับก่อน แล้วค่อยลบโหนดที่ไม่ต้องจับภาพ
+         (ถ้าลบก่อน ลำดับลูกจะเลื่อน ทำให้ก๊อปสไตล์ผิดโหนด) */
       inlineStyles(el, clone);
+      clone.querySelectorAll(".no-capture, .panel-cam").forEach((n) => n.remove());
       clone.style.width = w + "px";
       clone.style.margin = "0";
       clone.style.boxShadow = "none";

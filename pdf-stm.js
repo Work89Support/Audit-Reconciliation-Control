@@ -69,7 +69,7 @@ const PdfStm = (() => {
     const m = String(v || "").match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
     if (!m) return null;
     let y = +m[3];
-    if (y < 100) y += y > 50 ? 2000 : 2000; // 26 -> 2026
+    if (y < 100) y += 2000; // 26 -> 2026 (statement ใช้ปี 2 หลักเป็น ค.ศ. 20xx)
     if (y > 2400) y -= 543;
     return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
   }
@@ -80,7 +80,7 @@ const PdfStm = (() => {
 
   /* ---------------- ตรวจธนาคารและเลขบัญชี ---------------- */
   function header(pages) {
-    const blob = pages[0].map((l) => l.text).join("\n");
+    const blob = (pages[0] || []).map((l) => l.text).join("\n");
     let bank = null;
     if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(blob)) bank = "SCB";
     else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(blob)) bank = "KBANK";
@@ -228,7 +228,7 @@ const PdfStm = (() => {
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
     rows.forEach((r, i) => {
-      if (r.sec === null || !r.amount) return drop("อ่านเวลาหรือยอดไม่ได้");
+      if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
       if (businessDate && r.date && r.date !== businessDate) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       records.push({
@@ -242,7 +242,7 @@ const PdfStm = (() => {
         direction: r.direction,
         account: head.account || "UNKNOWN",
         bank: head.bank || "",
-        channel: head.bank || "",
+        channel: r.channel || head.bank || "",
         company,
         username: null,
         ref: null,
