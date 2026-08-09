@@ -2815,6 +2815,29 @@ async function ingestRaw(name, text, size) {
     else rows = Engine.parseCSV(text);
     norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
   }
+  /* แท็กด้วยทะเบียนบัญชี (บริษัทย่อย/บัญชี/ผู้ให้บริการ) + normalize เลขบัญชีให้เป็นรูปแบบเดียว
+     เพื่อให้ STM (ธนาคาร) กับ BO/PM จับคู่กันได้แม้เขียนเลขบัญชีต่างรูปแบบ (ขีด/เบอร์ TrueMoney) */
+  let tagSubco = "",
+    tagProvider = "",
+    tagAccount = "";
+  if (typeof Registry !== "undefined") {
+    let tag = null;
+    if (/\.pdf$/i.test(name) && norm.header && norm.header.account) {
+      tagAccount = Registry.normalizeAccount(norm.header.account, norm.header.bank);
+      tag = Registry.byAccount(tagAccount) || Registry.matchFile(name).match;
+    } else {
+      tag = Registry.matchFile(name).match;
+    }
+    const bk = (norm.format && norm.format.bank) || (tag && tag.bank) || (norm.header && norm.header.bank) || "";
+    (norm.records || []).forEach((r) => {
+      if (r.account && !r.isPmChannel && /\d/.test(String(r.account))) r.account = Registry.normalizeAccount(r.account, bk || r.bank);
+    });
+    tagSubco = (tag && tag.subco) || (norm.format && norm.format.company) || "";
+    const r0 = (norm.records || [])[0];
+    tagProvider = (r0 && r0.isPmChannel && r0.channel) || (tag && tag.provider) || "";
+    if (tagSubco) (norm.records || []).forEach((r) => { if (!r.subco) r.subco = tagSubco; });
+  }
+
   ImportState.files = ImportState.files.filter((f) => f.name !== name);
   ImportState.files.push({
     name,
@@ -2826,6 +2849,9 @@ async function ingestRaw(name, text, size) {
     aux: norm.aux || [],
     dropped: norm.dropped,
     warnings: norm.warnings,
+    subco: tagSubco,
+    provider: tagProvider,
+    tagAccount,
   });
   const kind = norm.format.realLabel || norm.format.source.toUpperCase() + (norm.format.bank ? " / " + norm.format.bank : "");
   logAction("import", "source_file", name, `นำเข้า ${(norm.records.length || (norm.aux || []).length)} รายการ (${kind})`);
@@ -3099,7 +3125,7 @@ VIEWS.import = (root) => {
                 .map(
                   (f) => `<tr>
               <td><b>${h(f.name)}</b>${f.warnings.length ? `<small class="sub danger">${h(f.warnings[0])}</small>` : ""}</td>
-              <td>${h(f.format.realLabel || srcName[f.format.source] || "")}${f.format.bank ? ` <span class="badge blue">${h(f.format.bank)}</span>` : ""}${f.format.company ? ` <span class="badge violet">${h(f.format.company)}</span>` : ""}</td>
+              <td>${h(f.format.realLabel || srcName[f.format.source] || "")}${f.format.bank ? ` <span class="badge blue">${h(f.format.bank)}</span>` : ""}${f.format.company ? ` <span class="badge violet">${h(f.format.company)}</span>` : ""}${f.subco || f.tagAccount || f.provider ? ` <span class="badge green" title="แท็กจากทะเบียนบัญชี">${h([f.subco, f.tagAccount || f.provider].filter(Boolean).join(" · "))}</span>` : ""}</td>
               <td class="right tnum">${num(f.rowCount || (f.records.length + (f.aux || []).length))}</td>
               <td class="right tnum">${num(f.records.length + (f.aux || []).length)}</td>
               <td class="wrap">${Object.entries(f.dropped).map(([k, v]) => `<span class="drop-tag">${h(k)} ${v}</span>`).join("") || '<span class="muted">ไม่มี</span>'}</td>
