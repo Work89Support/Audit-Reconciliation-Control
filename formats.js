@@ -57,6 +57,37 @@ const Formats = (() => {
     },
   ];
 
+  /* ---------------- PM gateway (ยืดหยุ่น: แต่ละเจ้าคอลัมน์ต่างกัน) ----------------
+     เช่น MYPAY(id,amount,provider,status,requestTime) · ATP(วันที่,Ref,Username,ธนาคาร,สร้างฝาก,โอนจริง,Status)
+          CBY(วันที่ทำรายการ,Ref Id,จำนวนเงิน,สถานะ) · CBY ถอน(...,จำนวนเงิน,ค่าธรรมเนียม,รวมหักเงิน,สถานะ)
+     ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
+  const PM_DATE = ["paymenttime", "วันเวลาอัพเดต", "วันที่ทำรายการ", "วันที่", "requesttime"];
+  const PM_STATUS = ["status", "สถานะ"];
+  const PM_AMT_DEP = ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
+  const PM_AMT_WIT = ["p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
+  const anyCol = (cells, names) => names.some((n) => cells.some((c) => c === norm(n) || c.startsWith(norm(n))));
+  function detectPM(rows) {
+    for (let i = 0; i < Math.min(rows.length, 12); i++) {
+      const cells = (rows[i] || []).map(norm).filter(Boolean);
+      if (cells.length < 3) continue;
+      if (anyCol(cells, PM_DATE) && anyCol(cells, PM_STATUS) && anyCol(cells, [...PM_AMT_DEP, ...PM_AMT_WIT])) {
+        const idx = {};
+        (rows[i] || []).forEach((raw, j) => {
+          const k = norm(raw);
+          if (k && idx[k] === undefined) idx[k] = j;
+        });
+        // ชื่อบริษัทย่อยจากแถวหัวเรื่องด้านบน (เช่น UFABET7M)
+        let title = "";
+        for (let k = 0; k < i; k++) {
+          const first = String((rows[k] || [])[0] || "").trim();
+          if (first) { title = first; break; }
+        }
+        return { spec: { code: "pm_provider", label: "รายการ PM (payment gateway)", side: "bo" }, headerIdx: i, idx, title };
+      }
+    }
+    return null;
+  }
+
   /* หา header row (ภายใน 10 บรรทัดแรก) ที่ตรงกับ spec */
   function detect(rows) {
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
@@ -85,6 +116,14 @@ const Formats = (() => {
   const val = (f, r, name) => {
     const c = col(f, name);
     return c === undefined ? "" : String(r[c] ?? "").trim();
+  };
+  // อ่านค่าจากคอลัมน์แรกที่เจอในรายชื่อ (สำหรับไฟล์ PM ที่แต่ละเจ้าตั้งชื่อคอลัมน์ต่างกัน)
+  const valAny = (f, r, names) => {
+    for (const n of names) {
+      const v = val(f, r, n);
+      if (v !== "") return v;
+    }
+    return "";
   };
   const num = (v) => {
     const n = parseFloat(String(v ?? "").replace(/[,\s฿]/g, ""));
@@ -153,8 +192,22 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
+  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["cyberplus", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  function pmProviderOf(fileName) {
+    const s = String(fileName || "").toLowerCase();
+    const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
+    return hit ? hit[1] : null;
+  }
+  function subcoOf(fileName, title) {
+    // จากหัวเรื่องในไฟล์ก่อน (เช่น UFABET7M -> 7M) แล้วค่อยจากชื่อไฟล์
+    const t = String(title || "").replace(/^ufabet/i, "").trim().toUpperCase();
+    if (t) return t;
+    const m = String(fileName || "").match(/\b([0-9]?[A-Z]{1,3}[0-9]?)\b/);
+    return m ? m[1].toUpperCase() : "";
+  }
+
   function parse(fileName, rows, businessDate) {
-    const f = detect(rows);
+    const f = detect(rows) || detectPM(rows);
     if (!f) return null;
     const company = companyOf(fileName);
     const out = {
@@ -170,11 +223,14 @@ const Formats = (() => {
       channels: {},
     };
     const drop = (why) => (out.dropped[why] = (out.dropped[why] || 0) + 1);
+    const fileDir = /ถอน/.test(fileName) ? "withdraw" : /ฝาก/.test(fileName) ? "deposit" : null;
+    const pmMeta = { dir: fileDir, provider: pmProviderOf(fileName), subco: subcoOf(fileName, f.title) };
+    if (f.spec.code === "pm_provider" && pmMeta.subco) out.company = pmMeta.subco;
 
     for (let i = f.headerIdx + 1; i < rows.length; i++) {
       const r = rows[i] || [];
       if (!r.some((c) => String(c).trim() !== "")) continue;
-      const rec = ROW[f.spec.code](f, r, i, company, drop);
+      const rec = ROW[f.spec.code](f, r, i, company, drop, fileDir, pmMeta);
       if (!rec) continue;
       if (businessDate && rec.date && rec.date !== businessDate && !rec.crossDay) {
         drop("วันที่ไม่ตรงกับวันที่ตรวจ");
@@ -195,6 +251,52 @@ const Formats = (() => {
   }
 
   const ROW = {
+    /* ไฟล์ export จาก payment gateway (MYPAY/12PAY/ATP/AZPAY/CYBERPLUS)
+       คอลัมน์: id, amount, provider, status, requestTime, fee, reference, customerId, realAmount, payee, paymentTime ...
+       กรองเฉพาะ Success · ทิศทางจากชื่อไฟล์ (ฝาก/ถอน) หรือ prefix ของ id (DEP/WD) */
+    pm_provider(f, r, i, company, drop, fileDir, meta) {
+      const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
+      if (!/success|สำเร็จ/.test(status)) return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + ")"), null;
+      const t = stamp(valAny(f, r, ["paymentTime", "วันเวลาอัพเดต", "วันที่ทำรายการ", "วันที่", "requestTime"]));
+      if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
+      const id = valAny(f, r, ["id", "Ref Id", "Ref", "reference"]);
+      const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
+      /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
+      const amount =
+        dir === "withdraw"
+          ? num(valAny(f, r, ["P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
+          : num(valAny(f, r, ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
+      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
+      const provRaw = valAny(f, r, ["provider"]).toLowerCase();
+      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
+      return {
+        rowNo: i + 1,
+        source: "bo",
+        formatCode: "pm_provider",
+        date: t.date,
+        sec: t.sec,
+        amount: Math.round(amount * 100) / 100,
+        requested: num(valAny(f, r, ["แจ้งถอน", "สร้างฝาก"])) || null,
+        fee: num(valAny(f, r, ["ค่าธรรมเนียม", "fee"])),
+        direction: dir,
+        account: provider,
+        channel: provider,
+        isPmChannel: true,
+        bank: "",
+        company: provider,
+        subco: (meta && meta.subco) || "",
+        memberCode: valAny(f, r, ["Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
+        custName: valAny(f, r, ["ชื่อ - นามสกุล ผู้รับ", "payee"]),
+        custBank: valAny(f, r, ["ธนาคาร", "ธนาคารต้นทาง"]),
+        ref: valAny(f, r, ["Ref", "Ref Id", "reference", "id"]),
+        status,
+        partial: /partial/.test(status),
+        crossDay: false,
+        lateNight: t.sec >= 82800,
+        minutePrecision: !t.secPrecision,
+        raw: r.join(" | "),
+      };
+    },
     bo_main(f, r, i, company, drop) {
       const boT = stamp(val(f, r, "วันที่ทำรายการ"));
       const bankT = stamp(val(f, r, "วันที่ธนาคาร")) || boT;
