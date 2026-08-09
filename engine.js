@@ -107,7 +107,7 @@ const Engine = (() => {
     if (map.txid !== undefined && map.username !== undefined) source = "bo";
     else if (map.status !== undefined && map.amount !== undefined && map.username === undefined) source = "pm";
     else if (map.balance !== undefined || (map.debit !== undefined && map.credit !== undefined)) source = "stm";
-    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus")) source = "pm";
+    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes(" atp ")) source = "pm";
     if (name.startsWith("bo_")) source = "bo";
 
     let bank = null;
@@ -119,7 +119,7 @@ const Engine = (() => {
     }
 
     let company = null;
-    ["AUTOPEER", "AZPAY", "CYBERPLUS", "SYS123"].forEach((c) => {
+    ["AUTOPEER", "AZPAY", "CYBERPLUS", "12PAY", "MYPAY", "SYS123"].forEach((c) => {
       if (blob.toUpperCase().includes(c)) company = c;
     });
 

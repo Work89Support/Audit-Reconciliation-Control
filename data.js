@@ -30,6 +30,8 @@ const DB = (() => {
     { code: "AUTOPEER", name: "AUTOPEER", type: "pm", system: "SYS123" },
     { code: "AZPAY", name: "AZPAY", type: "pm", system: "SYS123" },
     { code: "CYBERPLUS", name: "Cyberplus", type: "pm", system: "SYS123" },
+    { code: "12PAY", name: "12PAY", type: "pm", system: "SYS123" },
+    { code: "MYPAY", name: "MYPAY", type: "pm", system: "SYS123" },
     { code: "AT4", name: "AT4", type: "main", system: null },
     { code: "SK8", name: "SK8", type: "main", system: null },
     { code: "FR8", name: "FR8", type: "main", system: null },

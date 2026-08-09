@@ -136,7 +136,7 @@ const Formats = (() => {
     return { terminal, channel: channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "AUTOPEER", "AZPAY", "ATP"];
+  const PM_CHANNELS = ["CYBERPLUS", "AUTOPEER", "AZPAY", "ATP", "12PAY", "MYPAY"];
   const isPm = (ch) => PM_CHANNELS.some((p) => (ch || "").toUpperCase().includes(p));
 
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
