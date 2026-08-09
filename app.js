@@ -2786,6 +2786,33 @@ function registerAccountFromStatement(norm) {
   logAction("account_add", "account", h.account, `เพิ่มบัญชีอัตโนมัติจาก statement ${h.bank || ""} ${h.holder || ""}`.trim());
 }
 
+/* โหลดบัญชีจริงจากทะเบียน (registry.js) มาเป็น master accounts ของระบบ */
+function loadRegistryAccounts() {
+  if (typeof Registry === "undefined" || !Registry.ACCOUNTS) return null;
+  const banks = Registry.ACCOUNTS.filter((a) => a.source === "bank" && a.account);
+  if (!banks.length) return null;
+  return banks.map((a) => ({ id: a.account, bank: a.bank, company: a.subco || a.provider || "-", type: a.type || "both", active: true, holder: a.name || "", fromRegistry: true }));
+}
+
+/* ล้างข้อมูลตัวอย่าง/เก่าทั้งหมด แล้วเริ่มสถานะสะอาดสำหรับเทสข้อมูลจริง */
+function startRealTest() {
+  Store.reset();
+  ImportState.files = [];
+  ImportState.lastRun = null;
+  ImportState.inbox = null;
+  DB.exceptions = [];
+  DB.damages = [];
+  DB.files = [];
+  DB.currentRun = null;
+  if (Array.isArray(DB.hourly)) DB.hourly.forEach((x) => { x.total = 0; x.matched = 0; x.exception = 0; });
+  const real = loadRegistryAccounts();
+  if (real) DB.accounts = real;
+  state.dataset = "imported";
+  if (typeof updateAutoStatus === "function") updateAutoStatus();
+  toast(`ล้างข้อมูลเก่าแล้ว — โหลดบัญชีจริง ${real ? real.length : 0} บัญชีจากทะเบียน · พร้อมนำเข้าไฟล์จริง`);
+  go("import");
+}
+
 function readFileText(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -3539,6 +3566,8 @@ VIEWS.schedule = (root) => {
         <div><span>สถานะเคสที่แก้ไว้</span><b>${num(Object.keys(Store.data.exOverrides).length)}</b></div>
       </div>
       <button class="ghost-button mt" id="wipe">ล้างข้อมูลที่บันทึกไว้ในเครื่อง</button>
+      <button class="primary-button mt" id="startReal">ล้างข้อมูลเก่า + เริ่มเทสข้อมูลจริง</button>
+      <p class="chart-note">ปุ่มนี้จะล้างข้อมูลตัวอย่าง/สถานะเก่าทั้งหมด และโหลดบัญชีจริงจากทะเบียนเป็น master แล้วพาไปหน้านำเข้าไฟล์ เพื่อเริ่มเทสด้วยไฟล์จริงจากศูนย์</p>
     </section>`;
 
   $("#scSave").addEventListener("click", () => {
@@ -3621,6 +3650,10 @@ VIEWS.schedule = (root) => {
     Store.reset();
     toast("ล้างข้อมูลที่บันทึกไว้แล้ว รีเฟรชหน้าเพื่อเริ่มใหม่");
     render();
+  });
+  $("#startReal").addEventListener("click", () => {
+    if (!confirm("ล้างข้อมูลตัวอย่างและสถานะเก่าทั้งหมด แล้วเริ่มเทสด้วยข้อมูลจริง?\n(บัญชีจริงจากทะเบียนจะถูกโหลดเป็น master)")) return;
+    startRealTest();
   });
 };
 
