@@ -87,13 +87,15 @@ const PdfStm = (() => {
     else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
     else if (/กรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL";
     else if (/กรุงไทย|KRUNGTHAI/i.test(blob)) bank = "KTB";
+    /* TrueMoney Wallet: หัวข้อ "ใบแสดงรายการ / Statement of Account" + คอลัมน์ เงินเข้า/เงินออก + ยอดคงเหลือ (เลขบัญชี = เบอร์มือถือ) */
+    else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
     let account = "";
     const am = blob.match(/(?:เลขที่บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
     if (am) account = digits(am[1]);
 
     let holder = "";
-    const hm = blob.match(/ชื่อ\s*-?\s*สกุล\s*([^\n]{3,60})/) || blob.match(/ชื่อบัญชี\s*([^\n]{3,60})/);
+    const hm = blob.match(/ชื่อ\s*-?\s*สกุล\s*([^\n]{3,60})/) || blob.match(/ชื่อบัญชี\s*([^\n]{2,40}?)\s*เลขที่บัญชี/) || blob.match(/ชื่อบัญชี\s*([^\n]{3,60})/);
     if (hm) holder = hm[1].trim();
 
     let period = "";
@@ -162,6 +164,35 @@ const PdfStm = (() => {
     return rows;
   }
 
+  /* ---------------- TrueMoney Wallet (TMN) ----------------
+     03/06/2026 13:50:45 | เงินเข้า | 10.00 | 0952178672 | 34,210.07 | 34,220.07
+     03/06/2026 13:50:46 | เงินออก | -0.29 | fee_p2p_receive | 34,220.07 | 34,219.78
+     คอลัมน์: วันที่+เวลา · ประเภท · ยอด(±) · รายละเอียด(เบอร์/โค้ด) · ยอดก่อน · ยอดหลัง   */
+  const TMN_FEE = /^(fee_|.*_fee$|promptpay_.*_fundout$|.*_fundout$)/i;
+  function parseTMN(pages) {
+    const rows = [];
+    const re = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(เงินเข้า|เงินออก)\s+(-?[\d,]+\.\d{2})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/;
+    pages.forEach((lines) => {
+      lines.forEach((l) => {
+        const m = l.text.match(re);
+        if (!m) return;
+        const detail = m[5].trim();
+        rows.push({
+          date: isoOf(m[1]),
+          sec: secOf(m[2]),
+          code: m[3], // เงินเข้า/เงินออก
+          channel: "TMN",
+          amount: Math.abs(numOf(m[4])),
+          balance: numOf(m[7]),
+          desc: detail,
+          isFee: TMN_FEE.test(detail), // ค่าธรรมเนียม/โยกเงินออกธนาคาร ไม่ใช่รายการลูกค้า
+          raw: l.text,
+        });
+      });
+    });
+    return rows;
+  }
+
   /* ---------------- ทั่วไป (สำรอง) ---------------- */
   function parseGeneric(pages) {
     const rows = [];
@@ -204,7 +235,7 @@ const PdfStm = (() => {
         }
         if (!dir) {
           if (/รับโอน|ฝากเงิน|เงินเข้า|deposit/i.test(r.code + " " + r.desc)) dir = "deposit";
-          else if (/โอนเงิน|โอนไป|ถอน|หักบัญชี|ค่าธรรมเนียม|withdraw/i.test(r.code + " " + r.desc)) dir = "withdraw";
+          else if (/โอนเงิน|โอนไป|ถอน|เงินออก|หักบัญชี|ค่าธรรมเนียม|withdraw/i.test(r.code + " " + r.desc)) dir = "withdraw";
         }
       }
       r.direction = dir || "deposit";
@@ -219,7 +250,7 @@ const PdfStm = (() => {
     const pages = await textLines(arrayBuffer);
     const head = header(pages);
     let rows =
-      head.bank === "SCB" ? parseScb(pages) : head.bank === "KBANK" ? parseKbank(pages) : parseGeneric(pages);
+      head.bank === "SCB" ? parseScb(pages) : head.bank === "KBANK" ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
 
@@ -230,6 +261,7 @@ const PdfStm = (() => {
     rows.forEach((r, i) => {
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
+      if (r.isFee) return drop("ค่าธรรมเนียม/โยกเงินออกธนาคาร TrueMoney (ไม่ใช่รายการลูกค้า)");
       if (businessDate && r.date && r.date !== businessDate) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       records.push({
         rowNo: i + 1,
