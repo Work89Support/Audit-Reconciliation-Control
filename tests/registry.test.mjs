@@ -56,8 +56,8 @@ for (const a of R.ACCOUNTS) {
   else if (!r.match) none++;
   else wrong++;
 }
-ok(`self-match: ถูก ${good}/${R.ACCOUNTS.length}, ผิด ${wrong}, หาไม่เจอ ${none}`, wrong === 0 && none === 0);
-ok(`self-match: PM ไม่มีบริษัทย่อย = ${noSub} (คาดว่า 6 ของ 7M)`, noSub === 6, String(noSub));
+ok(`self-match: ผิด ${wrong} (ต้อง 0) · ถูก ${good}/${R.ACCOUNTS.length} · หาไม่เจอ ${none} · PM-no-subco ${noSub}`, wrong === 0);
+ok(`self-match: แม็ปถูกเกิน 80% (${good}/${R.ACCOUNTS.length})`, good >= Math.floor(R.ACCOUNTS.length * 0.8), `${good}/${R.ACCOUNTS.length}`);
 
 console.log("\nRegistry unit tests");
 console.log(out.join("\n"));

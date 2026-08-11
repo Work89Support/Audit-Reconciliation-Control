@@ -7,99 +7,107 @@ const Registry = (() => {
   const ACCOUNTS = [
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1968766313",
 "accountRaw": "196-8-76631-3",
 "name": "นาย นราธิป ขุนอาจ",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB นราธิป ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB นราธิป ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "SCB",
 "account": "5034632277",
 "accountRaw": "503-463227-7",
 "name": "นางสาว สงกรานต์ สร้อยแก้ว",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "ENET",
 "source": "bank",
-"file": "SCB สงกรานต์ ถอน-ฝากว/ด/ป.pdf"
+"file": "SCB สงกรานต์ ถอน-ฝากว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "SCB",
 "account": "5034625466",
 "accountRaw": "503-462546-6",
 "name": "นาย ชานิชน์ ชมพิมาย",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "ENET",
 "source": "bank",
-"file": "SCB ชานิชน์ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "SCB ชานิชน์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1998024354",
 "accountRaw": "199-8-02435-4",
 "name": "นาย สุพจน์ บุญธรรม",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB สุพจน์ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB สุพจน์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "2231661134",
 "accountRaw": "223-1-66113-4",
 "name": "นาย วายุ บุญสร้าง",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB วายุ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB วายุ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "2308381717",
 "accountRaw": "230-8-38171-7",
 "name": "นาย วีรยุทธ ลายหม้อ",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB วีรยุทธ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB วีรยุทธ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1938713800",
 "accountRaw": "193-8-71380-0",
 "name": "นาย ประวิตร ประวาร",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB ประวิตร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB ประวิตร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KTB",
 "account": "6060748201",
-"accountRaw": "6060748201",
+"accountRaw": "606-0748-201",
 "name": "นาย นราธิป ขุนอาจ",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
 "source": "bank",
-"file": "KTB นราธิป ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KTB นราธิป ถอน-ฝาก ว/ด/ป.pdf",
+"note": "ไม่แสดงเวลาในรายการฝาก-ถอน"
 },
 {
 "subco": "3XB",
@@ -111,7 +119,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "3XB ATP ว/ด/ป ถอน.csv"
+"file": "3XB ATP ว/ด/ป ถอน.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -123,7 +132,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "3XB ATP ว/ด/ป ฝาก.csv"
+"file": "3XB ATP ว/ด/ป ฝาก.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -135,7 +145,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "3XB AZPAY ว/ด/ป ถอน.csv"
+"file": "3XB AZPAY ว/ด/ป ถอน.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -147,7 +158,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "3XB AZPAY ว/ด/ป ฝาก.csv"
+"file": "3XB AZPAY ว/ด/ป ฝาก.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -157,9 +169,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "12PAY",
+"channel": "12pay",
 "source": "pm",
-"file": "3XB 12PAY ถอน ว/ด/ป.csv"
+"file": "3XB 12PAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -169,9 +182,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "12PAY",
+"channel": "12pay",
 "source": "pm",
-"file": "3XB 12PAY ฝาก ว/ด/ป.csv"
+"file": "3XB 12PAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -181,9 +195,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "3XB MYPAY ถอน ว/ด/ป.csv"
+"file": "3XB MYPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "3XB",
@@ -193,21 +208,36 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "3XB MYPAY ฝาก ว/ด/ป.csv"
+"file": "3XB MYPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "3XB",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "BBL",
 "account": "6517247760",
 "accountRaw": "651-7-24776-0",
 "name": "นาย จิรายุ แสงย้อย",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "mPhone",
 "source": "bank",
-"file": "BBL จิรายุ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "BBL จิรายุ ถอน-ฝาก ว/ด/ป.pdf",
+"note": "ไม่แสดงเวลาในรายการฝาก-ถอน"
+},
+{
+"subco": "3XB",
+"provider": "SYSXXX",
+"bank": "KTB",
+"account": "6640748576",
+"accountRaw": "664-0748-576",
+"name": "นวพล เหลืองอ่อน",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB นวพล ถอน-ฝาก ว/ด/ป.pdf",
+"note": "ไม่แสดงเวลาในรายการฝาก-ถอน"
 },
 {
 "subco": "FR8",
@@ -216,10 +246,11 @@ const Registry = (() => {
 "account": "2273888465",
 "accountRaw": "227-3-88846-5",
 "name": "น.ส. สุวรรณี สร้อยแก้ว",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB สุวรรณี ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB สุวรรณี ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -228,10 +259,11 @@ const Registry = (() => {
 "account": "1981674096",
 "accountRaw": "198-1-67409-6",
 "name": "น.ส. จิรภัทร์ เกื้อกูล",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB จิรภัทร์ ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB จิรภัทร์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -240,10 +272,50 @@ const Registry = (() => {
 "account": "4142322778",
 "accountRaw": "414-232277-8",
 "name": "นางสาว สิริพร แซ่โป่ว",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "ENET",
 "source": "bank",
-"file": "SCB สิริพร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "SCB สิริพร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "FR8",
+"provider": "SYS123",
+"bank": "KTB",
+"account": "3473031801",
+"accountRaw": "347-303180-1",
+"name": "นางสาว รวิวรรณ์ คำมี",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB รวิวรรณ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "FR8",
+"provider": "SYS123",
+"bank": "BBL",
+"account": "6517250129",
+"accountRaw": "651-7-25012-9",
+"name": "น.ส.เพ็ญศรี เกิดนิมิตร",
+"type": "ถอน-ฝาก",
+"channel": "mPhone",
+"source": "bank",
+"file": "BBL เพ็ญศรี ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "FR8",
+"provider": "SYS123",
+"bank": "SCB",
+"account": "5034633029",
+"accountRaw": "503-463302-9",
+"name": "นาย ภานุพงษ์ พร้อมจิตย์",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB ภานุพงษ์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -255,7 +327,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "FR8 AUTOPEER ถอน ว/ด/ป.xlsx"
+"file": "FR8 AUTOPEER ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -267,7 +340,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "FR8 AUTOPEER ฝาก ว/ด/ป.xlsx"
+"file": "FR8 AUTOPEER ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -279,7 +353,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "FR8 AZPAY ฝาก ว/ด/ป.xlsx"
+"file": "FR8 AZPAY ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -291,7 +366,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "FR8 CYBERPLUS ถอน ว/ด/ป.xlsx"
+"file": "FR8 CYBERPLUS ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "FR8",
@@ -303,7 +379,34 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "FR8 CYBERPLUS ฝาก ว/ด/ป.xlsx"
+"file": "FR8 CYBERPLUS ฝาก ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "FR8",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "FR8 Mypay ถอน ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "FR8",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "FR8 Mypay ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -312,10 +415,37 @@ const Registry = (() => {
 "account": "6517248040",
 "accountRaw": "651-7-24804-0",
 "name": "นาย นรวร ผาสุข",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "mPhone",
 "source": "bank",
-"file": "BBL นรวร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "BBL นรวร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "AT4",
+"provider": "SYS123",
+"bank": "KTB",
+"account": "2090879114",
+"accountRaw": "209-0879-114",
+"name": "นางสาว เบญจพร สุดตา",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB เบญจพร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "AT4",
+"provider": "SYS123",
+"bank": "KTB",
+"account": "6060748139",
+"accountRaw": "606-0748-139",
+"name": "นางสาว รัตนาพร มาคะบุตร",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB รัตนาพร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -327,7 +457,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "AT4 AUTOPEER ถอน ว/ด/ป.xlsx"
+"file": "AT4 AUTOPEER ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -339,7 +470,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "AT4 AUTOPEER ฝาก ว/ด/ป.xlsx"
+"file": "AT4 AUTOPEER ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -351,7 +483,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "AT4 AZPAY ฝาก ว/ด/ป.xlsx"
+"file": "AT4 AZPAY ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -363,7 +496,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "AT4 CYBERPLUS ถอน ว/ด/ป.xlsx"
+"file": "AT4 CYBERPLUS ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "AT4",
@@ -375,7 +509,34 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "AT4 CYBERPLUS ฝาก ว/ด/ป.xlsx"
+"file": "AT4 CYBERPLUS ฝาก ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "AT4",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "AT4 Mypay ถอน ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "AT4",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "AT4 Mypay ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -384,10 +545,24 @@ const Registry = (() => {
 "account": "6517249394",
 "accountRaw": "651-7-24939-4",
 "name": "น.ส. ดลยา หอมจันทร์",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "mPhone",
 "source": "bank",
-"file": "BBL ดลยา ถอน-ฝาก ว/ด/ป.pdf"
+"file": "BBL ดลยา ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "SK8",
+"provider": "SYS123",
+"bank": "LBK",
+"account": "1968765058",
+"accountRaw": "196-8765-058",
+"name": "นางสาว ปาหนัน สุขใจ",
+"type": "ถอน-ฝาก",
+"channel": "LBK",
+"source": "bank",
+"file": "KB ปาหนัน ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -399,7 +574,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "SK8 AUTOPEER ถอน ว/ด/ป.xlsx"
+"file": "SK8 AUTOPEER ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -411,7 +587,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "SK8 AUTOPEER ฝาก ว/ด/ป.xlsx"
+"file": "SK8 AUTOPEER ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -423,7 +600,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "SK8 AZPAY ฝาก ว/ด/ป.xlsx"
+"file": "SK8 AZPAY ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -435,7 +613,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "SK8 CYBERPLUS ถอน ว/ด/ป.xlsx"
+"file": "SK8 CYBERPLUS ถอน ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "SK8",
@@ -447,31 +626,60 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "SK8 CYBERPLUS ฝาก ว/ด/ป.xlsx"
+"file": "SK8 CYBERPLUS ฝาก ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "SK8",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "SK Mypay ถอน ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "SK8",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "SK Mypay ฝาก ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "MR9",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1998218930",
 "accountRaw": "199-8-21893-0",
 "name": "น.ส. สิริพร แซ่โป่ว",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB สิริพร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB สิริพร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "MR9",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KTB",
 "account": "6648590203",
-"accountRaw": "6648590203",
+"accountRaw": "664-8590-203",
 "name": "นาย มโนชา ชมภู",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
 "source": "bank",
-"file": "KTB มโนชา ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KTB มโนชา ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -483,7 +691,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "MR9 ATP ถอน ว/ด/ป.csv"
+"file": "MR9 ATP ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -495,7 +704,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "MR9 ATP ฝาก ว/ด/ป.csv"
+"file": "MR9 ATP ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -507,7 +717,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "MR9 AZPAY ถอน ว/ด/ป.csv"
+"file": "MR9 AZPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -519,7 +730,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "MR9 AZPAY ฝาก ว/ด/ป.csv"
+"file": "MR9 AZPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -529,9 +741,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "MR9 MYPAY ถอน ว/ด/ป.csv"
+"file": "MR9 MYPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -541,9 +754,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "MR9 MYPAY ฝาก ว/ด/ป.csv"
+"file": "MR9 MYPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -553,9 +767,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "12PAY",
+"channel": "12pay",
 "source": "pm",
-"file": "MR9 12PAY ถอน ว/ด/ป.csv"
+"file": "MR9 12PAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MR9",
@@ -565,33 +780,49 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "12PAY",
+"channel": "12pay",
 "source": "pm",
-"file": "MR9 12PAY ฝาก ว/ด/ป.csv"
+"file": "MR9 12PAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "SCB",
 "account": "4312127429",
 "accountRaw": "431-212742-9",
 "name": "นางสาว จันทร์ทิวา อินพุ่ม",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "ENET",
 "source": "bank",
-"file": "SCB จันทร์ทิวา ถอน-ฝาก ว/ด/ป.pdf"
+"file": "SCB จันทร์ทิวา ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "MC8",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1998545397",
 "accountRaw": "199-8-54539-7",
 "name": "นาย ทินกร โฉมสะอาด",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB ทินกร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB ทินกร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "MC8",
+"provider": "SYSXXX",
+"bank": "BAY",
+"account": "1701694610",
+"accountRaw": "170-1694-610",
+"name": "นาย อภิเชษฐ์ จันทร์สำราญ",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "BAY อภิเชษฐ์ ถอน-ฝาก.pdf",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -603,7 +834,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "MC8 AZPAY ถอน ว/ด/ป.csv"
+"file": "MC8 AZPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -615,7 +847,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "MC8 AZPAY ฝาก ว/ด/ป.csv"
+"file": "MC8 AZPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -625,9 +858,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "MC8 MYPAY ถอน ว/ด/ป.csv"
+"file": "MC8 MYPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -637,9 +871,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "MC8 MYPAY ฝาก ว/ด/ป.csv"
+"file": "MC8 MYPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -651,7 +886,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "MC8 ATP ถอน ว/ด/ป.csv"
+"file": "MC8 ATP ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "MC8",
@@ -663,31 +899,47 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "MC8 ATP ฝาก ว/ด/ป.csv"
+"file": "MC8 ATP ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1998227220",
 "accountRaw": "199-8-22722-0",
 "name": "นาย ชัยยา จันทรโชติ",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB ชัยยา ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KB ชัยยา ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "UR9",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KTB",
 "account": "6657497121",
-"accountRaw": "6657497121",
+"accountRaw": "665-7497-121",
 "name": "นาย ณัฐพล งามถนอม",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
 "source": "bank",
-"file": "KTB ณัฐพล ถอน-ฝาก ว/ด/ป.pdf"
+"file": "KTB ณัฐพล ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "UR9",
+"provider": "SYSXXX",
+"bank": "KTB",
+"account": "6643745675",
+"accountRaw": "664-3745-675",
+"name": "นาย คมสัน ศรีพันธ์",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB คมสัน ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -699,7 +951,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "Ur9 ATP ถอน ว/ด/ป.csv"
+"file": "Ur9 ATP ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -711,7 +964,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "Ur9 ATP ฝาก ว/ด/ป.csv"
+"file": "Ur9 ATP ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -723,7 +977,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "Ur9 AZPAY ถอน ว/ด/ป.csv"
+"file": "Ur9 AZPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -735,7 +990,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "Ur9 AZPAY ฝาก ว/ด/ป.csv"
+"file": "Ur9 AZPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -745,9 +1001,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "Ur9 MYPAY ถอน ว/ด/ป.csv"
+"file": "Ur9 MYPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "UR9",
@@ -757,21 +1014,36 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "Ur9 MYPAY ถอน ว/ด/ป.csv"
+"file": "Ur9 MYPAY ถอน ว/ด/ป.csv",
+"note": "ชื่อไฟล์ซ้ำ(น่าจะฝาก)"
 },
 {
 "subco": "PS8",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "SCB",
 "account": "5292894087",
 "accountRaw": "529-289408-7",
 "name": "นาย นรวร ผาสุข",
-"type": "ฝาก+ถอน",
+"type": "ถอน-ฝาก",
 "channel": "ENET",
 "source": "bank",
-"file": "SCB นรวร ถอน-ฝาก ว/ด/ป.pdf"
+"file": "SCB นรวร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "PS8",
+"provider": "SYSXXX",
+"bank": "KTB",
+"account": "6640746468",
+"accountRaw": "664-0746-468",
+"name": "นาย ธนวิชญ์ จานทอง",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
+"source": "bank",
+"file": "KTB ธนวิชญ์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -783,7 +1055,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "Ps8 ATP ถอน ว/ด/ป.csv"
+"file": "Ps8 ATP ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -795,7 +1068,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "Ps8 ATP ฝาก ว/ด/ป.csv"
+"file": "Ps8 ATP ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -807,7 +1081,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "PS8 AZPAY ถอน ว/ด/ป.csv"
+"file": "PS8 AZPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -819,7 +1094,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "PS8 AZPAY ฝาก ว/ด/ป.csv"
+"file": "PS8 AZPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -829,9 +1105,10 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "PS8 MYPAY ถอน ว/ด/ป.csv"
+"file": "PS8 MYPAY ถอน ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "PS8",
@@ -841,13 +1118,14 @@ const Registry = (() => {
 "accountRaw": "",
 "name": "",
 "type": "PM",
-"channel": "MYPAY",
+"channel": "Mypay",
 "source": "pm",
-"file": "PS8 MYPAY ฝาก ว/ด/ป.csv"
+"file": "PS8 MYPAY ฝาก ว/ด/ป.csv",
+"note": ""
 },
 {
 "subco": "7M",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "KBANK",
 "account": "1953167154",
 "accountRaw": "195-3-16715-4",
@@ -855,31 +1133,34 @@ const Registry = (() => {
 "type": "ถอน",
 "channel": "K PLUS",
 "source": "bank",
-"file": "KB เพ็ญศรี ถอน ว/ด/ป.pdf"
+"file": "KB เพ็ญศรี ถอน ว/ด/ป.pdf",
+"note": "ถอนอย่างเดียว"
 },
 {
 "subco": "7M",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "TMN",
 "account": "0812792075",
-"accountRaw": "812792075",
+"accountRaw": "081-2792-075",
 "name": "คุณรุ่งฟ้า แซ่ตั้ง",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
 "source": "bank",
-"file": "TMN รุ่งฟ้า ถอน-ฝาก ว/ด/ป.pdf"
+"file": "TMN รุ่งฟ้า ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "7M",
-"provider": "SYS123",
+"provider": "SYSXXX",
 "bank": "TMN",
 "account": "0639274201",
-"accountRaw": "639274201",
+"accountRaw": "063-9274-201",
 "name": "คุณสรวิศา อาญาเมือง",
-"type": "ฝาก+ถอน",
-"channel": "-",
+"type": "ถอน-ฝาก",
+"channel": "MOBILE",
 "source": "bank",
-"file": "TMN สรวิศา ถอน-ฝาก ว/ด/ป.pdf"
+"file": "TMN สรวิศา ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 },
 {
 "subco": "7M",
@@ -891,7 +1172,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "รายการถอน ATP PM ว/ด/ป.xlsx"
+"file": "รายการถอน ATP PM ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "7M",
@@ -903,7 +1185,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AUTOPEER",
 "source": "pm",
-"file": "รายการฝาก ATP PM ว/ด/ป.xlsx"
+"file": "รายการฝาก ATP PM ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "7M",
@@ -915,7 +1198,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "รายการถอน AZ PM ว/ด/ป.xlsx"
+"file": "รายการถอน AZ PM ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "7M",
@@ -927,7 +1211,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "AZPAY",
 "source": "pm",
-"file": "รายการฝาก AZ PM ว/ด/ป.xlsx"
+"file": "รายการฝาก AZ PM ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "7M",
@@ -939,7 +1224,8 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "รายการถอน CBY PM ว/ด/ป.xlsx"
+"file": "รายการถอน CBY PM ว/ด/ป.xlsx",
+"note": ""
 },
 {
 "subco": "7M",
@@ -951,12 +1237,91 @@ const Registry = (() => {
 "type": "PM",
 "channel": "CYBERPLUS",
 "source": "pm",
-"file": "รายการฝากCBY PM ว/ด/ป.xlsx"
+"file": "รายการฝากCBY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "รายการถอน MPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "MYPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "Mypay",
+"source": "pm",
+"file": "รายการฝาก MPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "SYSXXX",
+"bank": "SCB",
+"account": "5034633891",
+"accountRaw": "503-463389-1",
+"name": "นาย สมภพ ไวไธสง",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB สมภพ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "SYSXXX",
+"bank": "KBANK",
+"account": "1953583301",
+"accountRaw": "195-358330-1",
+"name": "นาย กิตติ ปานแสงทอง",
+"type": "ถอน-ฝาก",
+"channel": "K PLUS",
+"source": "bank",
+"file": "KB กิตติ ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "SYSXXX",
+"bank": "SCB",
+"account": "6242596342",
+"accountRaw": "624-259634-2",
+"name": "นางสาว แววดาว ประกอบทรัพย์",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB แววดาว ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "SYSXXX",
+"bank": "SCB",
+"account": "5034633346",
+"accountRaw": "503-463334-6",
+"name": "นาย สุคร ชัยภา",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB สุคร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
 }
 ];
 
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
-  const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN" };
+  const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
                   cby:"CYBERPLUS", cyberplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY" };
 

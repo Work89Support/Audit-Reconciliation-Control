@@ -87,6 +87,8 @@ const PdfStm = (() => {
     else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
     else if (/กรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL";
     else if (/กรุงไทย|KRUNGTHAI/i.test(blob)) bank = "KTB";
+    else if (/กรุงศรี|อยุธยา|KRUNGSRI|AYUDHYA/i.test(blob)) bank = "BAY";
+    else if (/แลนด์\s*แอนด์\s*เฮ้าส์|LAND\s*(?:AND|&)\s*HOUSES|LH\s*BANK|แลนด์ แอนด์ เฮาส์/i.test(blob)) bank = "LBK";
     /* TrueMoney Wallet: หัวข้อ "ใบแสดงรายการ / Statement of Account" + คอลัมน์ เงินเข้า/เงินออก + ยอดคงเหลือ (เลขบัญชี = เบอร์มือถือ) */
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
