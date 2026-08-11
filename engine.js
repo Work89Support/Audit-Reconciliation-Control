@@ -394,43 +394,9 @@ const Engine = (() => {
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
     const dirOK = (s, b) => !s.direction || !b.direction || s.direction === b.direction;
 
-    // pass 1a: จับคู่ exact (บัญชี+ยอด+ทิศทาง) ที่อยู่ "ในเกณฑ์เวลา" ให้ครบก่อน
-    //   ทำก่อนขั้น time_diff เพื่อกันรายการที่เวลาใกล้กว่าถูกแย่ง BO ไปโดยรายการที่อยู่ไกลกว่า
-    const stmMid = [];
+    // pass 1: exact account+amount+ทิศทาง, ภายใน tolerance
     await chunked(
       stmRecords,
-      10000,
-      (s) => {
-        const cands = exactIdx.get(key2(s.account, s.amount));
-        let best = -1;
-        let bestDt = Infinity;
-        if (cands) {
-          for (const ci of cands) {
-            if (boUsed[ci]) continue;
-            const b = boRecords[ci];
-            if (!dirOK(s, b)) continue;
-            const dt = Math.abs(b.sec - s.sec);
-            if (dt <= tolOf(s.direction, s, b) && dt < bestDt) {
-              bestDt = dt;
-              best = ci;
-            }
-          }
-        }
-        if (best >= 0) {
-          boUsed[best] = 1;
-          matched.push({ s, b: boRecords[best], dt: bestDt });
-          if (bestDt > tolOf(s.direction, s, boRecords[best]) * 0.6) timeDiffCount++;
-        } else {
-          stmMid.push(s);
-        }
-      },
-      onProgress,
-      "จับคู่ 3 จุด (ในเกณฑ์)",
-    );
-
-    // pass 1b: รายการที่ยังไม่แม็ป — หา BO บัญชี+ยอด+ทิศทางเดียวกันที่ใกล้สุด (นอกเกณฑ์แต่ <1 ชม.) = ต่างเวลา
-    await chunked(
-      stmMid,
       10000,
       (s) => {
         const cands = exactIdx.get(key2(s.account, s.amount));
@@ -448,7 +414,12 @@ const Engine = (() => {
             }
           }
         }
-        if (best >= 0 && bestDt < 3600) {
+        const tol = tolOf(s.direction, s, best >= 0 ? boRecords[best] : null);
+        if (best >= 0 && bestDt <= tol) {
+          boUsed[best] = 1;
+          matched.push({ s, b: boRecords[best], dt: bestDt });
+          if (bestDt > tol * 0.6) timeDiffCount++;
+        } else if (best >= 0 && bestDt < 3600) {
           boUsed[best] = 1;
           exceptions.push(mkException("time_diff", s, boRecords[best], bestDt));
         } else {
@@ -456,7 +427,7 @@ const Engine = (() => {
         }
       },
       onProgress,
-      "จับคู่ 3 จุด (ต่างเวลา)",
+      "จับคู่ 3 จุด",
     );
 
     // pass 2: ยอดไม่ตรง (บัญชีเดียวกัน เวลาใกล้กัน แต่ยอดต่าง)
@@ -495,16 +466,8 @@ const Engine = (() => {
     stmLeft2.forEach((s) => exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0)));
 
     // pass 4: BO ที่เหลือ = ไม่มีฝั่ง STM หรือเป็นรายการซ้ำ
-    /* "ซ้ำ" = มีคู่ที่แม็ปไปแล้ว บัญชี+ยอด+ทิศทางเดียวกัน และเวลาใกล้กัน (ในเกณฑ์ tolerance)
-       ถ้ายอดเท่ากันแต่คนละเวลา ถือเป็นคนละรายการ = missing_stm ไม่ใช่ duplicate */
-    const dupKey = (a, amt, dir) => a + "|" + amt.toFixed(2) + "|" + (dir || "");
-    const matchedTimes = new Map();
-    matched.forEach((m) => {
-      const k = dupKey(m.b.account, m.b.amount, m.b.direction);
-      let arr = matchedTimes.get(k);
-      if (!arr) matchedTimes.set(k, (arr = []));
-      arr.push(m.b.sec);
-    });
+    const seenPair = new Set();
+    matched.forEach((m) => seenPair.add(key2(m.b.account, m.b.amount)));
     await chunked(
       boRecords,
       20000,
@@ -514,9 +477,7 @@ const Engine = (() => {
           noStmSide.push(b);
           return;
         }
-        const times = matchedTimes.get(dupKey(b.account, b.amount, b.direction));
-        const dupWin = Math.max(tolOf(b.direction, b, b), 120);
-        const dup = times && times.some((t) => Math.abs(t - b.sec) <= dupWin);
+        const dup = seenPair.has(key2(b.account, b.amount));
         /* รายการ 23:00-23:59 หรือข้ามวัน ให้ถือเป็น cross_day ก่อน แม้ยอดจะซ้ำกับรายการอื่น */
         exceptions.push(mkException(b.lateNight || b.crossDay ? "cross_day" : dup ? "duplicate" : "missing_stm", null, b, 0));
       },
