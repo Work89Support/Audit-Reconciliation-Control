@@ -1330,7 +1330,9 @@ const Registry = (() => {
     if (bank === "TMN" && d.length === 9) d = "0" + d; // เบอร์ทรูมันนี่ตัด 0 หน้า
     return d;
   }
-  const norm = (s) => String(s || "").toLowerCase();
+  // ตัดวรรณยุกต์/การันต์/ไม้ไต่คู้ (U+0E47–U+0E4E) ที่มักหายไปตอนตั้งชื่อไฟล์ เช่น "อภิเชษฐ์" vs "อภิเชษฐ"
+  // คงสระไว้ (ต่ำกว่า 0E47) ชื่อจึงยังแยกจากกันได้
+  const norm = (s) => String(s || "").toLowerCase().replace(/[็-๎]/g, "");
   function tokens(s){ return norm(s).replace(/[._/\\()-]/g," ").split(/\s+/).filter(Boolean); }
   function nameWords(name){
     return String(name||"").split(/\s+/).map((w)=>w.replace(TITLE_RE,"")).filter((w)=>w.length>=2);
