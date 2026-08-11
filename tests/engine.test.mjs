@@ -160,6 +160,54 @@ await (async function () {
   ok("direction: ถอนจับคู่ถอนได้ปกติ (matched=1)", r.matched === 1, `matched=${r.matched}`);
 })();
 
+/* ===== 11) greedy: รายการที่เวลาใกล้กว่าต้องไม่ถูกแย่ง BO โดยรายการที่อยู่ไกลกว่า ===== */
+await (async function () {
+  const r = await run(
+    [
+      rec({ account: "GR-1", amount: 500, sec: 3400, direction: "deposit" }), // ไกล (นอกเกณฑ์ 120)
+      rec({ account: "GR-1", amount: 500, sec: 3650, direction: "deposit" }), // ใกล้ (ในเกณฑ์)
+    ],
+    [rec({ account: "GR-1", amount: 500, sec: 3600, direction: "deposit" })],
+    { toleranceDeposit: 120, toleranceWithdraw: 120, minuteTolerance: 60 },
+  );
+  ok("greedy: รายการที่ใกล้กว่ายังแม็ปได้ (matched=1)", r.matched === 1, `matched=${r.matched}`);
+})();
+
+/* ===== 12) duplicate: ยอดเท่ากันแต่คนละเวลา = missing_stm ไม่ใช่ duplicate ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "DUP-1", amount: 500, sec: 32400, direction: "deposit" })],
+    [
+      rec({ account: "DUP-1", amount: 500, sec: 32400, direction: "deposit" }), // แม็ป
+      rec({ account: "DUP-1", amount: 500, sec: 54000, direction: "deposit" }), // คนละเวลา = คนละรายการ
+    ],
+  );
+  const types = r.exceptions.map((e) => e.type);
+  ok("duplicate: ยอดเท่ากันคนละเวลา = missing_stm", types.includes("missing_stm") && !types.includes("duplicate"), JSON.stringify(types));
+})();
+
+/* ===== 13) duplicate จริง: ยอดเท่ากัน เวลาใกล้กัน ยังถูกจับเป็น duplicate ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "DUP-2", amount: 100, sec: 1000, direction: "deposit" })],
+    [
+      rec({ account: "DUP-2", amount: 100, sec: 1000, direction: "deposit" }), // แม็ป
+      rec({ account: "DUP-2", amount: 100, sec: 1030, direction: "deposit" }), // ซ้ำจริง (ใกล้กัน)
+    ],
+  );
+  const types = r.exceptions.map((e) => e.type);
+  ok("duplicate จริง: ยังจับเป็น duplicate (matched=1)", r.matched === 1 && types.includes("duplicate"), `matched=${r.matched} ${JSON.stringify(types)}`);
+})();
+
+/* ===== 14) company: exception ใช้บริษัทย่อย (subco) ไม่ใช่รหัสธนาคาร ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "MC8-BAY", amount: 144, sec: 3600, direction: "withdraw", company: "BAY", subco: "MC8" })],
+    [],
+  );
+  ok("company: exception.company = subco (MC8) ไม่ใช่ BAY", r.exceptions[0] && r.exceptions[0].company === "MC8", JSON.stringify(r.exceptions[0] && r.exceptions[0].company));
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));
