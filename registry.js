@@ -1361,7 +1361,18 @@ const Registry = (() => {
     const direction = dirOf(fileName);
     if (pm){
       // ไฟล์ PM: ผู้ให้บริการ + บริษัทย่อยในชื่อไฟล์ (ยุบ ถอน/ฝาก เป็นบัญชีเดียว)
-      const hit = ACCOUNTS.filter((a)=>a.source==="pm" && a.provider===pm && raw.includes(norm(a.subco)));
+      const fileToks = tokens(fileName);
+      // 1) จับชื่อบริษัทย่อยแบบเต็ม เช่น "sk8" (รวมกรณีเขียนติดกับคำอื่น)
+      let hit = ACCOUNTS.filter((a)=>a.source==="pm" && a.provider===pm && norm(a.subco).length>=2 && raw.includes(norm(a.subco)));
+      // 2) ถ้าไม่เจอ ลองตัวย่อ = ตัดเลขท้าย (sk8->sk, mr9->mr) แต่ต้องเป็น "คำเดี่ยว" ในชื่อไฟล์ และชี้ชัดบริษัทเดียว
+      if (!hit.length){
+        const shortHit = ACCOUNTS.filter((a)=>{
+          if (a.source!=="pm" || a.provider!==pm) return false;
+          const sh = norm(a.subco).replace(/\d+$/, "");
+          return sh.length>=2 && fileToks.includes(sh);
+        });
+        if (new Set(shortHit.map((a)=>a.subco)).size === 1) hit = shortHit;
+      }
       if (hit.length){
         const a=hit[0];
         return { match:{subco:a.subco,provider:a.provider,channel:a.channel,source:"pm",account:""}, direction, score:2 };

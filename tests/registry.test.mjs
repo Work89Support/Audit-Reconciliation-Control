@@ -42,6 +42,8 @@ eq("pm: 3XB 12PAY -> subco", p1.match && p1.match.subco, "3XB");
 eq("pm: ทิศทางจากชื่อไฟล์ = withdraw", p1.direction, "withdraw");
 const p2 = R.matchFile("MR9 MYPAY ฝาก 05-06-2026.csv");
 eq("pm: MR9 MYPAY -> MYPAY/MR9", p2.match && p2.match.provider + "/" + p2.match.subco, "MYPAY/MR9");
+const p2b = R.matchFile("SK Mypay ถอน 05-06-2026.xlsx"); // ตัวย่อ SK -> SK8 (ตัดเลขท้าย)
+eq("pm: SK (ตัวย่อ) -> MYPAY/SK8", p2b.match && p2b.match.provider + "/" + p2b.match.subco, "MYPAY/SK8");
 const p3 = R.matchFile("รายการฝากCBY PM 05-06-2026.xlsx"); // เขียนติดกัน + ไม่มีบริษัทย่อย
 ok("pm: ไม่มีบริษัทย่อย -> เตือน ambiguousSubco", !p3.match && Array.isArray(p3.ambiguousSubco), JSON.stringify(p3));
 

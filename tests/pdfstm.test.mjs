@@ -67,6 +67,15 @@ const LBK = `
 `;
 eq("LBK: ตรวจเจอจากชื่อ 'แลนด์ แอนด์ เฮ้าส์'", P.header(toPages(LBK)).bank, "LBK");
 
+/* ---- BAY edge: ยอดจำนวนเต็ม + มีเลขทศนิยมในรายละเอียด (ต้องไม่แย่งคอลัมน์ยอด) ---- */
+const BAY_EDGE = `
+19/06/2026 22:28:12 ค่าโอน 5.50 โอนเงิน 144 1278 MOBILE SCB PIMPORN
+`;
+const be = P.parseBAY(toPages(BAY_EDGE));
+eq("BAY edge: อ่านได้ 1 รายการ", be.length, 1);
+eq("BAY edge: ยอด = 144 (จำนวนเต็ม ไม่โดนเลข 5.50 ในรายละเอียดแย่ง)", be[0] && be[0].amount, 144);
+eq("BAY edge: ยอดคงเหลือ = 1278", be[0] && be[0].balance, 1278);
+
 console.log("\nPdfStm unit tests");
 console.log(out.join("\n"));
 console.log(`\n${passed} ผ่าน, ${failed} ล้มเหลว\n`);
