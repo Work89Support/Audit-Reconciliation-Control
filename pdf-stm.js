@@ -85,7 +85,7 @@ const PdfStm = (() => {
     if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(blob)) bank = "SCB";
     else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(blob)) bank = "KBANK";
     else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
-    else if (/กรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL";
+    else if (/ธนาคารกรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL"; // ต้องมีคำว่า "ธนาคาร" นำ กัน "กรุงเทพฯ" ในที่อยู่สำนักงานใหญ่ธนาคารอื่น
     else if (/กรุงไทย|KRUNGTHAI/i.test(blob)) bank = "KTB";
     else if (/กรุงศรี|อยุธยา|KRUNGSRI|AYUDHYA/i.test(blob)) bank = "BAY";
     else if (/แลนด์\s*แอนด์\s*เฮ้าส์|LAND\s*(?:AND|&)\s*HOUSES|LH\s*BANK|แลนด์ แอนด์ เฮาส์/i.test(blob)) bank = "LBK";
@@ -93,7 +93,7 @@ const PdfStm = (() => {
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
     let account = "";
-    const am = blob.match(/(?:เลขที่บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
+    const am = blob.match(/(?:เลข(?:ที่)?บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
     if (am) account = digits(am[1]);
 
     let holder = "";
@@ -195,6 +195,35 @@ const PdfStm = (() => {
     return rows;
   }
 
+  /* ---------------- BAY (กรุงศรีอยุธยา) ----------------
+     19/06/2026 22:28:12 | โอนเงิน | 144.00 | 1,278.86 | MOBILE | SCB PIMPORN KAEWS
+       (บรรทัดถัดไป "บัญชีปลายทาง : X..." เป็นรายละเอียดต่อ)
+     คอลัมน์ ถอน/ฝาก รวมเป็นช่องเดียว -> ทิศทางคำนวณจากผลต่างยอดคงเหลือใน applyDirection */
+  function parseBAY(pages) {
+    const rows = [];
+    const re = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([A-Za-zก-๙]+)\s*(.*)$/;
+    pages.forEach((lines) => {
+      lines.forEach((l, i) => {
+        const m = l.text.match(re);
+        if (!m) return;
+        if (/ยอดยกมา|ยอดยกไป|ยอดคงเหลือ/.test(m[3])) return;
+        const next = lines[i + 1];
+        const extra = next && /^บัญชีปลายทาง/.test(next.text) ? " " + next.text.trim() : "";
+        rows.push({
+          date: isoOf(m[1]),
+          sec: secOf(m[2]),
+          code: m[3].trim(), // โอนเงิน/รับโอน/ฝากเงิน ฯลฯ
+          channel: m[6],
+          amount: numOf(m[4]),
+          balance: numOf(m[5]),
+          desc: (m[7] || "").trim() + extra,
+          raw: l.text,
+        });
+      });
+    });
+    return rows;
+  }
+
   /* ---------------- ทั่วไป (สำรอง) ---------------- */
   function parseGeneric(pages) {
     const rows = [];
@@ -252,7 +281,7 @@ const PdfStm = (() => {
     const pages = await textLines(arrayBuffer);
     const head = header(pages);
     let rows =
-      head.bank === "SCB" ? parseScb(pages) : head.bank === "KBANK" ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : parseGeneric(pages);
+      head.bank === "SCB" ? parseScb(pages) : head.bank === "KBANK" ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
 
@@ -317,7 +346,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, textLines, header, isoOf };
+  return { parse, textLines, header, isoOf, parseBAY, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;
