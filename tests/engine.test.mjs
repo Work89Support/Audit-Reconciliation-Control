@@ -139,6 +139,55 @@ await (async function () {
   eq("aging: asOf จริง = 4 ชม.", rReal.exceptions[0].ageHours, 4);
 })();
 
+/* ===== 9) ทิศทางต้องตรงกัน: ฝาก ไม่จับคู่กับ ถอน (แม้บัญชี+ยอด+เวลาตรง) ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "DIR-1", amount: 500, sec: 3600, direction: "deposit" })],
+    [rec({ account: "DIR-1", amount: 500, sec: 3610, direction: "withdraw" })],
+  );
+  ok("direction: ฝากไม่จับคู่กับถอน (matched=0)", r.matched === 0, `matched=${r.matched}`);
+  const types = r.exceptions.map((e) => e.type);
+  ok("direction: ขึ้นเป็น exception ทั้งสองฝั่ง", types.includes("missing_bo") && types.includes("missing_stm"), JSON.stringify(types));
+})();
+
+/* ===== 10) greedy: รายการที่เวลาใกล้กว่าต้องไม่ถูกแย่ง BO โดยรายการที่อยู่ไกลกว่า ===== */
+await (async function () {
+  const r = await run(
+    [
+      rec({ account: "GR-1", amount: 500, sec: 3400, direction: "deposit" }), // ไกล (นอกเกณฑ์ 120)
+      rec({ account: "GR-1", amount: 500, sec: 3650, direction: "deposit" }), // ใกล้ (ในเกณฑ์)
+    ],
+    [rec({ account: "GR-1", amount: 500, sec: 3600, direction: "deposit" })],
+  );
+  ok("greedy: รายการที่ใกล้กว่ายังแม็ปได้ (matched=1)", r.matched === 1, `matched=${r.matched}`);
+})();
+
+/* ===== 11) duplicate: ยอดเท่ากันแต่คนละเวลา = missing_stm ไม่ใช่ duplicate ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "DUP-1", amount: 500, sec: 32400, direction: "deposit" })],
+    [
+      rec({ account: "DUP-1", amount: 500, sec: 32400, direction: "deposit" }), // แม็ป
+      rec({ account: "DUP-1", amount: 500, sec: 54000, direction: "deposit" }), // คนละเวลา = คนละรายการ
+    ],
+  );
+  const types = r.exceptions.map((e) => e.type);
+  ok("duplicate: ยอดเท่ากันคนละเวลา = missing_stm", types.includes("missing_stm") && !types.includes("duplicate"), JSON.stringify(types));
+})();
+
+/* ===== 12) duplicate จริง: ยอดเท่ากัน เวลาใกล้กัน ยังถูกจับเป็น duplicate ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "DUP-2", amount: 100, sec: 1000, direction: "deposit" })],
+    [
+      rec({ account: "DUP-2", amount: 100, sec: 1000, direction: "deposit" }), // แม็ป
+      rec({ account: "DUP-2", amount: 100, sec: 1030, direction: "deposit" }), // ซ้ำจริง (ใกล้กัน)
+    ],
+  );
+  const types = r.exceptions.map((e) => e.type);
+  ok("duplicate จริง: ยังจับเป็น duplicate (matched=1)", r.matched === 1 && types.includes("duplicate"), `matched=${r.matched} ${JSON.stringify(types)}`);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));
