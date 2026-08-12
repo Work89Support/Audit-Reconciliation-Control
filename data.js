@@ -25,16 +25,17 @@ const DB = (() => {
 
   /* system: บริษัทนี้อยู่ระบบไหน — XB ส่งชี้แจงทุกวัน, SYS123 รวบเป็นรอบ
      ตั้งค่าได้เองในหน้า "งานชี้แจง" ไม่ต้องแก้โค้ดเวลาเพิ่มบริษัทใหม่ */
+  /* มิติบริษัท = บริษัทย่อย (subco) ตามทะเบียนบัญชีจริง */
   const companies = [
-    { code: "SYS123", name: "ระบบ 123", type: "main", system: "SYS123" },
-    { code: "AUTOPEER", name: "AUTOPEER", type: "pm", system: "SYS123" },
-    { code: "AZPAY", name: "AZPAY", type: "pm", system: "SYS123" },
-    { code: "CYBERPLUS", name: "Cyberplus", type: "pm", system: "SYS123" },
-    { code: "12PAY", name: "12PAY", type: "pm", system: "SYS123" },
-    { code: "MYPAY", name: "MYPAY", type: "pm", system: "SYS123" },
+    { code: "3XB", name: "3XB", type: "main", system: null },
+    { code: "FR8", name: "FR8", type: "main", system: null },
     { code: "AT4", name: "AT4", type: "main", system: null },
     { code: "SK8", name: "SK8", type: "main", system: null },
-    { code: "FR8", name: "FR8", type: "main", system: null },
+    { code: "MR9", name: "MR9", type: "main", system: null },
+    { code: "MC8", name: "MC8", type: "main", system: null },
+    { code: "UR9", name: "UR9", type: "main", system: null },
+    { code: "PS8", name: "PS8", type: "main", system: null },
+    { code: "7M", name: "7M", type: "main", system: null },
   ];
 
   const banks = [
@@ -46,18 +47,18 @@ const DB = (() => {
   ];
 
   const accounts = [
-    { id: "SCB-2048", bank: "SCB", company: "SYS123", type: "deposit", active: true },
-    { id: "SCB-3391", bank: "SCB", company: "SYS123", type: "withdraw", active: true },
-    { id: "KBANK-7711", bank: "KBANK", company: "SYS123", type: "deposit", active: true },
-    { id: "KBANK-7712", bank: "KBANK", company: "SYS123", type: "withdraw", active: true },
-    { id: "GSB-5520", bank: "GSB", company: "SYS123", type: "deposit", active: true },
-    { id: "BBL-1180", bank: "BBL", company: "SYS123", type: "withdraw", active: true },
-    { id: "KTB-9042", bank: "KTB", company: "SYS123", type: "deposit", active: false },
-    { id: "AP-PM-01", bank: "SCB", company: "AUTOPEER", type: "pm", active: true },
-    { id: "AP-PM-02", bank: "KBANK", company: "AUTOPEER", type: "pm", active: true },
-    { id: "AZ-PM-01", bank: "SCB", company: "AZPAY", type: "pm", active: true },
-    { id: "CY-PM-01", bank: "GSB", company: "CYBERPLUS", type: "pm", active: true },
-    { id: "CY-PM-02", bank: "BBL", company: "CYBERPLUS", type: "pm", active: true },
+    { id: "SCB-2048", bank: "SCB", company: "3XB", type: "deposit", active: true },
+    { id: "SCB-3391", bank: "SCB", company: "FR8", type: "withdraw", active: true },
+    { id: "KBANK-7711", bank: "KBANK", company: "AT4", type: "deposit", active: true },
+    { id: "KBANK-7712", bank: "KBANK", company: "SK8", type: "withdraw", active: true },
+    { id: "GSB-5520", bank: "GSB", company: "MR9", type: "deposit", active: true },
+    { id: "BBL-1180", bank: "BBL", company: "MC8", type: "withdraw", active: true },
+    { id: "KTB-9042", bank: "KTB", company: "UR9", type: "deposit", active: false },
+    { id: "AP-PM-01", bank: "SCB", company: "PS8", type: "pm", active: true },
+    { id: "AP-PM-02", bank: "KBANK", company: "7M", type: "pm", active: true },
+    { id: "AZ-PM-01", bank: "SCB", company: "3XB", type: "pm", active: true },
+    { id: "CY-PM-01", bank: "GSB", company: "FR8", type: "pm", active: true },
+    { id: "CY-PM-02", bank: "BBL", company: "AT4", type: "pm", active: true },
   ];
 
   const shifts = [
