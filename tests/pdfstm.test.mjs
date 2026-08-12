@@ -98,6 +98,57 @@ eq("BAY edge: อ่านได้ 1 รายการ", be.length, 1);
 eq("BAY edge: ยอด = 144 (จำนวนเต็ม ไม่โดนเลข 5.50 ในรายละเอียดแย่ง)", be[0] && be[0].amount, 144);
 eq("BAY edge: ยอดคงเหลือ = 1278", be[0] && be[0].balance, 1278);
 
+/* ---- KTB (กรุงไทย): วันที่/เวลาแยกบรรทัด + ปี พ.ศ. ย่อ ---- */
+const KTB = `
+รายการเดินบัญชี
+ชื่อบัญชี นาย นราธิป ขุนอาจ ประเภทบัญชี ออมทรัพย์
+เลขที่บัญชี 6060748201 รหัสสาขา 606
+บริษัท ธนาคารกรุงไทย จำกัด มหาชน
+29/06/69 เงินโอนเข้า (IORSDT) 014-6444474223 30.00 16,492.01 606
+22:55
+30/06/69 โอนเงินออก (IORSWT) 004-0491469471 127.00 3,155.08 606
+06:00
+รายการถอนทั้งหมด 1690 1,342,936.60
+`;
+const ktbPages = toPages(KTB);
+const ktbHead = P.header(ktbPages);
+eq("KTB: ตรวจธนาคาร = KTB", ktbHead.bank, "KTB");
+eq("KTB: อ่านเลขบัญชี = 6060748201", ktbHead.account, "6060748201");
+eq("KTB: isoOf ปี พ.ศ. ย่อ '30/06/69' -> 2026-06-30", P.isoOf("30/06/69"), "2026-06-30");
+const ktbRows = P.parseKtb(ktbPages);
+P.applyDirection(ktbRows, ktbHead.bank);
+eq("KTB: อ่านได้ 2 รายการ (ข้ามบรรทัดสรุปท้าย)", ktbRows.length, 2);
+eq("KTB: รายการแรก วันที่ = 2026-06-29", ktbRows[0] && ktbRows[0].date, "2026-06-29");
+eq("KTB: รายการแรก ยอด = 30", ktbRows[0] && ktbRows[0].amount, 30);
+eq("KTB: รายการแรก เวลา (จากบรรทัดถัดไป) = 22:55", ktbRows[0] && ktbRows[0].sec, 22 * 3600 + 55 * 60);
+eq("KTB: รายการแรก 'เงินโอนเข้า' = deposit", ktbRows[0] && ktbRows[0].direction, "deposit");
+eq("KTB: รายการสอง 'โอนเงินออก' = withdraw", ktbRows[1] && ktbRows[1].direction, "withdraw");
+eq("KTB: รายการสอง ยอด = 127", ktbRows[1] && ktbRows[1].amount, 127);
+
+/* ---- BBL (กรุงเทพ): ไม่มีคอลัมน์เวลา -> noTime, ปี ค.ศ. ย่อ ---- */
+const BBL2 = `
+STATEMENT OF SAVING ACCOUNT
+ธนาคารกรุงเทพ จำกัด (มหาชน)
+ชื่อ/Name นาย นรวร ผาสุข เลขที่บัญชี/Account No. 651-7-24804-0
+10/06/26 TRF FR OTH BK 14.00 1,313.58 mPhone
+10/06/26 TRF TO OTH BK 500.00 1,278.58 mPhone
+จำนวนรายการถอน/Total No. of Debits 28 จำนวนเงินถอน 24,475.00
+`;
+const bblPages = toPages(BBL2);
+const bblHead = P.header(bblPages);
+eq("BBL: ตรวจธนาคาร = BBL", bblHead.bank, "BBL");
+eq("BBL: อ่านเลขบัญชีจาก 'Account No.' = 6517248040", bblHead.account, "6517248040");
+eq("BBL: isoOf ปี ค.ศ. ย่อ '10/06/26' -> 2026-06-10", P.isoOf("10/06/26"), "2026-06-10");
+const bblRows = P.parseBbl(bblPages);
+P.applyDirection(bblRows, bblHead.bank);
+eq("BBL: อ่านได้ 2 รายการ (ข้ามหัว/สรุป)", bblRows.length, 2);
+eq("BBL: ตั้ง noTime = true", bblRows[0] && bblRows[0].noTime, true);
+eq("BBL: sec = 0 (ไม่มีเวลา)", bblRows[0] && bblRows[0].sec, 0);
+eq("BBL: 'TRF FR' = deposit", bblRows[0] && bblRows[0].direction, "deposit");
+eq("BBL: 'TRF FR' ยอด = 14", bblRows[0] && bblRows[0].amount, 14);
+eq("BBL: 'TRF TO' = withdraw", bblRows[1] && bblRows[1].direction, "withdraw");
+eq("BBL: 'TRF TO' ยอด = 500", bblRows[1] && bblRows[1].amount, 500);
+
 console.log("\nPdfStm unit tests");
 console.log(out.join("\n"));
 console.log(`\n${passed} ผ่าน, ${failed} ล้มเหลว\n`);

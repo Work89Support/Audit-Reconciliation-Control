@@ -69,7 +69,7 @@ const PdfStm = (() => {
     const m = String(v || "").match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
     if (!m) return null;
     let y = +m[3];
-    if (y < 100) y += 2000; // 26 -> 2026 (statement ใช้ปี 2 หลักเป็น ค.ศ. 20xx)
+    if (y < 100) y += y > 50 ? 1957 : 2000; // ค.ศ.ย่อ 26->2026 ; พ.ศ.ย่อ (KTB) 69->2026 (2569-543=1957+69)
     if (y > 2400) y -= 543;
     return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
   }
@@ -269,8 +269,8 @@ const PdfStm = (() => {
           else if (c === "XB") dir = "adjustment";
         }
         if (!dir) {
-          if (/รับโอน|ฝากเงิน|เงินเข้า|deposit/i.test(r.code + " " + r.desc)) dir = "deposit";
-          else if (/โอนเงิน|โอนไป|ถอน|เงินออก|หักบัญชี|ค่าธรรมเนียม|withdraw/i.test(r.code + " " + r.desc)) dir = "withdraw";
+          if (/รับโอน|ฝากเงิน|เงินเข้า|TRF FR|deposit/i.test(r.code + " " + r.desc)) dir = "deposit";
+          else if (/โอนเงิน|โอนไป|ถอน|เงินออก|หักบัญชี|ค่าธรรมเนียม|TRF TO|withdraw/i.test(r.code + " " + r.desc)) dir = "withdraw";
         }
       }
       r.direction = dir || "deposit";
@@ -280,12 +280,77 @@ const PdfStm = (() => {
     return rows;
   }
 
+  /* ---------------- KTB (กรุงไทย) ----------------
+     วันที่กับเวลาอยู่คนละบรรทัด (เวลา HH:MM อยู่บรรทัดถัดไป) ปีเป็น พ.ศ. ย่อ (69 = 2569 = 2026)
+       29/06/69 | เงินโอนเข้า (IORSDT) | 014-6444474223 | 30.00 | 16,492.01 | 606
+       22:55
+     บรรทัดสรุปท้าย ("รายการถอนทั้งหมด ...") ไม่ขึ้นต้นด้วยวันที่ จึงถูกข้ามอัตโนมัติ           */
+  function parseKtb(pages) {
+    const rows = [];
+    pages.forEach((lines) => {
+      lines.forEach((l, i) => {
+        const t = l.text;
+        if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(t)) return;              // ต้องขึ้นต้นด้วยวันที่
+        const amts = l.items.filter((it) => AMT.test(it.s.trim()));
+        if (amts.length < 2) return;                                       // ต้องมี ยอด + คงเหลือ
+        // เวลา: ในบรรทัดนี้ก่อน ไม่มีค่อยดูบรรทัดถัดไป (ที่ไม่ใช่แถวใหม่)
+        let time = (t.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
+        if (!time) {
+          const nx = lines[i + 1];
+          if (nx && !/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(nx.text)) time = (nx.text.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
+        }
+        const kind = (t.match(/(เงินโอนเข้า|โอนเงินออก|รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/) || [])[1] || "";
+        rows.push({
+          date: isoOf(t),
+          sec: secOf(time),
+          code: kind,
+          channel: "",
+          amount: numOf(amts[amts.length - 2].s),
+          balance: numOf(amts[amts.length - 1].s),
+          desc: t.replace(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*/, "").trim(),
+          raw: t + (time ? " " + time : ""),
+        });
+      });
+    });
+    return rows;
+  }
+
+  /* ---------------- BBL (กรุงเทพ) ----------------
+     ไม่มีคอลัมน์เวลา — ตั้ง noTime แล้วให้ engine จับคู่ด้วยบัญชี+ยอด+ทิศทางภายในวัน
+       10/06/26 | TRF FR OTH BK | 14.00 | 1,313.58 | mPhone     (FR = เงินเข้า, TO = เงินออก) */
+  function parseBbl(pages) {
+    const rows = [];
+    pages.forEach((lines) => {
+      lines.forEach((l) => {
+        const t = l.text;
+        if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(t)) return;
+        const firstAmtIdx = l.items.findIndex((it) => AMT.test(it.s.trim()));
+        const amts = l.items.filter((it) => AMT.test(it.s.trim()));
+        if (firstAmtIdx < 1 || amts.length < 2) return;                    // ต้องมี ถอน/ฝาก + คงเหลือ
+        const particulars = l.items.slice(1, firstAmtIdx).map((it) => it.s).join(" ").trim();
+        const via = (l.items[l.items.length - 1] || {}).s || "";
+        rows.push({
+          date: isoOf(t),
+          sec: 0,
+          noTime: true,                                                    // ไม่มีเวลาในสเตทเมนต์
+          code: particulars,
+          channel: "",
+          amount: numOf(amts[amts.length - 2].s),
+          balance: numOf(amts[amts.length - 1].s),
+          desc: (particulars + " " + via).trim(),
+          raw: t,
+        });
+      });
+    });
+    return rows;
+  }
+
   /* ---------------- public ---------------- */
   async function parse(fileName, arrayBuffer, businessDate) {
     const pages = await textLines(arrayBuffer);
     const head = header(pages);
     let rows =
-      head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
+      head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
 
@@ -318,6 +383,7 @@ const PdfStm = (() => {
         crossDay: false,
         lateNight: r.sec >= 82800,
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
+        noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
         raw: r.raw,
       });
     });
@@ -350,7 +416,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, textLines, header, isoOf, parseBAY, parseKbank, parseGeneric, applyDirection };
+  return { parse, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;

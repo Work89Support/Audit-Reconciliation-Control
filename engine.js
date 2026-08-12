@@ -354,6 +354,8 @@ const Engine = (() => {
     /* statement ของ KBANK/SCB ให้เวลาแค่ HH:MM — ต้องเผื่ออย่างน้อย 1 นาที */
     const minuteFloor = settings.minuteTolerance ?? 60;
     const tolOf = (d, s, b) => {
+      // สเตทเมนต์ไม่มีเวลา (เช่น BBL): จับคู่ด้วยบัญชี+ยอด+ทิศทางภายในวัน (กรอบเวลาทั้งวัน)
+      if ((s && s.noTime) || (b && b.noTime)) return 86400;
       const base = d === "withdraw" ? tolWit : tolDep;
       const coarse = (s && s.minutePrecision) || (b && b.minutePrecision);
       return coarse ? Math.max(base, minuteFloor) : base;

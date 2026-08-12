@@ -208,6 +208,37 @@ await (async function () {
   ok("company: exception.company = subco (MC8) ไม่ใช่ BAY", r.exceptions[0] && r.exceptions[0].company === "MC8", JSON.stringify(r.exceptions[0] && r.exceptions[0].company));
 })();
 
+/* ===== 15) noTime (BBL ไม่มีเวลา): ผ่อนกรอบเวลาเป็นทั้งวัน ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "BBL-1", amount: 100, sec: 0, noTime: true })],
+    [rec({ account: "BBL-1", amount: 100, sec: 50000 })],
+  );
+  eq("noTime: จับคู่ได้แม้เวลาต่างกันมาก (matched=1)", r.matched, 1);
+  eq("noTime: ไม่มี exception", r.exceptions.length, 0);
+})();
+
+/* ===== 16) ควบคุม: ไม่มี noTime + เวลาต่างมาก ต้องเป็น time_diff ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "BBL-2", amount: 100, sec: 0 })],
+    [rec({ account: "BBL-2", amount: 100, sec: 50000 })],
+  );
+  // dt ~14 ชม. เกิน 1 ชม. -> ไม่ใช่ time_diff แต่เป็น missing_bo ; ประเด็นคือถ้าไม่มี noTime จะไม่แมตช์
+  eq("noTime control: ไม่มี noTime + เวลาห่างมาก -> ไม่แมตช์ (matched=0)", r.matched, 0);
+  eq("noTime control: STM ค้างเป็น missing_bo", r.exceptions[0]?.type, "missing_bo");
+})();
+
+/* ===== 17) noTime หลายรายการยอดเท่ากัน จับคู่ 1:1 ครบ ===== */
+await (async function () {
+  const r = await run(
+    [rec({ account: "BBL-3", amount: 50, sec: 0, noTime: true }), rec({ account: "BBL-3", amount: 50, sec: 0, noTime: true })],
+    [rec({ account: "BBL-3", amount: 50, sec: 10 }), rec({ account: "BBL-3", amount: 50, sec: 70000 })],
+  );
+  eq("noTime 1:1: matched = 2", r.matched, 2);
+  eq("noTime 1:1: ไม่มี exception", r.exceptions.length, 0);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));
