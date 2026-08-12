@@ -60,12 +60,34 @@ const BBL = `
 `;
 eq("BBL: ตรวจเจอเมื่อมี 'ธนาคารกรุงเทพ'", P.header(toPages(BBL)).bank, "BBL");
 
-/* ---- LBK header ---- */
+/* ---- LBK = LINE BK : สเตทเมนต์ฟอร์แมตเดียวกับกสิกร (เคลียริงเดียวกัน) ต้องแท็กเป็น LBK ----
+   ตรวจ "LINE BK" ในคอลัมน์ช่องทาง แล้วส่งเข้า parser กสิกร (parseKbank) */
 const LBK = `
-เลขที่บัญชี 100-2-34567-8
-ธนาคารแลนด์ แอนด์ เฮ้าส์ จำกัด (มหาชน)
+หน้าที่ (PAGE/OF) 12/14
+ชื่อบัญชี น.ส. เพ็ญศรี เกิดนิมิตร เลขที่อ้างอิง 26081104446463387474
+เลขที่บัญชีเงินฝาก 195-3-16715-4
+09-08-26 ยอดยกมา 8,078.04
+09-08-26 07:06 โอนเงิน 211.00 7,867.04 LINE BK โอนไป SCB X2448 นาย สุชาติ สัง
+09-08-26 09:57 รับโอนเงิน 7,000.00 13,803.04 ต่างธนาคาร จาก BAY X5104 Rungfa
 `;
-eq("LBK: ตรวจเจอจากชื่อ 'แลนด์ แอนด์ เฮ้าส์'", P.header(toPages(LBK)).bank, "LBK");
+const lbkPages = toPages(LBK);
+const lbkHead = P.header(lbkPages);
+eq("LBK: ตรวจเจอจากช่องทาง 'LINE BK' (ก่อน KBANK แม้มี 'เลขที่บัญชีเงินฝาก')", lbkHead.bank, "LBK");
+eq("LBK: อ่านเลขบัญชีจาก 'เลขที่บัญชีเงินฝาก'", lbkHead.account, "1953167154");
+const lbkRows = P.parseKbank(lbkPages);
+P.applyDirection(lbkRows, lbkHead.bank);
+eq("LBK: parseKbank อ่านได้ 2 รายการ (ข้าม 'ยอดยกมา')", lbkRows.length, 2);
+eq("LBK: รายการแรก ยอด = 211", lbkRows[0] && lbkRows[0].amount, 211);
+eq("LBK: รายการแรก เป็น withdraw", lbkRows[0] && lbkRows[0].direction, "withdraw");
+eq("LBK: รายการสอง ยอด = 7000", lbkRows[1] && lbkRows[1].amount, 7000);
+eq("LBK: รายการสอง เป็น deposit (รับโอนเงิน)", lbkRows[1] && lbkRows[1].direction, "deposit");
+
+/* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
+const KPLUS = `
+เลขที่บัญชีเงินฝาก 123-4-56789-0
+09-08-26 07:06 โอนเงิน 50.00 1,000.00 K PLUS โอนไป SCB X1
+`;
+eq("KBANK: ไม่มี 'LINE BK' ยังตรวจเป็น KBANK", P.header(toPages(KPLUS)).bank, "KBANK");
 
 /* ---- BAY edge: ยอดจำนวนเต็ม + มีเลขทศนิยมในรายละเอียด (ต้องไม่แย่งคอลัมน์ยอด) ---- */
 const BAY_EDGE = `

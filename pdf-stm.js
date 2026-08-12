@@ -81,14 +81,16 @@ const PdfStm = (() => {
   /* ---------------- ตรวจธนาคารและเลขบัญชี ---------------- */
   function header(pages) {
     const blob = (pages[0] || []).map((l) => l.text).join("\n");
+    const bodyBlob = (pages || []).map((p) => p.map((l) => l.text).join("\n")).join("\n");
     let bank = null;
     if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(blob)) bank = "SCB";
+    // LINE BK (LBK): สเตทเมนต์ฟอร์แมตเดียวกับกสิกร (เคลียริงเดียวกัน) แต่ต้องแท็กเป็น LBK ให้ตรงทะเบียนบัญชี — ตรวจก่อน KBANK เพราะมี "เลขที่บัญชีเงินฝาก" เหมือนกัน
+    else if (/LINE\s*BK|ไลน์\s*บีเค/i.test(bodyBlob)) bank = "LBK";
     else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(blob)) bank = "KBANK";
     else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
     else if (/ธนาคารกรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL"; // ต้องมีคำว่า "ธนาคาร" นำ กัน "กรุงเทพฯ" ในที่อยู่สำนักงานใหญ่ธนาคารอื่น
     else if (/กรุงไทย|KRUNGTHAI/i.test(blob)) bank = "KTB";
     else if (/กรุงศรี|อยุธยา|KRUNGSRI|AYUDHYA/i.test(blob)) bank = "BAY";
-    else if (/แลนด์\s*แอนด์\s*เฮ้าส์|LAND\s*(?:AND|&)\s*HOUSES|LH\s*BANK|แลนด์ แอนด์ เฮาส์/i.test(blob)) bank = "LBK";
     /* TrueMoney Wallet: หัวข้อ "ใบแสดงรายการ / Statement of Account" + คอลัมน์ เงินเข้า/เงินออก + ยอดคงเหลือ (เลขบัญชี = เบอร์มือถือ) */
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
@@ -283,7 +285,7 @@ const PdfStm = (() => {
     const pages = await textLines(arrayBuffer);
     const head = header(pages);
     let rows =
-      head.bank === "SCB" ? parseScb(pages) : head.bank === "KBANK" ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
+      head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
 
@@ -307,7 +309,7 @@ const PdfStm = (() => {
         direction: r.direction,
         account: head.account || "UNKNOWN",
         bank: head.bank || "",
-        channel: r.channel || head.bank || "",
+        channel: head.bank === "LBK" ? "LBK" : (r.channel || head.bank || ""), // LBK: บังคับ channel = "LBK" ให้ตรง registry (parseKbank คืน channel รก ๆ จากคอลัมน์รายละเอียด)
         company,
         username: null,
         ref: null,
@@ -348,7 +350,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, textLines, header, isoOf, parseBAY, parseGeneric, applyDirection };
+  return { parse, textLines, header, isoOf, parseBAY, parseKbank, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;
