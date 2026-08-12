@@ -300,9 +300,11 @@ const PdfStm = (() => {
           if (nx && !/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(nx.text)) time = (nx.text.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
         }
         const kind = (t.match(/(เงินโอนเข้า|โอนเงินออก|รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/) || [])[1] || "";
+        const secVal = secOf(time); // KTB บางบัญชีไม่แสดงเวลา -> ถอยไปโหมด noTime เหมือน BBL (จับคู่ด้วยบัญชี+ยอด+ทิศทาง)
         rows.push({
           date: isoOf(t),
-          sec: secOf(time),
+          sec: secVal === null ? 0 : secVal,
+          noTime: secVal === null,
           code: kind,
           channel: "",
           amount: numOf(amts[amts.length - 2].s),

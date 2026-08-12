@@ -125,6 +125,22 @@ eq("KTB: รายการแรก 'เงินโอนเข้า' = depos
 eq("KTB: รายการสอง 'โอนเงินออก' = withdraw", ktbRows[1] && ktbRows[1].direction, "withdraw");
 eq("KTB: รายการสอง ยอด = 127", ktbRows[1] && ktbRows[1].amount, 127);
 
+/* ---- KTB แบบไม่แสดงเวลา (บางบัญชีตามหมายเหตุในทะเบียน) -> โหมด noTime ---- */
+const KTB_NT = `
+บริษัท ธนาคารกรุงไทย จำกัด มหาชน
+เลขที่บัญชี 6640748576 รหัสสาขา 664
+30/06/69 เงินโอนเข้า (IORSDT) 014-6444474223 30.00 16,492.01 664
+30/06/69 โอนเงินออก (IORSWT) 004-0491469471 127.00 16,365.01 664
+`;
+const ktbNtPages = toPages(KTB_NT);
+const ktbNt = P.parseKtb(ktbNtPages);
+P.applyDirection(ktbNt, "KTB");
+eq("KTB(noTime): อ่านได้ 2 รายการ (ไม่ถูกตัดเพราะไม่มีเวลา)", ktbNt.length, 2);
+eq("KTB(noTime): ตั้ง noTime = true", ktbNt[0] && ktbNt[0].noTime, true);
+eq("KTB(noTime): sec = 0", ktbNt[0] && ktbNt[0].sec, 0);
+eq("KTB(noTime): รายการแรก = deposit ยอด 30", ktbNt[0] && ktbNt[0].direction + ":" + ktbNt[0].amount, "deposit:30");
+eq("KTB(noTime): รายการสอง = withdraw ยอด 127", ktbNt[1] && ktbNt[1].direction + ":" + ktbNt[1].amount, "withdraw:127");
+
 /* ---- BBL (กรุงเทพ): ไม่มีคอลัมน์เวลา -> noTime, ปี ค.ศ. ย่อ ---- */
 const BBL2 = `
 STATEMENT OF SAVING ACCOUNT
