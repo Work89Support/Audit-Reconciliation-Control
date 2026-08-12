@@ -57,7 +57,6 @@ const Store = (() => {
       autoIngest: true,
     },
     retention: { months: 12, backupDaily: true, encryptAtRest: true, maskAccount: true },
-    fxRates: [], // log อัตราแลกเปลี่ยน USDT/THB รายวัน
     lastSavedAt: null,
   });
 

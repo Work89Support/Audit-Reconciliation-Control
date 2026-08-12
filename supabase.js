@@ -6,7 +6,7 @@
                                  → ทะเบียน mail_batches / source_files
      ระบบนี้ → อ่านทะเบียน → โหลดไฟล์ต้นฉบับจาก Storage
              → แปลงในเบราว์เซอร์ด้วยตัวอ่านเดิม (formats/pdf-stm/xlsx-reader)
-             → เขียนผลกลับ recon_runs / exceptions / fx_rates / damages
+             → เขียนผลกลับ recon_runs / exceptions / damages
 
    ความปลอดภัย
      - ใช้ anon key เท่านั้น ห้ามใส่ service_role key ในหน้าเว็บ
@@ -218,8 +218,6 @@ const Sb = (() => {
           bank_amount: e.bankAmount,
           amount_diff: e.amountDiff,
           risk_amount: e.riskAmount,
-          currency: e.currency || "THB",
-          fx_rate: e.fxRate || null,
           time_diff_sec: e.timeDiffSec,
           employee: e.employee,
           shift: e.shift,
@@ -233,40 +231,6 @@ const Sb = (() => {
     }
     saveConfig({ lastSync: new Date().toISOString() });
     return runId;
-  }
-
-  async function pushFxRates(list) {
-    if (!list || !list.length) return 0;
-    await post(
-      "fx_rates",
-      list.map((r) => ({
-        rate_date: r.date,
-        quote: r.quote || "USDT",
-        base: r.base || "THB",
-        rate: r.rate,
-        recorded_by: r.by,
-        note: r.note || null,
-        ref_source: r.ref ? r.ref.name : null,
-        ref_rate: r.ref ? r.ref.rate : null,
-      })),
-      "resolution=merge-duplicates,return=minimal",
-    );
-    return list.length;
-  }
-
-  async function pullFxRates() {
-    const rows = await json(`/rest/v1/fx_rates?select=*&order=rate_date.desc&limit=400`);
-    return rows.map((r) => ({
-      date: r.rate_date,
-      quote: r.quote,
-      base: r.base,
-      rate: Number(r.rate),
-      by: r.recorded_by || "-",
-      at: r.recorded_at,
-      note: r.note || "",
-      ref: r.ref_rate ? { name: r.ref_source, rate: Number(r.ref_rate) } : null,
-      revisions: r.revisions || [],
-    }));
   }
 
   const log = (actor, action, entity, target, detail, meta) =>
@@ -302,8 +266,6 @@ const Sb = (() => {
     signedUrl,
     markParsed,
     saveRun,
-    pushFxRates,
-    pullFxRates,
     log,
     ping,
     post,

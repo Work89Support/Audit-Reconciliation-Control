@@ -54,8 +54,6 @@ const Docs = (() => {
   tfoot td { background:#eef6ff; font-weight:600; border-top:1.5px solid #0066cc; }
 
   .fillrow td { height:26px; }
-  .fxnote { font-size:9pt; color:#55697e; }
-  .fxrow { margin:6px 0 0; text-align:right; }
   .writein { border:1px dashed #9fb3c8; border-radius:5px; min-height:74px; padding:8px 10px; background:#fff; font-size:9.4pt; color:#55697e; }
   .narrative { border:1px solid #d6e4f2; border-radius:6px; padding:11px 13px; background:#fff; font-size:10pt; line-height:1.7; white-space:pre-wrap; min-height:70px; }
 
@@ -142,7 +140,7 @@ const Docs = (() => {
   <tfoot><tr><td colspan="5">รวม ${o.items.length} รายการ</td><td class="r">${money(total)}</td><td colspan="2"></td></tr></tfoot>
 </table>
 
-<p class="fxrow">${fxLine(o.date, total)}</p>
+
 
 <h2 class="sec">คำชี้แจงเพิ่มเติม / เอกสารแนบ</h2>
 <div class="writein">โปรดระบุรายละเอียดเพิ่มเติม และรายการหลักฐานที่แนบมาพร้อมเอกสารฉบับนี้</div>
@@ -157,17 +155,6 @@ const Docs = (() => {
 </div></body></html>`;
   }
 
-  /* บรรทัดอ้างอิงอัตราแลกเปลี่ยนของวันนั้น — ระบบมีทั้งบาทและ USDT */
-  function fxLine(date, amountTHB) {
-    if (typeof Fx === "undefined") return "";
-    const r = Fx.effectiveRate(date);
-    if (!r) return `<span class="fxnote">ยังไม่ได้บันทึกอัตรา ${Fx.QUOTE} ของวันที่ ${esc(date)}</span>`;
-    const q = amountTHB ? Fx.toQuote(amountTHB, date) : null;
-    const eq = q && q.ok ? ` · ยอดนี้เท่ากับ ${Fx.fmtQuote(q.value)} ${Fx.QUOTE}` : "";
-    return `<span class="fxnote">อัตราอ้างอิงวันที่ ${esc(r.date)}: 1 ${Fx.QUOTE} = ${Fx.fmtQuote(r.rate)} บาท (บันทึกโดย ${esc(r.by)})${eq}${r.exact ? "" : " — ใช้อัตราของวันก่อนหน้า"}</span>`;
-  }
-
-  /* ---------------- เอกสารชี้แจง (ฉบับสมบูรณ์) ---------------- */
   function clarificationHtml(o) {
     const e = o.ex;
     const evid = (e.evidence || []).filter((f) => f.url && /\.(png|jpe?g|gif|webp)$/i.test(f.name));
@@ -214,7 +201,6 @@ const Docs = (() => {
     <tr><td>ประเภทปัญหา</td><td colspan="2">${esc(e.typeName)} · ระดับ ${esc(o.severityName)}</td></tr>
     <tr><td>ผลต่างเวลา</td><td colspan="2">${e.timeDiffSec} วินาที</td></tr>
     <tr><td>ยอดที่ต้องตรวจ</td><td colspan="2"><b>${e.riskAmount ? money(e.riskAmount) + " บาท" : "ไม่กระทบยอดเงิน"}</b></td></tr>
-    <tr><td>อัตราแลกเปลี่ยนที่ใช้</td><td colspan="2">${fxLine(e.date, e.riskAmount)}</td></tr>
   </tbody>
 </table>
 

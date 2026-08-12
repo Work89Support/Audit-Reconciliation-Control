@@ -77,7 +77,7 @@ const Charts = (() => {
     const series = opt.series;
     const n = opt.xLabels.length;
     const allV = series.flatMap((s) => s.values);
-    /* zoom: ใช้กับค่าที่แกว่งน้อยแต่ไกลจากศูนย์ เช่น อัตราแลกเปลี่ยน ไม่งั้นเส้นจะแบนอ่านไม่ออก */
+    /* zoom: ใช้กับค่าที่แกว่งน้อยแต่ไกลจากศูนย์ ไม่งั้นเส้นจะแบนอ่านไม่ออก */
     const lo0 = Math.min(...allV);
     const hi0 = Math.max(...allV);
     const zoom = opt.zoomY && hi0 > 0 && (hi0 - lo0) / hi0 < 0.5;

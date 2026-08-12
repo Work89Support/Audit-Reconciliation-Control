@@ -70,12 +70,12 @@ const DB = (() => {
     monitor: {
       name: "Audit Monitor",
       desc: "ตรวจรายการ ใส่ note ส่งชี้แจง",
-      can: ["view", "note", "status", "request_clarify", "export", "fx"],
+      can: ["view", "note", "status", "request_clarify", "export"],
     },
     lead: {
       name: "Audit Lead",
       desc: "ตรวจทาน อนุมัติ ปิดเคส ปิดรอบความเสียหาย",
-      can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules", "fx"],
+      can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules"],
     },
     shift_lead: {
       name: "Shift Lead",
@@ -86,7 +86,7 @@ const DB = (() => {
     admin: {
       name: "System Admin",
       desc: "ตั้งค่า rule, data source, user, role",
-      can: ["view", "rules", "users", "settings", "export", "fx"],
+      can: ["view", "rules", "users", "settings", "export"],
     },
   };
 

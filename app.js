@@ -61,7 +61,6 @@ const ROUTES = [
       { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงและกำหนดส่ง", desc: "แผนกตรวจ 2 ระบบ — ระบบ XB ส่งหัวหน้ากะทุกวันภายใน 17:00 ทุกเคส · ระบบ 123 ออดิท 1/2/3 รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน ให้เวลาชี้แจง 2-3 วัน", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
-      { id: "fx", label: "ค่าเงิน USDT", icon: "fx", title: "อัตราแลกเปลี่ยนประจำวัน", desc: "ระบบมีทั้งเงินบาทและ USDT — ทุกยอดที่เป็น USDT ต้องอ้างอิงเรตของวันนั้น จึงต้องบันทึกเรตทุกวันและเก็บ log ไว้ตรวจย้อนหลังได้", filters: false },
       { id: "pm", label: "PM Monitor", icon: "pm", title: "บัญชี PM ระบบ 123", desc: "AUTOPEER / AZPAY / Cyberplus กรองเฉพาะรายการสำเร็จและวันที่ที่ตรวจ", filters: false },
     ],
   },
@@ -444,30 +443,7 @@ function render() {
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
   addPanelCaptureButtons();
-  updateFxChip();
   $("#sidebar").classList.remove("open");
-}
-
-/* ชิปอัตราแลกเปลี่ยนบนแถบบน — บอกทันทีว่าวันที่ตรวจอยู่ลงเรตแล้วหรือยัง */
-function updateFxChip() {
-  const chip = $("#fxChip");
-  if (!chip || typeof Fx === "undefined") return;
-  const day = state.filters.date || DB.BUSINESS_DATE;
-  const eff = Fx.effectiveRate(day);
-  const val = $("#fxChipVal");
-  if (!eff) {
-    chip.className = "fx-chip missing";
-    val.textContent = "ยังไม่ลงเรต";
-    chip.title = `ยังไม่ได้บันทึกอัตรา ${Fx.QUOTE} ของวันที่ ${day} — คลิกเพื่อไปบันทึก`;
-  } else if (!eff.exact) {
-    chip.className = "fx-chip stale";
-    val.textContent = Fx.fmtQuote(eff.rate);
-    chip.title = `วันที่ ${day} ยังไม่มีเรตของตัวเอง ใช้ของวันที่ ${eff.date} ไปก่อน — คลิกเพื่อบันทึก`;
-  } else {
-    chip.className = "fx-chip";
-    val.textContent = Fx.fmtQuote(eff.rate);
-    chip.title = `1 ${Fx.QUOTE} = ${eff.rate} บาท (วันที่ ${eff.date} · บันทึกโดย ${eff.by})`;
-  }
 }
 
 /* =============================================================
@@ -1062,8 +1038,6 @@ function openException(id) {
         employee: e.employee,
         shift: e.shift,
         amount: e.riskAmount || Math.abs(e.amountDiff),
-        currency: Fx.BASE,
-        fxRate: (Fx.effectiveRate(e.date) || {}).rate || null,
         cause: e.cause,
         cycle: "C1",
         evidence: true,
@@ -1316,23 +1290,12 @@ VIEWS.approvals = (root) => {
 /* =============================================================
    VIEW: Damage register
    ============================================================= */
-/* ยอดความเสียหายในหน่วยบาทเสมอ (ถ้าบันทึกเป็น USDT จะแปลงด้วยเรตของวันนั้น) */
+/* ยอดความเสียหาย (บาท) */
 function dmgTHB(d) {
-  if ((d.currency || Fx.BASE).toUpperCase() === Fx.BASE) return d.amount;
-  const r = Fx.toTHB(d.amount, d.currency, d.date);
-  return r.ok ? r.value : 0;
+  return d.amount;
 }
-/* ป้ายยอด USDT บนการ์ดรอบ (เว้นว่างถ้ายังไม่มีเรต) */
-function cycleQuoteLabel(records) {
-  if (!records.length) return "";
-  const thb = records.reduce((a, c) => a + dmgTHB(c), 0);
-  const q = Fx.toQuote(thb, records[0].date);
-  return q.ok ? `≈ ${Fx.fmtQuote(q.value)} ${Fx.QUOTE} · ` : "";
-}
-function dmgQuote(d) {
-  if ((d.currency || Fx.BASE).toUpperCase() !== Fx.BASE) return d.amount;
-  const r = Fx.toQuote(dmgTHB(d), d.date);
-  return r.ok ? r.value : null;
+function cycleQuoteLabel() {
+  return "";
 }
 
 VIEWS.damage = (root) => {
@@ -1393,7 +1356,7 @@ VIEWS.damage = (root) => {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย (บาท)</th><th class="right">≈ ${h(Fx.QUOTE)}</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
+          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
           <tbody>
             ${rows
               .map(
@@ -1403,8 +1366,7 @@ VIEWS.damage = (root) => {
               <td>${h(DB.companies.find((c) => c.code === d.company)?.name || d.company)}</td>
               <td>${h(d.employee)}</td>
               <td>${h(DB.shifts.find((s) => s.code === d.shift).name)}</td>
-              <td class="right tnum">${money(dmgTHB(d))}${(d.currency || Fx.BASE) !== Fx.BASE ? `<small class="sub">บันทึกเป็น ${h(d.currency)} ${Fx.fmtQuote(d.amount)}</small>` : ""}</td>
-              <td class="right tnum">${dmgQuote(d) === null ? '<span class="muted" title="ยังไม่ได้บันทึกอัตราของวันนี้">ยังไม่มีเรต</span>' : Fx.fmtQuote(dmgQuote(d))}</td>
+              <td class="right tnum">${money(dmgTHB(d))}</td>
               <td>${h(d.cause)}</td>
               <td>${d.evidence ? '<span class="badge green">ครบ</span>' : '<span class="badge amber">รอ</span>'}</td>
               <td>${h(d.hrStatus)}</td>
@@ -1412,10 +1374,7 @@ VIEWS.damage = (root) => {
               )
               .join("")}
           </tbody>
-          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td class="right tnum"><b>${(() => {
-            const q = Fx.toQuote(sum(rows), state.filters.date || DB.BUSINESS_DATE);
-            return q.ok ? Fx.fmtQuote(q.value) : "-";
-          })()}</b></td><td colspan="3"></td></tr></tfoot>
+          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td colspan="3"></td></tr></tfoot>
         </table>
       </div>
     </section>`;
@@ -2284,489 +2243,6 @@ const KIND_LABEL = {
   unknown: "ยังระบุไม่ได้",
 };
 
-/* =============================================================
-   VIEW: Fx - อัตราแลกเปลี่ยน USDT/THB ประจำวัน
-   ============================================================= */
-const fxState = { ref: null, refLoading: false, refError: null };
-
-function fxDateInScope() {
-  return state.filters.date || DB.BUSINESS_DATE;
-}
-
-VIEWS.fx = (root) => {
-  const editable = can("fx");
-  const day = fxDateInScope();
-  const today = Fx.rateOf(day);
-  const eff = Fx.effectiveRate(day);
-  const list = Fx.all();
-  const st = Fx.stats();
-  const missing = Fx.missingRateDates(currentBoRecords());
-  const ref = fxState.ref;
-
-  const refRows = (ref || [])
-    .map(
-      (r) => `<div class="fx-ref ${r.ok ? "" : "bad"}">
-        <div>
-          <b>${h(r.name)}</b>
-          <small>${h(r.note)}</small>
-        </div>
-        <div class="fx-ref-val">
-          ${r.ok ? `<strong>${Fx.fmtQuote(r.rate)}</strong><small>ดึงเมื่อ ${h(String(r.at).slice(11, 19))}</small>` : `<span class="danger">ดึงไม่ได้</span><small>${h(r.error || "")}</small>`}
-        </div>
-        ${r.ok && editable ? `<button class="ghost-button xs" data-usefx="${r.rate}">ใช้ค่านี้</button>` : "<span></span>"}
-      </div>`,
-    )
-    .join("");
-
-  const diffVsRef = () => {
-    if (!today || !ref) return "";
-    const okRefs = ref.filter((r) => r.ok);
-    if (!okRefs.length) return "";
-    const market = okRefs[0];
-    const d = today.rate - market.rate;
-    const pct = (d / market.rate) * 100;
-    const tone = Math.abs(pct) > 2 ? "danger" : "muted";
-    return `<p class="hint ${tone}">ต่างจาก ${h(market.name)} ${d >= 0 ? "+" : ""}${d.toFixed(4)} บาท (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)${Math.abs(pct) > 2 ? " — ห่างจากตลาดเกิน 2% ควรตรวจซ้ำ" : ""}</p>`;
-  };
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article class="${today ? "ok" : "warn"}">
-        <span>อัตราของวันที่ ${h(day)}</span>
-        <strong>${today ? Fx.fmtQuote(today.rate) : "ยังไม่บันทึก"}</strong>
-        <small>${today ? `บาท ต่อ 1 ${Fx.QUOTE} · โดย ${h(today.by)}` : `ต้องกรอกก่อนจึงจะแปลงยอด ${Fx.QUOTE} ได้`}</small>
-      </article>
-      <article><span>จำนวนวันที่บันทึกไว้</span><strong>${num(st.count || 0)}</strong><small>${st.count ? `ล่าสุด ${h(st.latest.date)}` : "ยังไม่มีประวัติ"}</small></article>
-      <article><span>ช่วงอัตราที่เคยบันทึก</span><strong>${st.count ? `${Fx.fmtQuote(st.min)} – ${Fx.fmtQuote(st.max)}` : "-"}</strong><small>${st.count ? `เฉลี่ย ${Fx.fmtQuote(st.avg)}` : "-"}</small></article>
-      <article class="${missing.length ? "danger" : "ok"}"><span>วันที่ยังไม่ลงอัตรา</span><strong>${num(missing.length)}</strong><small>${missing.length ? h(missing.slice(0, 3).join(", ")) : "ครบทุกวันที่มีรายการ USDT"}</small></article>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Daily Rate</p><h2>บันทึกอัตราประจำวัน</h2></div>
-          <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span>
-        </div>
-        <div class="setting-list">
-          <label><span>วันที่</span><input type="date" id="fxDate" value="${h(day)}" ${editable ? "" : "disabled"} /><b></b></label>
-          <label><span>1 ${Fx.QUOTE} เท่ากับ</span><input type="number" step="0.0001" id="fxRate" value="${today ? today.rate : ""}" placeholder="เช่น 33.80" ${editable ? "" : "disabled"} /><b>บาท</b></label>
-          <label class="wide"><span>หมายเหตุ / ที่มาของเรต</span><input type="text" id="fxNote" value="${today ? h(today.note || "") : ""}" placeholder="เช่น เรตที่ใช้ปิดยอดกับหลัก B10" ${editable ? "" : "disabled"} /><b></b></label>
-        </div>
-        ${diffVsRef()}
-        <div class="inline-actions">
-          <button class="primary-button" id="fxSave" ${editable ? "" : "disabled"}>บันทึกอัตราของวันนี้</button>
-          <button class="ghost-button" id="fxFetch" ${fxState.refLoading ? "disabled" : ""}>${fxState.refLoading ? "กำลังดึง..." : "ดึงเรตอ้างอิงจากเว็บ"}</button>
-        </div>
-        ${today && (today.revisions || []).length ? `<p class="hint">แก้ไขมาแล้ว ${today.revisions.length} ครั้ง — ค่าก่อนหน้า ${today.revisions.map((r) => `${Fx.fmtQuote(r.rate)} (${h(r.by)})`).join(", ")}</p>` : ""}
-        ${eff && !eff.exact ? `<p class="hint danger">วันที่ ${h(day)} ยังไม่มีอัตราของตัวเอง ระบบใช้อัตราของวันที่ ${h(eff.date)} (${Fx.fmtQuote(eff.rate)}) ไปก่อน</p>` : ""}
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Market Reference</p><h2>เรตตลาดไว้เทียบ</h2></div>
-          <span class="health ${ref ? "ok" : "attention"}">${ref ? "ดึงมาแล้ว" : "ยังไม่ได้ดึง"}</span>
-        </div>
-        ${
-          ref
-            ? `<div class="fx-refs">${refRows}</div>`
-            : `<p class="empty-box">${fxState.refError ? h(fxState.refError) : "กดปุ่ม ดึงเรตอ้างอิงจากเว็บ เพื่อดูราคาตลาด — ใช้เทียบเท่านั้น ค่าที่ระบบใช้จริงคือค่าที่กรอกเอง"}</p>`
-        }
-        <p class="chart-note">ระบบ<b>ไม่</b>เอาเรตจากเว็บมาใช้เอง เพราะเรตที่ถูกต้องคือเรตที่บริษัทใช้ปิดยอดจริง เรตจากเว็บมีไว้ให้เห็นว่าห่างจากตลาดมากผิดปกติหรือไม่</p>
-        <div class="fx-calc">
-          <h3 class="drawer-h3">เครื่องคิดเลขแปลงยอด</h3>
-          <div class="fx-calc-row">
-            <input type="number" id="fxCalcIn" placeholder="0.00" step="0.01" />
-            <select id="fxCalcCur"><option value="THB">บาท → ${Fx.QUOTE}</option><option value="${Fx.QUOTE}">${Fx.QUOTE} → บาท</option></select>
-            <output id="fxCalcOut" class="fx-calc-out">-</output>
-          </div>
-          <small class="muted">ใช้อัตราของวันที่ ${h(day)}${eff ? ` (${Fx.fmtQuote(eff.rate)}${eff.exact ? "" : " — ของวันที่ " + h(eff.date)})` : " — ยังไม่มีอัตรา"}</small>
-        </div>
-      </div>
-    </section>
-
-    ${
-      list.length > 1
-        ? `<section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Trend</p><h2>อัตราย้อนหลัง</h2></div><span class="health ok">${num(list.length)} วัน</span></div>
-      <div class="chart" id="fxChart"></div>
-    </section>`
-        : ""
-    }
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Rate Log</p><h2>ประวัติการบันทึกอัตรา</h2></div>
-        <button class="ghost-button sm" id="fxExport" ${list.length ? "" : "disabled"}>Export Excel</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>วันที่</th><th class="right">1 ${Fx.QUOTE} = (บาท)</th><th>ผู้บันทึก</th><th>บันทึกเมื่อ</th><th class="right">เรตตลาดตอนนั้น</th><th class="right">ส่วนต่าง</th><th>หมายเหตุ</th><th class="right">แก้ไข</th></tr></thead>
-          <tbody>
-            ${
-              list
-                .map((r) => {
-                  const m = r.ref && r.ref.rate ? r.ref.rate : null;
-                  const d = m ? r.rate - m : null;
-                  return `<tr class="${r.date === day ? "on" : ""}">
-                <td><b>${h(r.date)}</b></td>
-                <td class="right tnum">${Fx.fmtQuote(r.rate)}</td>
-                <td>${h(r.by)}</td>
-                <td class="muted">${h(String(r.at).replace("T", " ").slice(0, 19))}</td>
-                <td class="right tnum">${m ? Fx.fmtQuote(m) + (r.ref.name ? `<small class="sub">${h(r.ref.name)}</small>` : "") : '<span class="muted">-</span>'}</td>
-                <td class="right tnum ${d !== null && Math.abs(d / (m || 1)) > 0.02 ? "danger" : ""}">${d === null ? "-" : (d >= 0 ? "+" : "") + d.toFixed(4)}</td>
-                <td class="wrap">${h(r.note || "")}</td>
-                <td class="right">${(r.revisions || []).length ? `<span class="badge amber">${r.revisions.length} ครั้ง</span>` : '<span class="muted">-</span>'}</td>
-              </tr>`;
-                })
-                .join("") || `<tr><td colspan="8" class="empty">ยังไม่มีการบันทึกอัตรา — กรอกอัตราของวันนี้ด้านบน</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-      <p class="chart-note">ทุกครั้งที่บันทึกหรือแก้อัตรา ระบบเก็บลง Audit Log ว่าใครทำ เวลาไหน และค่าเดิมคืออะไร — ใช้อ้างอิงย้อนหลังได้เมื่อการเงินตรวจสอบ</p>
-    </section>`;
-
-  if (list.length > 1) {
-    const series = list.slice().reverse();
-    Charts.draw("#fxChart", "line", {
-      label: `อัตรา ${Fx.QUOTE} ย้อนหลัง`,
-      xLabels: series.map((r) => r.date.slice(5)),
-      series: [{ name: `1 ${Fx.QUOTE} (บาท)`, values: series.map((r) => r.rate), color: Charts.PALETTE.s1 }],
-      metric: "บาท",
-      height: 240,
-      zoomY: true,
-      decimals: 2,
-    });
-  }
-
-  const calc = () => {
-    const v = parseFloat($("#fxCalcIn").value);
-    const cur = $("#fxCalcCur").value;
-    if (!Number.isFinite(v)) return ($("#fxCalcOut").textContent = "-");
-    const r = cur === "THB" ? Fx.toQuote(v, day) : Fx.toTHB(v, Fx.QUOTE, day);
-    $("#fxCalcOut").textContent = r.ok ? (cur === "THB" ? `${Fx.fmtQuote(r.value)} ${Fx.QUOTE}` : `${Fx.fmtTHB(r.value)} บาท`) : r.error;
-  };
-  $("#fxCalcIn").addEventListener("input", calc);
-  $("#fxCalcCur").addEventListener("change", calc);
-
-  root.querySelectorAll("[data-usefx]").forEach((b) =>
-    b.addEventListener("click", () => {
-      $("#fxRate").value = b.dataset.usefx;
-      $("#fxRate").focus();
-      toast(`ใส่ค่า ${b.dataset.usefx} ให้แล้ว — ตรวจอีกครั้งก่อนกดบันทึก`);
-    }),
-  );
-
-  $("#fxFetch").addEventListener("click", async () => {
-    fxState.refLoading = true;
-    fxState.refError = null;
-    render();
-    try {
-      fxState.ref = await Fx.fetchReference();
-      const ok = fxState.ref.filter((r) => r.ok).length;
-      if (!ok) fxState.refError = "ดึงเรตจากเว็บไม่ได้เลย — อาจไม่มีอินเทอร์เน็ตหรือถูกไฟร์วอลล์บล็อก กรอกเองได้ตามปกติ";
-    } catch (e) {
-      fxState.refError = "ดึงเรตไม่สำเร็จ: " + e.message;
-    }
-    fxState.refLoading = false;
-    render();
-  });
-
-  const saveBtn = $("#fxSave");
-  if (saveBtn)
-    saveBtn.addEventListener("click", () => {
-      if (!can("fx")) return deny("บันทึกอัตราแลกเปลี่ยน");
-      const d = $("#fxDate").value;
-      const v = $("#fxRate").value;
-      const best = (fxState.ref || []).find((r) => r.ok);
-      const res = Fx.setRate(d, v, {
-        by: currentUser().username,
-        note: $("#fxNote").value.trim(),
-        ref: best ? { source: best.code, name: best.name, rate: best.rate, at: best.at } : null,
-        log: (action, entity, target, detail) => logAction(action, entity, target, detail),
-      });
-      if (!res.ok) return toast(res.error);
-      if (res.unchanged) return toast("อัตราเดิมอยู่แล้ว ไม่มีการเปลี่ยนแปลง");
-      Store.notify("fx", `บันทึกอัตรา ${Fx.QUOTE} วันที่ ${d}`, `1 ${Fx.QUOTE} = ${v} บาท โดย ${currentUser().username}`, "#/fx");
-      toast(`บันทึกอัตราวันที่ ${d} = ${v} บาท แล้ว`);
-      render();
-    });
-
-  const ex = $("#fxExport");
-  if (ex)
-    ex.addEventListener("click", () =>
-      exportSheets("fx-rates", [
-        {
-          name: "อัตราแลกเปลี่ยน",
-          title: `อัตรา ${Fx.QUOTE}/${Fx.BASE} รายวัน`,
-          headers: ["วันที่", `1 ${Fx.QUOTE} = (บาท)`, "ผู้บันทึก", "บันทึกเมื่อ", "เรตตลาด", "แหล่งอ้างอิง", "ส่วนต่าง", "หมายเหตุ", "จำนวนครั้งที่แก้"],
-          widths: [12, 16, 18, 22, 14, 26, 12, 42, 14],
-          rows: list.map((r) => [
-            r.date,
-            r.rate,
-            r.by,
-            String(r.at).replace("T", " ").slice(0, 19),
-            r.ref && r.ref.rate ? r.ref.rate : "",
-            r.ref && r.ref.name ? r.ref.name : "",
-            r.ref && r.ref.rate ? Math.round((r.rate - r.ref.rate) * 10000) / 10000 : "",
-            r.note || "",
-            (r.revisions || []).length,
-          ]),
-        },
-      ]),
-    );
-};
-
-/* รายการฝั่ง BO ที่นำเข้าล่าสุด — ใช้ตรวจว่าวันไหนมีรายการ USDT แต่ยังไม่ลงเรต */
-function currentBoRecords() {
-  const out = [];
-  ImportState.files.forEach((f) => {
-    (f.records || []).forEach((r) => out.push(r));
-    (f.aux || []).forEach((r) => out.push(r));
-  });
-  return out;
-}
-
-/* =============================================================
-   VIEW: Settings
-   ============================================================= */
-VIEWS.settings = (root) => {
-  const editable = can("settings") || can("rules");
-  root.innerHTML = `
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Matching</p><h2>เกณฑ์การตรวจสอบ</h2></div>
-        <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span></div>
-        <div class="setting-list">
-          <label><span>Time tolerance ฝาก</span><input type="number" id="sD" value="${DB.settings.toleranceDeposit}" ${editable ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>Time tolerance ถอน</span><input type="number" id="sW" value="${DB.settings.toleranceWithdraw}" ${editable ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="sA" value="${DB.settings.diffAlert}" ${editable ? "" : "disabled"} /><b>บาท</b></label>
-          <label><span>SLA ไฟล์ชี้แจง</span><input type="number" id="sS" value="${DB.settings.slaEvidenceDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
-        </div>
-        <button class="primary-button" id="sSave" ${editable ? "" : "disabled"}>บันทึกการตั้งค่า</button>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Clarification</p><h2>สายงานและกำหนดเวลาชี้แจง</h2></div>
-        <span class="health ${editable ? "ok" : "attention"}">${editable ? "บันทึกได้" : "อ่านอย่างเดียว"}</span></div>
-        <div class="setting-list">
-          <label><span>ระบบ XB: ส่งหัวหน้ากะภายในเวลา</span><input type="time" id="cCut" value="${DB.settings.clarify.dailyCutoff}" ${editable ? "" : "disabled"} /><b>น.</b></label>
-          <label><span>ระบบ XB: ชี้แจงกลับภายใน</span><input type="number" id="cResp" value="${DB.settings.clarify.dailyRespondHours}" ${editable ? "" : "disabled"} /><b>ชั่วโมง</b></label>
-          <label><span>ระบบ 123: ให้เวลาชี้แจงหลังปิดรอบ</span><input type="number" id="cDays" value="${DB.settings.clarify.cycleRespondDays}" ${editable ? "" : "disabled"} /><b>วัน</b></label>
-        </div>
-        <ul class="tick-list">
-          <li>ระบบ XB — ส่งหัวหน้ากะภายในเวลาที่ตั้งไว้ของทุกวัน <b>ทุกเคส</b> ไม่ดูความรุนแรง</li>
-          <li>ระบบ 123 — ออดิท 1/2/3 ตีไฟล์เป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน</li>
-          <li>กำหนดว่าบริษัทไหนอยู่ระบบไหนได้ที่หน้า <b>งานชี้แจง</b></li>
-          <li>ทุกใบที่ออกจากระบบถูกบันทึกเลขที่เอกสารและผู้ออกไว้ใน Audit Log</li>
-        </ul>
-        <button class="primary-button mt" id="cSave" ${editable ? "" : "disabled"}>บันทึกกำหนดเวลาชี้แจง</button>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Non-Functional</p><h2>ข้อกำหนดที่ระบบยึด</h2></div></div>
-        <ul class="tick-list">
-          <li>รองรับ 100,000-200,000 transactions ต่อวัน</li>
-          <li>Daily report เสร็จภายใน 1-2 ชั่วโมงหลังไฟล์ครบ</li>
-          <li>เก็บข้อมูลย้อนหลังอย่างน้อย 12 เดือน</li>
-          <li>ห้าม bot login mobile banking — ingest จาก email/export เท่านั้น</li>
-          <li>ทุก action สำคัญมี audit log</li>
-          <li>ข้อมูลการเงินเข้ารหัสและจำกัดสิทธิ์ตาม role</li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Data Source</p><h2>แหล่งข้อมูลที่เชื่อมต่อ</h2></div></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>แหล่ง</th><th>ชนิด</th><th>ความถี่</th><th>สถานะ</th></tr></thead>
-          <tbody>
-            <tr><td>Email กลางแผนกออดิท</td><td>IMAP attachment</td><td>ทุก 15 นาที</td><td><span class="badge green">เชื่อมต่อแล้ว</span></td></tr>
-            <tr><td>STM ธนาคาร (SCB/KBANK/GSB/BBL)</td><td>Excel / CSV</td><td>รายวัน</td><td><span class="badge green">เชื่อมต่อแล้ว</span></td></tr>
-            <tr><td>รายงาน BO ฝาก-ถอน</td><td>Export จากหลังบ้าน</td><td>รายวัน</td><td><span class="badge green">เชื่อมต่อแล้ว</span></td></tr>
-            <tr><td>STM PM (AUTOPEER/AZPAY/Cyberplus)</td><td>Excel</td><td>รายวัน</td><td><span class="badge amber">ต้องกรองวันที่ปน</span></td></tr>
-            <tr><td>ไฟล์ชี้แจงหัวหน้ากะ</td><td>PDF / รูปภาพ</td><td>รายวัน</td><td><span class="badge amber">ยังส่งไม่ครบทุกกะ</span></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>`;
-
-  $("#cSave")?.addEventListener("click", () => {
-    if (!editable) return deny("แก้กำหนดเวลาชี้แจง");
-    DB.settings.clarify.dailyCutoff = $("#cCut").value || "17:00";
-    DB.settings.clarify.dailyRespondHours = +$("#cResp").value || 24;
-    DB.settings.clarify.cycleRespondDays = +$("#cDays").value || 3;
-    Store.data.settings = { ...DB.settings };
-    Store.persist();
-    logAction("update", "settings", "clarify", `รายวัน ${DB.settings.clarify.dailyCutoff} · รายรอบ ${DB.settings.clarify.cycleRespondDays} วัน`);
-    toast("บันทึกกำหนดเวลาชี้แจงแล้ว");
-    render();
-  });
-
-  $("#sSave").addEventListener("click", () => {
-    if (!editable) return deny("บันทึกการตั้งค่า");
-    DB.settings.toleranceDeposit = +$("#sD").value || 0;
-    DB.settings.toleranceWithdraw = +$("#sW").value || 0;
-    DB.settings.diffAlert = +$("#sA").value || 0;
-    DB.settings.slaEvidenceDays = +$("#sS").value || 0;
-    Store.data.settings = { ...DB.settings };
-    Store.persist();
-    logAction("update", "settings", "matching", "ปรับเกณฑ์การตรวจสอบ");
-    toast("บันทึกการตั้งค่าแล้ว");
-    renormalizeAll();
-    scheduleAutoReconcile("เปลี่ยนเกณฑ์การตรวจสอบ");
-  });
-};
-
-/* =============================================================
-   VIEW: Roadmap / gap
-   ============================================================= */
-VIEWS.roadmap = (root) => {
-  const gaps = [
-    { title: "Import + Parser ไฟล์จริง", status: "done", phase: 1, detail: "อ่าน CSV/Excel จริง ตรวจหัวคอลัมน์เอง แยกได้ว่าเป็น STM ธนาคารไหน BO หรือ PM" },
-    { title: "Bank Rule Engine", status: "done", phase: 1, detail: "กรองยอดยกมา รอบวันที่ แปลง X1/X2/XB แยก Transfer SAV และคัดเฉพาะรายการ PM ที่สำเร็จ" },
-    { title: "3-Point Match คำนวณสด", status: "done", phase: 1, detail: "จับคู่ account + time + amount จริงจากไฟล์ที่นำเข้า พร้อมกฎธุรกิจเป็นจุดที่ 4" },
-    { title: "Intake checklist + quality gate", status: "done", phase: 1, detail: "ตรวจไฟล์ครบ ถูกบริษัท ถูกวันที่ ก่อนเริ่ม reconcile" },
-    { title: "Exception queue + audit log", status: "done", phase: 1, detail: "คิวพร้อมค้นหา กรอง เรียง และ audit log แบบเขียนอย่างเดียว" },
-    { title: "PM 3 บริษัท", status: "done", phase: 2, detail: "AUTOPEER / AZPAY / Cyberplus พร้อมกฎกรองรายการสำเร็จและวันที่ปน" },
-    { title: "Clarification workflow + evidence", status: "done", phase: 2, detail: "ส่งชี้แจง ตอบชี้แจง แนบไฟล์หลักฐานจริง และบังคับแนบก่อนปิดเคส" },
-    { title: "Damage register + รอบชี้แจง", status: "done", phase: 2, detail: "รอบ 1-15 / 16-25 / 26-สิ้นเดือน ปิดรอบแล้วล็อก" },
-    { title: "Dashboard / KPI / Trend", status: "done", phase: 3, detail: "กราฟรายชั่วโมง ประเภท กะ บัญชี ความรุนแรง และแนวโน้ม 12 เดือน" },
-    { title: "Talk to Data พร้อม citation", status: "done", phase: 3, detail: "ตอบจากข้อมูลจริงในระบบ ระบุตัวเลขและช่วงวันที่ พร้อมลิงก์กลับหลักฐาน" },
-    { title: "Email ingestion + scheduled reconcile", status: "done", phase: 4, detail: "กล่องอีเมลกลางจำลอง ดึงไฟล์เข้าระบบ และตั้งเวลารันอัตโนมัติได้" },
-    { title: "Notification", status: "done", phase: 4, detail: "แจ้งเตือนไฟล์ขาด Critical เลย SLA และใกล้ครบรอบ พร้อมตั้งกฎและช่องทาง" },
-    { title: "Security / retention", status: "done", phase: 4, detail: "สิทธิ์ตาม role, ห้ามลบข้อมูล, นโยบายเก็บ 12 เดือน, สำรอง, เข้ารหัส, ปิดบังเลขบัญชี" },
-    { title: "Performance 100k-200k รายการ", status: "done", phase: 4, detail: "ทดสอบได้จากหน้า ตั้งเวลา & ความปลอดภัย โดยสร้างชุดข้อมูลและจับคู่จริง" },
-    { title: "Backend + PostgreSQL จริง", status: "next", phase: 4, detail: "ตอนนี้ทุกอย่างทำงานในเบราว์เซอร์ ขั้นถัดไปคือย้าย engine ไปฝั่ง server ตาม schema ใน ARCHITECTURE.md" },
-    { title: "ต่อ IMAP อีเมลกลางของจริง", status: "next", phase: 4, detail: "ต้องได้บัญชีอีเมลกลางและสิทธิ์อ่าน attachment" },
-    { title: "Talk to Data ต่อ LLM + SQL", status: "next", phase: 3, detail: "ปัจจุบันใช้การจับคำสำคัญบนข้อมูลในระบบ ขั้นถัดไปคือ controlled SQL generation" },
-    { title: "Master list บัญชีจริง + ไฟล์จริง 1 เดือน", status: "todo", phase: 1, detail: "ต้องได้จากฝั่ง Audit เพื่อปรับ parser ให้ตรงรูปแบบไฟล์จริงทุกธนาคาร" },
-  ];
-  const tone = { done: "green", next: "amber", todo: "red" };
-  const label = { done: "ทำแล้วในระบบนี้", next: "ต้องมี server", todo: "รอข้อมูลจาก Audit" };
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article class="ok"><span>ทำแล้วในระบบนี้</span><strong>${gaps.filter((g) => g.status === "done").length}</strong><small>ครบทั้ง 4 เฟสในฝั่งเบราว์เซอร์</small></article>
-      <article class="warn"><span>ต้องมี server</span><strong>${gaps.filter((g) => g.status === "next").length}</strong><small>ย้าย engine และต่อระบบจริง</small></article>
-      <article class="bad"><span>รอข้อมูลจาก Audit</span><strong>${gaps.filter((g) => g.status === "todo").length}</strong><small>ไฟล์จริงและ master list</small></article>
-      <article><span>ความคืบหน้ารวม</span><strong>${Math.round((gaps.filter((g) => g.status === "done").length / gaps.length) * 100)}%</strong><small>ของรายการทั้งหมด</small></article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Gap Analysis</p><h2>ระบบเทียบกับ requirement</h2></div></div>
-      <div class="gap-list">
-        ${gaps
-          .map(
-            (g) => `<div class="gap-item ${g.status}">
-          <span class="badge ${tone[g.status]}">Phase ${g.phase} · ${label[g.status]}</span>
-          <strong>${h(g.title)}</strong>
-          <span class="gap-detail">${h(g.detail)}</span>
-        </div>`,
-          )
-          .join("")}
-      </div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Roadmap</p><h2>แผนพัฒนา 4 เฟส</h2></div></div>
-        <ol class="phase-list">
-          <li class="done"><b>Phase 1 · MVP Reconciliation</b><span>import, intake checklist, parser, rule engine, 3-point match, exception queue, audit log — ทำงานได้จริงในระบบนี้</span></li>
-          <li class="done"><b>Phase 2 · PM & Damage Workflow</b><span>PM 3 บริษัท, clarification workflow, evidence แนบไฟล์จริง, damage register, รอบชี้แจง</span></li>
-          <li class="done"><b>Phase 3 · Analytics & Talk to Data</b><span>dashboard, KPI, trend, ถามภาษาไทยพร้อม citation กลับหลักฐาน</span></li>
-          <li class="done"><b>Phase 4 · Automation & Hardening</b><span>email ingestion, scheduled reconcile, notification, retention/encryption, ทดสอบ performance 200k รายการ</span></li>
-          <li><b>ขั้นถัดไป · Production</b><span>ย้าย engine ไป backend + PostgreSQL, ต่อ IMAP จริง, auth จริง และปรับ parser ตามไฟล์จริงของแต่ละธนาคาร</span></li>
-        </ol>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Acceptance</p><h2>เกณฑ์ยอมรับงาน</h2></div></div>
-        <ul class="tick-list">
-          <li>Import ข้อมูล 1 วันครบและตรวจไฟล์ขาดได้</li>
-          <li>Match รายการฝาก-ถอนอย่างน้อย 95% ในกลุ่มข้อมูลที่ format ถูกต้อง</li>
-          <li>Exception queue แสดง missing/diff พร้อมหลักฐานย้อนกลับ</li>
-          <li>Audit Monitor ใส่ note ได้แต่ลบข้อมูลไม่ได้</li>
-          <li>Audit Lead อนุมัติ/ปิดเคสได้</li>
-          <li>Monthly damage report export ได้</li>
-          <li>ทุก action สำคัญมี audit log</li>
-        </ul>
-      </div>
-    </section>`;
-};
-
-
-/* =============================================================
-   Phase 1/2 — นำเข้าไฟล์จริง, parse, รัน reconcile
-   ============================================================= */
-
-const ImportState = {
-  files: [], // {name, size, parsed, format, records, dropped, warnings}
-  lastRun: null,
-  inbox: null,
-  running: false,
-};
-
-function showProgress(title) {
-  $("#progTitle").textContent = title;
-  $("#progLabel").textContent = "เตรียมข้อมูล...";
-  $("#progFill").style.width = "0%";
-  $("#progPct").textContent = "0%";
-  $("#progressOverlay").hidden = false;
-}
-function setProgress(pct, label) {
-  const p = Math.round(Math.min(1, Math.max(0, pct)) * 100);
-  $("#progFill").style.width = p + "%";
-  $("#progPct").textContent = p + "%";
-  if (label) $("#progLabel").textContent = label;
-}
-function hideProgress() {
-  $("#progressOverlay").hidden = true;
-}
-
-function buildInbox() {
-  const set = Sample.buildFileSet(state.filters.date, 2400);
-  const exp = { ...set.scenario.expected };
-  Object.keys(set.pmScenario.expected).forEach((k) => (exp[k] += set.pmScenario.expected[k]));
-  ImportState.inbox = {
-    date: state.filters.date,
-    scenario: set.scenario,
-    pmScenario: set.pmScenario,
-    expected: exp,
-    messages: set.files.map((f, i) => ({
-      id: "M" + (i + 1),
-      from: ["ops_scb@bank-report", "ops_kbank@bank-report", "ops_gsb@bank-report", "ops_bbl@bank-report", "backoffice@sys123", "backoffice@sys123", "report@autopeer", "report@azpay", "report@cyberplus", "backoffice@sys123"][i] || "backoffice@sys123",
-      subject: `${f.kind} ประจำวันที่ ${state.filters.date}`,
-      file: f,
-      pulled: false,
-    })),
-  };
-  return ImportState.inbox;
-}
-
-/* วันไหนมีรายการเกี่ยวกับ USDT หรือยังไม่ลงเรตเลย ต้องเตือนให้บันทึกก่อนสรุปยอด */
-function checkFxCoverage(dates) {
-  if (typeof Fx === "undefined") return;
-  /* กันแจ้งซ้ำเรื่องเดิม */
-  const already = (title) => (Store.data.notifications || []).some((n) => n.kind === "fx" && n.title === title);
-  const notifyOnce = (title, detail) => {
-    if (already(title)) return;
-    Store.notify("fx", title, detail, "#/fx");
-  };
-  /* เตือนเฉพาะวันที่ตรวจหลัก ไม่ต้องเตือนวันข้างเคียงที่ติดมาจากรายการข้ามวัน */
-  const days = [state.filters.date || DB.BUSINESS_DATE].filter(Boolean);
-  const usdDays = Fx.missingRateDates(currentBoRecords());
-  const noRate = days.filter((d) => !Fx.rateOf(d));
-  const urgent = [...new Set(usdDays)];
-  if (urgent.length) {
-    notifyOnce(
-      `ยังไม่ได้บันทึกอัตรา ${Fx.QUOTE} ของ ${urgent.length} วัน`,
-      `วันที่ ${urgent.slice(0, 5).join(", ")} มีรายการที่เกี่ยวกับ ${Fx.QUOTE} แต่ยังไม่มีอัตราแลกเปลี่ยน — ยอดที่เป็น ${Fx.QUOTE} จะแปลงเป็นบาทไม่ได้`,
-    );
-  } else if (noRate.length) {
-    notifyOnce(`ยังไม่ได้ลงอัตรา ${Fx.QUOTE} วันที่ ${noRate.join(", ")}`, `ควรบันทึกอัตราไว้ทุกวันเพื่อให้ตรวจย้อนหลังได้ แม้วันนั้นจะไม่มีรายการ ${Fx.QUOTE}`);
-  }
-}
 
 /* บัญชีที่มี statement เข้ามา ถือเป็นบัญชีของบริษัทโดยอัตโนมัติ
    ไม่งั้นกฎ "ลูกค้าฝากผิดบัญชี" จะฟ้องทุกแถวเพราะยังไม่มีในทะเบียนบัญชี */
@@ -3060,7 +2536,6 @@ function applyRunResult(result, stm, bo) {
   }
   logAction("auto_reconcile", "match_run", "MR-" + Date.now(), `กระทบยอดอัตโนมัติ: จับคู่ ${result.matched} รายการ, exception ${result.exceptions.length}, ${result.elapsedMs} ms`);
   retagTracks();
-  checkFxCoverage(dates);
   runNotificationRules();
   Store.persist();
 }
@@ -3377,7 +2852,7 @@ VIEWS.notifications = (root) => {
   const list = Store.data.notifications;
   const rules = Store.data.notifyRules;
   const kindTone = { bad: "red", warn: "amber", info: "blue", ok: "green", fx: "violet" };
-  const kindLabel = { bad: "ต้องแก้ทันที", warn: "เฝ้าระวัง", info: "แจ้งให้ทราบ", ok: "ปกติ", fx: "อัตราแลกเปลี่ยน" };
+  const kindLabel = { bad: "ต้องแก้ทันที", warn: "เฝ้าระวัง", info: "แจ้งให้ทราบ", ok: "ปกติ" };
 
   root.innerHTML = `
     <section class="grid-2">
@@ -4047,18 +3522,14 @@ const SHEET_BUILDERS = {
       return {
         name: "ความเสียหาย",
         title: "ทะเบียนความเสียหาย",
-        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "รอบ", "บริษัท", "พนักงาน", "กะ", "สกุลที่บันทึก", "ยอดตามสกุล", `อัตรา ${Fx.QUOTE}`, "ยอดเสียหาย (บาท)", `ยอดเสียหาย (${Fx.QUOTE})`, "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
-        widths: [14, 12, 12, 8, 12, 17, 10, 13, 14, 12, 17, 17, 32, 10, 16, 16],
+        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "รอบ", "บริษัท", "พนักงาน", "กะ", "ยอดเสียหาย (บาท)", "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
+        widths: [14, 12, 12, 8, 12, 17, 10, 17, 32, 10, 16, 16],
         rows: rows.map((d) => {
-          const cur = (d.currency || Fx.BASE).toUpperCase();
-          const eff = Fx.effectiveRate(d.date);
-          const q = Fx.toQuote(dmgTHB(d), d.date);
           return [
             d.id, d.exceptionId, d.date, d.cycle,
             (DB.companies.find((c) => c.code === d.company) || {}).name || d.company,
             d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift,
-            cur, d.amount, d.fxRate || (eff ? eff.rate : ""),
-            dmgTHB(d), q.ok ? q.value : "",
+            dmgTHB(d),
             d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus,
           ];
         }),
@@ -4117,23 +3588,6 @@ const SHEET_BUILDERS = {
       rows: DB.files.map((f) => [f.companyName, f.fileType, f.receivedAt, f.rows, f.sender, f.checksum, { received: "รับแล้ว", missing: "ไม่ได้ส่ง", wrong_company: "ผิดบริษัท", late: "ส่งช้า" }[f.status]]),
     }),
   },
-  fx: {
-    label: `อัตราแลกเปลี่ยน ${Fx.QUOTE}`,
-    build: () => ({
-      name: "อัตราแลกเปลี่ยน",
-      title: `อัตรา ${Fx.QUOTE}/${Fx.BASE} รายวัน`,
-      headers: ["วันที่", `1 ${Fx.QUOTE} = (บาท)`, "ผู้บันทึก", "บันทึกเมื่อ", "เรตตลาดตอนบันทึก", "แหล่งอ้างอิง", "ส่วนต่างจากตลาด", "หมายเหตุ", "จำนวนครั้งที่แก้"],
-      widths: [12, 16, 18, 22, 18, 26, 16, 42, 14],
-      rows: Fx.all()
-        .filter((r) => inRange(r.date))
-        .map((r) => [
-          r.date, r.rate, r.by, String(r.at).replace("T", " ").slice(0, 19),
-          r.ref && r.ref.rate ? r.ref.rate : "", r.ref && r.ref.name ? r.ref.name : "",
-          r.ref && r.ref.rate ? Math.round((r.rate - r.ref.rate) * 10000) / 10000 : "",
-          r.note || "", (r.revisions || []).length,
-        ]),
-    }),
-  },
   audit: {
     label: "Audit Log",
     build: () => ({
@@ -4146,7 +3600,7 @@ const SHEET_BUILDERS = {
   },
 };
 
-const DEFAULT_SHEETS = { exceptions: true, damage: true, kpi: true, daily: true, monthly: false, intake: false, fx: true, audit: false };
+const DEFAULT_SHEETS = { exceptions: true, damage: true, kpi: true, daily: true, monthly: false, intake: false, audit: false };
 const exportChoice = { ...DEFAULT_SHEETS };
 
 const FILE_SLUG = {
@@ -4376,7 +3830,6 @@ function boot() {
     render();
   });
   $("#btnExport").addEventListener("click", openExportDialog);
-  $("#fxChip").addEventListener("click", () => go("fx"));
   $("#autoStatus").addEventListener("click", () => go("import"));
   $("#navToggle").addEventListener("click", () => {
     const sb = $("#sidebar");
