@@ -2375,7 +2375,13 @@ async function ingestRaw(name, text, size) {
     registerAccountFromStatement(norm);
   } else {
     if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
-    else rows = Engine.parseCSV(text);
+    else {
+      /* ไฟล์ CSV/TXT ที่มาจาก input[type=file] ถูกอ่านเป็น string แต่ไฟล์จาก
+         Supabase Storage ถูกดาวน์โหลดเป็น ArrayBuffer — แปลงให้เป็นข้อความก่อน
+         ส่งเข้า parser เพื่อให้ทั้งสองเส้นทางใช้ตัวอ่านเดียวกันได้ */
+      const csvText = typeof text === "string" ? text : new TextDecoder("utf-8").decode(text);
+      rows = Engine.parseCSV(csvText);
+    }
     norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
   }
   /* แท็กด้วยทะเบียนบัญชี (บริษัทย่อย/บัญชี/ผู้ให้บริการ) + normalize เลขบัญชีให้เป็นรูปแบบเดียว
