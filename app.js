@@ -2243,6 +2243,66 @@ const KIND_LABEL = {
   unknown: "ยังระบุไม่ได้",
 };
 
+/* สถานะของหน้ารับไฟล์จริงและ progress overlay
+   ต้องประกาศก่อน startRealTest()/VIEWS.import ซึ่งเรียกใช้ค่าชุดนี้ */
+const ImportState = {
+  files: [],
+  lastRun: null,
+  inbox: null,
+  running: false,
+};
+
+function showProgress(title) {
+  $("#progTitle").textContent = title;
+  $("#progLabel").textContent = "เตรียมข้อมูล...";
+  $("#progFill").style.width = "0%";
+  $("#progPct").textContent = "0%";
+  $("#progressOverlay").hidden = false;
+}
+
+function setProgress(pct, label) {
+  const p = Math.round(Math.min(1, Math.max(0, pct)) * 100);
+  $("#progFill").style.width = p + "%";
+  $("#progPct").textContent = p + "%";
+  if (label) $("#progLabel").textContent = label;
+}
+
+function hideProgress() {
+  $("#progressOverlay").hidden = true;
+}
+
+function buildInbox() {
+  const set = Sample.buildFileSet(state.filters.date, 2400);
+  const expected = { ...set.scenario.expected };
+  Object.keys(set.pmScenario.expected).forEach((key) => (expected[key] += set.pmScenario.expected[key]));
+  ImportState.inbox = {
+    date: state.filters.date,
+    scenario: set.scenario,
+    pmScenario: set.pmScenario,
+    expected,
+    messages: set.files.map((file, index) => ({
+      id: "M" + (index + 1),
+      from:
+        [
+          "ops_scb@bank-report",
+          "ops_kbank@bank-report",
+          "ops_gsb@bank-report",
+          "ops_bbl@bank-report",
+          "backoffice@sys123",
+          "backoffice@sys123",
+          "report@autopeer",
+          "report@azpay",
+          "report@cyberplus",
+          "backoffice@sys123",
+        ][index] || "backoffice@sys123",
+      subject: `${file.kind} ประจำวันที่ ${state.filters.date}`,
+      file,
+      pulled: false,
+    })),
+  };
+  return ImportState.inbox;
+}
+
 
 /* บัญชีที่มี statement เข้ามา ถือเป็นบัญชีของบริษัทโดยอัตโนมัติ
    ไม่งั้นกฎ "ลูกค้าฝากผิดบัญชี" จะฟ้องทุกแถวเพราะยังไม่มีในทะเบียนบัญชี */
