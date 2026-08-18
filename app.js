@@ -2030,7 +2030,11 @@ async function cloudImport(files, opts = {}) {
     setProgress((i + 1) / files.length, f.file_name);
     try {
       const buf = await Sb.download(f.storage_path);
-      const norm = await ingestRaw(f.file_name, buf, buf.byteLength, { fileId: f.id, storagePath: f.storage_path });
+      const norm = await ingestRaw(f.file_name, buf, buf.byteLength, {
+        fileId: f.id,
+        storagePath: f.storage_path,
+        businessDate: opts.job?.business_date,
+      });
       const n = norm.records.length + (norm.aux || []).length;
       ok++;
       Sb.markParsed(f.id, n, null).catch(() => {});
@@ -2408,9 +2412,10 @@ function readFileBuffer(file) {
 async function ingestRaw(name, text, size, meta = {}) {
   let rows = [];
   let norm;
+  const businessDate = meta.businessDate || state.filters.date;
   if (/\.pdf$/i.test(name)) {
     /* statement ธนาคารเป็น PDF — ใช้ตัวอ่านเฉพาะ */
-    norm = await PdfStm.parse(name, text, state.filters.date);
+    norm = await PdfStm.parse(name, text, businessDate);
     registerAccountFromStatement(norm);
   } else {
     if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
@@ -2421,7 +2426,7 @@ async function ingestRaw(name, text, size, meta = {}) {
       const csvText = typeof text === "string" ? text : new TextDecoder("utf-8").decode(text);
       rows = Engine.parseCSV(csvText);
     }
-    norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
+    norm = Engine.normalize(name, rows, DB.settings, businessDate);
   }
   /* แท็กด้วยทะเบียนบัญชี (บริษัทย่อย/บัญชี/ผู้ให้บริการ) + normalize เลขบัญชีให้เป็นรูปแบบเดียว
      เพื่อให้ STM (ธนาคาร) กับ BO/PM จับคู่กันได้แม้เขียนเลขบัญชีต่างรูปแบบ (ขีด/เบอร์ TrueMoney) */
@@ -2451,6 +2456,7 @@ async function ingestRaw(name, text, size, meta = {}) {
     name,
     cloudFileId: meta.fileId || null,
     storagePath: meta.storagePath || null,
+    businessDate,
     size: size ?? (text.byteLength || text.length),
     rowCount: rows.length,
     rows, // เก็บแถวดิบไว้ เพื่อ normalize ใหม่เมื่อกฎธนาคารเปลี่ยน
@@ -2472,7 +2478,7 @@ async function ingestRaw(name, text, size, meta = {}) {
 function renormalizeAll() {
   ImportState.files = ImportState.files.map((f) => {
     if (!f.rows || !f.rows.length) return f;
-    const norm = Engine.normalize(f.name, f.rows, DB.settings, state.filters.date);
+    const norm = Engine.normalize(f.name, f.rows, DB.settings, f.businessDate || state.filters.date);
     return { ...f, format: norm.format, records: norm.records, aux: norm.aux || [], dropped: norm.dropped, warnings: norm.warnings };
   });
 }
@@ -3083,6 +3089,9 @@ async function cloudWorkerTick() {
     await Sb.queueDueJobs(bangkokDate(-14), bangkokDate(1));
     job = await Sb.claimJob(Sb.currentEmail() || "web-worker");
     if (!job || !job.id) return;
+    state.filters.date = job.business_date;
+    state.filters.from = job.business_date;
+    state.filters.to = job.business_date;
     const batches = await Sb.batches({ from: job.business_date, to: job.business_date, company: job.company });
     const files = batches
       .flatMap((b) => b.source_files || [])

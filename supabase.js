@@ -157,8 +157,17 @@ const Sb = (() => {
 
   /* ---------------- Storage ---------------- */
   async function download(storagePath) {
-    const res = await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`);
-    return res.arrayBuffer();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 120000);
+    try {
+      const res = await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`, { signal: controller.signal });
+      return await res.arrayBuffer();
+    } catch (e) {
+      if (e && e.name === "AbortError") throw new Error("ดาวน์โหลดไฟล์เกิน 120 วินาที");
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /* ลิงก์ชั่วคราวไว้ให้ผู้ใช้เปิดดูไฟล์เอง */

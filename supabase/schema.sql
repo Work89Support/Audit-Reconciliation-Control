@@ -370,6 +370,9 @@ end $$;
 create or replace function public.queue_due_daily_recon_jobs(p_from date default current_date-7,p_to date default current_date)
 returns setof public.daily_recon_jobs language plpgsql security definer set search_path=public as $$
 begin
+  update public.daily_recon_jobs set status='queued',claimed_at=null,claimed_by=null,
+    last_error='กู้คิวอัตโนมัติ: งานเดิมค้างเกิน 15 นาที',updated_at=now()
+    where status='running' and claimed_at < now()-interval '15 minutes';
   perform public.refresh_daily_recon_jobs(p_from,p_to);
   update public.daily_recon_jobs set status='queued',updated_at=now()
     where business_date between p_from and p_to and status='ready';
