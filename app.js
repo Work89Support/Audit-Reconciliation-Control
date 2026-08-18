@@ -3065,6 +3065,7 @@ VIEWS.notifications = (root) => {
 let scheduleTimer = null;
 let cloudWorkerTimer = null;
 let cloudWorkerBusy = false;
+let cloudWorkerGeneration = 0;
 
 function bangkokDate(offsetDays = 0) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -3098,10 +3099,15 @@ async function cloudWorkerTick() {
 }
 
 function startCloudWorker() {
-  clearInterval(cloudWorkerTimer);
+  const generation = ++cloudWorkerGeneration;
+  clearTimeout(cloudWorkerTimer);
   if (!Sb.configured() || !Sb.signedIn()) return;
-  cloudWorkerTick();
-  cloudWorkerTimer = setInterval(cloudWorkerTick, 5 * 60000);
+  const runNext = async () => {
+    await cloudWorkerTick();
+    if (generation !== cloudWorkerGeneration || !Sb.configured() || !Sb.signedIn()) return;
+    cloudWorkerTimer = setTimeout(runNext, 15000);
+  };
+  runNext();
 }
 
 function startScheduler() {
