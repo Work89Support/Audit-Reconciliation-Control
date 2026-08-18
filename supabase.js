@@ -90,7 +90,11 @@ const Sb = (() => {
     }
     return res;
   }
-  const json = async (path, opts) => (await req(path, opts)).json();
+  const json = async (path, opts) => {
+    const res = await req(path, opts);
+    const body = await res.text();
+    return body ? JSON.parse(body) : null;
+  };
 
   /* ---------------- Auth ---------------- */
   async function signIn(email, password) {
