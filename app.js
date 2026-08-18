@@ -3092,9 +3092,9 @@ async function cloudWorkerTick() {
     state.filters.date = job.business_date;
     state.filters.from = job.business_date;
     state.filters.to = job.business_date;
-    const batches = await Sb.batches({ from: job.business_date, to: job.business_date, company: job.company });
+    const batches = await Sb.batches({ from: job.business_date, to: job.business_date });
     const files = batches
-      .flatMap((b) => b.source_files || [])
+      .flatMap((b) => (b.source_files || []).filter((f) => String(f.company || b.company || "").toUpperCase() === String(job.company || "").toUpperCase()))
       .filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
     if (!files.length) throw new Error("ไม่พบไฟล์ที่ตัวอ่านรองรับในคิวนี้");
     Store.notify("ok", "เริ่มคิวกระทบยอดรายวัน", `${job.business_date} · ${job.company} · ${files.length} ไฟล์`, "cloud");

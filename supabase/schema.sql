@@ -47,6 +47,7 @@ create table if not exists public.source_files (
   drive_file_id text,
   drive_url     text,
   checksum      text,
+  company       text,                            -- บริษัทที่อนุมานจากชื่อไฟล์ (กรณี 1 เมลมีหลายบริษัท)
   kind          text default 'unknown',          -- bo_main | manual_credit | manual_payment |
                                                  -- manual_bonus | comm_req | credit_out |
                                                  -- stm_pdf | doc_clarify | unknown
@@ -243,6 +244,7 @@ create table if not exists public.mail_sources (
 alter table public.mail_batches add column if not exists source_email text;
 alter table public.mail_batches add column if not exists source_name text;
 alter table public.mail_batches add column if not exists business_system text;
+alter table public.source_files add column if not exists company text;
 
 create or replace function public.normalize_mail_batch_source() returns trigger
 language plpgsql set search_path=public as $$
@@ -267,6 +269,30 @@ create trigger mail_batches_normalize_source before insert or update on public.m
 for each row execute function public.normalize_mail_batch_source();
 
 update public.mail_batches set source_email=source_email where source_email is not null or sender is not null;
+
+create or replace function public.normalize_source_file_company() returns trigger
+language plpgsql set search_path=public as $$
+begin
+  if new.file_name ~* '(^|[^A-Z0-9])AT4([^A-Z0-9]|$)' then new.company:='AT4';
+  elsif new.file_name ~* '(^|[^A-Z0-9])FR8([^A-Z0-9]|$)' then new.company:='FR8';
+  elsif new.file_name ~* '(^|[^A-Z0-9])SK8([^A-Z0-9]|$)' then new.company:='SK8';
+  elsif new.file_name ~* '(^|[^A-Z0-9])MR9([^A-Z0-9]|$)' then new.company:='MR9';
+  elsif new.file_name ~* '(^|[^A-Z0-9])MC8([^A-Z0-9]|$)' then new.company:='MC8';
+  elsif new.file_name ~* '(^|[^A-Z0-9])UR9([^A-Z0-9]|$)' then new.company:='UR9';
+  elsif new.file_name ~* '(^|[^A-Z0-9])PS8([^A-Z0-9]|$)' then new.company:='PS8';
+  elsif new.file_name ~* 'UFABET7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)' then new.company:='UFABET7M';
+  elsif new.file_name ~* '(^|[^A-Z0-9])3XB([^A-Z0-9]|$)' then new.company:='3XB';
+  elsif new.file_name ~* '(^|[^A-Z0-9])XXX([^A-Z0-9]|$)' then new.company:='XXX';
+  elsif new.file_name ~* 'SYS123|ระบบ[[:space:]]*123' then new.company:='SYS123';
+  end if;
+  if new.kind='unknown' and new.file_name ~* 'AUTOPEER|CYBER|AZPAY|MYPAY|12PAY' then new.kind:='pm_statement'; end if;
+  return new;
+end $$;
+drop trigger if exists source_files_normalize_company on public.source_files;
+create trigger source_files_normalize_company before insert or update of file_name,kind on public.source_files
+for each row execute function public.normalize_source_file_company();
+
+update public.source_files set file_name=file_name;
 
 create table if not exists public.recon_requirements (
   company text primary key,
@@ -326,8 +352,8 @@ begin
            when f.file_name ~* 'รายงานบัญชี(ฝาก|ถอน)|(^|[^A-Z])BO([^A-Z]|$)' then 'bo_main'
            else 'unknown' end) filter(where f.id is not null),'{}'), max(b.business_system)
   into v_mails,v_files,v_parsed,v_errors,v_kinds,v_system
-  from public.mail_batches b left join public.source_files f on f.batch_id=b.id
-  where b.business_date=p_business_date and b.company=p_company;
+  from public.mail_batches b join public.source_files f on f.batch_id=b.id
+  where b.business_date=p_business_date and coalesce(f.company,b.company)=p_company;
 
   select coalesce(jsonb_agg(g.value),'[]'::jsonb) into v_missing
   from jsonb_array_elements(v_req.required_groups) g
@@ -335,10 +361,10 @@ begin
 
   select * into v_old from public.daily_recon_jobs where business_date=p_business_date and company=p_company;
   if v_old.status='running' then v_status:='running';
-  elsif v_old.status='completed' and v_files<=v_old.file_count then v_status:='completed';
+  elsif v_old.status='completed' and v_files=v_old.file_count then v_status:='completed';
   elsif jsonb_array_length(v_missing)=0 and v_files>0 then
     v_status:=case when v_old.status='completed' then 'queued' else 'ready' end;
-    v_late:=coalesce(v_old.status='completed' and v_files>v_old.file_count,false);
+    v_late:=coalesce(v_old.status='completed' and v_files<>v_old.file_count,false);
   else v_status:='waiting_files'; end if;
 
   insert into public.daily_recon_jobs (business_date,company,business_system,status,present_kinds,missing_groups,
@@ -362,8 +388,9 @@ end $$;
 create or replace function public.refresh_daily_recon_jobs(p_from date default current_date-7,p_to date default current_date)
 returns setof public.daily_recon_jobs language plpgsql security definer set search_path=public as $$
 declare r record; begin
-  for r in select distinct business_date,company from public.mail_batches
-    where business_date between p_from and p_to and company is not null
+  for r in select distinct b.business_date,coalesce(f.company,b.company) as company
+    from public.mail_batches b join public.source_files f on f.batch_id=b.id
+    where b.business_date between p_from and p_to and coalesce(f.company,b.company) is not null
   loop return next public.refresh_daily_recon_job(r.business_date,r.company); end loop;
 end $$;
 
