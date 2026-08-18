@@ -1,0 +1,62 @@
+{
+  "name": "Audit - Daily Reconciliation Coordinator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 10 }] }
+      },
+      "id": "schedule-every-10m",
+      "name": "ทุก 10 นาที",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-420, 180]
+    },
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "ทดสอบด้วยมือ",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-420, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 14 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}",
+        "options": { "response": { "response": { "neverError": false } } }
+      },
+      "id": "queue-due-jobs",
+      "name": "Supabase: ตรวจไฟล์และจัดคิว",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-120, 260],
+      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs=$input.all().map(x=>x.json); const count=(s)=>jobs.filter(x=>x.status===s).length; return [{json:{checked_at:new Date().toISOString(),total:jobs.length,queued:count('queued'),running:count('running'),completed:count('completed'),waiting_files:count('waiting_files'),needs_review:count('needs_review'),error:count('error')}}];"
+      },
+      "id": "summarize",
+      "name": "สรุปสถานะรอบนี้",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [140, 260]
+    }
+  ],
+  "connections": {
+    "ทุก 10 นาที": { "main": [[{ "node": "Supabase: ตรวจไฟล์และจัดคิว", "type": "main", "index": 0 }]] },
+    "ทดสอบด้วยมือ": { "main": [[{ "node": "Supabase: ตรวจไฟล์และจัดคิว", "type": "main", "index": 0 }]] },
+    "Supabase: ตรวจไฟล์และจัดคิว": { "main": [[{ "node": "สรุปสถานะรอบนี้", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "pinData": {},
+  "active": false,
+  "versionId": "REPLACE_AFTER_IMPORT"
+}

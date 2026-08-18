@@ -4,6 +4,6 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
-    "test": "node tests/engine.test.mjs && node tests/units.test.mjs && node tests/registry.test.mjs && node tests/pdfstm.test.mjs"
+    "test": "node tests/engine.test.mjs && node tests/units.test.mjs && node tests/registry.test.mjs && node tests/pdfstm.test.mjs && node tests/n8n-workflows.test.mjs"
   }
 }

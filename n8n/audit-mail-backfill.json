@@ -1,0 +1,109 @@
+{
+  "name": "Audit — Backfill Gmail ทีละช่วงวัน (v2)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "เริ่ม Backfill ด้วยมือ",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-720, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 20,
+        "filters": {
+          "q": "=has:attachment label:\"AUDIT 2\" -label:ingested after:{{ $vars.BACKFILL_AFTER }} before:{{ $vars.BACKFILL_BEFORE }}"
+        },
+        "options": {}
+      },
+      "id": "gmail-list",
+      "name": "Gmail: ค้นเมลสูงสุด 20 ฉบับ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-500, 300],
+      "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "loop",
+      "name": "วนทีละ 1 เมล",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-280, 300]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": { "downloadAttachments": true, "dataPropertyAttachmentsPrefixName": "attachment_" }
+      },
+      "id": "gmail-get",
+      "name": "Gmail: ดาวน์โหลดเมลและไฟล์แนบ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-40, 420],
+      "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LIVE_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Audit — Live Gmail ingest เข้า Supabase (v2)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "run-live",
+      "name": "ส่งเข้า Workflow Live",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [200, 420]
+    },
+    {
+      "parameters": { "amount": 2, "unit": "seconds" },
+      "id": "throttle",
+      "name": "พัก 2 วินาที",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [440, 420]
+    },
+    {
+      "parameters": {},
+      "id": "done",
+      "name": "จบรอบ 20 เมล",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [-40, 160]
+    }
+  ],
+  "connections": {
+    "เริ่ม Backfill ด้วยมือ": { "main": [[{ "node": "Gmail: ค้นเมลสูงสุด 20 ฉบับ", "type": "main", "index": 0 }]] },
+    "Gmail: ค้นเมลสูงสุด 20 ฉบับ": { "main": [[{ "node": "วนทีละ 1 เมล", "type": "main", "index": 0 }]] },
+    "วนทีละ 1 เมล": {
+      "main": [
+        [{ "node": "จบรอบ 20 เมล", "type": "main", "index": 0 }],
+        [{ "node": "Gmail: ดาวน์โหลดเมลและไฟล์แนบ", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gmail: ดาวน์โหลดเมลและไฟล์แนบ": { "main": [[{ "node": "ส่งเข้า Workflow Live", "type": "main", "index": 0 }]] },
+    "ส่งเข้า Workflow Live": { "main": [[{ "node": "พัก 2 วินาที", "type": "main", "index": 0 }]] },
+    "พัก 2 วินาที": { "main": [[{ "node": "วนทีละ 1 เมล", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true, "callerPolicy": "workflowsFromSameOwner" },
+  "pinData": {},
+  "meta": { "instanceId": "audit-ai-reconciliation" },
+  "tags": [{ "name": "audit" }, { "name": "backfill" }]
+}

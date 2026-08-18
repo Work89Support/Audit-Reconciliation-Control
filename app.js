@@ -1990,7 +1990,7 @@ VIEWS["audit-log"] = (root) => {
 /* =============================================================
    VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
    ============================================================= */
-const cloudState = { batches: null, daily: null, loading: false, error: null, picked: {}, busy: "" };
+const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null };
 
 async function cloudLoad() {
   cloudState.loading = true;
@@ -1999,9 +1999,14 @@ async function cloudLoad() {
   try {
     const to = state.filters.to || DB.BUSINESS_DATE;
     const from = state.filters.from || to;
-    const [b, d] = await Promise.all([Sb.batches({ from, to, company: state.filters.company }), Sb.dailyStatus(30)]);
+    const [b, d, ops] = await Promise.all([
+      Sb.batches({ from, to, company: state.filters.company }),
+      Sb.dailyStatus(30),
+      Sb.operations(100),
+    ]);
     cloudState.batches = b;
     cloudState.daily = d;
+    cloudState.operations = ops;
   } catch (e) {
     cloudState.error = e.message;
   }
@@ -2010,8 +2015,13 @@ async function cloudLoad() {
 }
 
 /* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
-async function cloudImport(files) {
+async function cloudImport(files, opts = {}) {
   if (!files.length) return toast("ยังไม่ได้เลือกไฟล์", "warn");
+  if (opts.clear) {
+    ImportState.files = [];
+    ImportState.lastRun = null;
+  }
+  cloudState.activeJob = opts.job || null;
   showProgress("กำลังดึงไฟล์จากคลังและอ่านเข้าระบบ");
   let ok = 0;
   const failed = [];
@@ -2020,7 +2030,7 @@ async function cloudImport(files) {
     setProgress((i + 1) / files.length, f.file_name);
     try {
       const buf = await Sb.download(f.storage_path);
-      const norm = await ingestRaw(f.file_name, buf, buf.byteLength);
+      const norm = await ingestRaw(f.file_name, buf, buf.byteLength, { fileId: f.id, storagePath: f.storage_path });
       const n = norm.records.length + (norm.aux || []).length;
       ok++;
       Sb.markParsed(f.id, n, null).catch(() => {});
@@ -2034,7 +2044,7 @@ async function cloudImport(files) {
   toast(`อ่านเข้าระบบแล้ว ${ok} ไฟล์${failed.length ? ` · ไม่สำเร็จ ${failed.length}` : ""}`);
   if (failed.length) console.warn(failed);
   cloudState.picked = {};
-  await runReconcileFromImport({ reason: "ดึงจากคลังไฟล์" });
+  await runReconcileFromImport({ reason: opts.job ? "คิวกระทบยอดรายวัน" : "ดึงจากคลังไฟล์", job: opts.job || null });
 }
 
 VIEWS.cloud = (root) => {
@@ -2071,6 +2081,7 @@ VIEWS.cloud = (root) => {
       Sb.saveConfig({ url: $("#sbUrl").value.trim(), anonKey: $("#sbKey").value.trim(), bucket: $("#sbBucket").value.trim() || "audit-files" });
       try {
         await Sb.signIn($("#sbEmail").value.trim(), $("#sbPass").value);
+        startCloudWorker();
         toast("ล็อกอิน Supabase สำเร็จ");
         logAction("cloud_login", "supabase", $("#sbEmail").value.trim(), "เชื่อมต่อคลังไฟล์");
         cloudLoad();
@@ -2102,6 +2113,9 @@ VIEWS.cloud = (root) => {
   const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
   const pickedFiles = readable.filter((f) => cloudState.picked[f.id]);
   const daily = cloudState.daily || [];
+  const operations = cloudState.operations || [];
+  const jobLabel = { waiting_files: "รอไฟล์", ready: "พร้อม", queued: "เข้าคิว", running: "กำลังรัน", completed: "สำเร็จ", needs_review: "ต้องตรวจสอบ", error: "ล้มเหลว" };
+  const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
 
   root.innerHTML = `
     <section class="status-strip four">
@@ -2110,6 +2124,30 @@ VIEWS.cloud = (root) => {
       <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} ไฟล์</small></article>
       <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "ดูสาเหตุในตาราง" : "ไม่มีปัญหา"}</small></article>
     </section>
+
+    ${
+      operations.length
+        ? `<section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Daily Operations</p><h2>คิวกระทบยอดอัตโนมัติ</h2></div><span class="health ${operations.some((x) => x.status === "error" || x.status === "needs_review") ? "attention" : "ok"}">${operations.filter((x) => x.status === "queued" || x.status === "running").length} งานกำลังดำเนินการ</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>วันที่</th><th>บริษัท/ระบบ</th><th>สถานะ</th><th class="right">เมล</th><th class="right">ไฟล์</th><th>ไฟล์ที่ขาด</th><th>ผลล่าสุด</th></tr></thead>
+        <tbody>${operations
+          .map(
+            (j) => `<tr>
+            <td><b>${h(j.business_date)}</b>${j.late_file ? '<small class="sub danger">มีไฟล์มาช้า · จะรันซ้ำ</small>' : ""}</td>
+            <td>${h(j.company)}${j.business_system ? `<small class="sub">${h(j.business_system)}</small>` : ""}</td>
+            <td><span class="badge ${jobTone[j.status] || "grey"}">${h(jobLabel[j.status] || j.status)}</span>${j.last_error ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
+            <td class="right tnum">${num(j.mail_count)}</td><td class="right tnum">${num(j.file_count)}</td>
+            <td class="muted">${Array.isArray(j.missing_groups) && j.missing_groups.length ? h(j.missing_groups.map((g) => g.join(" / ")).join(", ")) : "ครบ"}</td>
+            <td>${j.match_rate == null ? "-" : `${Number(j.match_rate).toFixed(2)}% · exception ${num(j.exception_count)}`}</td>
+          </tr>`,
+          )
+          .join("")}</tbody>
+      </table></div>
+      <p class="hint">คิวถูกสร้างจากไฟล์จริงใน Supabase; ไฟล์ที่เข้าหลังปิดงานจะติดธงและเข้าคิวกระทบยอดซ้ำโดยอัตโนมัติ</p>
+    </section>`
+        : ""
+    }
 
     <section class="panel">
       <div class="panel-heading">
@@ -2204,6 +2242,7 @@ VIEWS.cloud = (root) => {
   $("#cReload").addEventListener("click", cloudLoad);
   $("#cLogout").addEventListener("click", () => {
     Sb.signOut();
+    startCloudWorker();
     cloudState.batches = null;
     toast("ออกจากระบบคลังไฟล์แล้ว");
     render();
@@ -2366,7 +2405,7 @@ function readFileBuffer(file) {
   });
 }
 
-async function ingestRaw(name, text, size) {
+async function ingestRaw(name, text, size, meta = {}) {
   let rows = [];
   let norm;
   if (/\.pdf$/i.test(name)) {
@@ -2375,7 +2414,13 @@ async function ingestRaw(name, text, size) {
     registerAccountFromStatement(norm);
   } else {
     if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
-    else rows = Engine.parseCSV(text);
+    else {
+      /* ไฟล์ CSV/TXT ที่มาจาก input[type=file] ถูกอ่านเป็น string แต่ไฟล์จาก
+         Supabase Storage ถูกดาวน์โหลดเป็น ArrayBuffer — แปลงให้เป็นข้อความก่อน
+         ส่งเข้า parser เพื่อให้ทั้งสองเส้นทางใช้ตัวอ่านเดียวกันได้ */
+      const csvText = typeof text === "string" ? text : new TextDecoder("utf-8").decode(text);
+      rows = Engine.parseCSV(csvText);
+    }
     norm = Engine.normalize(name, rows, DB.settings, state.filters.date);
   }
   /* แท็กด้วยทะเบียนบัญชี (บริษัทย่อย/บัญชี/ผู้ให้บริการ) + normalize เลขบัญชีให้เป็นรูปแบบเดียว
@@ -2401,9 +2446,11 @@ async function ingestRaw(name, text, size) {
     if (tagSubco) (norm.records || []).forEach((r) => { if (!r.subco) r.subco = tagSubco; });
   }
 
-  ImportState.files = ImportState.files.filter((f) => f.name !== name);
+  ImportState.files = ImportState.files.filter((f) => (meta.fileId ? f.cloudFileId !== meta.fileId : f.name !== name));
   ImportState.files.push({
     name,
+    cloudFileId: meta.fileId || null,
+    storagePath: meta.storagePath || null,
     size: size ?? (text.byteLength || text.length),
     rowCount: rows.length,
     rows, // เก็บแถวดิบไว้ เพื่อ normalize ใหม่เมื่อกฎธนาคารเปลี่ยน
@@ -2493,6 +2540,11 @@ async function runReconcileFromImport(opts = {}) {
   }
   const ready = autoReadiness();
   if (!ready.ready) {
+    if (opts.job) {
+      const message = `ไฟล์ในคิวไม่พร้อมกระทบยอด: ${ready.why}`;
+      await Sb.failJob(opts.job.id, message).catch(() => {});
+      cloudState.activeJob = null;
+    }
     updateAutoStatus();
     return;
   }
@@ -2543,6 +2595,23 @@ async function runReconcileFromImport(opts = {}) {
   hideProgress();
   ImportState.running = false;
   applyRunResult(result, stm, bo);
+  if (opts.job) {
+    try {
+      result.businessDate = opts.job.business_date;
+      const runId = await Sb.saveRun(result, result.exceptions, {
+        company: opts.job.company,
+        fileIds: ImportState.files.map((f) => f.cloudFileId).filter(Boolean),
+        summary: { reason: opts.reason || "คิวรายวัน", job_id: opts.job.id, late_file: !!opts.job.late_file },
+      });
+      await Sb.finishJob(opts.job.id, runId);
+      cloudState.activeJob = null;
+      cloudState.operations = null;
+    } catch (e) {
+      await Sb.failJob(opts.job.id, e.message).catch(() => {});
+      cloudState.activeJob = null;
+      toast(`บันทึกผลคิวรายวันไม่สำเร็จ: ${e.message}`, "warn");
+    }
+  }
   ImportState.lastRun.reason = opts.reason || "ไฟล์เข้าใหม่";
   updateAutoStatus();
   toast(
@@ -2994,6 +3063,47 @@ VIEWS.notifications = (root) => {
    ============================================================= */
 
 let scheduleTimer = null;
+let cloudWorkerTimer = null;
+let cloudWorkerBusy = false;
+
+function bangkokDate(offsetDays = 0) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const base = `${parts.find((p) => p.type === "year").value}-${parts.find((p) => p.type === "month").value}-${parts.find((p) => p.type === "day").value}`;
+  const d = new Date(base + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+async function cloudWorkerTick() {
+  if (cloudWorkerBusy || !Sb.configured() || !Sb.signedIn()) return;
+  cloudWorkerBusy = true;
+  let job = null;
+  try {
+    await Sb.queueDueJobs(bangkokDate(-14), bangkokDate(1));
+    job = await Sb.claimJob(Sb.currentEmail() || "web-worker");
+    if (!job || !job.id) return;
+    const batches = await Sb.batches({ from: job.business_date, to: job.business_date, company: job.company });
+    const files = batches
+      .flatMap((b) => b.source_files || [])
+      .filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
+    if (!files.length) throw new Error("ไม่พบไฟล์ที่ตัวอ่านรองรับในคิวนี้");
+    Store.notify("ok", "เริ่มคิวกระทบยอดรายวัน", `${job.business_date} · ${job.company} · ${files.length} ไฟล์`, "cloud");
+    await cloudImport(files, { clear: true, job });
+  } catch (e) {
+    if (job && job.id) await Sb.failJob(job.id, e.message).catch(() => {});
+    console.warn("daily reconciliation worker", e);
+  } finally {
+    cloudWorkerBusy = false;
+  }
+}
+
+function startCloudWorker() {
+  clearInterval(cloudWorkerTimer);
+  if (!Sb.configured() || !Sb.signedIn()) return;
+  cloudWorkerTick();
+  cloudWorkerTimer = setInterval(cloudWorkerTick, 5 * 60000);
+}
+
 function startScheduler() {
   clearInterval(scheduleTimer);
   const sc = Store.data.schedule;
@@ -3049,7 +3159,7 @@ VIEWS.schedule = (root) => {
           <button class="primary-button" id="scSave" ${editable ? "" : "disabled"}>บันทึกตารางเวลา</button>
           <button class="ghost-button" id="scNow">ทำงานเดี๋ยวนี้</button>
         </div>
-        <p class="hint">ไม่ต้องกดสั่งกระทบยอดเอง ระบบทำให้ทุกครั้งที่ไฟล์เข้าครบหรือถึงเวลาตามตาราง · ตัวตั้งเวลานี้ทำงานขณะเปิดหน้าเว็บไว้ ในระบบจริงจะย้ายไปเป็น cron หรือ job queue ฝั่ง server</p>
+        <p class="hint">n8n ตรวจความครบถ้วนและจัดคิวถาวรทุก 10 นาที ส่วนตัวอ่าน PDF/XLSX จะรับงานจากคิวเมื่อหน้าเว็บที่ล็อกอินเปิดอยู่ · ไฟล์มาช้าจะถูกติดธงและรันซ้ำอัตโนมัติ</p>
       </div>
 
       <div class="panel">
@@ -3876,9 +3986,11 @@ function exportExceptions() {
    ============================================================= */
 function boot() {
   applyStoredState();
+  Sb.restore();
   renderRoleSelect();
   updateBell();
   startScheduler();
+  startCloudWorker();
   $("#btnBell").addEventListener("click", () => go("notifications"));
   $("#roleSelect").addEventListener("change", (e) => {
     state.role = e.target.value;

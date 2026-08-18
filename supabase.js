@@ -127,6 +127,21 @@ const Sb = (() => {
   /* สรุปรายวัน (view) */
   const dailyStatus = (limit = 30) => json(`/rest/v1/v_daily_status?${q({ limit, order: "business_date.desc" })}`);
 
+  const operations = (limit = 100) =>
+    json(`/rest/v1/v_recon_operations?${q({ limit, order: "business_date.desc,company.asc" })}`);
+
+  const rpc = (name, body = {}) =>
+    json(`/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
+  const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
+  const finishJob = (jobId, runId) => rpc("finish_daily_recon_job", { p_job_id: jobId, p_run_id: runId });
+  const failJob = (jobId, error) => rpc("fail_daily_recon_job", { p_job_id: jobId, p_error: String(error || "Unknown error") });
+
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
   async function batches({ from, to, company } = {}) {
     const filters = ["select=*,source_files(*)", "order=received_at.desc"];
@@ -261,6 +276,11 @@ const Sb = (() => {
     signIn,
     signOut,
     dailyStatus,
+    operations,
+    queueDueJobs,
+    claimJob,
+    finishJob,
+    failJob,
     batches,
     download,
     signedUrl,

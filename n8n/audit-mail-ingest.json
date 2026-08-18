@@ -1,11 +1,11 @@
 {
-  "name": "Audit — ดึงไฟล์จากเมล AUDIT 2 เข้า Supabase + Drive",
+  "name": "Audit — Live Gmail ingest เข้า Supabase (v2)",
   "nodes": [
     {
       "parameters": {
         "pollTimes": { "item": [{ "mode": "everyX", "value": 10, "unit": "minutes" }] },
         "simple": false,
-        "filters": { "labelIds": ["={{ $json.__labelId || \"\" }}"], "q": "has:attachment label:\"AUDIT 2\"" },
+        "filters": { "q": "has:attachment label:\"AUDIT 2\" -label:ingested" },
         "options": { "downloadAttachments": true, "dataPropertyAttachmentsPrefixName": "attachment_" }
       },
       "id": "gmail-trigger",
@@ -16,8 +16,16 @@
       "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
     },
     {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "subworkflow-trigger",
+      "name": "รับจาก Workflow Backfill",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-660, 480]
+    },
+    {
       "parameters": {
-        "jsCode": "/* แกะ บริษัท + วันที่ จากหัวข้อเมล\n   ตัวอย่าง: 'Fwd: AT4 ส่งตรวจบัญชีฝาก - ถอนและไฟล์ต่างๆ ประจำวันที่ 20-07-69 เรียบร้อยครับ'\n              'Fwd: SK8 ส่งตรวจบัญชีเพิ่มเติมประจำวันที่ 18-07-69 เรียบร้อยครับ'  */\nconst COMPANIES = ['AT4', 'SK8', 'FR8', 'MC8', 'AZ8', 'CY8'];\n\nfunction parseSubject(subject) {\n  const s = String(subject || '');\n  let company = null;\n  for (const c of COMPANIES) if (new RegExp('\\\\b' + c + '\\\\b', 'i').test(s)) { company = c; break; }\n  if (!company) {\n    const m = s.match(/(?:Fwd:\\s*)?\\b([A-Z]{2,4}\\d{0,2})\\b/);\n    if (m) company = m[1].toUpperCase();\n  }\n  let businessDate = null;\n  const d = s.match(/(\\d{1,2})-(\\d{1,2})-(\\d{2,4})/);\n  if (d) {\n    let y = Number(d[3]);\n    if (y < 100) y += 2500;      // 69 -> 2569\n    if (y > 2400) y -= 543;      // พ.ศ. -> ค.ศ.\n    businessDate = `${y}-${String(d[2]).padStart(2, '0')}-${String(d[1]).padStart(2, '0')}`;\n  }\n  return { company, businessDate, isSupplement: /เพิ่มเติม/.test(s) };\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  const headers = j.headers || {};\n  const subject = j.Subject || j.subject || headers.subject || '';\n  const meta = parseSubject(subject);\n  const binaryKeys = Object.keys(item.binary || {});\n\n  out.push({\n    json: {\n      gmail_message_id: j.id,\n      gmail_thread_id: j.threadId,\n      mailbox: headers.to || j.to || '',\n      label: 'AUDIT 2',\n      subject,\n      sender: headers.from || j.From || j.from || '',\n      received_at: j.internalDate ? new Date(Number(j.internalDate)).toISOString() : new Date().toISOString(),\n      company: meta.company,\n      business_date: meta.businessDate,\n      is_supplement: meta.isSupplement,\n      file_count: binaryKeys.length,\n      status: 'new',\n      binaryKeys\n    },\n    binary: item.binary\n  });\n}\nreturn out;"
+        "jsCode": "/* แกะผู้ส่ง บริษัท ระบบ และวันที่จากหัวข้อเมล */\nconst COMPANIES = ['3XB', 'AT4', 'SK8', 'FR8', 'MC8', 'MR9', 'AZ8', 'CY8', 'UFABET7M'];\nconst SOURCES = {}; // รายละเอียดผู้ส่งจริงอยู่ในตาราง mail_sources เท่านั้น\nconst emailOf = (value) => { const m=String(value||'').toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/); return m ? m[0] : ''; };\nfunction parseSubject(subject) {\n  const s=String(subject||''); let company=null;\n  for(const c of COMPANIES) if(new RegExp('\\\\b'+c+'\\\\b','i').test(s)){ company=c; break; }\n  if(!company){ const m=s.match(/(?:Fwd:\\s*)?\\b([A-Z]{2,4}\\d{0,2})\\b/); if(m) company=m[1].toUpperCase(); }\n  let businessDate=null; const candidates=[...s.matchAll(/(\\d{1,2})[-/](\\d{1,2})[-/](\\d{2,4})/g)];\n  for(const d of candidates){ const day=Number(d[1]),month=Number(d[2]); if(day<1||day>31||month<1||month>12) continue; let y=Number(d[3]); if(y<100)y+=2500; if(y>2400)y-=543; businessDate=`${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`; break; }\n  return {company,businessDate,isSupplement:/เพิ่มเติม/.test(s)};\n}\nconst out=[];\nfor(const item of $input.all()){\n  const j=item.json,headers=j.headers||{},subject=j.Subject||j.subject||headers.subject||'',sender=headers.from||j.From||j.from||'';\n  const meta=parseSubject(subject),sourceEmail=emailOf(sender),source=SOURCES[sourceEmail];\n  let businessSystem=source&&source.systems.length===1?source.systems[0]:null;\n  if(/UFABET7M|7M/i.test(subject)) businessSystem='UFABET7M'; else if(/(?:ระบบ\\s*)?123|SK8|AT4|FR8|MC8|MR9/i.test(subject)) businessSystem='SYS123'; else if(/XXX|3XB/i.test(subject)) businessSystem='XXX';\n  const binaryKeys=Object.keys(item.binary||{});\n  out.push({json:{gmail_message_id:j.id,gmail_thread_id:j.threadId,mailbox:headers.to||j.to||'',label:'AUDIT 2',subject,sender,source_email:sourceEmail||null,source_name:source?source.name:null,business_system:businessSystem,received_at:j.internalDate?new Date(Number(j.internalDate)).toISOString():new Date().toISOString(),company:meta.company,business_date:meta.businessDate,is_supplement:meta.isSupplement,file_count:binaryKeys.length,status:'new',binaryKeys},binary:item.binary});\n}\nreturn out;"
       },
       "id": "parse-subject",
       "name": "แกะบริษัทและวันที่จากหัวข้อ",
@@ -28,20 +36,19 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?on_conflict=gmail_message_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type", "value": "application/json" },
             { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, mailbox: $json.mailbox, label: $json.label, subject: $json.subject, sender: $json.sender, received_at: $json.received_at, company: $json.company, business_date: $json.business_date, is_supplement: $json.is_supplement, file_count: $json.file_count, status: 'new' }) }}",
+        "jsonBody": "={{ JSON.stringify({ gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, mailbox: $json.mailbox, label: $json.label, subject: $json.subject, sender: $json.sender, source_email: $json.source_email, source_name: $json.source_name, business_system: $json.business_system, received_at: $json.received_at, company: $json.company, business_date: $json.business_date, is_supplement: $json.is_supplement, file_count: $json.file_count, status: 'new' }) }}",
         "options": { "response": { "response": { "neverError": false } } }
       },
       "id": "insert-batch",
@@ -50,11 +57,11 @@
       "typeVersion": 4.2,
       "position": [-220, 300],
       "alwaysOutputData": true,
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase service_role" } }
+      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
     },
     {
       "parameters": {
-        "jsCode": "/* จับคู่ batch_id ที่ Supabase คืนมา กลับเข้ากับ binary ของเมลเดิม\n   แล้วแตกไฟล์แนบเป็นทีละ item (1 item = 1 ไฟล์)  */\nconst batches = $input.all();\nconst source = $('แกะบริษัทและวันที่จากหัวข้อ').all();\nconst out = [];\n\nbatches.forEach((b, i) => {\n  const rows = Array.isArray(b.json) ? b.json : (b.json.body || [b.json]);\n  const row = Array.isArray(rows) ? rows[0] : rows;\n  const src = source[i];\n  if (!src) return;\n  const keys = Object.keys(src.binary || {});\n  keys.forEach((k) => {\n    const bin = src.binary[k];\n    out.push({\n      json: {\n        batch_id: row.id,\n        business_date: src.json.business_date,\n        company: src.json.company,\n        gmail_message_id: src.json.gmail_message_id,\n        file_name: bin.fileName || k,\n        mime_type: bin.mimeType || 'application/octet-stream',\n        is_zip: /\\.zip$/i.test(bin.fileName || k)\n      },\n      binary: { data: bin }\n    });\n  });\n});\nreturn out;"
+        "jsCode": "/* จับคู่ batch_id แล้วแตกไฟล์แนบเป็นทีละ item */\nconst batches = $input.all();\nconst source = $('แกะบริษัทและวันที่จากหัวข้อ').all();\nconst out = [];\nbatches.forEach((b, i) => {\n  const rows = Array.isArray(b.json) ? b.json : (b.json.body || [b.json]);\n  const row = Array.isArray(rows) ? rows[0] : rows;\n  const src = source[i];\n  if (!src) return;\n  Object.keys(src.binary || {}).forEach((key, attachmentIndex) => {\n    const bin = src.binary[key];\n    out.push({ json: { batch_id: row.id, business_date: src.json.business_date, company: src.json.company, gmail_message_id: src.json.gmail_message_id, attachment_index: attachmentIndex, file_name: bin.fileName || key, mime_type: bin.mimeType || 'application/octet-stream', is_zip: /\\.zip$/i.test(bin.fileName || key) }, binary: { data: bin } });\n  });\n});\nreturn out;"
       },
       "id": "explode-attachments",
       "name": "แยกไฟล์แนบทีละไฟล์",
@@ -94,7 +101,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/* หลังแตก zip จะได้ binary หลายตัวใน item เดียว -> แยกเป็นทีละไฟล์\n   และตัดไฟล์ระบบของ macOS ทิ้ง  */\nconst OK = /\\.(xlsx|xlsm|xls|csv|txt|pdf|docx)$/i;\nconst out = [];\nfor (const item of $input.all()) {\n  const parent = item.json;\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const name = bin.fileName || key;\n    if (/^__MACOSX|\\/\\._|^\\._|\\.DS_Store$/.test(name)) continue;\n    if (!OK.test(name)) continue;\n    out.push({\n      json: {\n        batch_id: parent.batch_id,\n        business_date: parent.business_date,\n        company: parent.company,\n        file_name: name.split('/').pop(),\n        from_zip: parent.file_name,\n        mime_type: bin.mimeType || 'application/octet-stream'\n      },\n      binary: { data: bin }\n    });\n  }\n}\nreturn out;"
+        "jsCode": "/* แยกไฟล์ใน zip และตัดไฟล์ระบบของ macOS */\nconst OK = /\\.(xlsx|xlsm|xls|csv|txt|pdf|docx)$/i;\nconst out = [];\nfor (const item of $input.all()) {\n  const parent = item.json;\n  Object.entries(item.binary || {}).forEach(([key, bin], zipIndex) => {\n    const name = bin.fileName || key;\n    if (/^__MACOSX|\\/\\._|^\\._|\\.DS_Store$/.test(name) || !OK.test(name)) return;\n    out.push({ json: { batch_id: parent.batch_id, business_date: parent.business_date, company: parent.company, gmail_message_id: parent.gmail_message_id, attachment_index: `${parent.attachment_index || 0}-${zipIndex}`, file_name: name.split('/').pop(), from_zip: parent.file_name, mime_type: bin.mimeType || 'application/octet-stream' }, binary: { data: bin } });\n  });\n}\nreturn out;"
       },
       "id": "flatten-zip",
       "name": "แยกไฟล์ในzipทีละไฟล์",
@@ -103,7 +110,7 @@
       "position": [660, 180]
     },
     {
-      "parameters": { "mode": "combine", "combineBy": "combineAll", "options": {} },
+      "parameters": { "mode": "append", "options": {} },
       "id": "merge-files",
       "name": "รวมไฟล์ทั้งหมด",
       "type": "n8n-nodes-base.merge",
@@ -112,7 +119,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/* เดาชนิดไฟล์จากชื่อ ให้แอปเลือกตัวอ่านได้ถูกตั้งแต่แรก\n   และประกอบ path ที่จะเก็บใน Storage  */\nfunction kindOf(name) {\n  const n = String(name || '');\n  if (/\\.pdf$/i.test(n)) return /ฝาก\\s*-\\s*ถอน|statement|stm/i.test(n) ? 'stm_pdf' : 'doc_clarify';\n  if (/\\.docx?$/i.test(n)) return 'doc_clarify';\n  if (/รายงานบัญชี(ฝาก|ถอน)/.test(n)) return 'bo_main';\n  if (/ฝากมือ.*เครดิต/.test(n)) return 'manual_credit';\n  if (/ฝากมือ.*Payment/i.test(n)) return 'manual_payment';\n  if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';\n  if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';\n  if (/ถอนเครดิต/.test(n)) return 'credit_out';\n  return 'unknown';\n}\n\nconst safe = (s) => String(s || '').replace(/[\\\\/:*?\"<>|#]/g, '_').replace(/\\s+/g, ' ').trim();\n\nreturn $input.all().map((item) => {\n  const j = item.json;\n  const date = j.business_date || 'unknown-date';\n  const company = j.company || 'UNKNOWN';\n  const path = `${date}/${company}/${safe(j.file_name)}`;\n  const bin = (item.binary || {}).data || {};\n  return {\n    json: {\n      ...j,\n      kind: kindOf(j.file_name),\n      storage_path: path,\n      size_bytes: bin.fileSize ? Number(String(bin.fileSize).replace(/[^0-9]/g, '')) : null,\n      drive_folder_name: `${date} ${company}`\n    },\n    binary: item.binary\n  };\n});"
+        "jsCode": "/* เดาชนิดไฟล์และสร้าง Storage path แบบ ASCII-safe */\nfunction kindOf(name) {\n  const n = String(name || '');\n  if (/\\.pdf$/i.test(n)) return /ฝาก\\s*-\\s*ถอน|statement|stm/i.test(n) ? 'stm_pdf' : 'doc_clarify';\n  if (/\\.docx?$/i.test(n)) return 'doc_clarify';\n  if (/รายงานบัญชี(ฝาก|ถอน)/.test(n)) return 'bo_main';\n  if (/ฝากมือ.*เครดิต/.test(n)) return 'manual_credit';\n  if (/ฝากมือ.*Payment/i.test(n)) return 'manual_payment';\n  if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';\n  if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';\n  if (/ถอนเครดิต/.test(n)) return 'credit_out';\n  return 'unknown';\n}\nconst ascii = (s) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '_');\nfunction sizeBytes(value) {\n  if (typeof value === 'number') return value;\n  const m = String(value || '').match(/([\\d.]+)\\s*(B|kB|MB|GB)?/i);\n  if (!m) return null;\n  const factor = { b: 1, kb: 1024, mb: 1048576, gb: 1073741824 }[(m[2] || 'b').toLowerCase()] || 1;\n  return Math.round(Number(m[1]) * factor);\n}\nreturn $input.all().map((item, index) => {\n  const j = item.json;\n  const date = j.business_date || 'unknown-date';\n  const company = j.company || 'UNKNOWN';\n  const messageId = j.gmail_message_id || j.batch_id || 'unknown-message';\n  const ordinal = String(j.attachment_index ?? index).padStart(3, '0');\n  const extMatch = String(j.file_name || '').match(/\\.([A-Za-z0-9]{1,10})$/);\n  const ext = (extMatch ? extMatch[1] : 'bin').toLowerCase();\n  const path = [ascii(date), ascii(company), ascii(messageId), ascii(ordinal) + '.' + ext].join('/');\n  const bin = (item.binary || {}).data || {};\n  return { json: { ...j, kind: kindOf(j.file_name), storage_path: path, size_bytes: sizeBytes(bin.fileSize) }, binary: item.binary };\n});"
       },
       "id": "classify",
       "name": "เดาชนิดไฟล์และตั้ง path",
@@ -124,12 +131,11 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ encodeURI($json.storage_path) }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
             { "name": "x-upsert", "value": "true" },
             { "name": "Content-Type", "value": "={{ $json.mime_type }}" }
           ]
@@ -137,74 +143,49 @@
         "sendBody": true,
         "contentType": "binaryData",
         "inputDataFieldName": "data",
-        "options": { "response": { "response": { "neverError": true } } }
+        "options": { "response": { "response": { "neverError": false } } }
       },
       "id": "upload-storage",
       "name": "Supabase Storage: อัปไฟล์",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1320, 220],
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase service_role" } }
-    },
-    {
-      "parameters": {
-        "name": "={{ $json.file_name }}",
-        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "mode": "id", "value": "={{ $vars.DRIVE_FOLDER_ID }}" },
-        "inputDataFieldName": "data",
-        "options": {}
-      },
-      "id": "upload-drive",
-      "name": "Google Drive: สำรองไฟล์",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [1320, 400],
-      "credentials": { "googleDriveOAuth2Api": { "id": "REPLACE_DRIVE_CRED", "name": "Google Drive" } }
-    },
-    {
-      "parameters": { "mode": "combine", "combineBy": "combineByPosition", "options": {} },
-      "id": "merge-upload",
-      "name": "รวมผลอัปโหลด",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [1540, 300]
+      "position": [1540, 300],
+      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/source_files",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/source_files?on_conflict=storage_path",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type", "value": "application/json" },
             { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ batch_id: $('เดาชนิดไฟล์และตั้ง path').item.json.batch_id, file_name: $('เดาชนิดไฟล์และตั้ง path').item.json.file_name, from_zip: $('เดาชนิดไฟล์และตั้ง path').item.json.from_zip || null, mime_type: $('เดาชนิดไฟล์และตั้ง path').item.json.mime_type, size_bytes: $('เดาชนิดไฟล์และตั้ง path').item.json.size_bytes, storage_path: $('เดาชนิดไฟล์และตั้ง path').item.json.storage_path, kind: $('เดาชนิดไฟล์และตั้ง path').item.json.kind, drive_file_id: $json.id || null, drive_url: $json.webViewLink || null, parsed: false }) }}",
-        "options": { "response": { "response": { "neverError": true } } }
+        "jsonBody": "={{ JSON.stringify({ batch_id: $('เดาชนิดไฟล์และตั้ง path').item.json.batch_id, file_name: $('เดาชนิดไฟล์และตั้ง path').item.json.file_name, from_zip: $('เดาชนิดไฟล์และตั้ง path').item.json.from_zip || null, mime_type: $('เดาชนิดไฟล์และตั้ง path').item.json.mime_type, size_bytes: $('เดาชนิดไฟล์และตั้ง path').item.json.size_bytes, storage_path: $('เดาชนิดไฟล์และตั้ง path').item.json.storage_path, checksum: null, kind: $('เดาชนิดไฟล์และตั้ง path').item.json.kind, parsed: false }) }}",
+        "options": { "response": { "response": { "neverError": false } } }
       },
       "id": "insert-file",
       "name": "Supabase: บันทึกทะเบียนไฟล์",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1760, 300],
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase service_role" } }
+      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
     },
     {
       "parameters": {
         "method": "PATCH",
         "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?gmail_message_id=eq.{{ $('เดาชนิดไฟล์และตั้ง path').first().json.gmail_message_id }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey", "value": "={{ $vars.SUPABASE_SERVICE_KEY }}" },
             { "name": "Content-Type", "value": "application/json" },
             { "name": "Prefer", "value": "return=minimal" }
           ]
@@ -220,11 +201,26 @@
       "typeVersion": 4.2,
       "position": [1980, 300],
       "executeOnce": true,
-      "credentials": { "httpHeaderAuth": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase service_role" } }
+      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('เดาชนิดไฟล์และตั้ง path').first().json.gmail_message_id }}",
+        "labelIds": ["REPLACE_INGESTED_LABEL_ID"]
+      },
+      "id": "label-ingested",
+      "name": "Gmail: ติด label ingested",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2200, 300],
+      "executeOnce": true,
+      "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
     }
   ],
   "connections": {
     "Gmail: เมลใหม่ใน AUDIT 2": { "main": [[{ "node": "แกะบริษัทและวันที่จากหัวข้อ", "type": "main", "index": 0 }]] },
+    "รับจาก Workflow Backfill": { "main": [[{ "node": "แกะบริษัทและวันที่จากหัวข้อ", "type": "main", "index": 0 }]] },
     "แกะบริษัทและวันที่จากหัวข้อ": { "main": [[{ "node": "Supabase: บันทึกทะเบียนเมล", "type": "main", "index": 0 }]] },
     "Supabase: บันทึกทะเบียนเมล": { "main": [[{ "node": "แยกไฟล์แนบทีละไฟล์", "type": "main", "index": 0 }]] },
     "แยกไฟล์แนบทีละไฟล์": { "main": [[{ "node": "เป็นไฟล์ zip?", "type": "main", "index": 0 }]] },
@@ -237,18 +233,10 @@
     "แตกไฟล์ zip": { "main": [[{ "node": "แยกไฟล์ในzipทีละไฟล์", "type": "main", "index": 0 }]] },
     "แยกไฟล์ในzipทีละไฟล์": { "main": [[{ "node": "รวมไฟล์ทั้งหมด", "type": "main", "index": 0 }]] },
     "รวมไฟล์ทั้งหมด": { "main": [[{ "node": "เดาชนิดไฟล์และตั้ง path", "type": "main", "index": 0 }]] },
-    "เดาชนิดไฟล์และตั้ง path": {
-      "main": [
-        [
-          { "node": "Supabase Storage: อัปไฟล์", "type": "main", "index": 0 },
-          { "node": "Google Drive: สำรองไฟล์", "type": "main", "index": 0 }
-        ]
-      ]
-    },
-    "Supabase Storage: อัปไฟล์": { "main": [[{ "node": "รวมผลอัปโหลด", "type": "main", "index": 0 }]] },
-    "Google Drive: สำรองไฟล์": { "main": [[{ "node": "รวมผลอัปโหลด", "type": "main", "index": 1 }]] },
-    "รวมผลอัปโหลด": { "main": [[{ "node": "Supabase: บันทึกทะเบียนไฟล์", "type": "main", "index": 0 }]] },
-    "Supabase: บันทึกทะเบียนไฟล์": { "main": [[{ "node": "Supabase: อัปเดตสถานะเมล", "type": "main", "index": 0 }]] }
+    "เดาชนิดไฟล์และตั้ง path": { "main": [[{ "node": "Supabase Storage: อัปไฟล์", "type": "main", "index": 0 }]] },
+    "Supabase Storage: อัปไฟล์": { "main": [[{ "node": "Supabase: บันทึกทะเบียนไฟล์", "type": "main", "index": 0 }]] },
+    "Supabase: บันทึกทะเบียนไฟล์": { "main": [[{ "node": "Supabase: อัปเดตสถานะเมล", "type": "main", "index": 0 }]] },
+    "Supabase: อัปเดตสถานะเมล": { "main": [[{ "node": "Gmail: ติด label ingested", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1", "saveManualExecutions": true, "callerPolicy": "workflowsFromSameOwner" },
   "pinData": {},
