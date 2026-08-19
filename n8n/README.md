@@ -6,6 +6,7 @@
 - `audit-mail-backfill.json` ค้นเมลเก่าทีละช่วงวัน จำกัดรอบละ 20 เมล และส่งทีละเมลเข้า workflow แรก
 - `audit-daily-reconcile.json` ตรวจความครบถ้วนและจัดคิวกระทบยอดทุก 10 นาที รวมไฟล์มาช้าและงานที่เลยเวลาปิดรับ
 - `audit-headless-worker.json` อ่าน PDF/Excel/CSV จาก Storage, กระทบยอด, บันทึก Exception และปิดคิวบน n8n Cloud โดยไม่ต้องเปิดหน้าเว็บ
+- `audit-telegram-notifications.json` แจ้งเมลใหม่เป็นรายชั่วโมงเมื่อมีข้อมูลเพิ่ม และส่งสรุปกระทบยอดประจำวันเข้า Telegram
 
 ## ตั้งค่าครั้งแรก
 
@@ -26,6 +27,14 @@
 5. Import `audit-headless-worker.json`, เลือก Supabase credential เดิมให้ทุก HTTP node แล้วทดสอบด้วยมือ. Worker จะทำสูงสุด 5 งานต่อ execution และรองรับ PDF/XLSX/XLSM/XLS/CSV.
 6. เมื่อทดสอบผ่าน ให้ Publish. Worker จะรันทุก 10 นาทีบน n8n Cloud แม้ปิดหน้าเว็บหรือออกจากระบบหน้า Audit แล้ว.
 7. ไฟล์ PDF ต้องเป็น PDF ที่เลือกข้อความได้; ไฟล์สแกนภาพต้องผ่าน OCR ก่อนจึงอ่านรายการได้.
+
+## Telegram notifications
+
+1. สร้าง Telegram API credential ใน n8n โดยเก็บ Bot Token ไว้ใน Credential เท่านั้น.
+2. Import `audit-telegram-notifications.json` แล้วเลือก Telegram และ Supabase credential ให้ครบ.
+3. กดทดสอบด้วยมือและตรวจว่ากลุ่มได้รับข้อความก่อน Publish.
+4. Workflow ตรวจเมลของชั่วโมงก่อนหน้าทุกต้นชั่วโมงนาทีที่ 05 และไม่ส่งข้อความหากไม่มีเมลใหม่.
+5. สรุปประจำวันส่งเวลา 23:30 น. ตามเขตเวลา Asia/Bangkok.
 
 ทะเบียนผู้ส่งจริงอยู่ใน `mail_sources` และตั้งค่าผ่าน Supabase SQL Editor เท่านั้น เพื่อไม่ให้อีเมลส่วนบุคคลติดไปกับ source code สาธารณะ. แก้ชนิดรายงานที่คาดหวังได้ในตารางนี้โดยไม่ต้องแก้ workflow.
 

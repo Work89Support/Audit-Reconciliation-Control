@@ -1,0 +1,254 @@
+{
+  "name": "Audit - Telegram Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "id": "hourly-schedule",
+      "name": "ทุกชั่วโมง นาทีที่ 05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-760, -180]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/mail_batches?created_at=gte.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').startOf('hour').minus({ hours: 1 }).toUTC().toISO()) + '&created_at=lt.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').startOf('hour').toUTC().toISO()) + '&select=id,received_at,created_at,company,business_date,business_system,file_count,status,subject&order=created_at.asc' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "hourly-mail-query",
+      "name": "Supabase: เมลใหม่ชั่วโมงก่อน",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-500, -180],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.all().map(x=>x.json).filter(x=>x.id); if(!rows.length) return []; const files=rows.reduce((n,x)=>n+Number(x.file_count||0),0); const companies=[...new Set(rows.map(x=>x.company).filter(Boolean))]; const dates=[...new Set(rows.map(x=>x.business_date).filter(Boolean))].sort(); const stored=rows.filter(x=>x.status==='stored').length; const errors=rows.filter(x=>x.status==='error').length; const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); const lines=['📥 อัปเดตเมลใหม่รายชั่วโมง',`ตรวจเมื่อ: ${now}`,`เมลใหม่: ${rows.length} ฉบับ`,`ไฟล์แนบ: ${files} ไฟล์`,`บันทึกสำเร็จ: ${stored} | ผิดพลาด: ${errors}`]; if(companies.length) lines.push(`บริษัท: ${companies.join(', ')}`); if(dates.length) lines.push(`วันที่ข้อมูล: ${dates.join(', ')}`); return [{json:{telegram_text:lines.join('\\n'),mail_count:rows.length,file_count:files}}];"
+      },
+      "id": "hourly-format",
+      "name": "สร้างข้อความเมลใหม่",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, -180]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "-1003948480660",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "hourly-telegram",
+      "name": "Telegram: แจ้งเมลใหม่",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [20, -180],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_TELEGRAM_CRED",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 23,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "daily-schedule",
+      "name": "ทุกวัน 23:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-760, 100]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/mail_batches?created_at=gte.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').startOf('day').toUTC().toISO()) + '&created_at=lt.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).startOf('day').toUTC().toISO()) + '&select=id,file_count,status' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "daily-mail-query",
+      "name": "Supabase: เมลวันนี้",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-500, 100],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/daily_recon_jobs?select=status,error_count,updated_at' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "daily-jobs-query",
+      "name": "Supabase: สถานะกระทบยอด",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-240, 100],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const mails=$('Supabase: เมลวันนี้').all().map(x=>x.json).filter(x=>x.id); const jobs=$input.all().map(x=>x.json).filter(x=>x.status); const count=s=>jobs.filter(x=>x.status===s).length; const files=mails.reduce((n,x)=>n+Number(x.file_count||0),0); const parseErrors=jobs.reduce((n,x)=>n+Number(x.error_count||0),0); const date=new Date().toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'long'}); const lines=['📊 สรุประบบ Audit ประจำวัน',date,'',`📥 เมลวันนี้: ${mails.length} ฉบับ`,`📎 ไฟล์วันนี้: ${files} ไฟล์`,'',`✅ กระทบยอดเสร็จ: ${count('completed')} งาน`,`⏳ อยู่ในคิว: ${count('queued')} งาน`,`⚙️ กำลังทำ: ${count('running')} งาน`,`🔎 รอตรวจสอบ: ${count('needs_review')} งาน`,`❌ งานผิดพลาด: ${count('error')} | ไฟล์อ่านผิดพลาด: ${parseErrors}`]; return [{json:{telegram_text:lines.join('\\n')}}];"
+      },
+      "id": "daily-format",
+      "name": "สร้างสรุปรอบวัน",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [20, 100]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "-1003948480660",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "daily-telegram",
+      "name": "Telegram: สรุปรอบวัน",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [280, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_TELEGRAM_CRED",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "ทดสอบด้วยมือ",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-760, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); return [{json:{telegram_text:`✅ เชื่อมต่อ Audit กับ Telegram สำเร็จ\\nทดสอบเมื่อ: ${now}\\nต่อไปจะแจ้งเมลใหม่ทุกชั่วโมงและสรุปผลเวลา 23:30 น.`}}];"
+      },
+      "id": "test-format",
+      "name": "สร้างข้อความทดสอบ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-500, 360]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "-1003948480660",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "test-telegram",
+      "name": "Telegram: ทดสอบส่ง",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-240, 360],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_TELEGRAM_CRED",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "ทุกชั่วโมง นาทีที่ 05": {
+      "main": [[{"node": "Supabase: เมลใหม่ชั่วโมงก่อน", "type": "main", "index": 0}]]
+    },
+    "Supabase: เมลใหม่ชั่วโมงก่อน": {
+      "main": [[{"node": "สร้างข้อความเมลใหม่", "type": "main", "index": 0}]]
+    },
+    "สร้างข้อความเมลใหม่": {
+      "main": [[{"node": "Telegram: แจ้งเมลใหม่", "type": "main", "index": 0}]]
+    },
+    "ทุกวัน 23:30": {
+      "main": [[{"node": "Supabase: เมลวันนี้", "type": "main", "index": 0}]]
+    },
+    "Supabase: เมลวันนี้": {
+      "main": [[{"node": "Supabase: สถานะกระทบยอด", "type": "main", "index": 0}]]
+    },
+    "Supabase: สถานะกระทบยอด": {
+      "main": [[{"node": "สร้างสรุปรอบวัน", "type": "main", "index": 0}]]
+    },
+    "สร้างสรุปรอบวัน": {
+      "main": [[{"node": "Telegram: สรุปรอบวัน", "type": "main", "index": 0}]]
+    },
+    "ทดสอบด้วยมือ": {
+      "main": [[{"node": "สร้างข้อความทดสอบ", "type": "main", "index": 0}]]
+    },
+    "สร้างข้อความทดสอบ": {
+      "main": [[{"node": "Telegram: ทดสอบส่ง", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "REPLACE_AFTER_IMPORT"
+}
