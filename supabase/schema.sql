@@ -465,6 +465,37 @@ begin
     business_date,company,id from public.daily_recon_jobs where id=p_job_id on conflict(dedupe_key) do nothing;
 end $$;
 
+create or replace function public.finish_ready_daily_recon_jobs()
+returns integer language plpgsql security definer set search_path=public as $$
+declare
+  v_ready record;
+  v_finished integer := 0;
+begin
+  for v_ready in
+    select distinct on (j.id)
+      j.id as job_id,
+      r.id as run_id,
+      coalesce(r.file_ids, '{}'::uuid[]) as file_ids
+    from public.daily_recon_jobs j
+    join public.recon_runs r
+      on r.summary->>'job_id' = j.id::text
+     and r.created_at >= coalesce(j.claimed_at, '-infinity'::timestamptz)
+    where j.status = 'running'
+    order by j.id, r.created_at desc
+  loop
+    update public.source_files
+       set parsed = true,
+           parsed_at = now(),
+           parse_error = null
+     where id = any(v_ready.file_ids);
+
+    perform public.finish_daily_recon_job(v_ready.job_id, v_ready.run_id);
+    v_finished := v_finished + 1;
+  end loop;
+
+  return v_finished;
+end $$;
+
 create or replace function public.fail_daily_recon_job(p_job_id uuid,p_error text)
 returns void language plpgsql security definer set search_path=public as $$
 begin
@@ -612,6 +643,22 @@ left join (
 order by j.business_date desc,j.company;
 
 grant select on public.v_recon_operations to authenticated;
+
+-- Notification feed: job rows plus true system-wide totals.  Do not sum
+-- daily job counters here because one mail can contribute files to more than
+-- one company job and would be counted repeatedly in Telegram.
+create or replace view public.v_recon_notification_status
+with (security_invoker = true) as
+select j.*,
+       totals.actual_mail_total,
+       totals.actual_file_total
+from public.daily_recon_jobs j
+cross join (
+  select (select count(*) from public.mail_batches)::bigint as actual_mail_total,
+         (select count(*) from public.source_files)::bigint as actual_file_total
+) totals;
+
+grant select on public.v_recon_notification_status to authenticated;
 grant execute on function public.refresh_daily_recon_jobs(date,date) to authenticated;
 grant execute on function public.queue_due_daily_recon_jobs(date,date) to authenticated;
 revoke all on function public.refresh_daily_recon_job(date,text) from public;
@@ -619,9 +666,11 @@ revoke all on function public.refresh_daily_recon_jobs(date,date) from public;
 revoke all on function public.queue_due_daily_recon_jobs(date,date) from public;
 revoke all on function public.claim_daily_recon_job(text) from public;
 revoke all on function public.finish_daily_recon_job(uuid,uuid) from public;
+revoke all on function public.finish_ready_daily_recon_jobs() from public;
 revoke all on function public.fail_daily_recon_job(uuid,text) from public;
 revoke all on function public.retry_daily_recon_job(uuid) from public;
 grant execute on function public.claim_daily_recon_job(text) to authenticated;
 grant execute on function public.finish_daily_recon_job(uuid,uuid) to authenticated;
+grant execute on function public.finish_ready_daily_recon_jobs() to authenticated;
 grant execute on function public.fail_daily_recon_job(uuid,text) to authenticated;
 grant execute on function public.retry_daily_recon_job(uuid) to authenticated;

@@ -57,7 +57,7 @@ assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrig
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 2);
 assert.match(workerText, /claim_daily_recon_job/);
-assert.match(workerText, /finish_daily_recon_job/);
+assert.match(workerText, /finish_ready_daily_recon_jobs/);
 assert.match(workerText, /n8n-cloud-worker/);
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");
 

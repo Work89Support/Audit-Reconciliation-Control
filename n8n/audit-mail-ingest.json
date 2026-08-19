@@ -14,7 +14,7 @@
         },
         "simple": false,
         "filters": {
-          "q": "has:attachment label:\"AUDIT 2\" -label:ingested"
+          "q": "has:attachment -label:ingested {from:head123xgroup@gmail.com from:3xgroupnewworld@gmail.com from:faz123u3@gmail.com from:myflower027@gmail.com}"
         },
         "options": {
           "downloadAttachments": true,
@@ -301,7 +301,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?gmail_message_id=eq.{{ $('เดาชนิดไฟล์และตั้ง path').first().json.gmail_message_id }}",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?gmail_message_id=eq.{{ $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
@@ -319,7 +319,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ status: 'stored', file_count: $input.all().length }) }}",
+        "jsonBody": "={{ JSON.stringify({ status: 'stored', file_count: $('เดาชนิดไฟล์และตั้ง path').all().filter(file => file.json.gmail_message_id === $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id).length }) }}",
         "options": {
           "response": {
             "response": {
@@ -336,7 +336,7 @@
         1980,
         300
       ],
-      "executeOnce": true,
+      "executeOnce": false,
       "credentials": {
         "supabaseApi": {
           "id": "REPLACE_SUPABASE_CRED",
@@ -347,7 +347,7 @@
     {
       "parameters": {
         "operation": "addLabels",
-        "messageId": "={{ $('เดาชนิดไฟล์และตั้ง path').first().json.gmail_message_id }}",
+        "messageId": "={{ $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id }}",
         "labelIds": [
           "REPLACE_INGESTED_LABEL_ID"
         ]
@@ -360,7 +360,7 @@
         2200,
         300
       ],
-      "executeOnce": true,
+      "executeOnce": false,
       "credentials": {
         "gmailOAuth2": {
           "id": "REPLACE_GMAIL_CRED",

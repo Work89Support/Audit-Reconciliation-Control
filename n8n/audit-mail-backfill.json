@@ -15,7 +15,7 @@
         "returnAll": false,
         "limit": 20,
         "filters": {
-          "q": "=has:attachment label:\"AUDIT 2\" -label:ingested after:{{ $vars.BACKFILL_AFTER }} before:{{ $vars.BACKFILL_BEFORE }}"
+          "q": "=has:attachment -label:ingested {from:head123xgroup@gmail.com from:3xgroupnewworld@gmail.com from:faz123u3@gmail.com from:myflower027@gmail.com} after:{{ $vars.BACKFILL_AFTER }} before:{{ $vars.BACKFILL_BEFORE }}"
         },
         "options": {}
       },

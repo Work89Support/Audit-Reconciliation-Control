@@ -71,8 +71,6 @@ if(!stm.length){
   const hourlyStm=new Array(24).fill(0),hourlyMatched=new Array(24).fill(0);
   bo.forEach(r=>hourlyStm[Math.max(0,Math.min(23,Math.floor((r.sec||0)/3600)))]++);
   result={matched:0,exceptions:[],stmCount:0,boCount:bo.length,elapsedMs:0,matchRate:0,noStmCount:bo.length,hourlyStm,hourlyMatched,rulesOnly:true};
-}else if(!bo.length){
-  throw new Error('ไม่มีรายการฝั่ง BO หลังอ่านไฟล์');
 }else{
   result=await Engine.reconcile(stm,bo,{...${settings},asOf:Date.now()},Registry.ACCOUNTS.map(a=>({id:a.account,bank:a.bank,company:a.subco,type:a.type,active:true})),null);
 }
@@ -102,7 +100,7 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 90 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "return Array.from({length:5},(_,i)=>({json:{slot:i+1}}));" }, id: "slots", name: "เตรียมประมวลผลสูงสุด 5 งาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
+  { parameters: { jsCode: "return [{json:{slot:1}}];" }, id: "slots", name: "เตรียมประมวลผลสูงสุด 5 งาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
   { parameters: { batchSize: 1, options: {} }, id: "job-loop", name: "วนทีละงาน", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [-380, 160] },
   http("claim", "Supabase: จองงานถัดไป", [-140, 280], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -138,14 +136,14 @@ const nodes = [
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("mark-files", "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", [1860, 80], {
-    method: "PATCH", url: "={{ $vars.SUPABASE_URL }}/rest/v1/source_files?{{ $('เตรียมบันทึก Exception').item.json.file_filter }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    method: "PATCH", url: "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.file_filter }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ parsed: true, parsed_at: $now.toISO(), parse_error: null }) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   http("finish", "Supabase: ปิดงานสำเร็จ", [2080, 80], {
-    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_ready_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_job_id: $('เตรียมบันทึก Exception').item.json.job.id, p_run_id: $('เตรียมบันทึก Exception').item.json.run_id }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({}) }}", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
@@ -171,8 +169,7 @@ const connections = {
   "กระทบยอดและสร้าง Exception": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", type: "main", index: 0 }]] },
-  "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
   "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
 };
 
