@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/mail_batches?created_at=gte.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').startOf('hour').minus({ hours: 1 }).toUTC().toISO()) + '&created_at=lt.' + encodeURIComponent(DateTime.now().setZone('Asia/Bangkok').startOf('hour').toUTC().toISO()) + '&select=id,received_at,created_at,company,business_date,business_system,file_count,status,subject&order=created_at.asc' }}",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/daily_recon_jobs?select=id,business_date,company,status,missing_groups,mail_count,file_count,error_count,attempt_count,last_error,updated_at&order=business_date.desc,company.asc' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {
@@ -35,6 +35,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [-500, -180],
+      "alwaysOutputData": true,
       "credentials": {
         "supabaseApi": {
           "id": "dGndiinLb7AKnjIu",
@@ -44,7 +45,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows=$input.all().map(x=>x.json).filter(x=>x.id); if(!rows.length) return []; const files=rows.reduce((n,x)=>n+Number(x.file_count||0),0); const companies=[...new Set(rows.map(x=>x.company).filter(Boolean))]; const dates=[...new Set(rows.map(x=>x.business_date).filter(Boolean))].sort(); const stored=rows.filter(x=>x.status==='stored').length; const errors=rows.filter(x=>x.status==='error').length; const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); const lines=['📥 อัปเดตเมลใหม่รายชั่วโมง',`ตรวจเมื่อ: ${now}`,`เมลใหม่: ${rows.length} ฉบับ`,`ไฟล์แนบ: ${files} ไฟล์`,`บันทึกสำเร็จ: ${stored} | ผิดพลาด: ${errors}`]; if(companies.length) lines.push(`บริษัท: ${companies.join(', ')}`); if(dates.length) lines.push(`วันที่ข้อมูล: ${dates.join(', ')}`); return [{json:{telegram_text:lines.join('\\n'),mail_count:rows.length,file_count:files}}];"
+        "jsCode": "const jobs=$input.all().map(x=>x.json).filter(x=>x.id); const count=s=>jobs.filter(x=>x.status===s).length; const totalFiles=jobs.reduce((n,x)=>n+Number(x.file_count||0),0); const totalMails=jobs.reduce((n,x)=>n+Number(x.mail_count||0),0); const state=$getWorkflowStaticData('global'); const previous=Number(state.hourlyFileTotal||totalFiles); const fileDelta=Math.max(0,totalFiles-previous); state.hourlyFileTotal=totalFiles; const oneHourAgo=Date.now()-60*60*1000; const changed=jobs.filter(x=>new Date(x.updated_at).getTime()>=oneHourAgo); const missing=jobs.filter(x=>x.status==='needs_review'||x.status==='waiting_files').sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date))).slice(0,8); const failed=jobs.filter(x=>x.status==='error').sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,3); const labels=g=>{const a=Array.isArray(g)?g:[]; if(a.includes('stm_pdf')||a.includes('pm_statement')) return 'STM/PM'; if(a.some(x=>['bo_main','manual_credit','manual_payment','manual_bonus'].includes(x))) return 'BO/ไฟล์หลังบ้าน'; return a.join('/')||'ไม่ทราบชนิด';}; const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); const lines=['📊 อัปเดต Audit รายชั่วโมง',`ตรวจเมื่อ: ${now}`,`ไฟล์รวม: ${totalFiles} | เมลรวม: ${totalMails}`,`ไฟล์เพิ่มจากรอบก่อน: ${fileDelta} | งานอัปเดตใน 1 ชม.: ${changed.length}`,'',`✅ สำเร็จ: ${count('completed')} | ⏳ คิว: ${count('queued')}`,`⚙️ กำลังทำ: ${count('running')} | 🔎 รอตรวจ: ${count('needs_review')+count('waiting_files')}`,`❌ ผิดพลาด: ${count('error')}`]; if(missing.length){lines.push('','📌 รายการขาดไฟล์ (ล่าสุด):'); for(const j of missing){const groups=(j.missing_groups||[]).map(labels).join(' + '); lines.push(`• ${j.business_date} ${j.company}: ${groups}`);}} if(failed.length){lines.push('','🚨 งานที่ต้องแก้:'); for(const j of failed) lines.push(`• ${j.business_date} ${j.company}: ${(j.last_error||'ไม่ทราบสาเหตุ').slice(0,90)}`);} return [{json:{telegram_text:lines.join('\\n'),file_delta:fileDelta,missing_count:missing.length,error_count:failed.length}}];"
       },
       "id": "hourly-format",
       "name": "สร้างข้อความเมลใหม่",

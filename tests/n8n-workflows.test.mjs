@@ -35,6 +35,10 @@ assert.match(liveText, /on_conflict=storage_path/);
 assert.doesNotMatch(liveText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "must not embed a JWT/service key");
 const subjectParser = live.nodes.find((node) => node.name === "แกะบริษัทและวันที่จากหัวข้อ");
 assert.ok(subjectParser.parameters.jsCode.includes("[-/]"), "subject date parser must accept hyphens and slashes");
+const classifier = live.nodes.find((node) => node.name === "เดาชนิดไฟล์และตั้ง path");
+assert.ok(classifier.parameters.jsCode.includes("ฝากถอน"), "deposit-withdraw PDFs must be recognized as STM");
+const sourceFileWriter = live.nodes.find((node) => node.name === "Supabase: บันทึกทะเบียนไฟล์");
+assert.match(sourceFileWriter.parameters.jsonBody, /company:/, "source files must preserve their operating company");
 
 const listNode = backfill.nodes.find((node) => node.name === "Gmail: ค้นเมลสูงสุด 20 ฉบับ");
 assert.equal(listNode.parameters.limit, 20);

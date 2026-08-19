@@ -259,8 +259,18 @@ declare v_source public.mail_sources%rowtype; begin
   elsif coalesce(new.subject,'') ~* 'XXX|(^|[^A-Z0-9])3XB([^A-Z0-9]|$)' then new.business_system:='XXX';
   elsif coalesce(new.subject,'') ~* '(ระบบ[[:space:]]*)?123|(^|[^A-Z0-9])(SK8|AT4|FR8)([^A-Z0-9]|$)' then new.business_system:='SYS123';
   end if;
-  if new.company is null or upper(new.company) in ('BO','PM','STM','FWD','BBL','KBANK','SCB','KTB','BAY','GSB','TTB','LBK') then
-    new.company:=new.business_system;
+  if new.company is null or upper(new.company) in ('BO','PM','STM','FWD','BBL','KBANK','SCB','KTB','BAY','GSB','TTB','LBK','XXX','SYS123') then
+    if coalesce(new.subject,'') ~* '(^|[^A-Z0-9])3XB(ET)?([^A-Z0-9]|$)' then new.company:='3XB';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])AT4([^A-Z0-9]|$)' then new.company:='AT4';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])FR8([^A-Z0-9]|$)' then new.company:='FR8';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])SK8([^A-Z0-9]|$)' then new.company:='SK8';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])MR9([^A-Z0-9]|$)' then new.company:='MR9';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])MC8([^A-Z0-9]|$)' then new.company:='MC8';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])UR9([^A-Z0-9]|$)' then new.company:='UR9';
+    elsif coalesce(new.subject,'') ~* '(^|[^A-Z0-9])PS8([^A-Z0-9]|$)' then new.company:='PS8';
+    elsif coalesce(new.subject,'') ~* 'UFABET7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)' then new.company:='UFABET7M';
+    else new.company:=new.business_system;
+    end if;
   end if;
   return new;
 end $$;
@@ -273,6 +283,8 @@ update public.mail_batches set source_email=source_email where source_email is n
 create or replace function public.normalize_source_file_company() returns trigger
 language plpgsql set search_path=public as $$
 begin
+  if new.file_name ~* '\.pdf$' and new.file_name ~* 'ฝาก[[:space:]]*[-–—/]?[[:space:]]*ถอน|ฝากถอน|statement|(^|[^A-Z0-9])STM([^A-Z0-9]|$)' then new.kind:='stm_pdf';
+  end if;
   if new.file_name ~* '(^|[^A-Z0-9])AT4([^A-Z0-9]|$)' then new.company:='AT4';
   elsif new.file_name ~* '(^|[^A-Z0-9])FR8([^A-Z0-9]|$)' then new.company:='FR8';
   elsif new.file_name ~* '(^|[^A-Z0-9])SK8([^A-Z0-9]|$)' then new.company:='SK8';
@@ -346,6 +358,7 @@ begin
   select count(distinct b.id), count(f.id), count(f.id) filter(where f.parsed),
          count(f.id) filter(where f.parse_error is not null),
          coalesce(array_agg(distinct case
+           when f.file_name ~* '\.pdf$' and f.file_name ~* 'ฝาก[[:space:]]*[-–—/]?[[:space:]]*ถอน|ฝากถอน|statement|(^|[^A-Z0-9])STM([^A-Z0-9]|$)' then 'stm_pdf'
            when f.kind is not null and f.kind<>'unknown' then f.kind
            when f.file_name ~* '(ATP|AZPAY|12PAY|MYPAY|(^|[^A-Z])PM([^A-Z]|$))' then 'pm_statement'
            when f.file_name ~* '\.pdf$' then 'stm_pdf'
@@ -362,6 +375,7 @@ begin
   select * into v_old from public.daily_recon_jobs where business_date=p_business_date and company=p_company;
   if v_old.status='running' then v_status:='running';
   elsif v_old.status='completed' and v_files=v_old.file_count then v_status:='completed';
+  elsif v_old.status='error' and v_files=v_old.file_count and v_old.attempt_count>=3 then v_status:='error';
   elsif jsonb_array_length(v_missing)=0 and v_files>0 then
     v_status:=case when v_old.status='completed' then 'queued' else 'ready' end;
     v_late:=coalesce(v_old.status='completed' and v_files<>v_old.file_count,false);
@@ -376,6 +390,8 @@ begin
     present_kinds=excluded.present_kinds,missing_groups=excluded.missing_groups,mail_count=excluded.mail_count,
     file_count=excluded.file_count,parsed_count=excluded.parsed_count,error_count=excluded.error_count,
     cutoff_at=excluded.cutoff_at,late_file=daily_recon_jobs.late_file or excluded.late_file,
+    attempt_count=case when excluded.file_count<>daily_recon_jobs.file_count then 0 else daily_recon_jobs.attempt_count end,
+    last_error=case when excluded.file_count<>daily_recon_jobs.file_count then null else daily_recon_jobs.last_error end,
     rerun_requested_at=coalesce(excluded.rerun_requested_at,daily_recon_jobs.rerun_requested_at),updated_at=now()
   returning * into v_out;
 
@@ -397,8 +413,10 @@ end $$;
 create or replace function public.queue_due_daily_recon_jobs(p_from date default current_date-7,p_to date default current_date)
 returns setof public.daily_recon_jobs language plpgsql security definer set search_path=public as $$
 begin
-  update public.daily_recon_jobs set status='queued',claimed_at=null,claimed_by=null,
-    last_error='กู้คิวอัตโนมัติ: งานเดิมค้างเกิน 15 นาที',updated_at=now()
+  update public.daily_recon_jobs set status=case when attempt_count>=3 then 'error' else 'queued' end,
+    claimed_at=null,claimed_by=null,
+    last_error=case when attempt_count>=3 then 'หยุดลองอัตโนมัติหลังล้มเหลว 3 ครั้ง: ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง'
+      else 'กู้คิวอัตโนมัติ: งานเดิมค้างเกิน 15 นาที' end,updated_at=now()
     where status='running' and claimed_at < now()-interval '15 minutes';
   perform public.refresh_daily_recon_jobs(p_from,p_to);
   update public.daily_recon_jobs set status='queued',updated_at=now()
@@ -409,17 +427,31 @@ begin
     select 'missing:'||j.id||':'||j.missing_groups::text,'warning','ไฟล์ยังไม่ครบหลังเวลาปิดรับ',
       'กลุ่มไฟล์ที่ขาด: '||j.missing_groups::text,j.business_date,j.company,j.id
     from public.daily_recon_jobs j where j.status='needs_review' on conflict(dedupe_key) do nothing;
+  insert into public.recon_notifications(dedupe_key,level,title,detail,business_date,company,job_id)
+    select 'retry-exhausted:'||j.id||':'||j.attempt_count,'error','หยุดลองกระทบยอดอัตโนมัติ',
+      coalesce(j.last_error,'งานล้มเหลวซ้ำเกินกำหนด'),j.business_date,j.company,j.id
+    from public.daily_recon_jobs j where j.status='error' and j.attempt_count>=3
+    on conflict(dedupe_key) do nothing;
   return query select * from public.daily_recon_jobs where business_date between p_from and p_to order by business_date,company;
 end $$;
 
 create or replace function public.claim_daily_recon_job(p_worker text default 'web-worker')
 returns public.daily_recon_jobs language plpgsql security definer set search_path=public as $$
 declare v_job public.daily_recon_jobs%rowtype; begin
-  select * into v_job from public.daily_recon_jobs where status='queued'
+  select * into v_job from public.daily_recon_jobs where status='queued' and attempt_count<3
     order by business_date,updated_at for update skip locked limit 1;
   if not found then return null; end if;
   update public.daily_recon_jobs set status='running',claimed_at=now(),claimed_by=p_worker,
     attempt_count=attempt_count+1,last_error=null,updated_at=now() where id=v_job.id returning * into v_job;
+  return v_job;
+end $$;
+
+create or replace function public.retry_daily_recon_job(p_job_id uuid)
+returns public.daily_recon_jobs language plpgsql security definer set search_path=public as $$
+declare v_job public.daily_recon_jobs%rowtype; begin
+  update public.daily_recon_jobs set status='queued',attempt_count=0,last_error=null,
+    claimed_at=null,claimed_by=null,rerun_requested_at=now(),updated_at=now()
+    where id=p_job_id returning * into v_job;
   return v_job;
 end $$;
 
@@ -588,6 +620,8 @@ revoke all on function public.queue_due_daily_recon_jobs(date,date) from public;
 revoke all on function public.claim_daily_recon_job(text) from public;
 revoke all on function public.finish_daily_recon_job(uuid,uuid) from public;
 revoke all on function public.fail_daily_recon_job(uuid,text) from public;
+revoke all on function public.retry_daily_recon_job(uuid) from public;
 grant execute on function public.claim_daily_recon_job(text) to authenticated;
 grant execute on function public.finish_daily_recon_job(uuid,uuid) to authenticated;
 grant execute on function public.fail_daily_recon_job(uuid,text) to authenticated;
+grant execute on function public.retry_daily_recon_job(uuid) to authenticated;

@@ -3,25 +3,51 @@
   "nodes": [
     {
       "parameters": {
-        "pollTimes": { "item": [{ "mode": "everyX", "value": 10, "unit": "minutes" }] },
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 10,
+              "unit": "minutes"
+            }
+          ]
+        },
         "simple": false,
-        "filters": { "q": "has:attachment label:\"AUDIT 2\" -label:ingested" },
-        "options": { "downloadAttachments": true, "dataPropertyAttachmentsPrefixName": "attachment_" }
+        "filters": {
+          "q": "has:attachment label:\"AUDIT 2\" -label:ingested"
+        },
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
       },
       "id": "gmail-trigger",
       "name": "Gmail: เมลใหม่ใน AUDIT 2",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.2,
-      "position": [-660, 300],
-      "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
+      "position": [
+        -660,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
     },
     {
-      "parameters": { "inputSource": "passthrough" },
+      "parameters": {
+        "inputSource": "passthrough"
+      },
       "id": "subworkflow-trigger",
       "name": "รับจาก Workflow Backfill",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [-660, 480]
+      "position": [
+        -660,
+        480
+      ]
     },
     {
       "parameters": {
@@ -31,7 +57,10 @@
       "name": "แกะบริษัทและวันที่จากหัวข้อ",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-440, 300]
+      "position": [
+        -440,
+        300
+      ]
     },
     {
       "parameters": {
@@ -42,22 +71,42 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "resolution=merge-duplicates,return=representation" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, mailbox: $json.mailbox, label: $json.label, subject: $json.subject, sender: $json.sender, source_email: $json.source_email, source_name: $json.source_name, business_system: $json.business_system, received_at: $json.received_at, company: $json.company, business_date: $json.business_date, is_supplement: $json.is_supplement, file_count: $json.file_count, status: 'new' }) }}",
-        "options": { "response": { "response": { "neverError": false } } }
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
       },
       "id": "insert-batch",
       "name": "Supabase: บันทึกทะเบียนเมล",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-220, 300],
+      "position": [
+        -220,
+        300
+      ],
       "alwaysOutputData": true,
-      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
@@ -67,18 +116,28 @@
       "name": "แยกไฟล์แนบทีละไฟล์",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [0, 300]
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "version": 2 },
+          "options": {
+            "caseSensitive": false,
+            "version": 2
+          },
           "conditions": [
             {
               "id": "is-zip",
               "leftValue": "={{ $json.is_zip }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -89,15 +148,25 @@
       "name": "เป็นไฟล์ zip?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [220, 300]
+      "position": [
+        220,
+        300
+      ]
     },
     {
-      "parameters": { "operation": "decompress", "binaryPropertyName": "data", "outputPrefix": "unzipped_" },
+      "parameters": {
+        "operation": "decompress",
+        "binaryPropertyName": "data",
+        "outputPrefix": "unzipped_"
+      },
       "id": "unzip",
       "name": "แตกไฟล์ zip",
       "type": "n8n-nodes-base.compression",
       "typeVersion": 1.1,
-      "position": [440, 180]
+      "position": [
+        440,
+        180
+      ]
     },
     {
       "parameters": {
@@ -107,25 +176,37 @@
       "name": "แยกไฟล์ในzipทีละไฟล์",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 180]
+      "position": [
+        660,
+        180
+      ]
     },
     {
-      "parameters": { "mode": "append", "options": {} },
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
       "id": "merge-files",
       "name": "รวมไฟล์ทั้งหมด",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [880, 300]
+      "position": [
+        880,
+        300
+      ]
     },
     {
       "parameters": {
-        "jsCode": "/* เดาชนิดไฟล์และสร้าง Storage path แบบ ASCII-safe */\nfunction kindOf(name) {\n  const n = String(name || '');\n  if (/\\.pdf$/i.test(n)) return /ฝาก\\s*-\\s*ถอน|statement|stm/i.test(n) ? 'stm_pdf' : 'doc_clarify';\n  if (/\\.docx?$/i.test(n)) return 'doc_clarify';\n  if (/รายงานบัญชี(ฝาก|ถอน)/.test(n)) return 'bo_main';\n  if (/ฝากมือ.*เครดิต/.test(n)) return 'manual_credit';\n  if (/ฝากมือ.*Payment/i.test(n)) return 'manual_payment';\n  if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';\n  if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';\n  if (/ถอนเครดิต/.test(n)) return 'credit_out';\n  return 'unknown';\n}\nconst ascii = (s) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '_');\nfunction sizeBytes(value) {\n  if (typeof value === 'number') return value;\n  const m = String(value || '').match(/([\\d.]+)\\s*(B|kB|MB|GB)?/i);\n  if (!m) return null;\n  const factor = { b: 1, kb: 1024, mb: 1048576, gb: 1073741824 }[(m[2] || 'b').toLowerCase()] || 1;\n  return Math.round(Number(m[1]) * factor);\n}\nreturn $input.all().map((item, index) => {\n  const j = item.json;\n  const date = j.business_date || 'unknown-date';\n  const company = j.company || 'UNKNOWN';\n  const messageId = j.gmail_message_id || j.batch_id || 'unknown-message';\n  const ordinal = String(j.attachment_index ?? index).padStart(3, '0');\n  const extMatch = String(j.file_name || '').match(/\\.([A-Za-z0-9]{1,10})$/);\n  const ext = (extMatch ? extMatch[1] : 'bin').toLowerCase();\n  const path = [ascii(date), ascii(company), ascii(messageId), ascii(ordinal) + '.' + ext].join('/');\n  const bin = (item.binary || {}).data || {};\n  return { json: { ...j, kind: kindOf(j.file_name), storage_path: path, size_bytes: sizeBytes(bin.fileSize) }, binary: item.binary };\n});"
+        "jsCode": "/* เดาชนิดไฟล์และสร้าง Storage path แบบ ASCII-safe */\nfunction kindOf(name) {\n  const n = String(name || '');\n  if (/\\.pdf$/i.test(n)) return /ฝาก\\s*[-–—/]?\\s*ถอน|ฝากถอน|statement|(^|[^a-z0-9])stm([^a-z0-9]|$)/i.test(n) ? 'stm_pdf' : 'doc_clarify';\n  if (/\\.docx?$/i.test(n)) return 'doc_clarify';\n  if (/รายงานบัญชี(ฝาก|ถอน)/.test(n)) return 'bo_main';\n  if (/ฝากมือ.*เครดิต/.test(n)) return 'manual_credit';\n  if (/ฝากมือ.*Payment/i.test(n)) return 'manual_payment';\n  if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';\n  if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';\n  if (/ถอนเครดิต/.test(n)) return 'credit_out';\n  return 'unknown';\n}\nconst ascii = (s) => String(s || '').replace(/[^A-Za-z0-9._-]/g, '_');\nfunction sizeBytes(value) {\n  if (typeof value === 'number') return value;\n  const m = String(value || '').match(/([\\d.]+)\\s*(B|kB|MB|GB)?/i);\n  if (!m) return null;\n  const factor = { b: 1, kb: 1024, mb: 1048576, gb: 1073741824 }[(m[2] || 'b').toLowerCase()] || 1;\n  return Math.round(Number(m[1]) * factor);\n}\nreturn $input.all().map((item, index) => {\n  const j = item.json;\n  const date = j.business_date || 'unknown-date';\n  const company = j.company || 'UNKNOWN';\n  const messageId = j.gmail_message_id || j.batch_id || 'unknown-message';\n  const ordinal = String(j.attachment_index ?? index).padStart(3, '0');\n  const extMatch = String(j.file_name || '').match(/\\.([A-Za-z0-9]{1,10})$/);\n  const ext = (extMatch ? extMatch[1] : 'bin').toLowerCase();\n  const path = [ascii(date), ascii(company), ascii(messageId), ascii(ordinal) + '.' + ext].join('/');\n  const bin = (item.binary || {}).data || {};\n  return { json: { ...j, kind: kindOf(j.file_name), storage_path: path, size_bytes: sizeBytes(bin.fileSize) }, binary: item.binary };\n});"
       },
       "id": "classify",
       "name": "เดาชนิดไฟล์และตั้ง path",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, 300]
+      "position": [
+        1100,
+        300
+      ]
     },
     {
       "parameters": {
@@ -136,21 +217,41 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "x-upsert", "value": "true" },
-            { "name": "Content-Type", "value": "={{ $json.mime_type }}" }
+            {
+              "name": "x-upsert",
+              "value": "true"
+            },
+            {
+              "name": "Content-Type",
+              "value": "={{ $json.mime_type }}"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "binaryData",
         "inputDataFieldName": "data",
-        "options": { "response": { "response": { "neverError": false } } }
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
       },
       "id": "upload-storage",
       "name": "Supabase Storage: อัปไฟล์",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1540, 300],
-      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+      "position": [
+        1540,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
@@ -161,21 +262,41 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ batch_id: $('เดาชนิดไฟล์และตั้ง path').item.json.batch_id, file_name: $('เดาชนิดไฟล์และตั้ง path').item.json.file_name, from_zip: $('เดาชนิดไฟล์และตั้ง path').item.json.from_zip || null, mime_type: $('เดาชนิดไฟล์และตั้ง path').item.json.mime_type, size_bytes: $('เดาชนิดไฟล์และตั้ง path').item.json.size_bytes, storage_path: $('เดาชนิดไฟล์และตั้ง path').item.json.storage_path, checksum: null, kind: $('เดาชนิดไฟล์และตั้ง path').item.json.kind, parsed: false }) }}",
-        "options": { "response": { "response": { "neverError": false } } }
+        "jsonBody": "={{ JSON.stringify({ batch_id: $('เดาชนิดไฟล์และตั้ง path').item.json.batch_id, file_name: $('เดาชนิดไฟล์และตั้ง path').item.json.file_name, from_zip: $('เดาชนิดไฟล์และตั้ง path').item.json.from_zip || null, mime_type: $('เดาชนิดไฟล์และตั้ง path').item.json.mime_type, size_bytes: $('เดาชนิดไฟล์และตั้ง path').item.json.size_bytes, storage_path: $('เดาชนิดไฟล์และตั้ง path').item.json.storage_path, checksum: null, company: $('เดาชนิดไฟล์และตั้ง path').item.json.company || null, kind: $('เดาชนิดไฟล์และตั้ง path').item.json.kind, parsed: false }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
       },
       "id": "insert-file",
       "name": "Supabase: บันทึกทะเบียนไฟล์",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1760, 300],
-      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+      "position": [
+        1760,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
@@ -186,60 +307,232 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "return=minimal" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ status: 'stored', file_count: $input.all().length }) }}",
-        "options": { "response": { "response": { "neverError": true } } }
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "mark-stored",
       "name": "Supabase: อัปเดตสถานะเมล",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1980, 300],
+      "position": [
+        1980,
+        300
+      ],
       "executeOnce": true,
-      "credentials": { "supabaseApi": { "id": "REPLACE_SUPABASE_CRED", "name": "Supabase account" } }
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
         "operation": "addLabels",
         "messageId": "={{ $('เดาชนิดไฟล์และตั้ง path').first().json.gmail_message_id }}",
-        "labelIds": ["REPLACE_INGESTED_LABEL_ID"]
+        "labelIds": [
+          "REPLACE_INGESTED_LABEL_ID"
+        ]
       },
       "id": "label-ingested",
       "name": "Gmail: ติด label ingested",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [2200, 300],
+      "position": [
+        2200,
+        300
+      ],
       "executeOnce": true,
-      "credentials": { "gmailOAuth2": { "id": "REPLACE_GMAIL_CRED", "name": "Gmail (work.ltd89)" } }
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
     }
   ],
   "connections": {
-    "Gmail: เมลใหม่ใน AUDIT 2": { "main": [[{ "node": "แกะบริษัทและวันที่จากหัวข้อ", "type": "main", "index": 0 }]] },
-    "รับจาก Workflow Backfill": { "main": [[{ "node": "แกะบริษัทและวันที่จากหัวข้อ", "type": "main", "index": 0 }]] },
-    "แกะบริษัทและวันที่จากหัวข้อ": { "main": [[{ "node": "Supabase: บันทึกทะเบียนเมล", "type": "main", "index": 0 }]] },
-    "Supabase: บันทึกทะเบียนเมล": { "main": [[{ "node": "แยกไฟล์แนบทีละไฟล์", "type": "main", "index": 0 }]] },
-    "แยกไฟล์แนบทีละไฟล์": { "main": [[{ "node": "เป็นไฟล์ zip?", "type": "main", "index": 0 }]] },
-    "เป็นไฟล์ zip?": {
+    "Gmail: เมลใหม่ใน AUDIT 2": {
       "main": [
-        [{ "node": "แตกไฟล์ zip", "type": "main", "index": 0 }],
-        [{ "node": "รวมไฟล์ทั้งหมด", "type": "main", "index": 1 }]
+        [
+          {
+            "node": "แกะบริษัทและวันที่จากหัวข้อ",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "แตกไฟล์ zip": { "main": [[{ "node": "แยกไฟล์ในzipทีละไฟล์", "type": "main", "index": 0 }]] },
-    "แยกไฟล์ในzipทีละไฟล์": { "main": [[{ "node": "รวมไฟล์ทั้งหมด", "type": "main", "index": 0 }]] },
-    "รวมไฟล์ทั้งหมด": { "main": [[{ "node": "เดาชนิดไฟล์และตั้ง path", "type": "main", "index": 0 }]] },
-    "เดาชนิดไฟล์และตั้ง path": { "main": [[{ "node": "Supabase Storage: อัปไฟล์", "type": "main", "index": 0 }]] },
-    "Supabase Storage: อัปไฟล์": { "main": [[{ "node": "Supabase: บันทึกทะเบียนไฟล์", "type": "main", "index": 0 }]] },
-    "Supabase: บันทึกทะเบียนไฟล์": { "main": [[{ "node": "Supabase: อัปเดตสถานะเมล", "type": "main", "index": 0 }]] },
-    "Supabase: อัปเดตสถานะเมล": { "main": [[{ "node": "Gmail: ติด label ingested", "type": "main", "index": 0 }]] }
+    "รับจาก Workflow Backfill": {
+      "main": [
+        [
+          {
+            "node": "แกะบริษัทและวันที่จากหัวข้อ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "แกะบริษัทและวันที่จากหัวข้อ": {
+      "main": [
+        [
+          {
+            "node": "Supabase: บันทึกทะเบียนเมล",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: บันทึกทะเบียนเมล": {
+      "main": [
+        [
+          {
+            "node": "แยกไฟล์แนบทีละไฟล์",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "แยกไฟล์แนบทีละไฟล์": {
+      "main": [
+        [
+          {
+            "node": "เป็นไฟล์ zip?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "เป็นไฟล์ zip?": {
+      "main": [
+        [
+          {
+            "node": "แตกไฟล์ zip",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "รวมไฟล์ทั้งหมด",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "แตกไฟล์ zip": {
+      "main": [
+        [
+          {
+            "node": "แยกไฟล์ในzipทีละไฟล์",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "แยกไฟล์ในzipทีละไฟล์": {
+      "main": [
+        [
+          {
+            "node": "รวมไฟล์ทั้งหมด",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "รวมไฟล์ทั้งหมด": {
+      "main": [
+        [
+          {
+            "node": "เดาชนิดไฟล์และตั้ง path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "เดาชนิดไฟล์และตั้ง path": {
+      "main": [
+        [
+          {
+            "node": "Supabase Storage: อัปไฟล์",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Storage: อัปไฟล์": {
+      "main": [
+        [
+          {
+            "node": "Supabase: บันทึกทะเบียนไฟล์",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: บันทึกทะเบียนไฟล์": {
+      "main": [
+        [
+          {
+            "node": "Supabase: อัปเดตสถานะเมล",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: อัปเดตสถานะเมล": {
+      "main": [
+        [
+          {
+            "node": "Gmail: ติด label ingested",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1", "saveManualExecutions": true, "callerPolicy": "workflowsFromSameOwner" },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
   "pinData": {},
-  "meta": { "instanceId": "audit-ai-reconciliation" },
-  "tags": [{ "name": "audit" }]
+  "meta": {
+    "instanceId": "audit-ai-reconciliation"
+  },
+  "tags": [
+    {
+      "name": "audit"
+    }
+  ]
 }

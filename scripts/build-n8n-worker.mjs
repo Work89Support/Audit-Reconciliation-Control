@@ -30,6 +30,10 @@ if(ext==='pdf'){
   const lines=text.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
   const pages=[lines.map(text=>({text,items:text.split(/\\s+/).map(s=>({s}))}))];
   norm=await PdfStm.parse(file.file_name,pages,job.business_date);
+}else if(ext==='csv'){
+  const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
+  rawRows=Engine.parseCSV(text);
+  norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
 }else{
   rawRows=input.map(x=>Array.isArray(x.json.row)?x.json.row:Object.values(x.json));
   norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
@@ -119,7 +123,7 @@ const nodes = [
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
   { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 280] },
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: false, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400] },
-  { parameters: { operation: "csv", binaryPropertyName: "data", options: { headerRow: false, rawData: false, readAsString: true } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520] },
+  { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520] },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
   { parameters: { jsCode: reconcileCode }, id: "reconcile", name: "กระทบยอดและสร้าง Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [980, 80] },
   http("insert-run", "Supabase: สร้างผลการรัน", [1200, 80], {
