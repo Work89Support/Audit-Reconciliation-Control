@@ -42,7 +42,11 @@ let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
 const fallbackBank=(tag&&tag.bank)||'';
+const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'bo',manual_payment:'bo',manual_bonus:'aux',comm_req:'aux',credit_out:'aux'};
+if(kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 for(const r of (norm.records||[])){
+  const pmKey=Formats.canonicalPm(r.channel||r.account||'');
+  if(pmKey){r.account=pmKey;r.channel=pmKey;}
   if((!r.account||r.account==='UNKNOWN')&&fallbackAccount) r.account=Registry.normalizeAccount(fallbackAccount,fallbackBank||r.bank);
   else if(r.account&&/\\d/.test(String(r.account))) r.account=Registry.normalizeAccount(r.account,fallbackBank||r.bank);
   if(!r.bank&&fallbackBank) r.bank=fallbackBank;
@@ -100,7 +104,7 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 90 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "return [{json:{slot:1}}];" }, id: "slots", name: "เตรียมประมวลผลสูงสุด 5 งาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
+  { parameters: { jsCode: "return Array.from({length:5},(_,i)=>({json:{slot:i+1}}));" }, id: "slots", name: "เตรียมประมวลผลสูงสุด 5 งาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
   { parameters: { batchSize: 1, options: {} }, id: "job-loop", name: "วนทีละงาน", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [-380, 160] },
   http("claim", "Supabase: จองงานถัดไป", [-140, 280], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -109,7 +113,7 @@ const nodes = [
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [80, 280] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
+    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "const job=$('Supabase: จองงานถัดไป').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
@@ -141,9 +145,9 @@ const nodes = [
     jsonBody: "={{ JSON.stringify({ parsed: true, parsed_at: $now.toISO(), parse_error: null }) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   http("finish", "Supabase: ปิดงานสำเร็จ", [2080, 80], {
-    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_ready_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({}) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({ p_job_id: $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.job.id, p_run_id: $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.run_id }) }}", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
@@ -169,7 +173,8 @@ const connections = {
   "กระทบยอดและสร้าง Exception": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", type: "main", index: 0 }]] },
+  "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
   "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
 };
 

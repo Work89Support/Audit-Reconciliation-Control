@@ -82,7 +82,9 @@ const Formats = (() => {
           const first = String((rows[k] || [])[0] || "").trim();
           if (first) { title = first; break; }
         }
-        return { spec: { code: "pm_provider", label: "รายการ PM (payment gateway)", side: "bo" }, headerIdx: i, idx, title };
+        // รายงานจาก Provider คือ statement ฝั่ง PM ที่ต้องนำไปชนกับ BO
+        // ไม่ใช่ BO เอง มิฉะนั้นระบบจะเอารายงานทั้งสองฝั่งไปรวมกันและแจ้ง missing ผิดจำนวนมาก
+        return { spec: { code: "pm_provider", label: "รายการ PM (payment gateway)", side: "stm" }, headerIdx: i, idx, title };
       }
     }
     return null;
@@ -175,8 +177,17 @@ const Formats = (() => {
     return { terminal, channel: channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "AUTOPEER", "AZPAY", "ATP", "12PAY", "MYPAY"];
-  const isPm = (ch) => PM_CHANNELS.some((p) => (ch || "").toUpperCase().includes(p));
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "12PAY", "MYPAY"];
+  const canonicalPm = (ch) => {
+    const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
+    if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
+    if (/AZPAY|^AZ$/.test(s)) return "AZPAY";
+    if (/MYPAY/.test(s)) return "MYPAY";
+    if (/12PAY/.test(s)) return "12PAY";
+    return "";
+  };
+  const isPm = (ch) => !!canonicalPm(ch);
 
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
   function companyOf(fileName) {
@@ -318,8 +329,8 @@ const Formats = (() => {
         boSec: boT.sec,
         amount: Math.round(amount * 100) / 100,
         direction: dep ? "deposit" : "withdraw",
-        account: ch.terminal || "UNKNOWN",
-        channel: ch.channel,
+        account: canonicalPm(ch.channel) || ch.terminal || "UNKNOWN",
+        channel: canonicalPm(ch.channel) || ch.channel,
         isPmChannel: isPm(ch.channel),
         bank: ch.isBankAccount ? "" : ch.channel,
         company,
@@ -399,8 +410,8 @@ const Formats = (() => {
         boSec: boT.sec,
         amount: Math.round(amount * 100) / 100,
         direction: "deposit",
-        account: val(f, r, "บัญชีบริษัท") || ch.terminal || "UNKNOWN",
-        channel: ch.channel || "MANUAL",
+        account: canonicalPm(ch.channel) || val(f, r, "บัญชีบริษัท") || ch.terminal || "UNKNOWN",
+        channel: canonicalPm(ch.channel) || ch.channel || "MANUAL",
         isPmChannel: isPm(ch.channel),
         bank: "",
         company,
@@ -537,7 +548,7 @@ const Formats = (() => {
     return [...byRef.values(), ...noRef];
   }
 
-  return { SPECS, detect, parse, stamp, channelOf, companyOf, isPm, pipe, merge };
+  return { SPECS, detect, parse, stamp, channelOf, companyOf, canonicalPm, isPm, pipe, merge };
 })();
 
 if (typeof window !== "undefined") window.Formats = Formats;

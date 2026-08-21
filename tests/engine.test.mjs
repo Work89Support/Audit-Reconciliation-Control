@@ -11,13 +11,14 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const engineSrc = fs.readFileSync(path.join(__dirname, "..", "engine.js"), "utf8");
+const formatsSrc = fs.readFileSync(path.join(__dirname, "..", "formats.js"), "utf8");
 
 /* engine.js เป็น IIFE: `const Engine = (() => {...})()`
    ประเมินในกล่อง sandbox แล้วดึงตัวแปร Engine ออกมา
    (โค้ดใช้ typeof Formats/XlsxReader/XLSX แบบ guard อยู่แล้ว จึงไม่ต้อง stub) */
 const sandbox = { performance, console };
 vm.createContext(sandbox);
-vm.runInContext(engineSrc + "\n;globalThis.__Engine = Engine;", sandbox);
+vm.runInContext(formatsSrc + "\n" + engineSrc + "\n;globalThis.__Engine = Engine;", sandbox);
 const Engine = sandbox.__Engine;
 
 /* ---------------- mini test harness ---------------- */
@@ -95,6 +96,17 @@ await (async function () {
   eq("exact: matched", r.matched, 1);
   eq("exact: ไม่มี exception", r.exceptions.length, 0);
   eq("exact: matchRate", Math.round(r.matchRate), 100);
+})();
+
+/* ===== 18) รายงาน PM เป็น statement ฝั่ง STM และใช้ provider เป็น match key ===== */
+(function () {
+  const rows = [
+    ["id", "amount", "provider", "status", "requestTime"],
+    ["DEP-1", "100", "Autopeer", "Success", "2026-08-01 10:00:00"],
+  ];
+  const n = Engine.normalize("AT4 Autopeer ฝาก.xlsx", rows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-08-01");
+  eq("PM: เป็นฝั่ง STM", n.format.source, "stm");
+  eq("PM: account เป็น provider มาตรฐาน", n.records[0]?.account, "AUTOPEER");
 })();
 
 /* ================= 4) reconcile: time_diff ================= */

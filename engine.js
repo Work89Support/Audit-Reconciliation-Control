@@ -165,7 +165,8 @@ const Engine = (() => {
         return {
           fileName,
           format: {
-            source: real.side === "aux" ? "aux" : "bo",
+            // ใช้ side ที่ตัวอ่านรูปแบบจริงระบุ: PM provider เป็น STM, รายงานหลังบ้านเป็น BO
+            source: real.side === "aux" ? "aux" : real.side === "stm" ? "stm" : "bo",
             bank: null,
             company: real.company,
             headerIdx: 0,

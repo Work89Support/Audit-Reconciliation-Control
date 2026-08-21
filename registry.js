@@ -1323,7 +1323,7 @@ const Registry = (() => {
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
-                  cby:"CYBERPLUS", cyberplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY" };
+                  cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY" };
 
   function normalizeAccount(s, bank) {
     let d = String(s || "").replace(/\D/g, "");

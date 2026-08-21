@@ -57,7 +57,10 @@ assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrig
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 2);
 assert.match(workerText, /claim_daily_recon_job/);
-assert.match(workerText, /finish_ready_daily_recon_jobs/);
+assert.match(workerText, /finish_daily_recon_job/);
+assert.match(workerText, /Array\.from\(\{length:5\}/, "worker must process up to five jobs per cycle");
+assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
+assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว");
 assert.match(workerText, /n8n-cloud-worker/);
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");
 
