@@ -59,6 +59,10 @@ assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBat
 assert.match(workerText, /claim_daily_recon_jobs/);
 assert.match(workerText, /finish_daily_recon_job/);
 assert.match(workerText, /p_limit[^}]*5/, "worker must atomically claim up to five distinct jobs per cycle");
+assert.equal(worker.connections["Supabase: ตรวจไฟล์และจัดคิว"].main[0][0].node, "รวมเป็นหนึ่งรอบ", "queue RPC rows must collapse before the claim RPC");
+assert.equal(worker.connections["รวมเป็นหนึ่งรอบ"].main[0][0].node, "Supabase: จองสูงสุด 5 งาน");
+assert.match(workerText, /\$\('วนทีละงาน'\)\.item\.json/, "nested processing must use the current job-loop item");
+assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file references must not fall back to the first loop item");
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
 assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว");
 assert.match(workerText, /n8n-cloud-worker/);

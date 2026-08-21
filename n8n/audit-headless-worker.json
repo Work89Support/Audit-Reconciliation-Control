@@ -73,6 +73,19 @@
     },
     {
       "parameters": {
+        "jsCode": "return [{json:{started_at:new Date().toISOString()}}];"
+      },
+      "id": "single-cycle",
+      "name": "รวมเป็นหนึ่งรอบ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        160
+      ]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs",
         "authentication": "predefinedCredentialType",
@@ -100,7 +113,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -600,
+        -380,
         160
       ],
       "credentials": {
@@ -120,7 +133,7 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -380,
+        -160,
         160
       ]
     },
@@ -186,7 +199,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const job=$('Supabase: จองสูงสุด 5 งาน').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
+        "jsCode": "const job=$('วนทีละงาน').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
       },
       "id": "filter-files",
       "name": "เลือกไฟล์ของบริษัท",
@@ -489,7 +502,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.file_filter }}",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').item.json.file_filter }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
@@ -547,7 +560,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_job_id: $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.job.id, p_run_id: $('เตรียมบันทึก Exception').first(0, $prevNode.runIndex).json.run_id }) }}",
+        "jsonBody": "={{ JSON.stringify({ p_job_id: $('วนทีละงาน').item.json.id, p_run_id: $('เตรียมบันทึก Exception').item.json.run_id }) }}",
         "options": {
           "response": {
             "response": {}
@@ -607,6 +620,17 @@
       ]
     },
     "Supabase: ตรวจไฟล์และจัดคิว": {
+      "main": [
+        [
+          {
+            "node": "รวมเป็นหนึ่งรอบ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "รวมเป็นหนึ่งรอบ": {
       "main": [
         [
           {
