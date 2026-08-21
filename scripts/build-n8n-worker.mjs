@@ -54,7 +54,7 @@ for(const r of (norm.records||[])){
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,records:norm.records||[],aux:norm.aux||[],row_count:ext==='pdf'?(norm.records||[]).length:rawRows.length,warnings:norm.warnings||[],dropped:norm.dropped||{}}}];`;
+return [{json:{job,file,format:norm.format,records:norm.records||[],aux:norm.aux||[],row_count:ext==='pdf'?(norm.records||[]).length:rawRows.length,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
 
 const reconcileCode = `const performance={now:()=>Date.now()};\n${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
@@ -91,7 +91,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:(biz.exceptions||[]).length,worker_version:'1.0.0'}},exceptions,files:files.map(f=>({id:f.file.id,parsed:true,row_count:f.row_count||0,parse_error:null}))}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:(biz.exceptions||[]).length,worker_version:'1.0.0'}},exceptions,files:files.map(f=>({id:f.file.id,parsed:true,row_count:f.row_count||0,parse_error:null}))},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
@@ -105,17 +105,16 @@ const nodes = [
     jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 90 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
-  http("claim", "Supabase: จองสูงสุด 5 งาน", [-380, 160], {
+  http("claim", "Supabase: จองหนึ่งงาน", [-380, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 5 }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 1 }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { batchSize: 1, options: {} }, id: "job-loop", name: "วนทีละงาน", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [-160, 160] },
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [80, 280] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [-160, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('วนทีละงาน').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}},pairedItem:{item:0}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -133,21 +132,21 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ business_date: $json.job.business_date, company: $json.job.company, run_by: $json.result.run_by, elapsed_ms: $json.result.elapsed_ms, stm_count: $json.result.stm_count, bo_count: $json.result.bo_count, matched: $json.result.matched, match_rate: $json.result.match_rate, exception_count: $json.exceptions.length, no_stm_count: $json.result.no_stm_count, file_ids: $json.result.file_ids, summary: { ...$json.result.summary, worker: 'n8n-cloud', job_id: $json.job.id } }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').item.json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const exception_rows=source.exceptions.map(e=>({...e,run_id:runId})); const ids=source.files.map(f=>f.id).filter(Boolean); return [{json:{...source,run_id:runId,exception_rows,file_filter:'id=in.('+ids.join(',')+')'}}];" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 80] },
+  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').item.json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const exception_rows=source.exceptions.map(e=>({...e,run_id:runId})); const ids=source.files.map(f=>f.id).filter(Boolean); return [{json:{...source,run_id:runId,exception_rows,file_filter:'id=in.('+ids.join(',')+')'},pairedItem:{item:0}}];" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 80] },
   { ...http("insert-exceptions", "Supabase: บันทึก Exception", [1640, 80], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("mark-files", "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", [1860, 80], {
-    method: "PATCH", url: "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').item.json.file_filter }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    method: "PATCH", url: "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').first().json.file_filter }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ parsed: true, parsed_at: $now.toISO(), parse_error: null }) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   http("finish", "Supabase: ปิดงานสำเร็จ", [2080, 80], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_job_id: $('วนทีละงาน').item.json.id, p_run_id: $('เตรียมบันทึก Exception').item.json.run_id }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ (()=>{const x=$('เตรียมบันทึก Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_run_id:x.run_id});})() }}", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
@@ -156,10 +155,9 @@ const connections = {
   "ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
-  "รวมเป็นหนึ่งรอบ": { main: [[{ node: "Supabase: จองสูงสุด 5 งาน", type: "main", index: 0 }]] },
-  "Supabase: จองสูงสุด 5 งาน": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
-  "วนทีละงาน": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }], [{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
-  "มีงานในคิว?": { main: [[{ node: "Supabase: อ่านรายการไฟล์ของวัน", type: "main", index: 0 }], [{ node: "วนทีละงาน", type: "main", index: 0 }]] },
+  "รวมเป็นหนึ่งรอบ": { main: [[{ node: "Supabase: จองหนึ่งงาน", type: "main", index: 0 }]] },
+  "Supabase: จองหนึ่งงาน": { main: [[{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
+  "มีงานในคิว?": { main: [[{ node: "Supabase: อ่านรายการไฟล์ของวัน", type: "main", index: 0 }], [{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
   "Supabase: อ่านรายการไฟล์ของวัน": { main: [[{ node: "เลือกไฟล์ของบริษัท", type: "main", index: 0 }]] },
   "เลือกไฟล์ของบริษัท": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
   "วนทีละไฟล์": { main: [[{ node: "กระทบยอดและสร้าง Exception", type: "main", index: 0 }], [{ node: "ดาวน์โหลดไฟล์จาก Storage", type: "main", index: 0 }]] },
@@ -175,7 +173,7 @@ const connections = {
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
   "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", type: "main", index: 0 }]] },
   "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
-  "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
+  "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };
 
 const workflow = { name: "Audit - Headless Reconciliation Worker", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
