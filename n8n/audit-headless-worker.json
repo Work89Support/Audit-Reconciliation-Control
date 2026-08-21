@@ -73,16 +73,42 @@
     },
     {
       "parameters": {
-        "jsCode": "return Array.from({length:5},(_,i)=>({json:{slot:i+1}}));"
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 5 }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
       },
-      "id": "slots",
-      "name": "เตรียมประมวลผลสูงสุด 5 งาน",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "claim",
+      "name": "Supabase: จองสูงสุด 5 งาน",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         -600,
         160
-      ]
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
@@ -97,45 +123,6 @@
         -380,
         160
       ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_job",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker' }) }}",
-        "options": {
-          "response": {
-            "response": {}
-          }
-        }
-      },
-      "id": "claim",
-      "name": "Supabase: จองงานถัดไป",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        -140,
-        280
-      ],
-      "credentials": {
-        "supabaseApi": {
-          "id": "dGndiinLb7AKnjIu",
-          "name": "Supabase account"
-        }
-      }
     },
     {
       "parameters": {
@@ -199,7 +186,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const job=$('Supabase: จองงานถัดไป').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
+        "jsCode": "const job=$('Supabase: จองสูงสุด 5 งาน').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
       },
       "id": "filter-files",
       "name": "เลือกไฟล์ของบริษัท",
@@ -623,14 +610,14 @@
       "main": [
         [
           {
-            "node": "เตรียมประมวลผลสูงสุด 5 งาน",
+            "node": "Supabase: จองสูงสุด 5 งาน",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "เตรียมประมวลผลสูงสุด 5 งาน": {
+    "Supabase: จองสูงสุด 5 งาน": {
       "main": [
         [
           {
@@ -650,17 +637,6 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Supabase: จองงานถัดไป",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Supabase: จองงานถัดไป": {
-      "main": [
         [
           {
             "node": "มีงานในคิว?",

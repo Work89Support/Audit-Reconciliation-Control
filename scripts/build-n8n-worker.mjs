@@ -104,18 +104,17 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 90 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "return Array.from({length:5},(_,i)=>({json:{slot:i+1}}));" }, id: "slots", name: "เตรียมประมวลผลสูงสุด 5 งาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
-  { parameters: { batchSize: 1, options: {} }, id: "job-loop", name: "วนทีละงาน", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [-380, 160] },
-  http("claim", "Supabase: จองงานถัดไป", [-140, 280], {
-    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+  http("claim", "Supabase: จองสูงสุด 5 งาน", [-600, 160], {
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker' }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 5 }) }}", options: { response: { response: {} } },
   }),
+  { parameters: { batchSize: 1, options: {} }, id: "job-loop", name: "วนทีละงาน", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [-380, 160] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [80, 280] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองงานถัดไป').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองสูงสุด 5 งาน').item.json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -155,10 +154,9 @@ const nodes = [
 const connections = {
   "ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
-  "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "เตรียมประมวลผลสูงสุด 5 งาน", type: "main", index: 0 }]] },
-  "เตรียมประมวลผลสูงสุด 5 งาน": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
-  "วนทีละงาน": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }], [{ node: "Supabase: จองงานถัดไป", type: "main", index: 0 }]] },
-  "Supabase: จองงานถัดไป": { main: [[{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
+  "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "Supabase: จองสูงสุด 5 งาน", type: "main", index: 0 }]] },
+  "Supabase: จองสูงสุด 5 งาน": { main: [[{ node: "วนทีละงาน", type: "main", index: 0 }]] },
+  "วนทีละงาน": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }], [{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
   "มีงานในคิว?": { main: [[{ node: "Supabase: อ่านรายการไฟล์ของวัน", type: "main", index: 0 }], [{ node: "วนทีละงาน", type: "main", index: 0 }]] },
   "Supabase: อ่านรายการไฟล์ของวัน": { main: [[{ node: "เลือกไฟล์ของบริษัท", type: "main", index: 0 }]] },
   "เลือกไฟล์ของบริษัท": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
