@@ -49,7 +49,6 @@ const ROUTES = [
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ, ผลจับคู่, exception ตามประเภท/กะ และ SLA ที่ต้องตามวันนี้", filters: true },
       { id: "cloud", label: "คลังไฟล์จากเมล", icon: "cloud", title: "คลังไฟล์จากเมล (n8n + Supabase)", desc: "ไฟล์จากเมล AUDIT 2 ถูก n8n ดึงมาเก็บใน Supabase และ Google Drive ให้อัตโนมัติ — เลือกไฟล์แล้วกดดึงเข้าระบบเพื่อกระทบยอดได้ทันที", filters: true },
-      { id: "import", label: "นำเข้าข้อมูล", icon: "import", title: "นำเข้าไฟล์และกระทบยอดอัตโนมัติ", desc: "ดึงไฟล์จาก email กลาง หรืออัปโหลดเอง แล้วระบบจะ parse, ใช้กฎธนาคาร และกระทบยอด 3 จุดให้เองทันทีที่ไฟล์ครบทั้งสองฝั่ง", filters: false },
       { id: "intake", label: "Intake Control", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "เช็คว่า STM / BO / ไฟล์แก้ไขมือ / ไฟล์ชี้แจง / PM ครบและถูกบริษัทหรือไม่ ถ้ายังไม่ครบระบบจะรอ ไม่กระทบยอดเงียบ ๆ", filters: true },
       { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
       { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true },
@@ -76,12 +75,8 @@ const ROUTES = [
     group: "ระบบ",
     items: [
       { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
-      { id: "users", label: "ผู้ใช้ & สิทธิ์", icon: "users", title: "ผู้ใช้และสิทธิ์ตามบทบาท", desc: "ตารางสิทธิ์ 5 บทบาท ตั้งแต่ Audit Monitor ถึง System Admin", filters: false },
       { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
-      { id: "schedule", label: "ตั้งเวลา & ความปลอดภัย", icon: "clock", title: "ตารางเวลาและความปลอดภัย", desc: "ตั้งเวลาให้ระบบดึงไฟล์และกระทบยอดเอง, นโยบายเก็บข้อมูลและสำรอง, และทดสอบ performance ระดับ 200,000 รายการ", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
-      { id: "settings", label: "ตั้งค่าระบบ", icon: "settings", title: "ตั้งค่าการตรวจสอบ", desc: "tolerance, เกณฑ์แจ้งเตือน, SLA และ rule preset ที่บังคับใช้ทั้งระบบ", filters: false },
-      { id: "roadmap", label: "สิ่งที่ต้องพัฒนาต่อ", icon: "roadmap", title: "Gap และแผนพัฒนา", desc: "สิ่งที่ Audit ต้องเตรียม และสิ่งที่ระบบต้องทำต่อจาก prototype นี้", filters: false },
     ],
   },
 ];
@@ -90,18 +85,23 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["dashboard", "import", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "roadmap"],
+  monitor: ["cloud", "dashboard", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
   lead: Object.keys(ROUTE_MAP),
-  shift_lead: ["dashboard", "exceptions", "clarify", "approvals", "damage", "talk", "notifications", "roadmap"],
-  exec: ["dashboard", "kpi", "reports", "damage", "talk", "notifications", "roadmap"],
+  shift_lead: ["cloud", "dashboard", "exceptions", "clarify", "approvals", "damage", "talk", "notifications"],
+  exec: ["dashboard", "kpi", "reports", "damage", "talk", "notifications"],
   admin: Object.keys(ROUTE_MAP),
 };
 
 /* ---------------- state ---------------- */
+const PROD_TODAY = (() => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+})();
 const state = {
-  route: "dashboard",
+  route: "cloud",
   role: "lead",
-  filters: { date: DB.BUSINESS_DATE, from: DB.BUSINESS_DATE, to: DB.BUSINESS_DATE, preset: "day", company: "ALL", direction: "ALL", shift: "ALL" },
+  filters: { date: PROD_TODAY, from: PROD_TODAY.slice(0, 8) + "01", to: PROD_TODAY, preset: "month", company: "ALL", direction: "ALL", shift: "ALL" },
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false },
   sort: { key: "time", dir: "asc" },
   page: 1,
@@ -109,7 +109,7 @@ const state = {
   selected: null,
   matchIndex: 0,
   damageCycle: "C1",
-  dataset: "demo",
+  dataset: "production",
   chat: [],
 };
 
@@ -404,7 +404,7 @@ function renderFilters() {
 /* ---------------- router ---------------- */
 function parseHash() {
   const raw = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return ROUTE_MAP[raw] ? raw : "dashboard";
+  return ROUTE_MAP[raw] ? raw : (window.APP_CONFIG?.defaultRoute || "cloud");
 }
 function go(route, opts = {}) {
   if (opts.exFilter) Object.assign(state.exFilter, opts.exFilter);
@@ -415,7 +415,7 @@ window.addEventListener("hashchange", () => {
   const r = parseHash();
   if (!ROUTE_ROLES[state.role].includes(r)) {
     toast(`สิทธิ์ ${DB.roles[state.role].name} เข้าหน้านี้ไม่ได้`, "warn");
-    location.hash = "#/dashboard";
+    location.hash = "#/cloud";
     return;
   }
   state.route = r;
@@ -428,6 +428,18 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+function showLoginGate(message) {
+  $("#appShell").hidden = true;
+  $("#loginGate").hidden = false;
+  const out = $("#loginError");
+  if (message) {
+    out.textContent = message;
+    out.hidden = false;
+  } else {
+    out.hidden = true;
+  }
+}
+
 function render() {
   const route = ROUTE_MAP[state.route];
   Charts.reset();
@@ -435,9 +447,7 @@ function render() {
   $("#pageTitle").textContent = route.title;
   $("#pageDesc").innerHTML =
     h(route.desc) +
-    (state.dataset === "imported"
-      ? ' <span class="badge green">ข้อมูลจากไฟล์ที่นำเข้าจริง</span>'
-      : ' <span class="badge grey">ข้อมูลตัวอย่าง</span>');
+    (Sb.signedIn() ? ' <span class="badge green">ระบบข้อมูลจริง</span>' : "");
   renderNav();
   renderFilters();
   $("#viewRoot").innerHTML = "";
@@ -2057,6 +2067,13 @@ VIEWS.cloud = (root) => {
   const inSession = Sb.signedIn();
 
   if (!ready || !inSession) {
+    showLoginGate();
+    root.innerHTML = "";
+    return;
+  }
+
+  /* หน้า Production ไม่เปิดให้แก้ URL/key จากหน้าเว็บ */
+  if (false) {
     root.innerHTML = `
       <section class="panel">
         <div class="panel-heading">
@@ -2160,7 +2177,6 @@ VIEWS.cloud = (root) => {
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
           <button class="ghost-button sm" id="cPickNew">เลือกที่ยังไม่ได้อ่าน</button>
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>ดึงเข้าระบบ ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
-          <button class="ghost-button sm" id="cLogout">ออกจากระบบคลัง</button>
         </div>
       </div>
       ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : ""}
@@ -2244,13 +2260,6 @@ VIEWS.cloud = (root) => {
     }`;
 
   $("#cReload").addEventListener("click", cloudLoad);
-  $("#cLogout").addEventListener("click", () => {
-    Sb.signOut();
-    startCloudWorker();
-    cloudState.batches = null;
-    toast("ออกจากระบบคลังไฟล์แล้ว");
-    render();
-  });
   $("#cPickNew").addEventListener("click", () => {
     readable.filter((f) => !f.parsed).forEach((f) => (cloudState.picked[f.id] = true));
     render();
@@ -3999,36 +4008,84 @@ function exportExceptions() {
 /* =============================================================
    Boot
    ============================================================= */
-function boot() {
-  applyStoredState();
-  Sb.restore();
-  renderRoleSelect();
+let productionDataReady = false;
+
+function prepareProductionData() {
+  if (productionDataReady) return;
+  productionDataReady = true;
+  DB.exceptions = [];
+  DB.damages = [];
+  DB.files = [];
+  DB.currentRun = null;
+  if (Array.isArray(DB.hourly)) DB.hourly.forEach((x) => { x.total = 0; x.matched = 0; x.exception = 0; });
+  const accounts = loadRegistryAccounts();
+  if (accounts) DB.accounts = accounts;
+  state.dataset = "production";
+}
+
+function applyAuthenticatedRole() {
+  const user = Sb.authUser() || {};
+  const email = String(user.email || "").toLowerCase();
+  const app = window.APP_CONFIG || {};
+  const requested = app.roleByEmail?.[email] || user.app_metadata?.role || user.user_metadata?.role || app.defaultRole || "monitor";
+  state.role = ROUTE_ROLES[requested] ? requested : "monitor";
+  $("#signedUser").textContent = user.email || "ผู้ใช้งานระบบ";
+}
+
+function enterProductionApp() {
+  prepareProductionData();
+  applyAuthenticatedRole();
+  $("#loginGate").hidden = true;
+  $("#appShell").hidden = false;
+  state.route = parseHash();
+  if (!ROUTE_ROLES[state.role].includes(state.route)) state.route = "cloud";
+  if (!location.hash || parseHash() !== state.route) location.hash = "#/" + state.route;
+  cloudState.batches = null;
+  cloudState.daily = null;
+  cloudState.operations = null;
   updateBell();
-  startScheduler();
-  startCloudWorker();
-  $("#btnBell").addEventListener("click", () => go("notifications"));
-  $("#roleSelect").addEventListener("change", (e) => {
-    state.role = e.target.value;
-    if (!ROUTE_ROLES[state.role].includes(state.route)) {
-      location.hash = "#/dashboard";
-      state.route = "dashboard";
+  render();
+}
+
+async function boot() {
+  applyStoredState();
+  const restored = await Sb.restore();
+  $("#loginEmail").value = Sb.cfg().email || "";
+  $("#loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("#loginSubmit");
+    const error = $("#loginError");
+    button.disabled = true;
+    button.textContent = "กำลังเข้าสู่ระบบ...";
+    error.hidden = true;
+    try {
+      await Sb.signIn($("#loginEmail").value.trim(), $("#loginPassword").value);
+      $("#loginPassword").value = "";
+      enterProductionApp();
+    } catch (e) {
+      showLoginGate(e.message || "เข้าสู่ระบบไม่สำเร็จ");
+    } finally {
+      button.disabled = false;
+      button.textContent = "เข้าสู่ระบบ";
     }
-    toast("สลับมุมมองเป็น " + DB.roles[state.role].name);
-    render();
   });
+  $("#btnBell").addEventListener("click", () => go("notifications"));
   $("#btnExport").addEventListener("click", openExportDialog);
-  $("#autoStatus").addEventListener("click", () => go("import"));
+  $("#btnLogout").addEventListener("click", () => {
+    Sb.signOut();
+    cloudState.batches = null;
+    location.hash = "#/cloud";
+    showLoginGate();
+  });
+  $("#autoStatus").addEventListener("click", () => go("cloud"));
   $("#navToggle").addEventListener("click", () => {
     const sb = $("#sidebar");
     sb.classList.toggle("open");
     $("#navToggle").setAttribute("aria-expanded", sb.classList.contains("open"));
   });
 
-  state.route = parseHash();
-  if (!location.hash) location.hash = "#/dashboard";
-  render();
-  runNotificationRules();
-  updateAutoStatus();
+  if (restored) enterProductionApp();
+  else showLoginGate();
   /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
   const savedSys = Store.data.companySystems || {};
   Object.entries(savedSys).forEach(([code, sysCode]) => {
@@ -4037,6 +4094,5 @@ function boot() {
     c.system = sysCode || null;
   });
   retagTracks();
-  if (typeof Manual !== "undefined") Manual.init();
 }
 document.addEventListener("DOMContentLoaded", boot);

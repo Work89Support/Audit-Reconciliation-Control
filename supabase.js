@@ -19,7 +19,11 @@ const Sb = (() => {
   /* ---------------- config ---------------- */
   const cfg = () => {
     const d = Store.data;
-    if (!d.supabase) d.supabase = { url: "", anonKey: "", bucket: "audit-files", email: "", autoSync: false, lastSync: null };
+    const app = window.APP_CONFIG || {};
+    if (!d.supabase) d.supabase = { email: "", autoSync: false, lastSync: null };
+    d.supabase.url = app.supabaseUrl || d.supabase.url || "";
+    d.supabase.anonKey = app.supabasePublishableKey || d.supabase.anonKey || "";
+    d.supabase.bucket = app.storageBucket || d.supabase.bucket || "audit-files";
     return d.supabase;
   };
   function saveConfig(patch) {
@@ -30,13 +34,12 @@ const Sb = (() => {
   const configured = () => !!(cfg().url && cfg().anonKey);
   const signedIn = () => !!session && session.expires_at > Date.now() / 1000 + 30;
   const currentEmail = () => (session && session.user ? session.user.email : "");
+  const authUser = () => (session && session.user ? session.user : null);
 
-  /* เก็บ session ไว้ให้รีเฟรชแล้วไม่ต้องล็อกอินใหม่
-     ใช้ sessionStorage (ล้างอัตโนมัติเมื่อปิดแท็บ/เบราว์เซอร์) แทน localStorage
-     เพื่อลดความเสี่ยงถูกขโมย access_token/refresh_token กรณีเครื่องใช้ร่วมกันหรือมีช่อง XSS
-     ระบบ audit เก็บข้อมูลการเงิน จึงไม่ควรฝัง token ถาวรในเบราว์เซอร์ */
+  /* เก็บ session แบบเดียวกับ Supabase client เพื่อให้ระบบยังล็อกอินอยู่หลังปิดแท็บ
+     access token มีอายุสั้นและต่ออายุด้วย refresh token; ผู้ใช้กดออกจากระบบเพื่อล้างได้ */
   const SB_SESSION_KEY = "audit-sb-session";
-  function restore() {
+  async function restore() {
     /* ล้าง session เก่าที่เวอร์ชันก่อนหน้าเคยเก็บถาวรใน localStorage ทิ้ง (migration ครั้งเดียว) */
     if (Store.data.sbSession) {
       delete Store.data.sbSession;
@@ -44,20 +47,39 @@ const Sb = (() => {
     }
     let s = null;
     try {
-      s = JSON.parse(sessionStorage.getItem(SB_SESSION_KEY) || "null");
+      s = JSON.parse(localStorage.getItem(SB_SESSION_KEY) || "null");
     } catch (e) {
       s = null;
     }
     if (s && s.expires_at > Date.now() / 1000 + 30) session = s;
+    else if (s && s.refresh_token) {
+      try {
+        await refreshSession(s.refresh_token);
+      } catch (e) {
+        localStorage.removeItem(SB_SESSION_KEY);
+      }
+    }
     return signedIn();
   }
   function keep(s) {
     session = s;
     try {
-      sessionStorage.setItem(SB_SESSION_KEY, JSON.stringify(s));
+      localStorage.setItem(SB_SESSION_KEY, JSON.stringify(s));
     } catch (e) {
       /* sessionStorage ใช้ไม่ได้ก็เก็บแค่ในหน่วยความจำ — ปลอดภัยกว่าเก็บถาวร */
     }
+  }
+
+  async function refreshSession(refreshToken) {
+    const res = await fetch(base() + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ต่ออายุการเข้าสู่ระบบไม่สำเร็จ");
+    keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
+    return j.user;
   }
 
   /* ---------------- HTTP ---------------- */
@@ -113,7 +135,7 @@ const Sb = (() => {
   function signOut() {
     session = null;
     try {
-      sessionStorage.removeItem(SB_SESSION_KEY);
+      localStorage.removeItem(SB_SESSION_KEY);
     } catch (e) {}
     if (Store.data.sbSession) {
       delete Store.data.sbSession;
@@ -285,6 +307,7 @@ const Sb = (() => {
     configured,
     signedIn,
     currentEmail,
+    authUser,
     restore,
     signIn,
     signOut,

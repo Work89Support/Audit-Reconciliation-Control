@@ -11,7 +11,31 @@
   <body>
     <a class="skip-link" href="#viewRoot">ข้ามไปเนื้อหาหลัก</a>
 
-    <div class="app-shell">
+    <section class="login-gate" id="loginGate" aria-labelledby="loginTitle">
+      <div class="login-brand">
+        <div class="brand-mark">A</div>
+        <div>
+          <p>Audit AI</p>
+          <span>Reconciliation Control</span>
+        </div>
+      </div>
+      <form class="login-card" id="loginForm">
+        <p class="eyebrow">ระบบตรวจสอบและกระทบยอด</p>
+        <h1 id="loginTitle">เข้าสู่ระบบ</h1>
+        <p class="login-lead">ใช้บัญชีที่ผู้ดูแลระบบออกให้ เพื่อดูไฟล์และผลกระทบยอดจากระบบจริง</p>
+        <label>อีเมล
+          <input type="email" id="loginEmail" autocomplete="username" required placeholder="name@company.com" />
+        </label>
+        <label>รหัสผ่าน
+          <input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" />
+        </label>
+        <p class="login-error" id="loginError" role="alert" hidden></p>
+        <button class="primary-button login-submit" id="loginSubmit" type="submit">เข้าสู่ระบบ</button>
+        <small>ข้อมูลถูกควบคุมสิทธิ์ด้วย Supabase Auth และ Row Level Security</small>
+      </form>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="brand-mark">A</div>
@@ -24,12 +48,6 @@
 
         <nav class="nav-list" id="navList" aria-label="เมนูหลัก"></nav>
 
-        <div class="source-panel">
-          <p>Data Sources</p>
-          <span>Email กลาง (ไฟล์ประจำวัน)</span>
-          <span>STM ธนาคาร / BO Export</span>
-          <span>STM PM 3 บริษัท</span>
-        </div>
       </aside>
 
       <main class="main">
@@ -44,11 +62,9 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-5.3V11a7 7 0 0 0-5.2-6.77V3.5a1.8 1.8 0 1 0-3.6 0v.73A7 7 0 0 0 5 11v5.7L3.2 18.5v.9h17.6v-.9L19 16.7Z"/></svg>
               <b id="bellCount" hidden>0</b>
             </button>
-            <label class="role-switch">
-              <span>มุมมองสิทธิ์</span>
-              <select id="roleSelect" aria-label="เลือก role ที่ต้องการทดสอบสิทธิ์"></select>
-            </label>
+            <div class="signed-user"><span>ผู้ใช้งาน</span><b id="signedUser">-</b></div>
             <button class="ghost-button" id="btnExport">Export</button>
+            <button class="ghost-button" id="btnLogout">ออกจากระบบ</button>
             <div class="auto-status" id="autoStatus" title="ระบบกระทบยอดให้อัตโนมัติเมื่อไฟล์เข้าครบ">
               <i></i><span>อัตโนมัติ</span><b id="autoStatusText">รอไฟล์</b>
             </div>
@@ -86,6 +102,7 @@
       ถ้าต้องการ SheetJS/html2canvas เต็มรูปแบบในอนาคต ให้ดาวน์โหลดมาไว้ใน vendor/ พร้อมใส่ integrity (SRI)
       แล้วค่อยเพิ่ม <script src="vendor/..."> — อย่าอ้างอิง CDN ตรงๆ โดยไม่มี SRI
     -->
+    <script src="config.js"></script>
     <script src="xlsx-reader.js"></script>
     <script src="formats.js"></script>
     <script src="pdf-stm.js"></script>
@@ -95,13 +112,12 @@
     <script src="sample.js"></script>
     <script src="engine.js"></script>
     <script src="store.js"></script>
-    <script src="supabase.js?v=worker-recovery-20260818"></script>
+    <script src="supabase.js?v=production-auth-20260822"></script>
     <script src="gmail.js"></script>
     <script src="charts.js"></script>
     <script src="xlsx-writer.js"></script>
     <script src="export.js"></script>
     <script src="docs.js"></script>
-    <script src="app.js?v=file-company-20260819"></script>
-    <script src="manual.js"></script>
+    <script src="app.js?v=production-login-20260822"></script>
   </body>
 </html>
