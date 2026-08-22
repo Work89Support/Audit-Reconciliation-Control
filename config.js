@@ -8,7 +8,10 @@ window.APP_CONFIG = Object.freeze({
   supabasePublishableKey: "sb_publishable_lQYH2b2Ekv2eyFk99a8BTQ_gZysqfTD",
   storageBucket: "audit-files",
   defaultRoute: "cloud",
-  defaultRole: "lead",
+  defaultRole: "monitor",
+  allowedEmails: Object.freeze([
+    "work.ltd89@gmail.com",
+  ]),
   roleByEmail: Object.freeze({
     "work.ltd89@gmail.com": "admin",
   }),

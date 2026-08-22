@@ -4043,6 +4043,15 @@ function applyAuthenticatedRole() {
 }
 
 function enterProductionApp() {
+  const user = Sb.authUser() || {};
+  const email = String(user.email || "").trim().toLowerCase();
+  const app = window.APP_CONFIG || {};
+  const allowed = Array.isArray(app.allowedEmails) ? app.allowedEmails.map((value) => String(value).trim().toLowerCase()) : [];
+  if (!email || (allowed.length && !allowed.includes(email))) {
+    Sb.signOut();
+    showLoginGate("บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ");
+    return false;
+  }
   prepareProductionData();
   applyAuthenticatedRole();
   $("#loginGate").hidden = true;
@@ -4055,6 +4064,7 @@ function enterProductionApp() {
   cloudState.operations = null;
   updateBell();
   render();
+  return true;
 }
 
 async function boot() {
