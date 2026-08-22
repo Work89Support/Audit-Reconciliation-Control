@@ -51,7 +51,10 @@ const Sb = (() => {
     } catch (e) {
       s = null;
     }
-    if (s && s.expires_at > Date.now() / 1000 + 30) session = s;
+    if (s && s.expires_at > Date.now() / 1000 + 30) {
+      session = s;
+      if (!session.user) await loadAuthUser();
+    }
     else if (s && s.refresh_token) {
       try {
         await refreshSession(s.refresh_token);
@@ -132,16 +135,41 @@ const Sb = (() => {
     return j.user;
   }
 
-  function consumeRecoveryHash() {
+  async function loadAuthUser() {
+    if (!session || !session.access_token) return null;
+    const res = await fetch(base() + "/auth/v1/user", { headers: headers() });
+    const user = await res.json();
+    if (!res.ok) throw new Error(user.message || "อ่านข้อมูลผู้ใช้ไม่สำเร็จ");
+    session.user = user;
+    keep(session);
+    return user;
+  }
+
+  async function consumeAuthHash() {
     const params = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
-    if (params.get("type") !== "recovery" || !params.get("access_token")) return false;
+    const type = params.get("type");
+    if (!params.get("access_token") || !["magiclink", "recovery", "signup", "invite"].includes(type)) return null;
     keep({
       access_token: params.get("access_token"),
       refresh_token: params.get("refresh_token") || "",
       expires_at: Math.floor(Date.now() / 1000) + Number(params.get("expires_in") || 3600),
       user: null,
     });
+    await loadAuthUser();
     history.replaceState(null, "", location.pathname + location.search + "#/cloud");
+    return type;
+  }
+
+  async function requestMagicLink(email) {
+    const redirect = location.origin + location.pathname.replace(/index\.html$/, "");
+    const res = await fetch(base() + "/auth/v1/otp?redirect_to=" + encodeURIComponent(redirect), {
+      method: "POST",
+      headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, create_user: false }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ส่งลิงก์เข้าใช้งานไม่สำเร็จ");
+    saveConfig({ email });
     return true;
   }
 
@@ -346,7 +374,8 @@ const Sb = (() => {
     authUser,
     restore,
     signIn,
-    consumeRecoveryHash,
+    consumeAuthHash,
+    requestMagicLink,
     requestPasswordReset,
     updatePassword,
     signOut,

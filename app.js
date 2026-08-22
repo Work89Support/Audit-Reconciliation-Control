@@ -4059,39 +4059,29 @@ function enterProductionApp() {
 
 async function boot() {
   applyStoredState();
-  const recovering = Sb.consumeRecoveryHash();
-  const restored = recovering ? false : await Sb.restore();
+  let authCallback = null;
+  try {
+    authCallback = await Sb.consumeAuthHash();
+  } catch (e) {
+    showLoginGate(e.message);
+  }
+  const restored = authCallback ? false : await Sb.restore();
   $("#loginEmail").value = Sb.cfg().email || "";
   $("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = $("#loginSubmit");
     const error = $("#loginError");
     button.disabled = true;
-    button.textContent = "กำลังเข้าสู่ระบบ...";
+    button.textContent = "กำลังส่งลิงก์...";
     error.hidden = true;
     try {
-      await Sb.signIn($("#loginEmail").value.trim(), $("#loginPassword").value);
-      $("#loginPassword").value = "";
-      enterProductionApp();
+      await Sb.requestMagicLink($("#loginEmail").value.trim());
+      showLoginGate("ส่งลิงก์เข้าใช้งานแล้ว กรุณาตรวจ Inbox หรือ Spam และกดลิงก์ภายใน 60 นาที");
     } catch (e) {
       showLoginGate(e.message || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       button.disabled = false;
-      button.textContent = "เข้าสู่ระบบ";
-    }
-  });
-  $("#forgotPassword").addEventListener("click", async () => {
-    const email = $("#loginEmail").value.trim();
-    if (!email) return showLoginGate("กรอกอีเมลก่อนขอลิงก์ตั้งรหัสผ่านใหม่");
-    const button = $("#forgotPassword");
-    button.disabled = true;
-    try {
-      await Sb.requestPasswordReset(email);
-      showLoginGate("ส่งลิงก์ตั้งรหัสผ่านแล้ว กรุณาตรวจอีเมลภายใน 60 นาที");
-    } catch (e) {
-      showLoginGate(e.message);
-    } finally {
-      button.disabled = false;
+      button.textContent = "ส่งลิงก์เข้าใช้งานทางอีเมล";
     }
   });
   $("#resetForm").addEventListener("submit", async (event) => {
@@ -4134,7 +4124,8 @@ async function boot() {
     $("#navToggle").setAttribute("aria-expanded", sb.classList.contains("open"));
   });
 
-  if (recovering) showPasswordResetGate();
+  if (authCallback === "recovery") showPasswordResetGate();
+  else if (authCallback) enterProductionApp();
   else if (restored) enterProductionApp();
   else showLoginGate();
   /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */

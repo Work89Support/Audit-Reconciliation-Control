@@ -22,16 +22,12 @@
       <form class="login-card" id="loginForm">
         <p class="eyebrow">ระบบตรวจสอบและกระทบยอด</p>
         <h1 id="loginTitle">เข้าสู่ระบบ</h1>
-        <p class="login-lead">ใช้บัญชีที่ผู้ดูแลระบบออกให้ เพื่อดูไฟล์และผลกระทบยอดจากระบบจริง</p>
+        <p class="login-lead">กรอกอีเมลที่ได้รับอนุญาต ระบบจะส่งลิงก์เข้าใช้งานให้ทางอีเมล โดยไม่ต้องใช้รหัสผ่าน</p>
         <label>อีเมล
           <input type="email" id="loginEmail" autocomplete="username" required placeholder="name@company.com" />
         </label>
-        <label>รหัสผ่าน
-          <input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" />
-        </label>
         <p class="login-error" id="loginError" role="alert" hidden></p>
-        <button class="primary-button login-submit" id="loginSubmit" type="submit">เข้าสู่ระบบ</button>
-        <button class="login-link" id="forgotPassword" type="button">ลืมรหัสผ่าน</button>
+        <button class="primary-button login-submit" id="loginSubmit" type="submit">ส่งลิงก์เข้าใช้งานทางอีเมล</button>
         <small>ข้อมูลถูกควบคุมสิทธิ์ด้วย Supabase Auth และ Row Level Security</small>
       </form>
       <form class="login-card" id="resetForm" hidden>
