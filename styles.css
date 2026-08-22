@@ -95,6 +95,7 @@ h3 { font-size: 15px; }
   border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--text);
 }
 .login-submit { min-height: 46px; margin-top: 2px; }
+.login-link { min-height: auto; padding: 2px; border: 0; background: transparent; color: var(--blue-dark); text-decoration: underline; }
 .login-error { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: var(--red-txt); font-size: 13px; }
 .login-card small { color: var(--muted); text-align: center; }
 

@@ -431,6 +431,8 @@ const VIEWS = {};
 function showLoginGate(message) {
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
+  $("#loginForm").hidden = false;
+  $("#resetForm").hidden = true;
   const out = $("#loginError");
   if (message) {
     out.textContent = message;
@@ -438,6 +440,14 @@ function showLoginGate(message) {
   } else {
     out.hidden = true;
   }
+}
+
+function showPasswordResetGate() {
+  $("#appShell").hidden = true;
+  $("#loginGate").hidden = false;
+  $("#loginForm").hidden = true;
+  $("#resetForm").hidden = false;
+  $("#newPassword").focus();
 }
 
 function render() {
@@ -4049,7 +4059,8 @@ function enterProductionApp() {
 
 async function boot() {
   applyStoredState();
-  const restored = await Sb.restore();
+  const recovering = Sb.consumeRecoveryHash();
+  const restored = recovering ? false : await Sb.restore();
   $("#loginEmail").value = Sb.cfg().email || "";
   $("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -4069,6 +4080,45 @@ async function boot() {
       button.textContent = "เข้าสู่ระบบ";
     }
   });
+  $("#forgotPassword").addEventListener("click", async () => {
+    const email = $("#loginEmail").value.trim();
+    if (!email) return showLoginGate("กรอกอีเมลก่อนขอลิงก์ตั้งรหัสผ่านใหม่");
+    const button = $("#forgotPassword");
+    button.disabled = true;
+    try {
+      await Sb.requestPasswordReset(email);
+      showLoginGate("ส่งลิงก์ตั้งรหัสผ่านแล้ว กรุณาตรวจอีเมลภายใน 60 นาที");
+    } catch (e) {
+      showLoginGate(e.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  $("#resetForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = $("#newPassword").value;
+    const confirm = $("#confirmPassword").value;
+    const error = $("#resetError");
+    if (password.length < 8 || password !== confirm) {
+      error.textContent = password.length < 8 ? "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" : "รหัสผ่านทั้งสองช่องไม่ตรงกัน";
+      error.hidden = false;
+      return;
+    }
+    const button = $("#resetSubmit");
+    button.disabled = true;
+    try {
+      await Sb.updatePassword(password);
+      Sb.signOut();
+      $("#newPassword").value = "";
+      $("#confirmPassword").value = "";
+      showLoginGate("ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเข้าสู่ระบบ");
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+    }
+  });
   $("#btnBell").addEventListener("click", () => go("notifications"));
   $("#btnExport").addEventListener("click", openExportDialog);
   $("#btnLogout").addEventListener("click", () => {
@@ -4084,7 +4134,8 @@ async function boot() {
     $("#navToggle").setAttribute("aria-expanded", sb.classList.contains("open"));
   });
 
-  if (restored) enterProductionApp();
+  if (recovering) showPasswordResetGate();
+  else if (restored) enterProductionApp();
   else showLoginGate();
   /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
   const savedSys = Store.data.companySystems || {};

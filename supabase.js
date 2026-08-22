@@ -132,6 +132,42 @@ const Sb = (() => {
     return j.user;
   }
 
+  function consumeRecoveryHash() {
+    const params = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+    if (params.get("type") !== "recovery" || !params.get("access_token")) return false;
+    keep({
+      access_token: params.get("access_token"),
+      refresh_token: params.get("refresh_token") || "",
+      expires_at: Math.floor(Date.now() / 1000) + Number(params.get("expires_in") || 3600),
+      user: null,
+    });
+    history.replaceState(null, "", location.pathname + location.search + "#/cloud");
+    return true;
+  }
+
+  async function requestPasswordReset(email) {
+    const redirect = location.origin + location.pathname.replace(/index\.html$/, "");
+    const res = await fetch(base() + "/auth/v1/recover?redirect_to=" + encodeURIComponent(redirect), {
+      method: "POST",
+      headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ส่งอีเมลไม่สำเร็จ");
+    return true;
+  }
+
+  async function updatePassword(password) {
+    const res = await fetch(base() + "/auth/v1/user", {
+      method: "PUT",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ password }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "บันทึกรหัสผ่านไม่สำเร็จ");
+    return j;
+  }
+
   function signOut() {
     session = null;
     try {
@@ -310,6 +346,9 @@ const Sb = (() => {
     authUser,
     restore,
     signIn,
+    consumeRecoveryHash,
+    requestPasswordReset,
+    updatePassword,
     signOut,
     dailyStatus,
     operations,
