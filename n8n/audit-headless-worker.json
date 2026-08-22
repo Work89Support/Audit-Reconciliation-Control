@@ -6,14 +6,15 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 10
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 0
             }
           ]
         }
       },
       "id": "schedule",
-      "name": "ทุก 10 นาที",
+      "name": "ทุก 1 ชั่วโมง",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -583,7 +584,7 @@
     }
   ],
   "connections": {
-    "ทุก 10 นาที": {
+    "ทุก 1 ชั่วโมง": {
       "main": [
         [
           {
