@@ -4072,16 +4072,42 @@ async function boot() {
     const button = $("#loginSubmit");
     const error = $("#loginError");
     button.disabled = true;
-    button.textContent = "กำลังส่งลิงก์...";
+    button.textContent = "กำลังเข้าสู่ระบบ...";
     error.hidden = true;
     try {
-      await Sb.requestMagicLink($("#loginEmail").value.trim());
-      showLoginGate("ส่งลิงก์เข้าใช้งานแล้ว กรุณาตรวจ Inbox หรือ Spam และกดลิงก์ภายใน 60 นาที");
+      await Sb.signIn($("#loginEmail").value.trim(), $("#loginPassword").value);
+      enterProductionApp();
     } catch (e) {
       showLoginGate(e.message || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
       button.disabled = false;
-      button.textContent = "ส่งลิงก์เข้าใช้งานทางอีเมล";
+      button.textContent = "เข้าสู่ระบบด้วยรหัสผ่าน";
+    }
+  });
+  $("#googleLogin").addEventListener("click", () => {
+    const button = $("#googleLogin");
+    button.disabled = true;
+    $("#loginError").hidden = true;
+    try {
+      Sb.signInWithGoogle();
+    } catch (e) {
+      button.disabled = false;
+      showLoginGate(e.message || "เชื่อมต่อ Google ไม่สำเร็จ");
+    }
+  });
+  $("#forgotPassword").addEventListener("click", async () => {
+    const email = $("#loginEmail").value.trim();
+    const error = $("#loginError");
+    error.hidden = true;
+    if (!email) {
+      showLoginGate("กรุณากรอกอีเมลก่อนขอรหัสผ่านใหม่");
+      return;
+    }
+    try {
+      await Sb.requestPasswordReset(email);
+      showLoginGate("ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว กรุณาตรวจ Inbox หรือ Spam");
+    } catch (e) {
+      showLoginGate(e.message || "ส่งลิงก์ตั้งรหัสผ่านใหม่ไม่สำเร็จ");
     }
   });
   $("#resetForm").addEventListener("submit", async (event) => {

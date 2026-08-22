@@ -148,7 +148,8 @@ const Sb = (() => {
   async function consumeAuthHash() {
     const params = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
     const type = params.get("type");
-    if (!params.get("access_token") || !["magiclink", "recovery", "signup", "invite"].includes(type)) return null;
+    if (!params.get("access_token")) return null;
+    if (type && !["magiclink", "recovery", "signup", "invite"].includes(type)) return null;
     keep({
       access_token: params.get("access_token"),
       refresh_token: params.get("refresh_token") || "",
@@ -157,7 +158,12 @@ const Sb = (() => {
     });
     await loadAuthUser();
     history.replaceState(null, "", location.pathname + location.search + "#/cloud");
-    return type;
+    return type || "oauth";
+  }
+
+  function signInWithGoogle() {
+    const redirect = location.origin + location.pathname.replace(/index\.html$/, "");
+    location.assign(base() + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(redirect));
   }
 
   async function requestMagicLink(email) {
@@ -374,6 +380,7 @@ const Sb = (() => {
     authUser,
     restore,
     signIn,
+    signInWithGoogle,
     consumeAuthHash,
     requestMagicLink,
     requestPasswordReset,

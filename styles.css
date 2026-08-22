@@ -96,6 +96,16 @@ h3 { font-size: 15px; }
 }
 .login-submit { min-height: 46px; margin-top: 2px; }
 .login-link { min-height: auto; padding: 2px; border: 0; background: transparent; color: var(--blue-dark); text-decoration: underline; }
+.login-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; }
+.login-divider::before, .login-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.google-login {
+  min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 0 16px; border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--text); font: inherit; font-weight: 500; cursor: pointer;
+}
+.google-login:hover { background: #f7f9fc; border-color: #b7c8dc; }
+.google-login:disabled { opacity: .6; cursor: wait; }
+.google-login svg { width: 20px; height: 20px; flex: 0 0 20px; }
 .login-error { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fff0f0; color: var(--red-txt); font-size: 13px; }
 .login-card small { color: var(--muted); text-align: center; }
 
