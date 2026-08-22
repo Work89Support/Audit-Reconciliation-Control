@@ -226,6 +226,24 @@ const Sb = (() => {
   const operations = (limit = 100) =>
     json(`/rest/v1/v_recon_operations?${q({ limit, order: "business_date.desc,company.asc" })}`);
 
+  const quality = (limit = 1000) =>
+    json(`/rest/v1/v_recon_quality?${q({ limit, order: "business_date.desc,company.asc" })}`);
+
+  async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
+    const rows = [];
+    const pageSize = 1000;
+    for (let offset = 0; offset < limit; offset += pageSize) {
+      const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+      const page = await json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+      rows.push(...(page || []));
+      if (!page || page.length < pageSize) break;
+    }
+    return rows;
+  }
+
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
@@ -388,6 +406,8 @@ const Sb = (() => {
     signOut,
     dailyStatus,
     operations,
+    quality,
+    currentExceptions,
     queueDueJobs,
     claimJob,
     finishJob,
