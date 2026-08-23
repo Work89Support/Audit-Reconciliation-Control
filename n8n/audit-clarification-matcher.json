@@ -128,7 +128,7 @@
       "position": [720, 320]
     },
     {
-      "parameters": { "jsCode": "const item=$input.first(); const key=Object.keys(item.binary||{}).find(k=>/word[\\/]document\\.xml$/i.test(String(item.binary[k].fileName||''))); if(!key) throw new Error('ไม่พบ word/document.xml ใน DOCX'); return [{json:item.json,binary:{data:item.binary[key]},pairedItem:{item:0}}];" },
+      "parameters": { "jsCode": "const item=$input.first(); const key=Object.keys(item.binary||{}).find(k=>{const b=item.binary[k]||{}; return /word[\\/]document\\.xml$/i.test([b.directory,b.fileName].filter(Boolean).join('/'));}); if(!key) throw new Error('ไม่พบ word/document.xml ใน DOCX'); return [{json:item.json,binary:{data:item.binary[key]},pairedItem:{item:0}}];" },
       "id": "select-docx-xml",
       "name": "เลือกข้อความหลักจาก DOCX",
       "type": "n8n-nodes-base.code",
