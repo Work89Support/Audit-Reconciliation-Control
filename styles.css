@@ -1457,3 +1457,121 @@ tr.on { background: #f0f7ff; }
 .chip-btn.on.amber { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
 .chip-btn.on.blue { border-color: var(--s1); background: #eff6ff; color: #0b3d70; }
 @media (max-width: 640px) { .sysmap-row { flex-direction: column; align-items: flex-start; } }
+
+/* ---------------- สรุป 1 บริษัท / 1 วัน ---------------- */
+.daily-summary-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 170px 150px auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.daily-summary-controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.daily-summary-controls input,
+.daily-summary-controls select { width: 100%; min-height: 38px; background: var(--surface); }
+.daily-summary-controls h2 { margin-bottom: 2px; }
+.daily-summary-controls small { color: var(--muted); }
+.daily-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 18px;
+  margin-bottom: 12px;
+  border: 1px solid #b9d9f8;
+  border-radius: 10px;
+  background: linear-gradient(100deg, #f5faff, #fff);
+}
+.daily-summary-head h2 { font-size: 22px; margin: 1px 0 2px; }
+.daily-summary-head p:last-child { color: var(--muted); font-size: 11.5px; }
+.daily-summary-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.daily-summary-kpis article {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--blue);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.daily-summary-kpis article.ok { border-top-color: var(--low); }
+.daily-summary-kpis article.warn { border-top-color: var(--medium); }
+.daily-summary-kpis article.bad { border-top-color: var(--critical); }
+.daily-summary-kpis span,
+.daily-summary-kpis small { display: block; color: var(--muted); font-size: 11.5px; }
+.daily-summary-kpis strong { display: block; margin: 5px 0 2px; font-size: 23px; color: var(--text); }
+.daily-audit-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.daily-audit-flow > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.daily-audit-flow b {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  border-radius: 50%;
+  background: #dfe8f2;
+  color: #385169;
+  font-size: 11px;
+}
+.daily-audit-flow .done b { background: #dff5e5; color: #167236; }
+.daily-audit-flow .warn b { background: #fff0ce; color: #956400; }
+.daily-audit-flow .bad b { background: #fee2e2; color: #b42318; }
+.daily-audit-flow span { min-width: 0; font-weight: 600; font-size: 12.5px; }
+.daily-audit-flow small { display: block; margin-top: 1px; color: var(--muted); font-weight: 400; font-size: 10.5px; }
+.daily-summary-grid { align-items: stretch; }
+.daily-summary-grid > .panel { margin-bottom: 14px; }
+.daily-kind-list { display: grid; gap: 7px; margin-bottom: 12px; }
+.daily-kind-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-3);
+  font-size: 12.5px;
+}
+.report-list.compact li { padding: 7px 0; }
+.daily-detail-table { max-height: 520px; overflow: auto; }
+.daily-detail-table thead th { position: sticky; top: 0; z-index: 2; background: #edf4fc; }
+.daily-detail-table .file-name-link { min-width: 220px; max-width: 360px; }
+
+@media (max-width: 1280px) {
+  .daily-summary-controls { grid-template-columns: minmax(240px, 1fr) 160px 140px; }
+  .daily-summary-controls button { width: 100%; }
+  .daily-summary-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .daily-summary-controls { grid-template-columns: 1fr 1fr; }
+  .daily-summary-controls > div { grid-column: 1 / -1; }
+  .daily-summary-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .daily-audit-flow { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  .daily-summary-controls,
+  .daily-summary-kpis { grid-template-columns: 1fr; }
+  .daily-summary-head { align-items: flex-start; flex-direction: column; }
+}

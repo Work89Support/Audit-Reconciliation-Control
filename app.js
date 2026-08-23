@@ -48,6 +48,7 @@ const ROUTES = [
     group: "งานประจำวัน",
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
+      { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
       { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
       { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
       { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
@@ -85,10 +86,10 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
+  monitor: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
   lead: Object.keys(ROUTE_MAP),
-  shift_lead: ["cloud", "dashboard", "exceptions", "clarify", "approvals", "damage", "talk", "notifications"],
-  exec: ["dashboard", "kpi", "reports", "damage", "talk", "notifications"],
+  shift_lead: ["cloud", "dashboard", "daily-summary", "exceptions", "clarify", "approvals", "damage", "talk", "notifications"],
+  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "talk", "notifications"],
   admin: Object.keys(ROUTE_MAP),
 };
 
@@ -110,6 +111,7 @@ const state = {
   selected: null,
   matchIndex: 0,
   damageCycle: "C1",
+  dailySummary: { date: PROD_TODAY, company: "3XB" },
   dataset: "production",
   chat: [],
 };
@@ -743,7 +745,7 @@ function renderLiveDashboard(root) {
 
     <section class="action-overview">
       <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}</p></div>
-      <div class="inline-actions"><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="primary-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
+      <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
     </section>
 
     <section class="grid-2 live-main-grid">
@@ -980,6 +982,234 @@ VIEWS.dashboard = (root) => {
   );
   root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", () => openException(tr.dataset.ex)));
 };
+
+/* =============================================================
+   VIEW: Daily company summary - 1 บริษัท / 1 วัน
+   ============================================================= */
+const dailyCompanyState = { date: "", batches: null, quality: null, operations: null, exceptions: null, damages: null, loading: false, error: null, updatedAt: null };
+
+async function loadDailyCompanySummary(force = false) {
+  const date = state.dailySummary.date || PROD_TODAY;
+  if (dailyCompanyState.loading || (!force && dailyCompanyState.date === date && dailyCompanyState.batches)) return;
+  if (dailyCompanyState.date !== date) {
+    dailyCompanyState.batches = null;
+    dailyCompanyState.quality = null;
+    dailyCompanyState.operations = null;
+    dailyCompanyState.exceptions = null;
+    dailyCompanyState.damages = null;
+  }
+  dailyCompanyState.loading = true;
+  dailyCompanyState.error = null;
+  dailyCompanyState.date = date;
+  if (state.route === "daily-summary") render();
+  try {
+    const [batches, quality, operations, exceptions, damages] = await Promise.all([
+      Sb.batches({ from: date, to: date }),
+      Sb.quality(5000),
+      Sb.operations(5000),
+      Sb.currentExceptions({ from: date, to: date, company: "ALL", limit: 5000 }),
+      Sb.damages({ from: date, to: date, company: "ALL", limit: 5000 }),
+    ]);
+    dailyCompanyState.batches = batches || [];
+    dailyCompanyState.quality = (quality || []).filter((row) => row.business_date === date);
+    dailyCompanyState.operations = (operations || []).filter((row) => row.business_date === date);
+    dailyCompanyState.exceptions = (exceptions || []).map(mapLiveException);
+    dailyCompanyState.damages = damages || [];
+    dailyCompanyState.updatedAt = new Date();
+  } catch (error) {
+    dailyCompanyState.error = error.message || "โหลดสรุปรายวันไม่สำเร็จ";
+  }
+  dailyCompanyState.loading = false;
+  if (state.route === "daily-summary") render();
+}
+
+function dailyCompanyData(company) {
+  const batches = dailyCompanyState.batches || [];
+  const files = batches.flatMap((batch) => (batch.source_files || []).map((file) => ({
+    ...file,
+    batch,
+    resolvedCompany: intakeCompanyOf(file, batch) || file.company || batch.company || "ไม่ระบุ",
+    receivedAt: file.received_at || batch.received_at || "",
+  }))).filter((file) => file.resolvedCompany === company);
+  const batchIds = new Set(files.map((file) => file.batch.id));
+  batches.filter((batch) => String(batch.company || "").toUpperCase() === company).forEach((batch) => batchIds.add(batch.id));
+  const ownBatches = batches.filter((batch) => batchIds.has(batch.id));
+  const quality = (dailyCompanyState.quality || []).filter((row) => row.company === company);
+  const operations = (dailyCompanyState.operations || []).filter((row) => row.company === company);
+  const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
+  const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
+  const exceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+  const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
+  const confirmedDamage = exceptions.filter((row) => row.status === "damage");
+  const stillOpen = Math.max(0, exceptionTotal - fixed.length);
+  return { company, files, batches: ownBatches, quality, operations, exceptions, damages, exceptionTotal, fixed, confirmedDamage, stillOpen };
+}
+
+function dailyCompanyOptions() {
+  const found = new Set(DB.companies.map((company) => company.code));
+  (dailyCompanyState.quality || []).forEach((row) => row.company && found.add(row.company));
+  (dailyCompanyState.operations || []).forEach((row) => row.company && found.add(row.company));
+  (dailyCompanyState.batches || []).forEach((batch) => {
+    if (batch.company) found.add(batch.company);
+    (batch.source_files || []).forEach((file) => {
+      const company = intakeCompanyOf(file, batch);
+      if (company) found.add(company);
+    });
+  });
+  return [...found].sort((a, b) => String(a).localeCompare(String(b), "th"));
+}
+
+function dailyMissingKinds(rows) {
+  const kinds = (rows || []).flatMap((row) => Array.isArray(row.missing_groups) ? row.missing_groups.flat(3) : []);
+  return [...new Set(kinds)].map((kind) => LIVE_KIND_LABEL[kind] || kind);
+}
+
+function exportDailyCompanySummary(data) {
+  if (!can("export")) return deny("export ข้อมูล");
+  const date = state.dailySummary.date;
+  const parsed = data.files.filter((file) => file.parsed).length;
+  const fileErrors = data.files.filter((file) => file.parse_error).length;
+  const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+  const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+  const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+  const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
+  const sheets = [
+    {
+      name: "สรุป",
+      title: `สรุป Audit ${data.company} วันที่ ${date}`,
+      headers: ["หัวข้อ", "ผลรวม", "คำอธิบาย"],
+      widths: [34, 18, 55],
+      rows: [
+        ["อีเมลที่ได้รับ", data.batches.length, "นับชุดอีเมลที่มีไฟล์ของบริษัทนี้"],
+        ["ไฟล์ที่ได้รับ", data.files.length, "ไฟล์จริงใน Supabase Storage"],
+        ["ไฟล์ที่ระบบอ่านสำเร็จ", parsed, "พร้อมใช้ตรวจและกระทบยอด"],
+        ["ไฟล์อ่านไม่สำเร็จ", fileErrors, "ต้องเปิดต้นฉบับหรือตรวจรูปแบบไฟล์"],
+        ["รายการฝั่ง STM", stm, "รายการฝาก-ถอน/PM ที่ระบบอ่านได้"],
+        ["รายการฝั่ง BO", bo, "รายการระบบหลังบ้านที่ระบบอ่านได้"],
+        ["จับคู่สำเร็จ", matched, "ผ่านเงื่อนไข account + time + amount"],
+        ["Exception ทั้งหมด", data.exceptionTotal, "รายการที่ต้องตรวจต่อ"],
+        ["แก้ไขและปิดแล้ว", data.fixed.length, "สถานะ approved หรือ closed"],
+        ["ยังแก้ไม่สำเร็จ", data.stillOpen, "รวมกำลังติดตามและรายการที่ยังปิดไม่ได้"],
+        ["ยืนยันเป็นความเสียหาย", data.confirmedDamage.length, "ส่วนหนึ่งของรายการที่ยังแก้ไม่สำเร็จ"],
+        ["มูลค่าความเสียหายที่บันทึก", damageTotal, "บาท"],
+      ],
+    },
+    {
+      name: "ไฟล์ที่ได้รับ",
+      title: `ไฟล์ที่ได้รับ ${data.company} วันที่ ${date}`,
+      headers: ["รับเมื่อ", "หัวข้อเมล", "ผู้ส่ง", "ชื่อไฟล์", "ประเภท", "ขนาด (KB)", "แถว", "สถานะอ่าน", "ข้อผิดพลาด", "Storage path"],
+      widths: [22, 42, 28, 38, 24, 14, 12, 18, 42, 50],
+      rows: data.files.map((file) => [file.receivedAt, file.batch.subject || "", file.batch.sender || "", file.file_name || "", LIVE_KIND_LABEL[file.kind] || file.kind || "", Math.round(Number(file.size_bytes || 0) / 1024), Number(file.row_count || 0), file.parse_error ? "อ่านไม่สำเร็จ" : file.parsed ? "พร้อมใช้งาน" : "รออ่าน", file.parse_error || "", file.storage_path || ""]),
+    },
+    {
+      name: "ผลกระทบยอด",
+      title: `ผลกระทบยอด ${data.company} วันที่ ${date}`,
+      headers: ["ระบบ", "สถานะ", "STM", "BO", "จับคู่สำเร็จ", "อัตราจับคู่ (%)", "Exception", "ไฟล์", "ไฟล์อ่านผิดพลาด", "ไฟล์ที่ยังขาด", "เวลารัน"],
+      widths: [18, 20, 12, 12, 16, 18, 14, 12, 18, 44, 22],
+      rows: data.quality.map((row) => [row.business_system || "", LIVE_STATUS[row.status]?.label || row.status || "", Number(row.stm_count || 0), Number(row.bo_count || 0), Number(row.matched || 0), Number(row.match_rate || 0), Number(row.exception_count || 0), Number(row.file_count || 0), Number(row.error_count || 0), dailyMissingKinds([row]).join(", "), row.run_at || ""]),
+    },
+    {
+      name: "Exception",
+      title: `Exception ${data.company} วันที่ ${date}`,
+      headers: ["เคส", "เวลา", "ธนาคาร", "บัญชี", "ฝาก/ถอน", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่าง", "ระดับ", "สถานะ", "ผู้เกี่ยวข้อง", "สาเหตุ", "รายละเอียด"],
+      widths: [16, 12, 14, 18, 12, 28, 16, 16, 16, 12, 18, 22, 35, 60],
+      rows: data.exceptions.map((row) => [row.id, row.time, row.bank, row.account, row.direction, row.typeName, row.systemAmount ?? "", row.bankAmount ?? "", row.amountDiff, row.severity, statusMeta(row.status).name, row.employee, row.cause, row.detail]),
+    },
+    {
+      name: "ความเสียหาย",
+      title: `ความเสียหาย ${data.company} วันที่ ${date}`,
+      headers: ["รหัส", "เคส", "ยอด (บาท)", "สาเหตุ", "ผู้เกี่ยวข้อง", "หลักฐาน", "สถานะการเงิน"],
+      widths: [16, 16, 18, 42, 22, 14, 20],
+      rows: data.damages.map((row) => [row.code || row.id, row.exception_id || "", Number(row.amount_thb ?? row.amount ?? 0), row.cause || "", row.employee || "", row.has_evidence ? "ครบ" : "รอ", row.finance_status || ""]),
+    },
+  ];
+  const filename = `daily-audit_${date}_${data.company}.xlsx`;
+  const meta = `บริษัท ${data.company} · วันที่ ${date} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
+  const result = Exporter.workbook(sheets, filename, meta);
+  if (result.ok) {
+    logAction("export", "daily_company_summary", `${date}|${data.company}`, `Excel ${sheets.length} ชีต · ${data.files.length} ไฟล์ · ${data.exceptionTotal} exception`);
+    toast(`ดาวน์โหลด ${filename} แล้ว`);
+  } else {
+    Exporter.csv(sheets[0].headers, sheets[0].rows, filename.replace(".xlsx", ".csv"));
+    toast("ดาวน์โหลดสรุปเป็น CSV ให้แทน เนื่องจากตัวเขียน Excel ยังไม่พร้อม", "warn");
+  }
+}
+
+function renderDailyCompanySummary(root) {
+  if (!Sb.signedIn()) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>ยังไม่ได้เข้าสู่ระบบ</strong><span>เข้าสู่ระบบก่อนเพื่ออ่านไฟล์และผลกระทบยอดจริงจาก Supabase</span></div></section>`;
+    return;
+  }
+  if ((!dailyCompanyState.batches || dailyCompanyState.date !== state.dailySummary.date) && !dailyCompanyState.loading) loadDailyCompanySummary();
+  const companies = dailyCompanyOptions();
+  const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
+  state.dailySummary.company = company;
+  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" value="${h(state.dailySummary.date)}" /></label><label>บริษัท<select id="dailySummaryCompany">${companies.map((code) => `<option value="${h(code)}" ${code === company ? "selected" : ""}>${h(code)}</option>`).join("")}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  if (dailyCompanyState.loading && !dailyCompanyState.batches) {
+    root.innerHTML = controls + `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังจัดทำสรุปรายวัน</h2><p class="hint">รวมอีเมล ไฟล์ ผลกระทบยอด และสถานะ Exception...</p></div></section>`;
+  } else if (dailyCompanyState.error) {
+    root.innerHTML = controls + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
+  } else {
+    const data = dailyCompanyData(company);
+    const parsed = data.files.filter((file) => file.parsed).length;
+    const fileErrors = data.files.filter((file) => file.parse_error).length;
+    const waitingFiles = data.files.length - parsed - fileErrors;
+    const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+    const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+    const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+    const matchRate = stm ? (matched / stm) * 100 : 0;
+    const risk = data.exceptions.reduce((sum, row) => sum + Number(row.riskAmount || 0), 0);
+    const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
+    const missing = dailyMissingKinds(data.quality.length ? data.quality : data.operations);
+    const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
+    const status = LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
+    const kindCounts = Object.entries(data.files.reduce((acc, file) => {
+      const label = LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้";
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {})).sort((a, b) => b[1] - a[1]);
+    root.innerHTML = controls + `
+      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
+      <section class="daily-summary-kpis">
+        <article><span>ข้อมูลที่ได้รับ</span><strong>${num(data.files.length)}</strong><small>${num(data.batches.length)} อีเมล</small></article>
+        <article class="${fileErrors ? "bad" : parsed ? "ok" : "warn"}"><span>ไฟล์พร้อมใช้งาน</span><strong>${num(parsed)}/${num(data.files.length)}</strong><small>รออ่าน ${num(waitingFiles)} · อ่านไม่ได้ ${num(fileErrors)}</small></article>
+        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>STM ${num(stm)} · BO ${num(bo)} · ${matchRate.toFixed(2)}%</small></article>
+        <article class="${data.exceptionTotal ? "warn" : "ok"}"><span>Exception ทั้งหมด</span><strong>${num(data.exceptionTotal)}</strong><small>ยอดที่ต้องตรวจ ${money0(risk)} บาท</small></article>
+        <article class="ok"><span>แก้ไขและปิดแล้ว</span><strong>${num(data.fixed.length)}</strong><small>อนุมัติหรือปิดเคสเรียบร้อย</small></article>
+        <article class="${data.stillOpen ? "bad" : "ok"}"><span>ยังแก้ไม่สำเร็จ</span><strong>${num(data.stillOpen)}</strong><small>ยืนยันความเสียหาย ${num(data.confirmedDamage.length)} เคส</small></article>
+      </section>
+      <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><div class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์</small></span></div><div class="${parsed === data.files.length && data.files.length ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์<small>${num(parsed)} สำเร็จ</small></span></div><div class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)}</small></span></div><div class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส</small></span></div><div class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.fixed.length)}</small></span></div></section>
+
+      <section class="grid-2 daily-summary-grid">
+        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ครบตามกฎ"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
+        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception</span><b>${num(data.exceptionTotal)}</b></li><li><span>มูลค่าความเสียหายที่บันทึก</span><b>${money0(damageTotal)} บาท</b></li></ul></div>
+      </section>
+
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Source files</p><h2>ไฟล์ที่ได้รับทั้งหมด</h2><small class="head-sub">กดชื่อไฟล์เพื่อดูตัวอย่างก่อนดาวน์โหลด</small></div><span class="health ok">${num(data.files.length)} ไฟล์</span></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>รับเมื่อ</th><th>หัวข้อเมล / ผู้ส่ง</th><th>ชื่อไฟล์</th><th>ประเภท</th><th class="right">แถว</th><th>สถานะ</th></tr></thead><tbody>${data.files.map((file) => `<tr><td>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${file.row_count == null ? "-" : num(file.row_count)}</td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span><small class="sub danger">${h(file.parse_error)}</small>` : file.parsed ? `<span class="badge green">พร้อมใช้งาน</span>` : `<span class="badge amber">รออ่าน</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
+
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Exception resolution</p><h2>ผลการตรวจและแก้ไขทั้งหมด</h2><small class="head-sub">แก้ไขแล้ว ${num(data.fixed.length)} · ยังไม่ปิด ${num(data.stillOpen)} · ยืนยันเป็นความเสียหาย ${num(data.confirmedDamage.length)}</small></div><button class="ghost-button sm" id="dailyGoExceptions">เปิดหน้าติดตามเคส</button></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>เคส / เวลา</th><th>ประเภท</th><th>บัญชี</th><th class="right">ยอด BO</th><th class="right">ยอด STM</th><th class="right">ผลต่าง</th><th>ระดับ</th><th>สถานะการแก้ไข</th><th>ผู้เกี่ยวข้อง / สาเหตุ</th></tr></thead><tbody>${data.exceptions.map((row) => `<tr class="clickable" data-daily-ex="${h(row.id)}"><td><b>${h(row.id)}</b><small class="sub">${h(row.time || "-")}</small></td><td>${h(row.typeName)}</td><td>${h(row.account)}<small class="sub">${h(row.bank)} · ${h(row.direction)}</small></td><td class="right tnum">${row.systemAmount == null ? "-" : money(row.systemAmount)}</td><td class="right tnum">${row.bankAmount == null ? "-" : money(row.bankAmount)}</td><td class="right tnum danger">${money(row.amountDiff || row.riskAmount)}</td><td><span class="badge ${h(row.severity)}">${h(sevMeta(row.severity).name)}</span></td><td><span class="badge ${h(statusMeta(row.status).tone)}">${h(statusMeta(row.status).name)}</span></td><td>${h(row.employee)}<small class="sub">${h(row.cause)}</small></td></tr>`).join("") || `<tr><td colspan="9" class="empty">${data.exceptionTotal ? `ผลรันระบุ ${num(data.exceptionTotal)} Exception แต่ยังไม่มีรายละเอียดเคสที่เปิดดูได้` : "ไม่พบ Exception ของบริษัทนี้ในวันที่เลือก"}</td></tr>`}</tbody></table></div></section>`;
+  }
+
+  $("#dailySummaryDate")?.addEventListener("change", (event) => {
+    state.dailySummary.date = event.target.value || PROD_TODAY;
+    loadDailyCompanySummary(true);
+  });
+  $("#dailySummaryCompany")?.addEventListener("change", (event) => {
+    state.dailySummary.company = event.target.value;
+    render();
+  });
+  $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
+  $("#dailySummaryExport")?.addEventListener("click", () => exportDailyCompanySummary(dailyCompanyData(state.dailySummary.company)));
+  $("#dailyGoExceptions")?.addEventListener("click", () => go("exceptions", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company }, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } }));
+  bindStoredFileLinks(root);
+  root.querySelectorAll("[data-daily-ex]").forEach((row) => row.addEventListener("click", () => {
+    const item = (dailyCompanyState.exceptions || []).find((exception) => exception.id === row.dataset.dailyEx);
+    if (item && !DB.exceptions.some((exception) => exception.id === item.id)) DB.exceptions.push(item);
+    openException(row.dataset.dailyEx);
+  }));
+}
+
+VIEWS["daily-summary"] = renderDailyCompanySummary;
 
 /* =============================================================
    VIEW: Intake Control
@@ -4903,6 +5133,13 @@ function enterProductionApp() {
   liveOverviewState.logs = null;
   liveOverviewState.notifications = null;
   liveOverviewState.key = "";
+  dailyCompanyState.date = "";
+  dailyCompanyState.batches = null;
+  dailyCompanyState.quality = null;
+  dailyCompanyState.operations = null;
+  dailyCompanyState.exceptions = null;
+  dailyCompanyState.damages = null;
+  dailyCompanyState.error = null;
   updateBell();
   render();
   loadLiveOverview().catch(() => {});
