@@ -75,7 +75,8 @@
           "values": [
             { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.ext }}", "rightValue": "pdf", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "PDF" },
             { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.ext }}", "rightValue": "xlsx", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "Excel" },
-            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ ['csv','txt'].includes($json.ext) }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "renameOutput": true, "outputKey": "Text" }
+            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ ['csv','txt'].includes($json.ext) }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "renameOutput": true, "outputKey": "Text" },
+            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.ext }}", "rightValue": "docx", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "DOCX" }
           ]
         },
         "options": { "fallbackOutput": "extra" }
@@ -111,6 +112,38 @@
       "position": [500, 220]
     },
     {
+      "parameters": { "jsCode": "const item=$input.first(); const bin={...(item.binary||{})}; if(!bin.data) throw new Error('ไม่พบ binary ของ DOCX'); bin.data={...bin.data,fileExtension:'zip',fileName:'clarification.zip',mimeType:'application/zip'}; return [{json:item.json,binary:bin,pairedItem:{item:0}}];" },
+      "id": "docx-as-zip",
+      "name": "เตรียม DOCX เป็น ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 320]
+    },
+    {
+      "parameters": { "operation": "decompress", "binaryPropertyName": "data", "outputPrefix": "file_" },
+      "id": "unzip-docx",
+      "name": "แตกไฟล์ DOCX",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [720, 320]
+    },
+    {
+      "parameters": { "jsCode": "const item=$input.first(); const key=Object.keys(item.binary||{}).find(k=>/word[\\/]document\\.xml$/i.test(String(item.binary[k].fileName||''))); if(!key) throw new Error('ไม่พบ word/document.xml ใน DOCX'); return [{json:item.json,binary:{data:item.binary[key]},pairedItem:{item:0}}];" },
+      "id": "select-docx-xml",
+      "name": "เลือกข้อความหลักจาก DOCX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 320]
+    },
+    {
+      "parameters": { "operation": "text", "binaryPropertyName": "data", "destinationKey": "data", "options": { "encoding": "utf8" } },
+      "id": "read-docx-xml",
+      "name": "อ่านข้อความ DOCX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [1160, 320]
+    },
+    {
       "parameters": { "jsCode": "return $input.all();" },
       "id": "unsupported",
       "name": "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้",
@@ -120,7 +153,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const meta=$('เตรียมชนิดไฟล์').item.json; const parts=[]; for(const item of $input.all()){const j=item.json||{}; if(typeof j.text==='string') parts.push(j.text); else if(typeof j.data==='string') parts.push(j.data); else parts.push(Object.values(j).map(v=>typeof v==='object'?JSON.stringify(v):String(v??'')).join(' | '));} return [{json:{file_id:meta.id,extracted_text:parts.join('\\n').slice(0,100000),file_name:meta.file_name},pairedItem:{item:0}}];"
+        "jsCode": "const meta=$('เตรียมชนิดไฟล์').item.json; const parts=[]; const clean=v=>{let s=String(v??''); if(/<\\?xml|<w:document/i.test(s)) s=s.replace(/<w:(tab|br)[^>]*\\/>/gi,' ').replace(/<\\/w:p>/gi,'\\n').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\\\"').replace(/&#39;|&apos;/g,\"'\"); return s.replace(/\\s+/g,' ').trim();}; for(const item of $input.all()){const j=item.json||{}; if(typeof j.text==='string') parts.push(clean(j.text)); else if(typeof j.data==='string') parts.push(clean(j.data)); else parts.push(clean(Object.values(j).map(v=>typeof v==='object'?JSON.stringify(v):String(v??'')).join(' | ')));} return [{json:{file_id:meta.id,extracted_text:parts.join('\\n').slice(0,100000),file_name:meta.file_name},pairedItem:{item:0}}];"
       },
       "id": "normalize",
       "name": "รวมข้อความจากหลักฐาน",
@@ -168,11 +201,16 @@
       [{ "node": "อ่านข้อความ PDF", "type": "main", "index": 0 }],
       [{ "node": "อ่านข้อความ Excel", "type": "main", "index": 0 }],
       [{ "node": "อ่านข้อความ CSV หรือ Text", "type": "main", "index": 0 }],
+      [{ "node": "เตรียม DOCX เป็น ZIP", "type": "main", "index": 0 }],
       [{ "node": "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้", "type": "main", "index": 0 }]
     ] },
     "อ่านข้อความ PDF": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
     "อ่านข้อความ Excel": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
     "อ่านข้อความ CSV หรือ Text": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
+    "เตรียม DOCX เป็น ZIP": { "main": [[{ "node": "แตกไฟล์ DOCX", "type": "main", "index": 0 }]] },
+    "แตกไฟล์ DOCX": { "main": [[{ "node": "เลือกข้อความหลักจาก DOCX", "type": "main", "index": 0 }]] },
+    "เลือกข้อความหลักจาก DOCX": { "main": [[{ "node": "อ่านข้อความ DOCX", "type": "main", "index": 0 }]] },
+    "อ่านข้อความ DOCX": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
     "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
     "รวมข้อความจากหลักฐาน": { "main": [[{ "node": "Supabase: จับคู่และอัปเดตเคส", "type": "main", "index": 0 }]] },
     "Supabase: จับคู่และอัปเดตเคส": { "main": [[{ "node": "วนทีละไฟล์", "type": "main", "index": 0 }]] }
