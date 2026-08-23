@@ -349,12 +349,12 @@ function renderFilters() {
         ${DB.companies.map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
       </select>
     </label>
-    <label>ประเภทบัญชี
+    <label>ประเภท
       <select id="fDirection">
-        <option value="ALL">ฝากและถอน</option>
+        <option value="ALL">ทุกประเภท</option>
+        <option value="PM" ${f.direction === "PM" ? "selected" : ""}>PM</option>
         <option value="ฝาก" ${f.direction === "ฝาก" ? "selected" : ""}>ฝาก</option>
         <option value="ถอน" ${f.direction === "ถอน" ? "selected" : ""}>ถอน</option>
-        <option value="PM" ${f.direction === "PM" ? "selected" : ""}>PM</option>
       </select>
     </label>
     <label>กะ
