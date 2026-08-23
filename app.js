@@ -47,9 +47,9 @@ const ROUTES = [
   {
     group: "งานประจำวัน",
     items: [
-      { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ, ผลจับคู่, exception ตามประเภท/กะ และ SLA ที่ต้องตามวันนี้", filters: true },
+      { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
       { id: "cloud", label: "คลังไฟล์จากเมล", icon: "cloud", title: "คลังไฟล์จากเมล (n8n + Supabase)", desc: "ไฟล์จากเมล AUDIT 2 ถูก n8n ดึงมาเก็บใน Supabase และ Google Drive ให้อัตโนมัติ — เลือกไฟล์แล้วกดดึงเข้าระบบเพื่อกระทบยอดได้ทันที", filters: true },
-      { id: "intake", label: "Intake Control", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "เช็คว่า STM / BO / ไฟล์แก้ไขมือ / ไฟล์ชี้แจง / PM ครบและถูกบริษัทหรือไม่ ถ้ายังไม่ครบระบบจะรอ ไม่กระทบยอดเงียบ ๆ", filters: true },
+      { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true },
       { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
       { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true },
     ],
@@ -66,7 +66,7 @@ const ROUTES = [
   {
     group: "รายงาน",
     items: [
-      { id: "kpi", label: "KPI & Shift", icon: "kpi", title: "KPI ตามกะและพนักงาน", desc: "ความผิดพลาดตามกะ พนักงาน และบริษัท เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true },
+      { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true },
       { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
       { id: "talk", label: "Talk to Data", icon: "talk", title: "ถามข้อมูลด้วยภาษาไทย", desc: "ถามจากข้อมูลที่ reconcile แล้ว ทุกคำตอบอ้างอิงตัวเลข ช่วงวันที่ และลิงก์กลับหลักฐาน", filters: false },
     ],
@@ -101,7 +101,8 @@ const PROD_TODAY = (() => {
 const state = {
   route: "cloud",
   role: "lead",
-  filters: { date: PROD_TODAY, from: PROD_TODAY.slice(0, 8) + "01", to: PROD_TODAY, preset: "month", company: "ALL", direction: "ALL", shift: "ALL" },
+  filters: { date: PROD_TODAY, from: PROD_TODAY.slice(0, 8) + "01", to: PROD_TODAY, preset: "month", company: "ALL", direction: "ALL" },
+  filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false },
   sort: { key: "time", dir: "asc" },
   page: 1,
@@ -188,7 +189,6 @@ function filteredExceptions() {
     if (!inRange(e.date)) return false;
     if (f.company !== "ALL" && e.company !== f.company) return false;
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
-    if (f.shift !== "ALL" && e.shift !== f.shift) return false;
     if (x.type !== "ALL" && e.type !== x.type) return false;
     if (x.severity !== "ALL" && e.severity !== x.severity) return false;
     if (x.status !== "ALL" && e.status !== x.status) return false;
@@ -207,8 +207,7 @@ function scopedExceptions() {
     (e) =>
       inRange(e.date) &&
       (f.company === "ALL" || e.company === f.company) &&
-      (f.direction === "ALL" || e.direction === f.direction) &&
-      (f.shift === "ALL" || e.shift === f.shift),
+      (f.direction === "ALL" || e.direction === f.direction),
   );
 }
 /* ---------------- ช่วงวันที่ ---------------- */
@@ -328,42 +327,49 @@ function renderFilters() {
   }
   box.hidden = false;
   const f = state.filters;
+  const companyLabel = f.company === "ALL" ? "ทุกบริษัท" : f.company;
+  const directionLabel = f.direction === "ALL" ? "ทุกประเภท" : f.direction;
   box.innerHTML = `
-    <label>วันที่ตรวจ
-      <input type="date" id="fDate" value="${f.date}" />
-    </label>
-    <label>ช่วงข้อมูล
-      <select id="fPreset">
-        ${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}
-      </select>
-    </label>
-    <label>ตั้งแต่วันที่
-      <input type="date" id="fFrom" value="${f.from}" max="${f.to}" />
-    </label>
-    <label>ถึงวันที่
-      <input type="date" id="fTo" value="${f.to}" min="${f.from}" />
-    </label>
-    <label>บริษัท
-      <select id="fCompany">
-        <option value="ALL">ทุกบริษัท</option>
-        ${DB.companies.map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
-      </select>
-    </label>
-    <label>ประเภท
-      <select id="fDirection">
-        <option value="ALL">ทุกประเภท</option>
-        <option value="PM" ${f.direction === "PM" ? "selected" : ""}>PM</option>
-        <option value="ฝาก" ${f.direction === "ฝาก" ? "selected" : ""}>ฝาก</option>
-        <option value="ถอน" ${f.direction === "ถอน" ? "selected" : ""}>ถอน</option>
-      </select>
-    </label>
-    <label>กะ
-      <select id="fShift">
-        <option value="ALL">ทุกกะ</option>
-        ${DB.shifts.map((s) => `<option value="${s.code}" ${f.shift === s.code ? "selected" : ""}>${h(s.name)} (${s.range})</option>`).join("")}
-      </select>
-    </label>
+    <div class="filter-bar-head">
+      <div><strong>ตัวกรอง</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span></div>
+      <button class="ghost-button xs" id="filterToggle" type="button" aria-expanded="${state.filtersOpen}">${state.filtersOpen ? "ย่อ" : "ปรับตัวกรอง"}</button>
+    </div>
+    <div class="filter-fields" ${state.filtersOpen ? "" : "hidden"}>
+      <label>วันที่อ้างอิง
+        <input type="date" id="fDate" value="${f.date}" />
+      </label>
+      <label>ช่วงข้อมูล
+        <select id="fPreset">
+          ${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}
+        </select>
+      </label>
+      <label>ตั้งแต่
+        <input type="date" id="fFrom" value="${f.from}" max="${f.to}" />
+      </label>
+      <label>ถึง
+        <input type="date" id="fTo" value="${f.to}" min="${f.from}" />
+      </label>
+      <label>บริษัท
+        <select id="fCompany">
+          <option value="ALL">ทุกบริษัท</option>
+          ${DB.companies.map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
+        </select>
+      </label>
+      <label>ประเภท
+        <select id="fDirection">
+          <option value="ALL">ทุกประเภท</option>
+          <option value="PM" ${f.direction === "PM" ? "selected" : ""}>PM</option>
+          <option value="ฝาก" ${f.direction === "ฝาก" ? "selected" : ""}>ฝาก</option>
+          <option value="ถอน" ${f.direction === "ถอน" ? "selected" : ""}>ถอน</option>
+        </select>
+      </label>
+    </div>
     <div class="filter-summary" id="filterSummary"></div>`;
+
+  $("#filterToggle").addEventListener("click", () => {
+    state.filtersOpen = !state.filtersOpen;
+    renderFilters();
+  });
 
   $("#fDate").addEventListener("change", (e) => {
     state.filters.date = e.target.value;
@@ -390,9 +396,9 @@ function renderFilters() {
     state.page = 1;
     render();
   });
-  ["fCompany", "fDirection", "fShift"].forEach((id) => {
+  ["fCompany", "fDirection"].forEach((id) => {
     $("#" + id).addEventListener("change", (e) => {
-      state.filters[id === "fCompany" ? "company" : id === "fDirection" ? "direction" : "shift"] = e.target.value;
+      state.filters[id === "fCompany" ? "company" : "direction"] = e.target.value;
       state.page = 1;
       render();
     });
@@ -541,10 +547,6 @@ function mapLiveException(e) {
 
 function hydrateLiveData(quality, operations, exceptions) {
   DB.exceptions = (exceptions || []).map(mapLiveException);
-  const companies = new Set([...(quality || []).map((x) => x.company), ...(operations || []).map((x) => x.company)].filter(Boolean));
-  companies.forEach((code) => {
-    if (!DB.companies.some((c) => c.code === code)) DB.companies.push({ code, name: code, type: "main", system: null });
-  });
   const lastRun = (quality || []).find((x) => x.run_id && x.run_at);
   DB.currentRun = lastRun
     ? {
@@ -897,7 +899,122 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Intake Control
    ============================================================= */
+const liveIntakeState = { batches: null, loading: false, error: null, key: "", updatedAt: null };
+
+async function loadLiveIntake(force = false) {
+  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  if (liveIntakeState.loading || (!force && liveIntakeState.key === key && liveIntakeState.batches)) return;
+  liveIntakeState.loading = true;
+  liveIntakeState.error = null;
+  liveIntakeState.key = key;
+  render();
+  try {
+    liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company });
+    liveIntakeState.updatedAt = new Date();
+  } catch (e) {
+    liveIntakeState.error = e.message || "โหลดทะเบียนไฟล์จริงไม่สำเร็จ";
+  }
+  liveIntakeState.loading = false;
+  render();
+}
+
+function intakeCompanyOf(file, batch) {
+  const master = DB.companies.map((c) => c.code);
+  const raw = `${file.company || ""} ${batch.company || ""} ${file.file_name || ""} ${batch.subject || ""}`.toUpperCase();
+  if (/UFABET\s*7M|UFA\s*7M/.test(raw)) return "7M";
+  return master.find((code) => new RegExp(`(^|[^A-Z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`, "i").test(raw)) || null;
+}
+
+function intakeTypesOf(file) {
+  const text = `${file.kind || ""} ${file.file_name || ""}`.toLowerCase();
+  if (file.kind === "pm_statement" || /\bpm\b|autopeer|azpay|cyberplus|mypay|12pay|payment/.test(text)) return ["PM"];
+  const out = [];
+  const both = /ฝาก\s*[-–—/]?\s*ถอน|ถอน\s*[-–—/]?\s*ฝาก|ฝากถอน|ถอนฝาก|statement|\bstm\b/.test(text);
+  if (both || /ฝาก|deposit/.test(text)) out.push("ฝาก");
+  if (both || /ถอน|withdraw|\bwd\b/.test(text)) out.push("ถอน");
+  if (!out.length && ["stm_pdf", "bo_main"].includes(file.kind)) out.push("ฝาก", "ถอน");
+  return [...new Set(out)];
+}
+
+function renderLiveIntake(root) {
+  if (!liveIntakeState.batches && !liveIntakeState.loading) loadLiveIntake();
+  if (liveIntakeState.loading && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังตรวจไฟล์จริง</h2><p class="hint">จัดกลุ่ม PM ฝาก และถอนตามบริษัท...</p></div></section>`;
+    return;
+  }
+  if (liveIntakeState.error && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดไฟล์จริงไม่สำเร็จ</strong><span>${h(liveIntakeState.error)}</span><button class="ghost-button sm" id="intakeRetry">ลองใหม่</button></div></section>`;
+    $("#intakeRetry")?.addEventListener("click", () => loadLiveIntake(true));
+    return;
+  }
+
+  const batches = liveIntakeState.batches || [];
+  const files = batches.flatMap((batch) =>
+    (batch.source_files || []).map((file) => ({
+      ...file,
+      intakeCompany: intakeCompanyOf(file, batch),
+      intakeTypes: intakeTypesOf(file),
+      receivedAt: file.received_at || batch.received_at,
+    })),
+  );
+  const typedFiles = files.filter((file) => file.intakeCompany && file.intakeTypes.length);
+  const visibleTypes = state.filters.direction === "ALL" ? ["PM", "ฝาก", "ถอน"] : [state.filters.direction];
+  const selectedFiles = typedFiles.filter((file) => file.intakeTypes.some((type) => visibleTypes.includes(type)));
+  const companies = DB.companies.filter((company) => state.filters.company === "ALL" || company.code === state.filters.company);
+  const rows = companies.map((company) => {
+    const own = selectedFiles.filter((file) => file.intakeCompany === company.code);
+    const counts = Object.fromEntries(["PM", "ฝาก", "ถอน"].map((type) => [type, own.filter((file) => file.intakeTypes.includes(type)).length]));
+    const errors = own.filter((file) => file.parse_error).length;
+    const parsed = own.filter((file) => file.parsed).length;
+    const latest = own.map((file) => String(file.receivedAt || "")).sort().pop() || "";
+    return { company: company.code, own, counts, errors, parsed, latest };
+  });
+  const foundCompanies = rows.filter((row) => row.own.length).length;
+  const errors = selectedFiles.filter((file) => file.parse_error).length;
+  const waitingRead = selectedFiles.filter((file) => !file.parsed && !file.parse_error).length;
+  const missingCompanies = rows.length - foundCompanies;
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>บริษัทที่ต้องตรวจ</span><strong>${num(rows.length)}</strong><small>${h(state.filters.company === "ALL" ? "ทะเบียนบริษัททั้งหมด" : state.filters.company)}</small></article>
+      <article class="ok"><span>บริษัทที่พบไฟล์</span><strong>${num(foundCompanies)}</strong><small>จากไฟล์จริงใน Supabase</small></article>
+      <article class="${waitingRead ? "warn" : "ok"}"><span>ไฟล์ PM / ฝาก / ถอน</span><strong>${num(selectedFiles.length)}</strong><small>รออ่าน ${num(waitingRead)} ไฟล์</small></article>
+      <article class="${errors || missingCompanies ? "bad" : "ok"}"><span>ต้องตรวจเพิ่ม</span><strong>${num(errors + missingCompanies)}</strong><small>ไม่พบบริษัท ${num(missingCompanies)} · อ่านไม่ได้ ${num(errors)}</small></article>
+    </section>
+
+    ${
+      !selectedFiles.length
+        ? `<div class="alert bad"><strong>ยังไม่พบไฟล์ PM ฝาก หรือถอน</strong><span>ช่วง ${h(rangeLabel())} ยังไม่มีไฟล์ที่จำแนกเข้าบริษัทได้ กรุณาตรวจช่วงวันที่หรือเปิดคลังไฟล์จากเมล</span></div>`
+        : errors || waitingRead || missingCompanies
+          ? `<div class="alert bad"><strong>ยังสรุปว่าไฟล์ครบไม่ได้</strong><span>พบข้อมูลจริงแล้ว แต่ยังมีบริษัทไม่พบไฟล์ ไฟล์รออ่าน หรือไฟล์อ่านไม่สำเร็จ ต้องตรวจต่อก่อนกระทบยอด</span></div>`
+          : `<div class="alert ok"><strong>ไฟล์ที่พบพร้อมตรวจ</strong><span>ไฟล์ในช่วงนี้อ่านสำเร็จแล้ว แต่ความครบถ้วนสุดท้ายให้ยืนยันจากผลกระทบยอดของแต่ละบริษัท</span></div>`
+    }
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">ข้อมูลจริงตามบริษัท</p><h2>สถานะ PM ฝาก และถอน</h2><small class="head-sub">อัปเดต ${liveIntakeState.updatedAt ? liveIntakeState.updatedAt.toLocaleString("th-TH") : "-"}</small></div>
+        <div class="inline-actions"><button class="ghost-button sm" id="intakeRefresh">รีเฟรช</button><button class="primary-button sm" id="intakeCloud">เปิดคลังไฟล์</button></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>บริษัท</th>${visibleTypes.map((type) => `<th class="right">${h(type)}</th>`).join("")}<th class="right">รวมไฟล์</th><th class="right">อ่านแล้ว</th><th>รับล่าสุด</th><th>สถานะ</th></tr></thead>
+        <tbody>${rows.map((row) => {
+          const tone = !row.own.length ? "grey" : row.errors ? "red" : row.parsed < row.own.length ? "amber" : "green";
+          const label = !row.own.length ? "ยังไม่พบไฟล์" : row.errors ? "มีไฟล์อ่านไม่ได้" : row.parsed < row.own.length ? "รออ่าน" : "พร้อมตรวจ";
+          return `<tr><td><b>${h(row.company)}</b></td>${visibleTypes.map((type) => `<td class="right tnum">${num(row.counts[type])}</td>`).join("")}<td class="right tnum">${num(row.own.length)}</td><td class="right tnum">${num(row.parsed)}</td><td>${row.latest ? h(String(row.latest).replace("T", " ").slice(0, 16)) : "-"}</td><td><span class="badge ${tone}">${label}</span></td></tr>`;
+        }).join("")}</tbody>
+      </table></div>
+      <p class="hint">จำนวนในคอลัมน์คือจำนวนไฟล์ที่ระบบจำแนกได้ ไม่ใช่จำนวนธุรกรรม; ไฟล์ชื่อ “ฝาก-ถอน” จะนับได้ทั้งฝากและถอน ส่วน PM แยกเป็นประเภทของตัวเอง</p>
+    </section>`;
+
+  $("#intakeRefresh")?.addEventListener("click", () => loadLiveIntake(true));
+  $("#intakeCloud")?.addEventListener("click", () => go("cloud"));
+}
+
 VIEWS.intake = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveIntake(root);
+    return;
+  }
   const f = state.filters;
   const files = DB.files.filter((x) => f.company === "ALL" || x.company === f.company);
   const stat = (s) => files.filter((x) => x.status === s).length;
