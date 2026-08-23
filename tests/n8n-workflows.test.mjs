@@ -123,5 +123,6 @@ assert.match(telegramHourly.parameters.jsCode, /อ่านไฟล์ไม�
 assert.match(telegramHourly.parameters.jsCode, /ต้องตามไฟล์เพิ่ม/, "missing evidence must be separate from parse failures");
 assert.match(telegramHourly.parameters.jsCode, /ฐานข้อมูลล่าสุดก่อนส่งข้อความนี้/, "message must state that counts were checked before sending");
 assert.match(telegramDaily.parameters.jsCode, /ผลตรวจเดือนนี้/, "daily alert must scope reconciliation counts to the current month");
+assert.match(JSON.stringify(telegram), /is_archived=eq\.false/, "Telegram must exclude archived operating periods");
 
 console.log("n8n workflows: graph, idempotency, secrets and throttling checks passed");

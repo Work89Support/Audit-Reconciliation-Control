@@ -229,6 +229,16 @@ const Sb = (() => {
   const quality = (limit = 1000) =>
     json(`/rest/v1/v_recon_quality?${q({ limit, order: "business_date.desc,company.asc" })}`);
 
+  async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {
+    const filters = ["select=*", "order=business_date.desc,company.asc", `limit=${limit}`];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    return json(`/rest/v1/v_daily_company_checklist?${filters.join("&")}`);
+  }
+
+  const runtimeSettings = () => json("/rest/v1/audit_runtime_settings?select=*&id=eq.true&limit=1");
+
   async function damages({ from, to, company, limit = 5000 } = {}) {
     const filters = ["select=*", "order=business_date.desc,created_at.desc", `limit=${limit}`];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
@@ -449,6 +459,8 @@ const Sb = (() => {
     dailyStatus,
     operations,
     quality,
+    dailyChecklist,
+    runtimeSettings,
     damages,
     auditLogs,
     notifications,

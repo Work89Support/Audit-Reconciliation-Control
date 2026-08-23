@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/v_recon_notification_status?select=id,business_date,company,status,missing_groups,mail_count,file_count,error_count,attempt_count,last_error,updated_at,actual_mail_total,actual_file_total&order=business_date.desc,company.asc' }}",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/v_recon_notification_status?select=id,business_date,company,status,missing_groups,mail_count,file_count,error_count,attempt_count,last_error,updated_at,actual_mail_total,actual_file_total&is_archived=eq.false&order=business_date.desc,company.asc' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {
@@ -120,7 +120,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/v_recon_notification_status?select=id,business_date,company,status,missing_groups,error_count,last_error,actual_mail_total,actual_file_total&business_date=gte.' + DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() + '&business_date=lte.' + DateTime.now().setZone('Asia/Bangkok').toISODate() + '&order=business_date.desc,company.asc' }}",
+        "url": "={{ $vars.SUPABASE_URL + '/rest/v1/v_recon_notification_status?select=id,business_date,company,status,missing_groups,error_count,last_error,actual_mail_total,actual_file_total&is_archived=eq.false&business_date=gte.' + DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() + '&business_date=lte.' + DateTime.now().setZone('Asia/Bangkok').toISODate() + '&order=business_date.desc,company.asc' }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {

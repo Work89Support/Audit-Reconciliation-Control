@@ -99,10 +99,12 @@ const PROD_TODAY = (() => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
+const OPERATING_START_DATE = "2026-08-24";
+const DEFAULT_WORK_DATE = PROD_TODAY < OPERATING_START_DATE ? OPERATING_START_DATE : PROD_TODAY;
 const state = {
   route: "cloud",
   role: "lead",
-  filters: { date: PROD_TODAY, from: PROD_TODAY.slice(0, 8) + "01", to: PROD_TODAY, preset: "month", company: "ALL", direction: "ALL" },
+  filters: { date: DEFAULT_WORK_DATE, from: OPERATING_START_DATE, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
   sort: { key: "time", dir: "asc" },
@@ -111,12 +113,15 @@ const state = {
   selected: null,
   matchIndex: 0,
   damageCycle: "C1",
-  dailySummary: { date: PROD_TODAY, company: "3XB" },
+  dailySummary: { date: DEFAULT_WORK_DATE, company: "3XB" },
   dataset: "production",
   chat: [],
 };
 
 const can = (cap) => DB.roles[state.role].can.includes(cap);
+const companyMaster = () => state.dataset === "production"
+  ? DB.companies.map((company) => company.code === "7M" ? { ...company, code: "UFABET7M", name: "UFABET7M" } : company)
+  : DB.companies;
 
 /* รายชื่อประเภท exception ทั้งหมด = ที่ตั้งไว้ในระบบ + ที่เกิดจริงจากกฎธุรกิจ */
 function allExceptionTypes() {
@@ -380,7 +385,7 @@ function renderFilters() {
       <label>บริษัท
         <select id="fCompany">
           <option value="ALL">ทุกบริษัท</option>
-          ${DB.companies.map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
+          ${companyMaster().map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
         </select>
       </label>
       <label>ประเภท
@@ -504,7 +509,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 
 async function loadLiveExceptionSearch(term) {
@@ -547,6 +552,25 @@ const LIVE_STATUS = {
   running: { label: "กำลังทำงาน", tone: "violet" },
   error: { label: "ล้มเหลว", tone: "red" },
 };
+
+const CHECKLIST_STATUS = {
+  scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
+  missing_files: { label: "ยังไม่ได้รับไฟล์", tone: "red" },
+  missing_required: { label: "ไฟล์หลักยังไม่ครบ", tone: "red" },
+  parse_error: { label: "มีไฟล์อ่านไม่ได้", tone: "red" },
+  waiting_parse: { label: "กำลังอ่านไฟล์", tone: "amber" },
+  waiting_files: { label: "รอไฟล์", tone: "amber" },
+  ready: { label: "พร้อมกระทบยอด", tone: "blue" },
+  queued: { label: "เข้าคิว", tone: "blue" },
+  running: { label: "กำลังกระทบยอด", tone: "violet" },
+  needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
+  open_cases: { label: "มีเคสต้องปิด", tone: "amber" },
+  completed: { label: "ครบและปิดงาน", tone: "green" },
+  error: { label: "ทำงานล้มเหลว", tone: "red" },
+};
+
+const checklistMark = (ok, value, optional = false) =>
+  `<span class="check-mark ${ok ? "ok" : optional ? "optional" : "missing"}"><b>${ok ? "✓" : optional ? "–" : "!"}</b>${h(value)}</span>`;
 
 function mapLiveException(e) {
   const severity = e.severity || "medium";
@@ -641,10 +665,12 @@ async function loadLiveOverview(force = false) {
   liveOverviewState.key = key;
   if (state.route === "dashboard") render();
   try {
-    const [daily, operations, quality, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
+    const [daily, operations, quality, checklist, settings, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
       Sb.dailyStatus(1000),
       Sb.operations(1000),
       Sb.quality(1000),
+      Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
+      Sb.runtimeSettings(),
       Sb.currentExceptions({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 5000 }),
       Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.auditLogs({ from: state.filters.from, to: state.filters.to }),
@@ -657,6 +683,8 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.daily = daily || [];
     liveOverviewState.operations = operations || [];
     liveOverviewState.quality = quality || [];
+    liveOverviewState.checklist = checklist || [];
+    liveOverviewState.settings = settings?.[0] || null;
     liveOverviewState.damages = damages || [];
     liveOverviewState.logs = logs || [];
     liveOverviewState.notifications = notifications || [];
@@ -745,6 +773,11 @@ function renderLiveDashboard(root) {
     const groups = Array.isArray(row.missing_groups) ? row.missing_groups.flat(2) : [];
     return groups.length ? [...new Set(groups)].map((kind) => LIVE_KIND_LABEL[kind] || kind).join(", ") : "ครบ";
   };
+  const activeStart = liveOverviewState.settings?.operational_start_date || OPERATING_START_DATE;
+  const historyCutoff = liveOverviewState.settings?.history_cutoff_date || "2026-08-23";
+  const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
+  const checklistDate = checklistDates.includes(state.filters.date) ? state.filters.date : (checklistDates[0] || state.filters.date);
+  const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
 
   root.innerHTML = `
     <section class="status-strip live-status-strip">
@@ -758,6 +791,25 @@ function renderLiveDashboard(root) {
     <section class="action-overview">
       <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}</p></div>
       <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
+    </section>
+
+    <section class="period-banner">
+      <div><p class="eyebrow">รอบปฏิบัติงานปัจจุบัน</p><h2>เริ่มตรวจใหม่ตั้งแต่ ${h(activeStart)}</h2><p>ข้อมูลถึง ${h(historyCutoff)} ถูกเก็บไว้เป็นประวัติ ไม่ถูกลบ และไม่ปนกับคิวงานรอบใหม่</p></div>
+      <button class="ghost-button" id="openHistory">ดูประวัติ 1–23 ส.ค.</button>
+    </section>
+
+    <section class="panel daily-checklist-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">เครื่องหมาย ! คือสิ่งที่ต้องตาม ส่วน PM แสดงแยกฝาก/ถอนเพื่อเช็คความครบ</small></div><span class="health ${checklist.some((row) => row.checklist_status !== "completed" && row.checklist_status !== "scheduled") ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
+      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท</th><th>เมล / ไฟล์</th><th>STM</th><th>BO</th><th>PM ฝาก</th><th>PM ถอน</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
+        ${checklist.map((row) => {
+          const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
+          const future = row.checklist_status === "scheduled";
+          const parsedOk = Number(row.file_count) > 0 && Number(row.parsed_count) === Number(row.file_count) && !Number(row.error_count);
+          const pending = () => checklistMark(false, "รอวันทำการ", true);
+          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.stm_count)>0, `${num(row.stm_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.bo_count)>0, `${num(row.bo_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.pm_deposit_count)>0, `${num(row.pm_deposit_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(Number(row.pm_withdraw_count)>0, `${num(row.pm_withdraw_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(row.file_count)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}</td></tr>`;
+        }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
+      </tbody></table></div>
+      <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน พร้อมรายชื่อไฟล์จริง ผลกระทบยอด และเคสที่ยังไม่ปิด</p>
     </section>
 
     <section class="grid-2 live-main-grid">
@@ -794,6 +846,16 @@ function renderLiveDashboard(root) {
     </section>`;
 
   root.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => go(button.dataset.goto)));
+  root.querySelectorAll("[data-check-company]").forEach((row) => row.addEventListener("click", () => {
+    state.dailySummary.date = row.dataset.checkDate;
+    state.dailySummary.company = row.dataset.checkCompany;
+    go("daily-summary");
+  }));
+  $("#openHistory")?.addEventListener("click", () => {
+    state.filters = { ...state.filters, date: "2026-08-23", from: "2026-08-01", to: "2026-08-23", preset: "custom" };
+    liveOverviewState.key = "";
+    go("cloud");
+  });
   $("#liveRefresh")?.addEventListener("click", () => loadLiveOverview(true));
 }
 
@@ -998,7 +1060,7 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
-const dailyCompanyState = { date: "", batches: null, quality: null, operations: null, exceptions: null, damages: null, loading: false, error: null, updatedAt: null };
+const dailyCompanyState = { date: "", batches: null, quality: null, operations: null, checklist: null, exceptions: null, damages: null, loading: false, error: null, updatedAt: null };
 
 async function loadDailyCompanySummary(force = false) {
   const date = state.dailySummary.date || PROD_TODAY;
@@ -1007,6 +1069,7 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.batches = null;
     dailyCompanyState.quality = null;
     dailyCompanyState.operations = null;
+    dailyCompanyState.checklist = null;
     dailyCompanyState.exceptions = null;
     dailyCompanyState.damages = null;
   }
@@ -1015,16 +1078,18 @@ async function loadDailyCompanySummary(force = false) {
   dailyCompanyState.date = date;
   if (state.route === "daily-summary") render();
   try {
-    const [batches, quality, operations, exceptions, damages] = await Promise.all([
+    const [batches, quality, operations, checklist, exceptions, damages] = await Promise.all([
       Sb.batches({ from: date, to: date }),
       Sb.quality(5000),
       Sb.operations(5000),
+      Sb.dailyChecklist({ from: date, to: date }),
       Sb.currentExceptions({ from: date, to: date, company: "ALL", limit: 5000 }),
       Sb.damages({ from: date, to: date, company: "ALL", limit: 5000 }),
     ]);
     dailyCompanyState.batches = batches || [];
     dailyCompanyState.quality = (quality || []).filter((row) => row.business_date === date);
     dailyCompanyState.operations = (operations || []).filter((row) => row.business_date === date);
+    dailyCompanyState.checklist = checklist || [];
     dailyCompanyState.exceptions = (exceptions || []).map(mapLiveException);
     dailyCompanyState.damages = damages || [];
     dailyCompanyState.updatedAt = new Date();
@@ -1050,17 +1115,19 @@ function dailyCompanyData(company) {
   const operations = (dailyCompanyState.operations || []).filter((row) => row.company === company);
   const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
   const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
+  const checklist = (dailyCompanyState.checklist || []).find((row) => row.company === company) || null;
   const exceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
   const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
   const confirmedDamage = exceptions.filter((row) => row.status === "damage");
   const stillOpen = Math.max(0, exceptionTotal - fixed.length);
-  return { company, files, batches: ownBatches, quality, operations, exceptions, damages, exceptionTotal, fixed, confirmedDamage, stillOpen };
+  return { company, files, batches: ownBatches, quality, operations, checklist, exceptions, damages, exceptionTotal, fixed, confirmedDamage, stillOpen };
 }
 
 function dailyCompanyOptions() {
-  const found = new Set(DB.companies.map((company) => company.code));
+  const found = new Set(companyMaster().map((company) => company.code));
   (dailyCompanyState.quality || []).forEach((row) => row.company && found.add(row.company));
   (dailyCompanyState.operations || []).forEach((row) => row.company && found.add(row.company));
+  (dailyCompanyState.checklist || []).forEach((row) => row.company && found.add(row.company));
   (dailyCompanyState.batches || []).forEach((batch) => {
     if (batch.company) found.add(batch.company);
     (batch.source_files || []).forEach((file) => {
@@ -1172,7 +1239,10 @@ function renderDailyCompanySummary(root) {
     const matchRate = stm ? (matched / stm) * 100 : 0;
     const risk = data.exceptions.reduce((sum, row) => sum + Number(row.riskAmount || 0), 0);
     const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
-    const missing = dailyMissingKinds(data.quality.length ? data.quality : data.operations);
+    const scheduled = data.checklist?.checklist_status === "scheduled";
+    const missing = scheduled ? [] : data.checklist?.missing_items?.length
+      ? data.checklist.missing_items
+      : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
     const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
     const status = LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
     const kindCounts = Object.entries(data.files.reduce((acc, file) => {
@@ -1192,6 +1262,24 @@ function renderDailyCompanySummary(root) {
       </section>
       <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><div class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์</small></span></div><div class="${parsed === data.files.length && data.files.length ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์<small>${num(parsed)} สำเร็จ</small></span></div><div class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)}</small></span></div><div class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส</small></span></div><div class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.fixed.length)}</small></span></div></section>
 
+      <section class="panel company-day-checklist">
+        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : "ครบทุกจุด"}</span></div>
+        <div class="checklist-cards">
+          ${[
+            ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
+            ["STM ฝาก-ถอน", Number(data.checklist?.stm_count || 0) > 0, `${num(data.checklist?.stm_count || 0)} ไฟล์`, false],
+            ["รายงาน BO", Number(data.checklist?.bo_count || 0) > 0, `${num(data.checklist?.bo_count || 0)} ไฟล์`, false],
+            ["PM ฝาก", Number(data.checklist?.pm_deposit_count || 0) > 0, `${num(data.checklist?.pm_deposit_count || 0)} ไฟล์`, true],
+            ["PM ถอน", Number(data.checklist?.pm_withdraw_count || 0) > 0, `${num(data.checklist?.pm_withdraw_count || 0)} ไฟล์`, true],
+            ["อ่านไฟล์", data.files.length > 0 && parsed === data.files.length, fileErrors ? `อ่านไม่ได้ ${num(fileErrors)}` : `${num(parsed)}/${num(data.files.length)} สำเร็จ`, false],
+            ["กระทบยอดและปิดเคส", latestStatus === "completed" && data.stillOpen === 0, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
+          ].map(([label, ok, detail, optional]) => scheduled
+            ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
+            : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
+        </div>
+        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist ครบ</strong><span>ไฟล์หลักอ่านสำเร็จ กระทบยอดแล้ว และไม่มีเคสค้าง</span></div>`}
+      </section>
+
       <section class="grid-2 daily-summary-grid">
         <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ครบตามกฎ"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
         <div class="panel"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception</span><b>${num(data.exceptionTotal)}</b></li><li><span>มูลค่าความเสียหายที่บันทึก</span><b>${money0(damageTotal)} บาท</b></li></ul></div>
@@ -1203,7 +1291,7 @@ function renderDailyCompanySummary(root) {
   }
 
   $("#dailySummaryDate")?.addEventListener("change", (event) => {
-    state.dailySummary.date = event.target.value || PROD_TODAY;
+    state.dailySummary.date = event.target.value || DEFAULT_WORK_DATE;
     loadDailyCompanySummary(true);
   });
   $("#dailySummaryCompany")?.addEventListener("change", (event) => {
@@ -1246,9 +1334,9 @@ async function loadLiveIntake(force = false) {
 }
 
 function intakeCompanyOf(file, batch) {
-  const master = DB.companies.map((c) => c.code);
+  const master = companyMaster().map((c) => c.code);
   const raw = `${file.company || ""} ${batch.company || ""} ${file.file_name || ""} ${batch.subject || ""}`.toUpperCase();
-  if (/UFABET\s*7M|UFA\s*7M/.test(raw)) return "7M";
+  if (/UFABET\s*7M|UFA\s*7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)/.test(raw)) return state.dataset === "production" ? "UFABET7M" : "7M";
   return master.find((code) => new RegExp(`(^|[^A-Z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`, "i").test(raw)) || null;
 }
 
@@ -1287,7 +1375,7 @@ function renderLiveIntake(root) {
   const typedFiles = files.filter((file) => file.intakeCompany && file.intakeTypes.length);
   const visibleTypes = state.filters.direction === "ALL" ? ["PM", "ฝาก", "ถอน"] : [state.filters.direction];
   const selectedFiles = typedFiles.filter((file) => file.intakeTypes.some((type) => visibleTypes.includes(type)));
-  const companies = DB.companies.filter((company) => state.filters.company === "ALL" || company.code === state.filters.company);
+  const companies = companyMaster().filter((company) => state.filters.company === "ALL" || company.code === state.filters.company);
   const rows = companies.map((company) => {
     const own = selectedFiles.filter((file) => file.intakeCompany === company.code);
     const counts = Object.fromEntries(["PM", "ฝาก", "ถอน"].map((type) => [type, own.filter((file) => file.intakeTypes.includes(type)).length]));
@@ -2058,7 +2146,7 @@ function renderLiveDamage(root) {
   if (!ensureLiveOverview(root)) return;
   const rows = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
   const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const byCompany = DB.companies.map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
+  const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
   const open = rows.filter((row) => !row.financeStatus || !/ปิด|เสร็จ|completed|closed/i.test(row.financeStatus)).length;
   root.innerHTML = `
     <section class="status-strip four">
@@ -2240,7 +2328,7 @@ function renderLivePm(root) {
     const exceptions = pmExceptions.filter((e) => e.provider === provider);
     return { provider, files, exceptions, parsed: files.filter((f) => f.parsed).length, errors: files.filter((f) => f.parse_error).length, latest: files.map((f) => String(f.receivedAt || "")).sort().pop() || "" };
   });
-  const companyRows = DB.companies.map((company) => {
+  const companyRows = companyMaster().map((company) => {
     const files = pmFiles.filter((f) => f.company === company.code);
     const exceptions = pmExceptions.filter((e) => e.company === company.code);
     return { company: company.code, files, exceptions, providers: [...new Set(files.map((f) => f.provider).filter(Boolean))] };
@@ -2347,7 +2435,7 @@ VIEWS.pm = (root) => {
 function renderLiveKpi(root) {
   if (!ensureLiveOverview(root)) return;
   const ex = scopedExceptions();
-  const byCompany = DB.companies.map((company) => ({ label: company.code, value: ex.filter((e) => e.company === company.code).length })).filter((item) => item.value);
+  const byCompany = companyMaster().map((company) => ({ label: company.code, value: ex.filter((e) => e.company === company.code).length })).filter((item) => item.value);
   const byDirection = ["PM", "ฝาก", "ถอน"].map((direction) => ({ label: direction, value: ex.filter((e) => e.direction === direction).length }));
   const employeeNames = [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))];
   const employees = employeeNames.map((employee) => {
@@ -2393,7 +2481,7 @@ VIEWS.kpi = (root) => {
   )
     .map(([k, v]) => ({ label: k, value: v }))
     .sort((a, b) => b.value - a.value);
-  const byCompany = DB.companies.map((c) => ({ label: c.name, value: ex.filter((e) => e.company === c.code).length })).filter((x) => x.value);
+  const byCompany = companyMaster().map((c) => ({ label: c.name, value: ex.filter((e) => e.company === c.code).length })).filter((x) => x.value);
 
   root.innerHTML = `
     <section class="grid-3">
@@ -4564,7 +4652,7 @@ VIEWS.clarify = (root) => {
   const c = DB.settings.clarify;
   const XB = sysMeta("XB");
   const S123 = sysMeta("SYS123");
-  const known = [...new Set(DB.companies.map((x) => x.code).concat(all.map((e) => e.company)))].filter((x) => x && x !== "-");
+  const known = [...new Set(companyMaster().map((x) => x.code).concat(all.map((e) => e.company)))].filter((x) => x && x !== "-");
   const pending = known.filter((code) => !systemOfCompany(code));
   const pendingActive = unassignedCompanies(); // ที่มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้กำหนด
 
@@ -5152,6 +5240,8 @@ function enterProductionApp() {
   liveOverviewState.daily = null;
   liveOverviewState.operations = null;
   liveOverviewState.quality = null;
+  liveOverviewState.checklist = null;
+  liveOverviewState.settings = null;
   liveOverviewState.damages = null;
   liveOverviewState.logs = null;
   liveOverviewState.notifications = null;
@@ -5160,6 +5250,7 @@ function enterProductionApp() {
   dailyCompanyState.batches = null;
   dailyCompanyState.quality = null;
   dailyCompanyState.operations = null;
+  dailyCompanyState.checklist = null;
   dailyCompanyState.exceptions = null;
   dailyCompanyState.damages = null;
   dailyCompanyState.error = null;
