@@ -229,6 +229,24 @@ const Sb = (() => {
   const quality = (limit = 1000) =>
     json(`/rest/v1/v_recon_quality?${q({ limit, order: "business_date.desc,company.asc" })}`);
 
+  async function damages({ from, to, company, limit = 5000 } = {}) {
+    const filters = ["select=*", "order=business_date.desc,created_at.desc", `limit=${limit}`];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    return json(`/rest/v1/damages?${filters.join("&")}`);
+  }
+
+  async function auditLogs({ from, to, limit = 2000 } = {}) {
+    const filters = ["select=*", "order=at.desc", `limit=${limit}`];
+    if (from) filters.push(`at=gte.${encodeURIComponent(from + "T00:00:00+07:00")}`);
+    if (to) filters.push(`at=lt.${encodeURIComponent(to + "T23:59:59.999+07:00")}`);
+    return json(`/rest/v1/audit_log?${filters.join("&")}`);
+  }
+
+  const notifications = (limit = 1000) =>
+    json(`/rest/v1/recon_notifications?${q({ select: "*", limit, order: "created_at.desc" })}`);
+
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
     const rows = [];
     const pageSize = 1000;
@@ -407,6 +425,9 @@ const Sb = (() => {
     dailyStatus,
     operations,
     quality,
+    damages,
+    auditLogs,
+    notifications,
     currentExceptions,
     queueDueJobs,
     claimJob,

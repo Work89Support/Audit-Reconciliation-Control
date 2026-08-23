@@ -57,10 +57,10 @@ const ROUTES = [
   {
     group: "ตรวจสอบและอนุมัติ",
     items: [
-      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงและกำหนดส่ง", desc: "แผนกตรวจ 2 ระบบ — ระบบ XB ส่งหัวหน้ากะทุกวันภายใน 17:00 ทุกเคส · ระบบ 123 ออดิท 1/2/3 รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน ให้เวลาชี้แจง 2-3 วัน", filters: true },
+      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception และกำหนดส่งของแต่ละบริษัทจากข้อมูลจริง โดยไม่แบ่งกะ", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
-      { id: "pm", label: "PM Monitor", icon: "pm", title: "บัญชี PM ระบบ 123", desc: "AUTOPEER / AZPAY / Cyberplus กรองเฉพาะรายการสำเร็จและวันที่ที่ตรวจ", filters: false },
+      { id: "pm", label: "PM Monitor", icon: "pm", title: "ข้อมูล PM แยกตาม Provider และบริษัท", desc: "สรุปไฟล์ PM และ Exception จากข้อมูลจริง โดยไม่แสดงเปอร์เซ็นต์ประมาณการ", filters: true },
     ],
   },
   {
@@ -137,6 +137,9 @@ function logAction(action, entity, target, detail) {
     Store.data.auditLog.unshift(entry);
     Store.persist();
   }
+  if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn()) {
+    Sb.post("audit_log", [{ actor: Sb.currentEmail() || currentUser().username, action, entity, target: String(target || ""), detail: String(detail || "") }], "return=minimal").catch((e) => console.warn("audit log", e));
+  }
 }
 
 /* บันทึกสถานะเคสที่ถูกแก้ ให้อยู่รอดข้ามการรีเฟรช */
@@ -148,6 +151,11 @@ function saveOverride(e) {
     evidence: (e.evidence || []).map((f) => ({ name: f.name, size: f.size, at: f.at })),
   };
   Store.persist();
+  if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
+    Sb.patch("exceptions", `id=eq.${encodeURIComponent(e.dbId)}`, { status: e.status, updated_at: new Date().toISOString() }).catch((err) => {
+      toast("บันทึกสถานะกลับ Supabase ไม่สำเร็จ: " + err.message, "warn");
+    });
+  }
 }
 function applyStoredState() {
   const ov = Store.data.exOverrides || {};
@@ -475,7 +483,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, loading: false, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, damages: null, logs: null, notifications: null, loading: false, error: null, key: "", updatedAt: null };
 
 const LIVE_KIND_LABEL = {
   stm_pdf: "STM / ฝาก-ถอนธนาคาร",
@@ -546,8 +554,23 @@ function mapLiveException(e) {
   };
 }
 
-function hydrateLiveData(quality, operations, exceptions) {
+function hydrateLiveData(quality, operations, exceptions, damages, logs) {
   DB.exceptions = (exceptions || []).map(mapLiveException);
+  DB.damages = (damages || []).map((d) => ({
+    id: d.code || d.id,
+    dbId: d.id,
+    exceptionId: d.exception_id || "-",
+    date: d.business_date,
+    company: d.company || "ไม่ระบุ",
+    employee: d.employee || "ไม่ระบุ",
+    amount: Number(d.amount_thb ?? d.amount ?? 0),
+    cause: d.cause || "รอตรวจสอบ",
+    cycle: d.cycle || "ไม่ระบุรอบ",
+    evidence: !!d.has_evidence,
+    hrStatus: d.hr_status || "-",
+    financeStatus: d.finance_status || "-",
+  }));
+  DB.auditLog = (logs || []).map((l) => ({ at: l.at, user: l.actor || "ระบบ", action: l.action, entity: l.entity, target: l.target, detail: l.detail || "" }));
   const lastRun = (quality || []).find((x) => x.run_id && x.run_at);
   DB.currentRun = lastRun
     ? {
@@ -572,22 +595,46 @@ async function loadLiveOverview(force = false) {
   liveOverviewState.key = key;
   if (state.route === "dashboard") render();
   try {
-    const [daily, operations, quality, exceptions] = await Promise.all([
+    const [daily, operations, quality, exceptions, damages, logs, notifications] = await Promise.all([
       Sb.dailyStatus(1000),
       Sb.operations(1000),
       Sb.quality(1000),
       Sb.currentExceptions({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 5000 }),
+      Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
+      Sb.auditLogs({ from: state.filters.from, to: state.filters.to }),
+      Sb.notifications(1000),
     ]);
     liveOverviewState.daily = daily || [];
     liveOverviewState.operations = operations || [];
     liveOverviewState.quality = quality || [];
+    liveOverviewState.damages = damages || [];
+    liveOverviewState.logs = logs || [];
+    liveOverviewState.notifications = notifications || [];
     liveOverviewState.updatedAt = new Date();
-    hydrateLiveData(quality, operations, exceptions);
+    hydrateLiveData(quality, operations, exceptions, damages, logs);
+    updateBell();
   } catch (e) {
     liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
   }
   liveOverviewState.loading = false;
   render();
+}
+
+function ensureLiveOverview(root) {
+  if (state.dataset !== "production" || !Sb.signedIn()) return true;
+  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  const stale = liveOverviewState.key !== key;
+  if ((!liveOverviewState.quality || stale) && !liveOverviewState.loading) loadLiveOverview(stale);
+  if (liveOverviewState.loading && (!liveOverviewState.quality || stale)) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังโหลดข้อมูลจริง</h2><p class="hint">อ่านข้อมูลจาก Supabase สำหรับหน้าที่เลือก...</p></div></section>`;
+    return false;
+  }
+  if (liveOverviewState.error && (!liveOverviewState.quality || stale)) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดข้อมูลจริงไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="livePageRetry">ลองใหม่</button></div></section>`;
+    $("#livePageRetry")?.addEventListener("click", () => loadLiveOverview(true));
+    return false;
+  }
+  return true;
 }
 
 function renderLiveDashboard(root) {
@@ -1115,6 +1162,7 @@ VIEWS.intake = (root) => {
    VIEW: Exceptions
    ============================================================= */
 VIEWS.exceptions = (root) => {
+  if (!ensureLiveOverview(root)) return;
   const list = filteredExceptions();
   const sorted = [...list].sort((a, b) => {
     const k = state.sort.key;
@@ -1264,7 +1312,7 @@ function openException(id) {
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
         <div><span>บัญชี</span><b>${h(e.account)} (${h(e.bank)})</b></div>
         <div><span>ทิศทาง</span><b>${h(e.direction)}</b></div>
-        <div><span>กะ</span><b>${h(DB.shifts.find((s) => s.code === e.shift).name)}</b></div>
+        <div><span>บริษัท</span><b>${h(e.company || "ไม่ระบุ")}</b></div>
         <div><span>ยอดระบบ (BO)</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
         <div><span>ยอดธนาคาร (STM)</span><b>${e.bankAmount === null ? "ไม่พบรายการ" : money(e.bankAmount)}</b></div>
         <div><span>ผลต่าง</span><b>${diffLabel(e)}</b></div>
@@ -1326,7 +1374,7 @@ function openException(id) {
     <footer class="drawer-foot">
       <button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button>
       <button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button>
-      <button class="ghost-button" id="btnClarify">ส่งให้หัวหน้ากะชี้แจง</button>
+      <button class="ghost-button" id="btnClarify">ส่งให้ผู้ดูแลบริษัทชี้แจง</button>
       <button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button>
       <button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button>
       <button class="primary-button" id="btnApprove">อนุมัติและปิดเคส</button>
@@ -1378,9 +1426,9 @@ function openException(id) {
   $("#btnClarify").addEventListener("click", () => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     e.status = "clarifying";
-    logAction("request_clarify", "exception", e.id, "ส่งให้หัวหน้ากะ " + e.shift + " ชี้แจง");
+    logAction("request_clarify", "exception", e.id, "ส่งให้ผู้ดูแลบริษัท " + e.company + " ชี้แจง");
     saveOverride(e);
-    toast("ส่งให้หัวหน้ากะชี้แจงแล้ว");
+    toast("ส่งให้ผู้ดูแลบริษัทชี้แจงแล้ว");
     openException(id);
     renderNav();
   });
@@ -1399,7 +1447,7 @@ function openException(id) {
     if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
     if (e.status !== "damage") {
       e.status = "damage";
-      DB.damages.push({
+      const damage = {
         id: "DMG-" + (900 + DB.damages.length),
         exceptionId: e.id,
         date: e.date,
@@ -1412,9 +1460,33 @@ function openException(id) {
         evidence: true,
         hrStatus: "ส่งบุคคลแล้ว",
         financeStatus: "รอปิดรอบ",
-      });
+      };
+      DB.damages.push(damage);
       logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(e.riskAmount || Math.abs(e.amountDiff)) + " บาท");
-      Store.data.extraDamages.push(DB.damages[DB.damages.length - 1]);
+      if (state.dataset === "production" && Sb.signedIn()) {
+        Sb.post("damages", [{
+          code: damage.id,
+          exception_id: e.dbId || null,
+          business_date: damage.date,
+          company: damage.company,
+          employee: damage.employee,
+          shift: e.shift || null,
+          amount: damage.amount,
+          currency: e.currency || "THB",
+          fx_rate: e.fxRate || null,
+          amount_thb: damage.amount,
+          cause: damage.cause,
+          cycle: damage.cycle,
+          has_evidence: damage.evidence,
+          hr_status: damage.hrStatus,
+          finance_status: damage.financeStatus,
+        }]).then((rows) => {
+          if (rows?.[0]) damage.dbId = rows[0].id;
+          loadLiveOverview(true);
+        }).catch((err) => toast("บันทึก Supabase ไม่สำเร็จ: " + err.message, "warn"));
+      } else {
+        Store.data.extraDamages.push(damage);
+      }
       saveOverride(e);
       toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
     }
@@ -1458,6 +1530,8 @@ document.addEventListener("keydown", (e) => {
    VIEW: 3-Point Match
    ============================================================= */
 VIEWS.matching = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  const ruleEditable = can("rules") && state.dataset !== "production";
   const list = scopedExceptions().filter((e) => e.type !== "missing_stm");
   if (!list.length) {
     root.innerHTML = `<div class="panel"><p class="empty">ไม่มีรายการให้ตรวจในตัวกรองนี้</p></div>`;
@@ -1546,13 +1620,13 @@ VIEWS.matching = (root) => {
 
     <section class="grid-2">
       <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Tolerance</p><h2>ปรับเกณฑ์จับคู่</h2></div><span class="health ${can("rules") ? "ok" : "attention"}">${can("rules") ? "แก้ไขได้" : "อ่านอย่างเดียว"}</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">Tolerance</p><h2>เกณฑ์จับคู่ที่ใช้งานอยู่</h2></div><span class="health ${ruleEditable ? "ok" : "attention"}">${ruleEditable ? "แก้ไขได้" : "ค่าที่ deploy · อ่านอย่างเดียว"}</span></div>
         <div class="setting-list">
-          <label><span>Time tolerance ฝาก</span><input type="number" id="tolD" value="${DB.settings.toleranceDeposit}" ${can("rules") ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>Time tolerance ถอน</span><input type="number" id="tolW" value="${DB.settings.toleranceWithdraw}" ${can("rules") ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="tolA" value="${DB.settings.diffAlert}" ${can("rules") ? "" : "disabled"} /><b>บาท</b></label>
+          <label><span>Time tolerance ฝาก</span><input type="number" id="tolD" value="${DB.settings.toleranceDeposit}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
+          <label><span>Time tolerance ถอน</span><input type="number" id="tolW" value="${DB.settings.toleranceWithdraw}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
+          <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="tolA" value="${DB.settings.diffAlert}" ${ruleEditable ? "" : "disabled"} /><b>บาท</b></label>
         </div>
-        <button class="primary-button" id="tolSave" ${can("rules") ? "" : "disabled"}>บันทึกและคำนวณผลใหม่</button>
+        <button class="primary-button" id="tolSave" ${ruleEditable ? "" : "disabled"}>บันทึกและคำนวณผลใหม่</button>
       </div>
       <div class="panel">
         <div class="panel-heading"><div><p class="eyebrow">ลำดับการจับคู่</p><h2>ระบบทำอะไรบ้าง</h2></div></div>
@@ -1573,7 +1647,7 @@ VIEWS.matching = (root) => {
   $("#mNext").addEventListener("click", () => ((state.matchIndex = Math.min(list.length - 1, state.matchIndex + 1)), render()));
   $("#mOpen").addEventListener("click", () => openException(e.id));
   $("#tolSave").addEventListener("click", () => {
-    if (!can("rules")) return deny("แก้ tolerance");
+      if (!ruleEditable) return deny("แก้ tolerance");
     DB.settings.toleranceDeposit = +$("#tolD").value || 0;
     DB.settings.toleranceWithdraw = +$("#tolW").value || 0;
     DB.settings.diffAlert = +$("#tolA").value || 0;
@@ -1591,10 +1665,11 @@ VIEWS.matching = (root) => {
    VIEW: Approvals
    ============================================================= */
 VIEWS.approvals = (root) => {
+  if (!ensureLiveOverview(root)) return;
   const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status));
   root.innerHTML = `
     <section class="status-strip four">
-      <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้หัวหน้ากะแล้ว</small></article>
+      <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
       <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status === "answered").length)}</strong><small>Audit Lead ต้องตรวจทาน</small></article>
       <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
       <article class="ok"><span>ปิดเคสแล้ววันนี้</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
@@ -1641,6 +1716,7 @@ VIEWS.approvals = (root) => {
       if (!e.hasEvidence && DB.settings.rules.requireEvidence) return toast("กฎบังคับแนบหลักฐานก่อนปิดเคส — ยังอนุมัติไม่ได้", "warn");
       e.status = "closed";
       logAction("approve", "exception", e.id, "อนุมัติจากหน้า approval queue");
+      saveOverride(e);
       toast("อนุมัติ " + e.id + " แล้ว");
       render();
     }),
@@ -1651,6 +1727,7 @@ VIEWS.approvals = (root) => {
       const e = DB.exceptions.find((x) => x.id === b.dataset.reject);
       e.status = "clarifying";
       logAction("reject", "exception", e.id, "ส่งกลับให้ชี้แจงเพิ่ม");
+      saveOverride(e);
       toast("ส่งกลับให้ชี้แจงเพิ่มแล้ว");
       render();
     }),
@@ -1668,7 +1745,35 @@ function cycleQuoteLabel() {
   return "";
 }
 
+function renderLiveDamage(root) {
+  if (!ensureLiveOverview(root)) return;
+  const rows = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
+  const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const byCompany = DB.companies.map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
+  const open = rows.filter((row) => !row.financeStatus || !/ปิด|เสร็จ|completed|closed/i.test(row.financeStatus)).length;
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
+      <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
+      <article class="${open ? "warn" : "ok"}"><span>ยังไม่ปิดทางการเงิน</span><strong>${num(open)}</strong><small>ตรวจจากสถานะจริง</small></article>
+      <article><span>บริษัทที่มีรายการ</span><strong>${num(new Set(rows.map((row) => row.company)).size)}</strong><small>จาก 9 บริษัท</small></article>
+    </section>
+    <section class="grid-2">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany"></div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">สาเหตุ</p><h2>รายการที่พบ</h2></div></div><div class="exception-summary">${Object.entries(rows.reduce((acc, row) => ((acc[row.cause] = (acc[row.cause] || 0) + 1), acc), {})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([cause,count])=>`<div><span>${h(cause)}</span><b>${num(count)}</b></div>`).join("") || `<p class="empty">ยังไม่มีรายการความเสียหายในช่วงนี้</p>`}</div></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนความเสียหายจริง</h2></div><span class="health ok">ข้อมูลจริง</span></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
+      <tbody>${rows.map((d)=>`<tr><td>${h(d.date)}</td><td class="mono">${h(d.id)}</td><td><b>${h(d.company)}</b></td><td>${h(d.employee)}</td><td class="right tnum">${money(d.amount)}</td><td>${h(d.cause)}</td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีข้อมูลความเสียหายจริงในช่วงนี้</td></tr>`}</tbody></table></div>
+    </section>`;
+  Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
+}
+
 VIEWS.damage = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveDamage(root);
+    return;
+  }
   const sum = (arr) => arr.reduce((a, c) => a + dmgTHB(c), 0);
   const byCycle = DB.damageCycles.map((c) => ({ ...c, records: DB.damages.filter((d) => d.cycle === c.code && inRange(d.date)) }));
   const cycle = DB.damageCycles.find((c) => c.code === state.damageCycle) || DB.damageCycles[0];
@@ -1793,7 +1898,83 @@ VIEWS.damage = (root) => {
 /* =============================================================
    VIEW: PM Monitor
    ============================================================= */
+function pmProviderOf(value) {
+  const text = String(value || "").toUpperCase();
+  if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
+  if (/AZPAY/.test(text)) return "AZPAY";
+  if (/CYBERPLUS|CYNERPLUS|\bCBY\b/.test(text)) return "CYBERPLUS";
+  if (/MYPAY/.test(text)) return "MYPAY";
+  if (/12PAY/.test(text)) return "12PAY";
+  return null;
+}
+
+function renderLivePm(root) {
+  if (!ensureLiveOverview(root)) return;
+  if (!liveIntakeState.batches && !liveIntakeState.loading) loadLiveIntake();
+  if (liveIntakeState.loading && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังอ่านไฟล์ PM จริง</h2><p class="hint">จัดกลุ่ม Provider และบริษัท...</p></div></section>`;
+    return;
+  }
+  if (liveIntakeState.error && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดไฟล์ PM ไม่สำเร็จ</strong><span>${h(liveIntakeState.error)}</span><button class="ghost-button sm" id="pmRetry">ลองใหม่</button></div></section>`;
+    $("#pmRetry")?.addEventListener("click", () => loadLiveIntake(true));
+    return;
+  }
+
+  const pmFiles = (liveIntakeState.batches || []).flatMap((batch) =>
+    (batch.source_files || []).map((file) => ({ ...file, company: intakeCompanyOf(file, batch), provider: pmProviderOf(`${file.file_name} ${file.kind}`), receivedAt: file.received_at || batch.received_at })),
+  ).filter((file) => file.provider || file.kind === "pm_statement");
+  const pmExceptions = scopedExceptions().map((e) => ({ ...e, provider: pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) })).filter((e) => e.provider);
+  const providerNames = [...new Set(pmFiles.map((f) => f.provider).concat(pmExceptions.map((e) => e.provider)).filter(Boolean))].sort();
+  const providers = providerNames.map((provider) => {
+    const files = pmFiles.filter((f) => f.provider === provider);
+    const exceptions = pmExceptions.filter((e) => e.provider === provider);
+    return { provider, files, exceptions, parsed: files.filter((f) => f.parsed).length, errors: files.filter((f) => f.parse_error).length, latest: files.map((f) => String(f.receivedAt || "")).sort().pop() || "" };
+  });
+  const companyRows = DB.companies.map((company) => {
+    const files = pmFiles.filter((f) => f.company === company.code);
+    const exceptions = pmExceptions.filter((e) => e.company === company.code);
+    return { company: company.code, files, exceptions, providers: [...new Set(files.map((f) => f.provider).filter(Boolean))] };
+  }).filter((row) => row.files.length || row.exceptions.length);
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article class="ok"><span>ไฟล์ PM จริง</span><strong>${num(pmFiles.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
+      <article><span>Provider ที่พบ</span><strong>${num(providers.length)}</strong><small>${h(providerNames.join(" / ") || "ยังไม่พบ")}</small></article>
+      <article class="${pmFiles.some((f) => !f.parsed) ? "warn" : "ok"}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(pmFiles.filter((f) => f.parsed).length)}</strong><small>รออ่าน ${num(pmFiles.filter((f) => !f.parsed && !f.parse_error).length)}</small></article>
+      <article class="${pmExceptions.length ? "bad" : "ok"}"><span>Exception ที่ระบุ Provider ได้</span><strong>${num(pmExceptions.length)}</strong><small>คำนวณจากข้อมูลจริง</small></article>
+    </section>
+
+    <section class="grid-3">
+      ${providers.map((p) => `<article class="panel pm-card">
+        <p class="eyebrow">ข้อมูลจริง PM</p><h2>${h(p.provider)}</h2>
+        <div class="pm-rate"><strong>${num(p.files.length)}</strong><span>ไฟล์ที่ได้รับ</span></div>
+        <p class="pm-note">อ่านแล้ว ${num(p.parsed)} · อ่านไม่ได้ ${num(p.errors)}${p.latest ? ` · ล่าสุด ${h(p.latest.replace("T", " ").slice(0, 16))}` : ""}</p>
+        <div class="pm-foot"><span>Exception</span><b>${num(p.exceptions.length)}</b></div>
+        <button class="ghost-button sm" data-provider="${h(p.provider)}">ดูรายการ</button>
+      </article>`).join("") || `<div class="panel empty-box">ยังไม่พบไฟล์ที่จำแนกเป็น PM ในช่วงนี้</div>`}
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">แยกตามบริษัท</p><h2>PM ของแต่ละบริษัท</h2></div><span class="health ok">ข้อมูลจริง Supabase</span></div>
+      <div class="table-wrap"><table><thead><tr><th>บริษัท</th><th>Provider</th><th class="right">ไฟล์</th><th class="right">อ่านแล้ว</th><th class="right">Exception</th><th>สถานะ</th></tr></thead>
+      <tbody>${companyRows.map((row) => {
+        const parsed = row.files.filter((f) => f.parsed).length;
+        const errors = row.files.filter((f) => f.parse_error).length;
+        const tone = errors ? "red" : parsed < row.files.length ? "amber" : "green";
+        return `<tr><td><b>${h(row.company)}</b></td><td>${h(row.providers.join(" / ") || "-")}</td><td class="right tnum">${num(row.files.length)}</td><td class="right tnum">${num(parsed)}</td><td class="right tnum">${num(row.exceptions.length)}</td><td><span class="badge ${tone}">${errors ? "มีไฟล์อ่านไม่ได้" : parsed < row.files.length ? "รออ่าน" : "พร้อมตรวจ"}</span></td></tr>`;
+      }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีข้อมูล PM ที่ระบุบริษัทได้</td></tr>`}</tbody></table></div>
+      <p class="hint">ระบบไม่แสดงอัตราจับคู่แยก Provider จนกว่าจะมีผลรวม matched/total แยก Provider ในฐานข้อมูล เพื่อป้องกันการนำตัวเลขประมาณการมาใช้เป็นข้อมูลจริง</p>
+    </section>`;
+
+  root.querySelectorAll("[data-provider]").forEach((button) => button.addEventListener("click", () => go("exceptions", { exFilter: { q: button.dataset.provider, type: "ALL", severity: "ALL", status: "ALL", sla: false } })));
+}
+
 VIEWS.pm = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLivePm(root);
+    return;
+  }
   const pmEx = DB.exceptions.filter((e) => e.direction === "PM");
   root.innerHTML = `
     <section class="grid-3">
@@ -1846,7 +2027,41 @@ VIEWS.pm = (root) => {
 /* =============================================================
    VIEW: KPI
    ============================================================= */
+function renderLiveKpi(root) {
+  if (!ensureLiveOverview(root)) return;
+  const ex = scopedExceptions();
+  const byCompany = DB.companies.map((company) => ({ label: company.code, value: ex.filter((e) => e.company === company.code).length })).filter((item) => item.value);
+  const byDirection = ["PM", "ฝาก", "ถอน"].map((direction) => ({ label: direction, value: ex.filter((e) => e.direction === direction).length }));
+  const employeeNames = [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))];
+  const employees = employeeNames.map((employee) => {
+    const rows = ex.filter((e) => (e.employee || "ไม่ระบุ") === employee);
+    return { employee, rows, critical: rows.filter((e) => e.severity === "critical").length, sla: rows.filter((e) => e.overSla).length, amount: sumRisk(rows) };
+  }).sort((a,b)=>b.rows.length-a.rows.length);
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>Exception จริง</span><strong>${num(ex.length)}</strong><small>${h(rangeLabel())}</small></article>
+      <article class="bad"><span>Critical</span><strong>${num(ex.filter((e)=>e.severity==="critical").length)}</strong><small>ต้องตรวจเร่งด่วน</small></article>
+      <article class="warn"><span>เกิน SLA</span><strong>${num(ex.filter((e)=>e.overSla).length)}</strong><small>คำนวณจาก created_at จริง</small></article>
+      <article><span>ยอดเสี่ยงรวม</span><strong>${money0(sumRisk(ex))}</strong><small>บาท</small></article>
+    </section>
+    <section class="grid-2">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">บริษัท</p><h2>Exception ตามบริษัท</h2></div></div><div class="chart" id="liveKpiCompany"></div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ประเภท</p><h2>PM / ฝาก / ถอน</h2></div></div><div class="chart" id="liveKpiDirection"></div></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">ผู้เกี่ยวข้องจากข้อมูลจริง</p><h2>สรุปตาม employee ใน Exception</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>ผู้เกี่ยวข้อง</th><th class="right">เคส</th><th class="right">Critical</th><th class="right">เกิน SLA</th><th class="right">ยอดเสี่ยง</th></tr></thead>
+      <tbody>${employees.slice(0,100).map((row)=>`<tr><td>${h(row.employee)}</td><td class="right tnum">${num(row.rows.length)}</td><td class="right tnum">${num(row.critical)}</td><td class="right tnum">${num(row.sla)}</td><td class="right tnum">${money(row.amount)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">ยังไม่มี Exception ในช่วงนี้</td></tr>`}</tbody></table></div>
+      <p class="hint">ตารางนี้ใช้ค่าที่อยู่ในฟิลด์ employee ของข้อมูลจริงเท่านั้น ไม่มีรายชื่อพนักงานตัวอย่าง</p>
+    </section>`;
+  Charts.draw("#liveKpiCompany", "hbars", { label: "Exception ตามบริษัท", items: byCompany, color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
+  Charts.draw("#liveKpiDirection", "bars", { label: "Exception ตามประเภท", items: byDirection, color: Charts.PALETTE.s3, metric: "จำนวนเคส", height: 230 });
+}
+
 VIEWS.kpi = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveKpi(root);
+    return;
+  }
   const ex = scopedExceptions();
   const byShift = DB.shifts.map((s) => ({
     label: `${s.name}\n${s.range}`,
@@ -1918,7 +2133,50 @@ VIEWS.kpi = (root) => {
 /* =============================================================
    VIEW: Reports
    ============================================================= */
+function renderLiveReports(root) {
+  if (!ensureLiveOverview(root)) return;
+  const inScope = (row) => row.business_date >= state.filters.from && row.business_date <= state.filters.to && (state.filters.company === "ALL" || row.company === state.filters.company);
+  const quality = (liveOverviewState.quality || []).filter(inScope);
+  const operations = (liveOverviewState.operations || []).filter(inScope);
+  const exceptions = scopedExceptions();
+  const damages = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
+  const matched = quality.reduce((sum,row)=>sum+Number(row.matched||0),0);
+  const stm = quality.reduce((sum,row)=>sum+Number(row.stm_count||0),0);
+  const totalDamage = damages.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const dateMap = new Map();
+  operations.forEach((row)=>{
+    const item=dateMap.get(row.business_date)||{date:row.business_date,mails:0,files:0,completed:0,review:0,waiting:0,error:0};
+    item.mails+=Number(row.mail_count||0); item.files+=Number(row.file_count||0);
+    if(row.status==="completed") item.completed++; else if(row.status==="waiting_files") item.waiting++; else if(row.status==="error") item.error++; else item.review++;
+    dateMap.set(row.business_date,item);
+  });
+  const daily=[...dateMap.values()].sort((a,b)=>b.date.localeCompare(a.date));
+  const monthMap=new Map();
+  damages.forEach((row)=>{const ym=String(row.date||"").slice(0,7);monthMap.set(ym,(monthMap.get(ym)||0)+Number(row.amount||0));});
+  const monthly=[...monthMap.entries()].sort().map(([label,value])=>({label,value}));
+  root.innerHTML=`
+    <section class="status-strip four">
+      <article><span>รายการ STM จริง</span><strong>${num(stm)}</strong><small>${quality.length} งานกระทบยอด</small></article>
+      <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>${stm?((matched/stm)*100).toFixed(2):"0.00"}%</small></article>
+      <article class="bad"><span>Exception</span><strong>${num(exceptions.length)}</strong><small>เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)}</small></article>
+      <article class="bad"><span>ความเสียหายที่บันทึกจริง</span><strong>${money0(totalDamage)}</strong><small>บาท · ${num(damages.length)} รายการ</small></article>
+    </section>
+    <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
+    ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
+      <tbody>${daily.map((row)=>`<tr><td><b>${h(row.date)}</b></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}</tbody></table></div>
+    </section>`;
+  if(monthly.length) Charts.draw("#liveReportDamage","bars",{label:"ความเสียหายรายเดือน",items:monthly,color:"#d03b3b",money:true,metric:"บาท",height:240});
+  $("#liveRepException")?.addEventListener("click",()=>exportSheets("Exception_ข้อมูลจริง",[{name:"Exception",title:`Exception ${rangeLabel()}`,headers:["วันที่","เวลา","บริษัท","ประเภท","ระดับ","สถานะ","ยอดเสี่ยง","สาเหตุ"],rows:exceptions.map((e)=>[e.date,e.time,e.company,e.typeName,e.severity,e.status,e.riskAmount,e.cause])}]));
+  $("#liveRepDamage")?.addEventListener("click",()=>exportSheets("ความเสียหาย_ข้อมูลจริง",[{name:"ความเสียหาย",title:`ความเสียหาย ${rangeLabel()}`,headers:["วันที่","รหัส","บริษัท","ผู้เกี่ยวข้อง","ยอด","สาเหตุ","หลักฐาน","สถานะการเงิน"],rows:damages.map((d)=>[d.date,d.id,d.company,d.employee,d.amount,d.cause,d.evidence?"มี":"รอ",d.financeStatus])}]));
+}
+
 VIEWS.reports = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveReports(root);
+    return;
+  }
   const all = DB.monthlyTrend;
   const inMonths = all.filter((m) => m.ym >= state.filters.from.slice(0, 7) && m.ym <= state.filters.to.slice(0, 7));
   const t = inMonths.length >= 2 ? inMonths : all;
@@ -2018,8 +2276,8 @@ VIEWS.reports = (root) => {
    VIEW: Talk to Data
    ============================================================= */
 const SUGGESTIONS = [
-  "ยอดผิดปกติกะดึกมีเท่าไหร่",
-  "สาเหตุหลักวันนี้คืออะไร",
+  "บริษัทไหนมีรายการผิดปกติมากที่สุด",
+  "สาเหตุหลักในช่วงนี้คืออะไร",
   "ไฟล์ไหนยังไม่ได้ส่ง",
   "ความเสียหายเดือนนี้เท่าไหร่",
   "เคสไหนเลย SLA บ้าง",
@@ -2028,24 +2286,30 @@ const SUGGESTIONS = [
 
 function answerQuestion(q) {
   const t = q.toLowerCase();
-  const ex = DB.exceptions;
+  const live = state.dataset === "production" && Sb.signedIn();
+  const ex = live ? scopedExceptions() : DB.exceptions;
   const has = (...w) => w.some((x) => t.includes(x));
 
-  if (has("กะดึก", "กะ ดึก", "night")) {
-    const n = ex.filter((e) => e.shift === "night");
+  if (has("บริษัท", "company")) {
+    const agg = Object.entries(ex.reduce((a,e)=>((a[e.company]=(a[e.company]||0)+1),a),{})).sort((a,b)=>b[1]-a[1]);
     return {
-      text: `กะดึก (00:00-08:00) ของวันที่ ${DB.BUSINESS_DATE} พบ exception ${n.length} รายการ คิดเป็น ${((n.length / ex.length) * 100).toFixed(1)}% ของทั้งวัน ยอดที่ต้องตรวจรวม ${money0(sumRisk(n))} บาท โดยเป็นระดับ Critical ${n.filter((e) => e.severity === "critical").length} รายการ`,
-      link: { label: "ดูรายการกะดึกทั้งหมด", route: "exceptions", filters: { shift: "night" } },
+      text: agg.length ? `ช่วง ${rangeLabel()} บริษัทที่มี Exception มากที่สุดคือ ${agg.slice(0,3).map(([company,count])=>`${company} ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception ที่ระบุบริษัท`,
+      link: { label: "ดู KPI บริษัท", route: "kpi" },
     };
   }
   if (has("สาเหตุ", "cause", "ทำไม")) {
     const agg = Object.entries(ex.reduce((a, e) => ((a[e.cause] = (a[e.cause] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
     return {
-      text: `สาเหตุอันดับต้นของวันที่ ${DB.BUSINESS_DATE} คือ "${agg[0][0]}" ${agg[0][1]} เคส รองลงมา "${agg[1][0]}" ${agg[1][1]} เคส และ "${agg[2][0]}" ${agg[2][1]} เคส`,
+      text: agg.length ? `สาเหตุอันดับต้นช่วง ${rangeLabel()} คือ ${agg.slice(0,3).map(([cause,count])=>`"${cause}" ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception`,
       link: { label: "ดูรายการทั้งหมด", route: "exceptions" },
     };
   }
   if (has("ไฟล์", "file", "stm", "bo ")) {
+    if (live) {
+      const ops=(liveOverviewState.operations||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
+      const bad=ops.filter((row)=>["waiting_files","needs_review","error"].includes(row.status));
+      return {text:bad.length?`ช่วง ${rangeLabel()} มี ${num(bad.length)} งานที่ต้องตาม: ${bad.slice(0,5).map((row)=>`${row.business_date} ${row.company} (${row.status})`).join(", ")}`:`ช่วง ${rangeLabel()} ไม่พบงานรอไฟล์หรือล้มเหลวใน Supabase`,link:{label:"เปิดหน้าตรวจไฟล์เข้า",route:"intake"}};
+    }
     const bad = DB.files.filter((f) => f.status !== "received");
     return {
       text: bad.length
@@ -2056,6 +2320,7 @@ function answerQuestion(q) {
   }
   if (has("เสียหาย", "damage", "เดือนนี้")) {
     const sum = DB.damages.reduce((a, c) => a + c.amount, 0);
+    if (live) return { text: `ช่วง ${rangeLabel()} มีความเสียหายที่บันทึกใน Supabase ${money0(sum)} บาท จาก ${num(DB.damages.length)} รายการ`, link: { label: "เปิดทะเบียนความเสียหาย", route: "damage" } };
     const last = DB.monthlyTrend[DB.monthlyTrend.length - 1];
     return {
       text: `รอบ 1 (1-15 ส.ค. 2026) มีความเสียหายที่บันทึกแล้ว ${money0(sum)} บาท จาก ${DB.damages.length} เคส สำหรับทั้งเดือนล่าสุดในระบบอยู่ที่ ${money0(last.damage)} บาท ${last.cases} เคส และป้องกันได้ ${money0(last.prevented)} บาท`,
@@ -2077,6 +2342,11 @@ function answerQuestion(q) {
     };
   }
   if (has("matched", "จับคู่", "กี่รายการ", "วันนี้")) {
+    if (live) {
+      const q=(liveOverviewState.quality||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
+      const tot=q.reduce((sum,row)=>sum+Number(row.stm_count||0),0),m=q.reduce((sum,row)=>sum+Number(row.matched||0),0);
+      return {text:`ช่วง ${rangeLabel()} มีรายการ STM ${num(tot)} จับคู่สำเร็จ ${num(m)} คิดเป็น ${tot?((m/tot)*100).toFixed(2):"0.00"}% และมี Exception ${num(ex.length)} รายการ`,link:{label:"เปิดแดชบอร์ด",route:"dashboard"}};
+    }
     const tot = DB.hourly.reduce((a, c) => a + c.total, 0);
     const m = DB.hourly.reduce((a, c) => a + c.matched, 0);
     return {
@@ -2085,12 +2355,13 @@ function answerQuestion(q) {
     };
   }
   return {
-    text: `ยังไม่มีข้อมูลตรงกับคำถามนี้ ลองถามเกี่ยวกับ: กะ, สาเหตุ, ไฟล์ที่ขาด, ความเสียหาย, SLA, บัญชีที่เกิด diff บ่อย หรืออัตราจับคู่ของวันที่ ${DB.BUSINESS_DATE}`,
+    text: `ยังไม่มีข้อมูลตรงกับคำถามนี้ ลองถามเกี่ยวกับบริษัท สาเหตุ ไฟล์ที่ขาด ความเสียหาย SLA บัญชีที่เกิด diff บ่อย หรืออัตราจับคู่ในช่วง ${rangeLabel()}`,
     link: null,
   };
 }
 
 VIEWS.talk = (root) => {
+  if (!ensureLiveOverview(root)) return;
   root.innerHTML = `
     <section class="grid-talk">
       <div class="panel">
@@ -2107,7 +2378,7 @@ VIEWS.talk = (root) => {
                       `<div class="message ${m.type}">${h(m.text)}${m.link ? `<button class="chat-link" data-route="${m.link.route}" data-payload='${h(JSON.stringify(m.link))}'>${h(m.link.label)} →</button>` : ""}</div>`,
                   )
                   .join("")
-              : `<div class="message system">ลองถามว่า "ยอดผิดปกติกะดึกมีเท่าไหร่" หรือ "ไฟล์ไหนยังไม่ได้ส่ง" — ทุกคำตอบจะอ้างอิงตัวเลขจริงจากข้อมูลที่ผ่านการตรวจสอบ พร้อมลิงก์กลับไปยังหลักฐาน</div>`
+              : `<div class="message system">ลองถามว่า "บริษัทไหนมีรายการผิดปกติมากที่สุด" หรือ "ไฟล์ไหนยังไม่ได้ส่ง" — ทุกคำตอบจะอ้างอิงข้อมูลจริงในช่วงที่เลือก</div>`
           }
         </div>
         <form class="ask-form" id="askForm">
@@ -2127,7 +2398,7 @@ VIEWS.talk = (root) => {
         </ul>
         <div class="panel-heading mt"><div><p class="eyebrow">ตัวอย่างที่ตอบได้</p><h2>ขอบเขตปัจจุบัน</h2></div></div>
         <ul class="tick-list">
-          <li>ยอด exception แยกตามกะ / บริษัท / บัญชี</li>
+          <li>ยอด Exception แยกตามบริษัท / ประเภท / บัญชี</li>
           <li>ไฟล์ที่ขาดหรือส่งผิดบริษัท</li>
           <li>ยอดความเสียหายและแนวโน้มรายเดือน</li>
           <li>เคสที่เลย SLA และเคสที่ค้างนานที่สุด</li>
@@ -2165,12 +2436,13 @@ VIEWS.talk = (root) => {
    VIEW: Bank rules
    ============================================================= */
 VIEWS.rules = (root) => {
-  const editable = can("rules");
+  if (!ensureLiveOverview(root)) return;
+  const editable = can("rules") && state.dataset !== "production";
   root.innerHTML = `
     <section class="panel">
       <div class="panel-heading">
         <div><p class="eyebrow">Rule Engine</p><h2>กฎรายธนาคาร</h2></div>
-        <span class="health ${editable ? "ok" : "attention"}">${editable ? "แก้ไขได้โดยไม่ต้องแก้โปรแกรม" : "อ่านอย่างเดียว"}</span>
+        <span class="health ${editable ? "ok" : "attention"}">${editable ? "แก้ไขได้" : "กฎที่ใช้งานจริง · อ่านอย่างเดียว"}</span>
       </div>
       <div class="rule-rows">
         ${DB.settings.bankRules
@@ -2313,6 +2585,7 @@ VIEWS.users = (root) => {
    VIEW: Audit log
    ============================================================= */
 VIEWS["audit-log"] = (root) => {
+  if (!ensureLiveOverview(root)) return;
   const logs = DB.auditLog.filter((l) => inRange(String(l.at).slice(0, 10)));
   root.innerHTML = `
     <section class="panel">
@@ -3346,14 +3619,36 @@ function runNotificationRules() {
 }
 
 function updateBell() {
-  const n = Store.unread();
+  const n = state.dataset === "production" && liveOverviewState.notifications ? liveOverviewState.notifications.filter((row) => !row.read_at).length : Store.unread();
   const b = $("#bellCount");
   if (!b) return;
   b.textContent = n > 99 ? "99+" : n;
   b.hidden = n === 0;
 }
 
+function renderLiveNotifications(root) {
+  if (!ensureLiveOverview(root)) return;
+  const list = liveOverviewState.notifications || [];
+  const tone = { info: "blue", warning: "amber", error: "red", success: "green" };
+  root.innerHTML = `<section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Supabase recon_notifications</p><h2>การแจ้งเตือนจริง (${num(list.length)})</h2><small class="head-sub">ยังไม่อ่าน ${num(list.filter((row)=>!row.read_at).length)}</small></div><div class="inline-actions"><button class="ghost-button sm" id="liveNotifRefresh">รีเฟรช</button><button class="ghost-button sm" id="liveNotifRead">อ่านทั้งหมด</button></div></div>
+    <div class="notif-list">${list.map((row)=>`<div class="notif ${row.read_at?"":"unread"}"><span class="badge ${tone[row.level]||"grey"}">${h(row.level)}</span><div><strong>${h(row.title)}</strong><span>${h(row.detail||"")}</span><small>${h(new Date(row.created_at).toLocaleString("th-TH"))}${row.company?` · ${h(row.company)}`:""}</small></div>${row.business_date?`<button class="ghost-button xs" data-notif-date="${h(row.business_date)}" data-notif-company="${h(row.company||"ALL")}">เปิดดู</button>`:""}</div>`).join("")||`<p class="empty">ยังไม่มีการแจ้งเตือนจากระบบ</p>`}</div>
+    <p class="hint">รายการนี้อ่านจากฐานข้อมูลจริง การแจ้ง Telegram ทำงานจาก n8n ไม่ได้จำลองในเบราว์เซอร์</p>
+  </section>`;
+  $("#liveNotifRefresh")?.addEventListener("click",()=>loadLiveOverview(true));
+  $("#liveNotifRead")?.addEventListener("click",async()=>{
+    const unread=list.filter((row)=>!row.read_at); if(!unread.length)return toast("อ่านครบแล้ว");
+    await Promise.all(unread.map((row)=>Sb.patch("recon_notifications",`id=eq.${row.id}`,{read_at:new Date().toISOString()})));
+    await loadLiveOverview(true); toast("ทำเครื่องหมายอ่านแล้ว");
+  });
+  root.querySelectorAll("[data-notif-date]").forEach((button)=>button.addEventListener("click",()=>{state.filters.date=button.dataset.notifDate;state.filters.from=button.dataset.notifDate;state.filters.to=button.dataset.notifDate;state.filters.company=button.dataset.notifCompany||"ALL";state.filters.preset="day";go("dashboard");}));
+}
+
 VIEWS.notifications = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveNotifications(root);
+    return;
+  }
   const list = Store.data.notifications;
   const rules = Store.data.notifyRules;
   const kindTone = { bad: "red", warn: "amber", info: "blue", ok: "green", fx: "violet" };
@@ -3841,6 +4136,28 @@ function issueClarificationDoc(e, narrative) {
 }
 
 VIEWS.clarify = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  if (state.dataset === "production" && Sb.signedIn()) {
+    const rows = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
+    const groups = [...new Set(rows.map((e) => e.company || "ไม่ระบุ"))].sort((a, b) => a.localeCompare(b, "th"));
+    root.innerHTML = `
+      <section class="status-strip four">
+        <article class="warn"><span>รอชี้แจงทั้งหมด</span><strong>${num(rows.length)}</strong><small>ข้อมูลจริงจาก Supabase</small></article>
+        <article><span>บริษัทที่เกี่ยวข้อง</span><strong>${num(groups.length)}</strong><small>ไม่แบ่งกะ</small></article>
+        <article class="ok"><span>ชี้แจงกลับมาแล้ว</span><strong>${num(rows.filter((e) => e.status === "answered").length)}</strong><small>รอตรวจทาน</small></article>
+        <article class="bad"><span>เกิน SLA</span><strong>${num(rows.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
+      </section>
+      <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">ยึดบริษัทจากรายการ Exception จริง ไม่จัดกลุ่มตามกะ</small></div></div>
+        <div class="company-overview-grid">${groups.map((company) => {
+          const own = rows.filter((e) => (e.company || "ไม่ระบุ") === company);
+          return `<article class="company-overview-card"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small>เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span class="warn">รอชี้แจง <b>${num(own.filter((e) => e.status === "clarifying").length)}</b></span><span class="ok">ตอบแล้ว <b>${num(own.filter((e) => e.status === "answered").length)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div></article>`;
+        }).join("") || `<p class="empty-box">ไม่มีงานชี้แจงในช่วงที่เลือก</p>`}</div>
+      </section>
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
+    root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
+    return;
+  }
   retagTracks();
   const all = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
   const daily = all.filter((e) => e.track === "daily");
@@ -4098,38 +4415,43 @@ const SHEET_BUILDERS = {
       return {
         name: "KPI",
         title: "KPI รายพนักงาน",
-        headers: ["พนักงาน", "กะ", "เคสทั้งหมด", "Critical", "High", "เกิน SLA", "ยอดที่ต้องตรวจ", "ระดับความเสี่ยง"],
-        widths: [18, 12, 12, 10, 10, 10, 16, 14],
-        rows: DB.employees.map((emp) => {
-          const r = ex.filter((e) => e.employee === emp.username);
+        headers: ["พนักงาน", "บริษัท", "เคสทั้งหมด", "Critical", "High", "เกิน SLA", "ยอดที่ต้องตรวจ", "ระดับความเสี่ยง"],
+        widths: [18, 18, 12, 10, 10, 10, 16, 14],
+        rows: [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))].map((employee) => {
+          const r = ex.filter((e) => (e.employee || "ไม่ระบุ") === employee);
           const crit = r.filter((e) => e.severity === "critical").length;
           const sla = r.filter((e) => e.overSla).length;
-          return [emp.username, (DB.shifts.find((sh) => sh.code === emp.shift) || {}).name || emp.shift, r.length, crit, r.filter((e) => e.severity === "high").length, sla, sumRisk(r), crit >= 4 || sla >= 5 ? "สูง" : crit >= 2 ? "กลาง" : "ต่ำ"];
+          return [employee, [...new Set(r.map((e) => e.company))].join(", "), r.length, crit, r.filter((e) => e.severity === "high").length, sla, sumRisk(r), crit >= 4 || sla >= 5 ? "สูง" : crit >= 2 ? "กลาง" : "ต่ำ"];
         }),
       };
     },
   },
   daily: {
-    label: "สรุปรายชั่วโมง",
+    label: "สรุปการกระทบยอดรายวัน",
     build: () => ({
-      name: "รายชั่วโมง",
-      title: "สรุปรายการต่อชั่วโมง",
-      headers: ["ชั่วโมง", "รายการทั้งหมด", "จับคู่สำเร็จ", "Exception", "อัตราจับคู่ (%)"],
-      widths: [10, 16, 14, 12, 15],
-      rows: DB.hourly.map((x) => [x.label, x.total, x.matched, x.exception, x.total ? +((x.matched / x.total) * 100).toFixed(2) : 0]),
+      name: "รายวัน",
+      title: "สรุปการกระทบยอดรายวันจาก Supabase",
+      headers: ["วันที่", "บริษัท", "ระบบ", "สถานะ", "ไฟล์", "อ่านสำเร็จ", "ข้อผิดพลาด", "ประเภทไฟล์ที่พบ"],
+      widths: [12, 16, 18, 16, 10, 12, 12, 40],
+      rows: (liveOverviewState.operations || []).filter((x) => inRange(x.business_date) && (state.filters.company === "ALL" || x.company === state.filters.company)).map((x) => [x.business_date, x.company, x.business_system || "", x.status || "", Number(x.file_count || 0), Number(x.parsed_count || 0), Number(x.error_count || 0), (x.present_kinds || []).join(", ")]),
     }),
   },
   monthly: {
     label: "แนวโน้มรายเดือน",
     build: () => {
-      const t = DB.monthlyTrend.filter((m) => m.ym >= state.filters.from.slice(0, 7) && m.ym <= state.filters.to.slice(0, 7));
-      const use = t.length ? t : DB.monthlyTrend;
+      const byMonth = DB.damages.filter((d) => inRange(d.date)).reduce((acc, d) => {
+        const ym = String(d.date || "").slice(0, 7) || "ไม่ระบุ";
+        acc[ym] = acc[ym] || { amount: 0, cases: 0 };
+        acc[ym].amount += dmgTHB(d);
+        acc[ym].cases++;
+        return acc;
+      }, {});
       return {
         name: "แนวโน้มรายเดือน",
         title: "แนวโน้มความเสียหายรายเดือน",
-        headers: ["เดือน", "รหัสเดือน", "ความเสียหาย", "มูลค่าที่ป้องกันได้", "จำนวนเคส"],
-        widths: [12, 12, 16, 20, 12],
-        rows: use.map((m) => [m.month, m.ym, m.damage, m.prevented, m.cases]),
+        headers: ["เดือน", "ความเสียหายจริง (บาท)", "จำนวนเคส"],
+        widths: [14, 22, 12],
+        rows: Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([ym, m]) => [ym, m.amount, m.cases]),
       };
     },
   },
@@ -4138,9 +4460,9 @@ const SHEET_BUILDERS = {
     build: () => ({
       name: "ไฟล์ที่รับ",
       title: "สถานะไฟล์ประจำวัน",
-      headers: ["บริษัท", "ประเภทไฟล์", "เวลาที่รับ", "จำนวนแถว", "ผู้ส่ง", "Checksum", "สถานะ"],
-      widths: [14, 24, 12, 12, 18, 14, 14],
-      rows: DB.files.map((f) => [f.companyName, f.fileType, f.receivedAt, f.rows, f.sender, f.checksum, { received: "รับแล้ว", missing: "ไม่ได้ส่ง", wrong_company: "ผิดบริษัท", late: "ส่งช้า" }[f.status]]),
+      headers: ["วันที่ธุรกิจ", "บริษัท", "ชื่อไฟล์", "ประเภท", "เวลาที่รับ", "สถานะอ่านไฟล์", "ข้อผิดพลาด", "Storage path"],
+      widths: [14, 16, 34, 18, 22, 16, 35, 45],
+      rows: (liveIntakeState.batches || []).flatMap((b) => (b.source_files || []).map((f) => [b.business_date, intakeCompanyOf(f, b) || b.company || "", f.file_name || "", f.kind || "", f.received_at || b.received_at || "", f.parsed ? "อ่านสำเร็จ" : "รออ่าน", f.parse_error || "", f.storage_path || ""])),
     }),
   },
   audit: {
@@ -4195,8 +4517,21 @@ function exportSheets(baseName, sheets) {
   return false;
 }
 
-function openExportDialog() {
+async function openExportDialog() {
   if (!can("export")) return deny("export ข้อมูล");
+  if (state.dataset === "production" && Sb.signedIn()) {
+    try {
+      if (!liveOverviewState.quality) {
+        toast("กำลังโหลดข้อมูลจริงก่อนเปิด Export...");
+        await loadLiveOverview(true);
+      }
+      if (!liveIntakeState.batches) {
+        liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company });
+      }
+    } catch (error) {
+      return toast("เตรียมข้อมูล Export ไม่สำเร็จ: " + error.message, "warn");
+    }
+  }
   const f = state.filters;
   openModal(
     "Export รายงาน",
@@ -4377,6 +4712,7 @@ function prepareProductionData() {
   DB.exceptions = [];
   DB.damages = [];
   DB.files = [];
+  DB.auditLog = [];
   DB.currentRun = null;
   if (Array.isArray(DB.hourly)) DB.hourly.forEach((x) => { x.total = 0; x.matched = 0; x.exception = 0; });
   const accounts = loadRegistryAccounts();
@@ -4413,6 +4749,13 @@ function enterProductionApp() {
   cloudState.batches = null;
   cloudState.daily = null;
   cloudState.operations = null;
+  liveOverviewState.daily = null;
+  liveOverviewState.operations = null;
+  liveOverviewState.quality = null;
+  liveOverviewState.damages = null;
+  liveOverviewState.logs = null;
+  liveOverviewState.notifications = null;
+  liveOverviewState.key = "";
   updateBell();
   render();
   loadLiveOverview().catch(() => {});
