@@ -282,18 +282,23 @@ update public.mail_batches set source_email=source_email where source_email is n
 
 create or replace function public.normalize_source_file_company() returns trigger
 language plpgsql set search_path=public as $$
+declare v_subject text;
 begin
+  select subject into v_subject from public.mail_batches where id=new.batch_id;
+  if coalesce(v_subject,'') ~* 'รายงานหน้า[[:space:]]*BO'
+     and new.file_name ~* '\.(xlsx|xlsm|xls|csv)$' then new.kind:='bo_main';
+  end if;
   if new.file_name ~* '\.pdf$' and new.file_name ~* 'ฝาก[[:space:]]*[-–—/]?[[:space:]]*ถอน|ฝากถอน|statement|(^|[^A-Z0-9])STM([^A-Z0-9]|$)' then new.kind:='stm_pdf';
   end if;
   if new.file_name ~* '(^|[^A-Z0-9])AT4([^A-Z0-9]|$)' then new.company:='AT4';
   elsif new.file_name ~* '(^|[^A-Z0-9])FR8([^A-Z0-9]|$)' then new.company:='FR8';
   elsif new.file_name ~* '(^|[^A-Z0-9])SK8([^A-Z0-9]|$)' then new.company:='SK8';
-  elsif new.file_name ~* '(^|[^A-Z0-9])MR9([^A-Z0-9]|$)' then new.company:='MR9';
-  elsif new.file_name ~* '(^|[^A-Z0-9])MC8([^A-Z0-9]|$)' then new.company:='MC8';
+  elsif new.file_name ~* '(^|[^A-Z0-9])MR9?([^A-Z0-9]|$)' then new.company:='MR9';
+  elsif new.file_name ~* '(^|[^A-Z0-9])MC8?([^A-Z0-9]|$)' then new.company:='MC8';
   elsif new.file_name ~* '(^|[^A-Z0-9])UR9([^A-Z0-9]|$)' then new.company:='UR9';
   elsif new.file_name ~* '(^|[^A-Z0-9])PS8([^A-Z0-9]|$)' then new.company:='PS8';
   elsif new.file_name ~* 'UFABET7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)' then new.company:='UFABET7M';
-  elsif new.file_name ~* '(^|[^A-Z0-9])3XB([^A-Z0-9]|$)' then new.company:='3XB';
+  elsif new.file_name ~* '(^|[^A-Z0-9])3X(BET|B)?([^A-Z0-9]|$)' then new.company:='3XB';
   elsif new.file_name ~* '(^|[^A-Z0-9])XXX([^A-Z0-9]|$)' then new.company:='XXX';
   elsif new.file_name ~* 'SYS123|ระบบ[[:space:]]*123' then new.company:='SYS123';
   end if;
@@ -301,7 +306,7 @@ begin
   return new;
 end $$;
 drop trigger if exists source_files_normalize_company on public.source_files;
-create trigger source_files_normalize_company before insert or update of file_name,kind on public.source_files
+create trigger source_files_normalize_company before insert or update of file_name,kind,batch_id on public.source_files
 for each row execute function public.normalize_source_file_company();
 
 update public.source_files set file_name=file_name;
