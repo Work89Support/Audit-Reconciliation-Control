@@ -3,6 +3,7 @@
 ชุดนี้แยกงานเป็น 2 workflow เพื่อให้เมลใหม่ไม่ต้องรอ backfill:
 
 - `audit-mail-ingest.json` รับเมลใหม่ เก็บไฟล์ใน Supabase Storage บันทึก `mail_batches`/`source_files` แล้วติด label `ingested`
+- `audit-clarification-matcher.json` อ่านไฟล์ชี้แจงทุก 15 นาที จับคู่กับ Exception ปัจจุบัน และปิดอัตโนมัติเฉพาะเคสที่ตรงชัดเจนพร้อมข้อความยืนยันว่าแก้ไขแล้ว
 - `audit-mail-backfill.json` ค้นเมลเก่าทีละช่วงวัน จำกัดรอบละ 20 เมล และส่งทีละเมลเข้า workflow แรก
 - `audit-daily-reconcile.json` ตรวจความครบถ้วนและจัดคิวกระทบยอดทุก 10 นาที รวมไฟล์มาช้าและงานที่เลยเวลาปิดรับ
 - `audit-headless-worker.json` อ่าน PDF/Excel/CSV จาก Storage, กระทบยอด, บันทึก Exception และปิดคิวบน n8n Cloud โดยไม่ต้องเปิดหน้าเว็บ
@@ -16,6 +17,15 @@
 4. ใน Gmail สร้าง label `ingested`, เปิดรายละเอียด label ใน n8n แล้วแทน `REPLACE_INGESTED_LABEL_ID` ใน node **Gmail: ติด label ingested** ด้วย ID จริง.
 5. Import `audit-mail-ingest.json`, เลือก credential Gmail/Supabase ให้ทุก node แล้ว Save. ยังไม่ต้อง Active.
 6. ทดสอบเมล 1 ฉบับด้วย Execute Node/Workflow. ตรวจว่ามี 1 แถวใน `mail_batches`, จำนวนแถวใน `source_files` ตรงกับไฟล์หลังแตก zip, object เปิดได้ และ Gmail มี label `ingested`.
+
+## เปิดระบบจับคู่ไฟล์ชี้แจง
+
+1. รัน `supabase/20260823_clarification_auto_match.sql` ใน Supabase SQL Editor ก่อน
+2. Import `audit-clarification-matcher.json` และเลือก Supabase Credential เดิม
+3. กดทดสอบด้วยมือหนึ่งรอบ แล้วตรวจ `clarification_matches` และ `audit_log`
+4. เมื่อผลถูกต้องจึง Publish/Activate ให้ทำงานทุก 15 นาที
+
+กติกาความปลอดภัย: ต้องเป็นบริษัทและวันที่เดียวกัน, ตรงเลขเคสหรือข้อมูลอ้างอิงอย่างน้อย 2 จุด, และไม่มีผลเสมอกันหลายเคส ระบบจึงจะผูกไฟล์ได้ ส่วนการปิดอัตโนมัติต้องพบข้อความยืนยันว่าแก้ไขเสร็จแล้วด้วย หากไม่ครบจะเปลี่ยนเป็นรออนุมัติหรือคงไว้ให้ตรวจ ไม่ปิดเคสเอง
 7. เมื่อผ่านแล้วจึง Active workflow live.
 
 ## งานกระทบยอดรายวัน

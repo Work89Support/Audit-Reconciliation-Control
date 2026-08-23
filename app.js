@@ -104,7 +104,7 @@ const state = {
   role: "lead",
   filters: { date: PROD_TODAY, from: PROD_TODAY.slice(0, 8) + "01", to: PROD_TODAY, preset: "month", company: "ALL", direction: "ALL" },
   filtersOpen: false,
-  exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false },
+  exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
   sort: { key: "time", dir: "asc" },
   page: 1,
   perPage: 12,
@@ -201,7 +201,8 @@ function filteredExceptions(source = DB.exceptions) {
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
     if (x.type !== "ALL" && e.type !== x.type) return false;
     if (x.severity !== "ALL" && e.severity !== x.severity) return false;
-    if (x.status !== "ALL" && e.status !== x.status) return false;
+    if (x.status === "ACTION" && ["closed", "approved", "damage"].includes(e.status)) return false;
+    if (!['ALL', 'ACTION'].includes(x.status) && e.status !== x.status) return false;
     if (x.sla && !e.overSla) return false;
     if (x.q) {
       const q = x.q.toLowerCase();
@@ -503,7 +504,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, damages: null, logs: null, notifications: null, loading: false, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 
 async function loadLiveExceptionSearch(term) {
@@ -589,7 +590,13 @@ function mapLiveException(e) {
     overSla: ageHours > slaHours && !["closed", "approved"].includes(status),
     notes: [],
     evidence: [],
-    hasEvidence: false,
+    hasEvidence: !!e.clarification_file_id,
+    clarificationFileId: e.clarification_file_id || null,
+    autoClosed: !!e.auto_closed,
+    resolutionNote: e.resolution_note || "",
+    resolvedAt: e.resolved_at || null,
+    resolvedBy: e.resolved_by || null,
+    matchConfidence: Number(e.match_confidence || 0),
   };
 }
 
@@ -634,7 +641,7 @@ async function loadLiveOverview(force = false) {
   liveOverviewState.key = key;
   if (state.route === "dashboard") render();
   try {
-    const [daily, operations, quality, exceptions, damages, logs, notifications] = await Promise.all([
+    const [daily, operations, quality, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
       Sb.dailyStatus(1000),
       Sb.operations(1000),
       Sb.quality(1000),
@@ -642,6 +649,10 @@ async function loadLiveOverview(force = false) {
       Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.auditLogs({ from: state.filters.from, to: state.filters.to }),
       Sb.notifications(1000),
+      // Keep the existing production dashboard usable while the migration is
+      // being rolled out. The clarification summary appears as soon as its
+      // table exists, without making all other live data depend on it.
+      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company }).catch(() => []),
     ]);
     liveOverviewState.daily = daily || [];
     liveOverviewState.operations = operations || [];
@@ -649,6 +660,7 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.damages = damages || [];
     liveOverviewState.logs = logs || [];
     liveOverviewState.notifications = notifications || [];
+    liveOverviewState.clarifications = clarifications || [];
     liveOverviewState.updatedAt = new Date();
     hydrateLiveData(quality, operations, exceptions, damages, logs);
     updateBell();
@@ -1451,6 +1463,10 @@ VIEWS.exceptions = (root) => {
   state.page = Math.min(state.page, pages);
   const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
   const x = state.exFilter;
+  const clarificationRows = liveOverviewState.clarifications || [];
+  const autoClosedCount = clarificationRows.filter((row) => row.outcome === "auto_closed").length;
+  const answeredCount = clarificationRows.filter((row) => row.outcome === "answered").length;
+  const reviewCount = clarificationRows.filter((row) => ["ambiguous", "no_match", "error"].includes(row.outcome)).length;
   const fileMatches = query
     ? (liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, business_date: batch.business_date, batchCompany: batch.company, subject: batch.subject }))).filter((file) => `${file.file_name} ${file.kind} ${file.company} ${file.batchCompany} ${file.subject}`.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
     : [];
@@ -1459,6 +1475,11 @@ VIEWS.exceptions = (root) => {
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
 
   root.innerHTML = `
+    <section class="status-strip three clarification-strip">
+      <article class="ok"><span>ปิดจากไฟล์ชี้แจงอัตโนมัติ</span><strong>${num(autoClosedCount)}</strong><small>ตรงชัดเจนและยืนยันว่าแก้แล้ว</small></article>
+      <article class="warn"><span>จับคู่แล้ว รอ Audit อนุมัติ</span><strong>${num(answeredCount)}</strong><small>มีหลักฐาน แต่ยังไม่ควรปิดเอง</small></article>
+      <article class="bad"><span>ต้องให้คุณดู</span><strong>${num(reviewCount)}</strong><small>จับคู่ไม่ได้ กำกวม หรืออ่านไฟล์ไม่สำเร็จ</small></article>
+    </section>
     <section class="panel">
       <div class="toolbar">
         <input type="search" id="exSearch" placeholder="ค้นหาเคส บัญชี บริษัท สมาชิก หรือ Provider เช่น 12PAY..." value="${h(x.q)}" />
@@ -1471,6 +1492,7 @@ VIEWS.exceptions = (root) => {
           ${DB.severities.map((s) => `<option value="${s.code}" ${x.severity === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
         </select>
         <select id="exStatus">
+          <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>เฉพาะเรื่องที่ยังต้องดู</option>
           <option value="ALL">ทุกสถานะ</option>
           ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
         </select>
@@ -1547,7 +1569,7 @@ VIEWS.exceptions = (root) => {
   $("#exStatus").addEventListener("change", (e) => ((state.exFilter.status = e.target.value), rerender()));
   $("#exSla").addEventListener("change", (e) => ((state.exFilter.sla = e.target.checked), rerender()));
   $("#exReset").addEventListener("click", () => {
-    state.exFilter = { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false };
+    state.exFilter = { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false };
     rerender();
   });
   $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
@@ -1611,6 +1633,7 @@ function openException(id) {
       </div>
       <p class="hint" style="margin-top:8px">${h(dueOf(e).detail)}</p>
       ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
+      ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}</span></div>` : ""}
 
       <h3 class="drawer-h3">Evidence Timeline</h3>
       <ol class="timeline">

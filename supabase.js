@@ -247,6 +247,14 @@ const Sb = (() => {
   const notifications = (limit = 1000) =>
     json(`/rest/v1/recon_notifications?${q({ select: "*", limit, order: "created_at.desc" })}`);
 
+  async function clarificationMatches({ from, to, company, limit = 5000 } = {}) {
+    const filters = ["select=*", "order=processed_at.desc", `limit=${limit}`];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    return json(`/rest/v1/clarification_matches?${filters.join("&")}`);
+  }
+
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
     const rows = [];
     const pageSize = 1000;
@@ -444,6 +452,7 @@ const Sb = (() => {
     damages,
     auditLogs,
     notifications,
+    clarificationMatches,
     currentExceptions,
     searchExceptions,
     queueDueJobs,

@@ -1,0 +1,186 @@
+{
+  "name": "Audit - Match Clarification Files",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } },
+      "id": "schedule",
+      "name": "ทุก 15 นาที",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-900, 180]
+    },
+    {
+      "parameters": {},
+      "id": "manual",
+      "name": "ทดสอบด้วยมือ",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-900, 20]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/pending_clarification_files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_limit: 20 }) }}",
+        "options": { "response": { "response": {} } }
+      },
+      "id": "pending",
+      "name": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-660, 100],
+      "credentials": { "supabaseApi": { "id": "dGndiinLb7AKnjIu", "name": "Supabase account" } }
+    },
+    {
+      "parameters": { "batchSize": 1, "options": {} },
+      "id": "loop",
+      "name": "วนทีละไฟล์",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-420, 100]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.storage_path }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": { "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } }, "timeout": 120000 }
+      },
+      "id": "download",
+      "name": "ดาวน์โหลดไฟล์ชี้แจง",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-180, 180],
+      "credentials": { "supabaseApi": { "id": "dGndiinLb7AKnjIu", "name": "Supabase account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta=$('วนทีละไฟล์').item.json; const ext=String(meta.file_name||'').split('.').pop().toLowerCase(); return [{json:{...meta,ext},binary:$binary,pairedItem:{item:0}}];"
+      },
+      "id": "prepare",
+      "name": "เตรียมชนิดไฟล์",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 180]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.ext }}", "rightValue": "pdf", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "PDF" },
+            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.ext }}", "rightValue": "xlsx", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "Excel" },
+            { "conditions": { "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }, "conditions": [{ "leftValue": "={{ ['csv','txt'].includes($json.ext) }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }], "combinator": "and" }, "renameOutput": true, "outputKey": "Text" }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "switch",
+      "name": "แยกวิธีอ่านข้อความ",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [260, 180]
+    },
+    {
+      "parameters": { "operation": "pdf", "binaryPropertyName": "data", "options": {} },
+      "id": "pdf",
+      "name": "อ่านข้อความ PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [500, 20]
+    },
+    {
+      "parameters": { "operation": "xlsx", "binaryPropertyName": "data", "options": { "headerRow": false, "rawData": false, "readAsString": true } },
+      "id": "xlsx",
+      "name": "อ่านข้อความ Excel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [500, 120]
+    },
+    {
+      "parameters": { "operation": "text", "binaryPropertyName": "data", "destinationKey": "data", "options": { "encoding": "utf8" } },
+      "id": "text",
+      "name": "อ่านข้อความ CSV หรือ Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [500, 220]
+    },
+    {
+      "parameters": { "jsCode": "return $input.all();" },
+      "id": "unsupported",
+      "name": "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta=$('เตรียมชนิดไฟล์').item.json; const parts=[]; for(const item of $input.all()){const j=item.json||{}; if(typeof j.text==='string') parts.push(j.text); else if(typeof j.data==='string') parts.push(j.data); else parts.push(Object.values(j).map(v=>typeof v==='object'?JSON.stringify(v):String(v??'')).join(' | '));} return [{json:{file_id:meta.id,extracted_text:parts.join('\\n').slice(0,100000),file_name:meta.file_name},pairedItem:{item:0}}];"
+      },
+      "id": "normalize",
+      "name": "รวมข้อความจากหลักฐาน",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/apply_clarification_match",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_file_id: $json.file_id, p_extracted_text: $json.extracted_text, p_actor: 'n8n-clarification-matcher' }) }}",
+        "options": { "response": { "response": {} } }
+      },
+      "id": "apply",
+      "name": "Supabase: จับคู่และอัปเดตเคส",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 180],
+      "credentials": { "supabaseApi": { "id": "dGndiinLb7AKnjIu", "name": "Supabase account" } }
+    },
+    {
+      "parameters": { "jsCode": "return [{json:{finished_at:new Date().toISOString(),message:'ตรวจไฟล์ชี้แจงรอบนี้เสร็จแล้ว'}}];" },
+      "id": "done",
+      "name": "จบรอบตรวจไฟล์ชี้แจง",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-180, -40]
+    }
+  ],
+  "connections": {
+    "ทุก 15 นาที": { "main": [[{ "node": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ", "type": "main", "index": 0 }]] },
+    "ทดสอบด้วยมือ": { "main": [[{ "node": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ", "type": "main", "index": 0 }]] },
+    "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ": { "main": [[{ "node": "วนทีละไฟล์", "type": "main", "index": 0 }]] },
+    "วนทีละไฟล์": { "main": [[{ "node": "จบรอบตรวจไฟล์ชี้แจง", "type": "main", "index": 0 }], [{ "node": "ดาวน์โหลดไฟล์ชี้แจง", "type": "main", "index": 0 }]] },
+    "ดาวน์โหลดไฟล์ชี้แจง": { "main": [[{ "node": "เตรียมชนิดไฟล์", "type": "main", "index": 0 }]] },
+    "เตรียมชนิดไฟล์": { "main": [[{ "node": "แยกวิธีอ่านข้อความ", "type": "main", "index": 0 }]] },
+    "แยกวิธีอ่านข้อความ": { "main": [
+      [{ "node": "อ่านข้อความ PDF", "type": "main", "index": 0 }],
+      [{ "node": "อ่านข้อความ Excel", "type": "main", "index": 0 }],
+      [{ "node": "อ่านข้อความ CSV หรือ Text", "type": "main", "index": 0 }],
+      [{ "node": "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้", "type": "main", "index": 0 }]
+    ] },
+    "อ่านข้อความ PDF": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
+    "อ่านข้อความ Excel": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
+    "อ่านข้อความ CSV หรือ Text": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
+    "ใช้ชื่อไฟล์สำหรับชนิดที่ยังอ่านไม่ได้": { "main": [[{ "node": "รวมข้อความจากหลักฐาน", "type": "main", "index": 0 }]] },
+    "รวมข้อความจากหลักฐาน": { "main": [[{ "node": "Supabase: จับคู่และอัปเดตเคส", "type": "main", "index": 0 }]] },
+    "Supabase: จับคู่และอัปเดตเคส": { "main": [[{ "node": "วนทีละไฟล์", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1", "timezone": "Asia/Bangkok", "saveManualExecutions": true, "callerPolicy": "workflowsFromSameOwner" },
+  "active": false,
+  "versionId": "66e5d1bb-b952-4878-a000-cb43c07bc1fb",
+  "meta": { "templateCredsSetupCompleted": true },
+  "tags": []
+}

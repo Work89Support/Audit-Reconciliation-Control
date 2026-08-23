@@ -6,6 +6,8 @@ const live = await load("audit-mail-ingest.json");
 const backfill = await load("audit-mail-backfill.json");
 const daily = await load("audit-daily-reconcile.json");
 const worker = await load("audit-headless-worker.json");
+const clarification = await load("audit-clarification-matcher.json");
+const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
 
 function validateGraph(workflow) {
   const names = new Set(workflow.nodes.map((node) => node.name));
@@ -22,6 +24,7 @@ validateGraph(live);
 validateGraph(backfill);
 validateGraph(daily);
 validateGraph(worker);
+validateGraph(clarification);
 
 const liveText = JSON.stringify(live);
 assert.ok(live.nodes.some((node) => node.type === "n8n-nodes-base.executeWorkflowTrigger"));
@@ -69,5 +72,19 @@ assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be trea
 assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว");
 assert.match(workerText, /n8n-cloud-worker/);
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");
+
+const clarificationText = JSON.stringify(clarification);
+assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"));
+assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.splitInBatches"));
+assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
+assert.match(clarificationText, /pending_clarification_files/);
+assert.match(clarificationText, /apply_clarification_match/);
+assert.match(clarificationText, /p_actor/);
+assert.doesNotMatch(clarificationText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "clarification workflow must not embed a JWT/service key");
+assert.match(clarificationSql, /e\.business_date = v_date/, "clarification matching must stay within the same business date");
+assert.match(clarificationSql, /upper\(coalesce\(e\.company/, "clarification matching must stay within the same company");
+assert.match(clarificationSql, /tie_count > 1/, "ambiguous matches must not auto-close");
+assert.match(clarificationSql, /v_has_resolution/, "auto-close must require an explicit resolution phrase");
+assert.match(clarificationSql, /clarification_auto_close/, "auto-close must write an audit log");
 
 console.log("n8n workflows: graph, idempotency, secrets and throttling checks passed");
