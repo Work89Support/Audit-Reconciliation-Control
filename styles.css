@@ -199,6 +199,23 @@ h3 { font-size: 15px; }
 
 .main { padding: 24px 26px 60px; min-width: 0; }
 
+.audit-flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.audit-flow a { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); text-decoration: none; box-shadow: var(--shadow); }
+.audit-flow a > i { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%; background: var(--surface-2); color: var(--blue-dark); font-size: 12px; font-style: normal; font-weight: 700; }
+.audit-flow a span { display: grid; min-width: 0; }
+.audit-flow a b { font-size: 12px; white-space: nowrap; }
+.audit-flow a small { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-flow a.active { border-color: var(--blue-dark); background: #eef6ff; }
+.audit-flow a.active > i { background: var(--blue-dark); color: #fff; }
+.audit-flow a.warn > i { background: #fff2d8; color: #9a5b00; }
+.audit-flow a.ok > i { background: #e5f7ed; color: #147943; }
+.audit-file-guide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; border: 1px solid #cfe2f8; border-radius: 10px; background: #f5f9ff; }
+.audit-file-guide > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.audit-file-guide i { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--blue-dark); color: #fff; font-size: 11px; font-style: normal; font-weight: 700; }
+.audit-file-guide span { display: grid; min-width: 0; }
+.audit-file-guide b { font-size: 12px; }
+.audit-file-guide small { color: var(--muted); font-size: 10px; }
+
 /* ---------------- topbar ---------------- */
 .topbar {
   display: flex;
@@ -237,6 +254,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   border: 0; background: none; color: var(--blue-dark);
   padding: 0; min-height: auto; text-decoration: underline; font-size: 14px;
 }
+.file-name-link { display: grid; gap: 2px; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--blue-dark); text-align: left; }
+.file-name-link span { font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.file-name-link small { color: var(--muted); font-size: 10px; text-decoration: none; }
+.file-name-link:hover span { color: var(--blue); }
+.file-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.file-actions a { display: inline-grid; place-items: center; text-decoration: none; }
+.file-state { display: inline-flex; align-items: center; gap: 7px; min-width: 130px; }
+.file-state > i { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-style: normal; font-weight: 700; }
+.file-state > span { display: grid; line-height: 1.2; }
+.file-state b { font-size: 12px; }
+.file-state small { color: var(--muted); font-size: 10px; }
+.file-state.ok > i { background: #e5f7ed; color: #147943; }
+.file-state.wait > i { background: #eef1f5; color: #65758a; }
+.file-state.bad > i { background: #feeaea; color: #b42318; }
 .icon-btn { border: 0; background: var(--surface-2); width: 34px; height: 34px; border-radius: 8px; }
 
 /* ---------------- filters ---------------- */
@@ -740,6 +771,8 @@ table.matrix td:first-child { white-space: normal; }
   .filter-fields { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
 }
 @media (max-width: 1080px) {
+  .audit-flow { grid-template-columns: repeat(5, minmax(115px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
+  .audit-file-guide { grid-template-columns: 1fr; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: sticky; top: 0; height: auto; z-index: 30; padding: 14px 16px; }
   .nav-toggle { display: block; }

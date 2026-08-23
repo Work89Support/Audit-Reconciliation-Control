@@ -48,17 +48,17 @@ const ROUTES = [
     group: "งานประจำวัน",
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
-      { id: "cloud", label: "คลังไฟล์จากเมล", icon: "cloud", title: "คลังไฟล์จากเมล (n8n + Supabase)", desc: "ไฟล์จากเมล AUDIT 2 ถูก n8n ดึงมาเก็บใน Supabase และ Google Drive ให้อัตโนมัติ — เลือกไฟล์แล้วกดดึงเข้าระบบเพื่อกระทบยอดได้ทันที", filters: true },
-      { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true },
+      { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
+      { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
       { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
-      { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true },
+      { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true, hidden: true },
     ],
   },
   {
     group: "ตรวจสอบและอนุมัติ",
     items: [
-      { id: "clarify", label: "งานชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception และกำหนดส่งของแต่ละบริษัทจากข้อมูลจริง โดยไม่แบ่งกะ", filters: true },
-      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
+      { id: "clarify", label: "ติดตามและอนุมัติ", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception กำหนดส่ง และเปิดคิวอนุมัติจากจุดเดียว โดยไม่แบ่งกะ", filters: true },
+      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false, hidden: true },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
       { id: "pm", label: "PM Monitor", icon: "pm", title: "ข้อมูล PM แยกตาม Provider และบริษัท", desc: "สรุปไฟล์ PM และ Exception จากข้อมูลจริง โดยไม่แสดงเปอร์เซ็นต์ประมาณการ", filters: true },
     ],
@@ -66,9 +66,9 @@ const ROUTES = [
   {
     group: "รายงาน",
     items: [
-      { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true },
+      { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true, hidden: true },
       { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
-      { id: "talk", label: "Talk to Data", icon: "talk", title: "ถามข้อมูลด้วยภาษาไทย", desc: "ถามจากข้อมูลที่ reconcile แล้ว ทุกคำตอบอ้างอิงตัวเลข ช่วงวันที่ และลิงก์กลับหลักฐาน", filters: false },
+      { id: "talk", label: "Talk to Data", icon: "talk", title: "ถามข้อมูลด้วยภาษาไทย", desc: "ถามจากข้อมูลที่ reconcile แล้ว ทุกคำตอบอ้างอิงตัวเลข ช่วงวันที่ และลิงก์กลับหลักฐาน", filters: false, hidden: true },
     ],
   },
   {
@@ -301,7 +301,7 @@ const sevMeta = (code) => DB.severities.find((s) => s.code === code) || { name: 
 function renderNav() {
   const allowed = ROUTE_ROLES[state.role];
   $("#navList").innerHTML = ROUTES.map((g) => {
-    const items = g.items.filter((it) => allowed.includes(it.id));
+    const items = g.items.filter((it) => allowed.includes(it.id) && !it.hidden);
     if (!items.length) return "";
     return (
       `<span class="nav-label">${h(g.group)}</span>` +
@@ -317,6 +317,22 @@ function renderNav() {
         .join("")
     );
   }).join("");
+}
+
+function renderAuditFlow() {
+  const files = (cloudState.batches || []).flatMap((batch) => batch.source_files || []);
+  const fileIssues = files.filter((file) => file.parse_error || !file.parsed).length;
+  const openExceptions = DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status));
+  const waitingClarify = openExceptions.filter((e) => ["clarifying", "answered", "damage"].includes(e.status));
+  const steps = [
+    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ต้องดู ${num(fileIssues)}` : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues ? "warn" : files.length ? "ok" : "" },
+    { route: "dashboard", no: 2, label: "ดูภาพรวม", meta: "แยกตามบริษัท", tone: "" },
+    { route: "exceptions", no: 3, label: "ตรวจข้อผิดปกติ", meta: `${num(openExceptions.length)} เคสเปิด`, tone: openExceptions.length ? "warn" : "ok" },
+    { route: "clarify", no: 4, label: "ติดตาม/อนุมัติ", meta: `${num(waitingClarify.length)} งาน`, tone: waitingClarify.length ? "warn" : "ok" },
+    { route: "reports", no: 5, label: "ออกรายงาน", meta: "Export หลักฐาน", tone: "" },
+  ];
+  const active = { intake: "cloud", matching: "exceptions", approvals: "clarify", kpi: "reports", talk: "reports" }[state.route] || state.route;
+  $("#auditFlow").innerHTML = steps.map((step) => `<a href="#/${step.route}" class="${active === step.route ? "active" : ""} ${step.tone}"><i>${step.no}</i><span><b>${h(step.label)}</b><small>${h(step.meta)}</small></span></a>`).join("");
 }
 
 function renderRoleSelect() {
@@ -473,6 +489,7 @@ function render() {
     h(route.desc) +
     (Sb.signedIn() ? ' <span class="badge green">ระบบข้อมูลจริง</span>' : "");
   renderNav();
+  renderAuditFlow();
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
@@ -1965,9 +1982,17 @@ function renderLivePm(root) {
         return `<tr><td><b>${h(row.company)}</b></td><td>${h(row.providers.join(" / ") || "-")}</td><td class="right tnum">${num(row.files.length)}</td><td class="right tnum">${num(parsed)}</td><td class="right tnum">${num(row.exceptions.length)}</td><td><span class="badge ${tone}">${errors ? "มีไฟล์อ่านไม่ได้" : parsed < row.files.length ? "รออ่าน" : "พร้อมตรวจ"}</span></td></tr>`;
       }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีข้อมูล PM ที่ระบุบริษัทได้</td></tr>`}</tbody></table></div>
       <p class="hint">ระบบไม่แสดงอัตราจับคู่แยก Provider จนกว่าจะมีผลรวม matched/total แยก Provider ในฐานข้อมูล เพื่อป้องกันการนำตัวเลขประมาณการมาใช้เป็นข้อมูลจริง</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">หลักฐานต้นฉบับ</p><h2>ไฟล์ PM ที่เปิดตรวจได้</h2><small class="head-sub">กดชื่อไฟล์เพื่อเปิดจาก Supabase Storage</small></div><button class="ghost-button sm" data-goto-cloud>ดูไฟล์ทั้งหมด</button></div>
+      <div class="table-wrap"><table><thead><tr><th>รับเมื่อ</th><th>บริษัท</th><th>Provider</th><th>ชื่อไฟล์</th><th>สถานะ</th><th class="right">หลักฐาน</th></tr></thead>
+      <tbody>${pmFiles.slice(0, 100).map((file) => `<tr><td>${h(String(file.receivedAt || "").replace("T", " ").slice(0, 16))}</td><td><b>${h(file.company || "ไม่ระบุ")}</b></td><td>${h(file.provider || "ยังไม่ระบุ")}</td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}"><span>${h(file.file_name)}</span><small>เปิดไฟล์ต้นฉบับ ↗</small></button></td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span>` : file.parsed ? `<span class="badge green">พร้อมใช้งาน</span>` : `<span class="badge grey">รอตรวจ</span>`}</td><td class="right"><button class="primary-button xs" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}">เปิดดู</button></td></tr>`).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ PM ในช่วงนี้</td></tr>`}</tbody></table></div>
     </section>`;
 
   root.querySelectorAll("[data-provider]").forEach((button) => button.addEventListener("click", () => go("exceptions", { exFilter: { q: button.dataset.provider, type: "ALL", severity: "ALL", status: "ALL", sla: false } })));
+  root.querySelector("[data-goto-cloud]")?.addEventListener("click", () => go("cloud"));
+  bindStoredFileLinks(root);
 }
 
 VIEWS.pm = (root) => {
@@ -2635,6 +2660,24 @@ VIEWS["audit-log"] = (root) => {
    ============================================================= */
 const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null };
 
+function bindStoredFileLinks(root, selector = "[data-storage-open]") {
+  root.querySelectorAll(selector).forEach((button) => button.addEventListener("click", async () => {
+    const oldText = button.textContent;
+    try {
+      button.disabled = true;
+      if (button.matches("button")) button.textContent = "กำลังเปิด...";
+      const url = await Sb.signedUrl(button.dataset.storageOpen, 300);
+      logAction("view_file", "source_file", button.dataset.fileId || button.dataset.storageOpen, `เปิดดูไฟล์ต้นฉบับ ${button.dataset.fileName || ""}`);
+      window.open(url, "_blank", "noopener");
+    } catch (error) {
+      toast(error.message, "warn");
+    } finally {
+      button.disabled = false;
+      if (button.matches("button")) button.textContent = oldText;
+    }
+  }));
+}
+
 async function cloudLoad() {
   cloudState.loading = true;
   cloudState.error = null;
@@ -2779,6 +2822,12 @@ VIEWS.cloud = (root) => {
       <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "ดูสาเหตุในตาราง" : "ไม่มีปัญหา"}</small></article>
     </section>
 
+    <section class="audit-file-guide">
+      <div><i>1</i><span><b>กดชื่อไฟล์หรือ “เปิดดู”</b><small>เปิดหลักฐานต้นฉบับจาก Supabase Storage</small></span></div>
+      <div><i>2</i><span><b>ตรวจบริษัท วันที่ และยอด</b><small>เทียบกับหัวข้อเมลและประเภทไฟล์</small></span></div>
+      <div><i>3</i><span><b>ดูสถานะระบบ</b><small>พร้อมใช้งาน / รอตรวจ / อ่านไม่ได้</small></span></div>
+    </section>
+
     ${
       operations.length
         ? `<section class="panel">
@@ -2840,17 +2889,17 @@ VIEWS.cloud = (root) => {
                   const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
                   return `<tr class="${f.parse_error ? "bad" : ""}">
                   <td>${canRead ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
-                  <td><b>${h(f.file_name)}</b>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
+                  <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดเปิดไฟล์ต้นฉบับ ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
                   <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
                   <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
                   <td>${
                     f.parse_error
-                      ? `<span class="badge red" title="${h(f.parse_error)}">อ่านไม่ได้</span>`
+                      ? `<span class="file-state bad" title="${h(f.parse_error)}"><i>!</i><span><b>อ่านไม่ได้</b><small>กดดูสาเหตุ</small></span></span>`
                       : f.parsed
-                        ? `<span class="badge green">อ่านแล้ว${f.row_count ? " " + num(f.row_count) + " แถว" : ""}</span>`
-                        : `<span class="badge grey">ยังไม่อ่าน</span>`
+                        ? `<span class="file-state ok"><i>✓</i><span><b>พร้อมใช้งาน</b><small>${f.row_count ? `ระบบอ่าน ${num(f.row_count)} แถว` : "ระบบอ่านสำเร็จ"}</small></span></span>`
+                        : `<span class="file-state wait"><i>•</i><span><b>รอตรวจไฟล์</b><small>ยังไม่อ่านเข้าระบบ</small></span></span>`
                   }</td>
-                  <td class="right">${f.drive_url ? `<a class="link-btn" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""} <button class="link-btn" data-open="${h(f.storage_path)}">เปิดไฟล์</button></td>
+                  <td class="right"><div class="file-actions">${f.drive_url ? `<a class="ghost-button xs" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""}<button class="primary-button xs" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}">เปิดดู</button></div></td>
                 </tr>`;
                 })
                 .join("")}
@@ -2865,7 +2914,7 @@ VIEWS.cloud = (root) => {
     </section>
 
     ${
-      daily.length
+      false && daily.length
         ? `<section class="panel">
       <div class="panel-heading"><div><p class="eyebrow">Coverage</p><h2>ไฟล์เข้าครบรายวัน</h2></div><span class="health ok">${num(daily.length)} รายการ</span></div>
       <div class="table-wrap">
@@ -2904,16 +2953,7 @@ VIEWS.cloud = (root) => {
       render();
     }),
   );
-  root.querySelectorAll("[data-open]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      try {
-        const url = await Sb.signedUrl(b.dataset.open, 300);
-        window.open(url, "_blank", "noopener");
-      } catch (e) {
-        toast(e.message, "warn");
-      }
-    }),
-  );
+  bindStoredFileLinks(root);
 };
 
 const KIND_LABEL = {
@@ -4148,7 +4188,7 @@ VIEWS.clarify = (root) => {
         <article class="bad"><span>เกิน SLA</span><strong>${num(rows.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
       </section>
       <section class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">ยึดบริษัทจากรายการ Exception จริง ไม่จัดกลุ่มตามกะ</small></div></div>
+        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">ยึดบริษัทจากรายการ Exception จริง ไม่จัดกลุ่มตามกะ</small></div><button class="primary-button sm" id="openApprovalQueue">เปิดคิวรออนุมัติ (${num(rows.filter((e) => e.status === "answered").length)})</button></div>
         <div class="company-overview-grid">${groups.map((company) => {
           const own = rows.filter((e) => (e.company || "ไม่ระบุ") === company);
           return `<article class="company-overview-card"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small>เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span class="warn">รอชี้แจง <b>${num(own.filter((e) => e.status === "clarifying").length)}</b></span><span class="ok">ตอบแล้ว <b>${num(own.filter((e) => e.status === "answered").length)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div></article>`;
@@ -4156,6 +4196,7 @@ VIEWS.clarify = (root) => {
       </section>
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
     root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
+    $("#openApprovalQueue")?.addEventListener("click", () => go("approvals"));
     return;
   }
   retagTracks();
