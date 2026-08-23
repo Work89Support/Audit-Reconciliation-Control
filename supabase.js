@@ -265,7 +265,11 @@ const Sb = (() => {
   async function searchExceptions({ term, from, to, company, limit = 1000 } = {}) {
     const clean = String(term || "").trim().replace(/[,*()]/g, " ").replace(/\s+/g, " ");
     if (!clean) return [];
-    const fields = ["code", "company", "bank", "account", "direction", "member_code", "ex_type", "type_name", "employee", "cause", "detail", "stm_raw", "bo_raw"];
+    // Keep the server-side search on compact columns. Searching the large raw
+    // JSON/text evidence fields with a leading wildcard regularly exceeds the
+    // database statement timeout. The client still searches those raw fields
+    // in the rows it has already loaded.
+    const fields = ["code", "company", "bank", "account", "direction", "member_code", "ex_type", "type_name", "employee", "cause"];
     const or = `(${fields.map((field) => `${field}.ilike.*${clean}*`).join(",")})`;
     const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);

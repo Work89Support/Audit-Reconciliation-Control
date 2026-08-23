@@ -1254,7 +1254,7 @@ VIEWS.exceptions = (root) => {
         ${query ? ` · ค้นจาก Supabase โดยตรง ${liveExceptionSearch.loading ? '<span class="badge blue">กำลังค้นหา...</span>' : liveExceptionSearch.error ? `<span class="badge red">${h(liveExceptionSearch.error)}</span>` : '<span class="badge green">ค้นแล้ว</span>'}` : ""}
       </div>
 
-      ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
+      ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.batchCompany || file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
 
       ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
 
@@ -2026,7 +2026,7 @@ function renderLivePm(root) {
     <section class="panel">
       <div class="panel-heading"><div><p class="eyebrow">หลักฐานต้นฉบับ</p><h2>ไฟล์ PM ที่เปิดตรวจได้</h2><small class="head-sub">กดชื่อไฟล์เพื่อเปิดจาก Supabase Storage</small></div><button class="ghost-button sm" data-goto-cloud>ดูไฟล์ทั้งหมด</button></div>
       <div class="table-wrap"><table><thead><tr><th>รับเมื่อ</th><th>บริษัท</th><th>Provider</th><th>ชื่อไฟล์</th><th>สถานะ</th><th class="right">หลักฐาน</th></tr></thead>
-      <tbody>${pmFiles.slice(0, 100).map((file) => `<tr><td>${h(String(file.receivedAt || "").replace("T", " ").slice(0, 16))}</td><td><b>${h(file.company || "ไม่ระบุ")}</b></td><td>${h(file.provider || "ยังไม่ระบุ")}</td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}"><span>${h(file.file_name)}</span><small>เปิดไฟล์ต้นฉบับ ↗</small></button></td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span>` : file.parsed ? `<span class="badge green">พร้อมใช้งาน</span>` : `<span class="badge grey">รอตรวจ</span>`}</td><td class="right"><button class="primary-button xs" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}">เปิดดู</button></td></tr>`).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ PM ในช่วงนี้</td></tr>`}</tbody></table></div>
+      <tbody>${pmFiles.slice(0, 100).map((file) => { const attrs = `data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(String(file.receivedAt || "").slice(0, 10))}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}`; return `<tr><td>${h(String(file.receivedAt || "").replace("T", " ").slice(0, 16))}</td><td><b>${h(file.company || "ไม่ระบุ")}</b></td><td>${h(file.provider || "ยังไม่ระบุ")}</td><td><button class="file-name-link" ${attrs}><span>${h(file.file_name)}</span><small>ดูตัวอย่างไฟล์ ↗</small></button></td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span>` : file.parsed ? `<span class="badge green">พร้อมใช้งาน</span>` : `<span class="badge grey">รอตรวจ</span>`}</td><td class="right"><button class="primary-button xs" ${attrs}>ดูตัวอย่าง</button></td></tr>`; }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ PM ในช่วงนี้</td></tr>`}</tbody></table></div>
     </section>`;
 
   root.querySelectorAll("[data-provider]").forEach((button) => button.addEventListener("click", () => go("exceptions", { exFilter: { q: button.dataset.provider, type: "ALL", severity: "ALL", status: "ALL", sla: false } })));
@@ -2699,22 +2699,88 @@ VIEWS["audit-log"] = (root) => {
    ============================================================= */
 const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null };
 
-function bindStoredFileLinks(root, selector = "[data-storage-open]") {
-  root.querySelectorAll(selector).forEach((button) => button.addEventListener("click", async () => {
-    const oldText = button.textContent;
+function filePreviewTable(rows) {
+  const use = (rows || []).slice(0, 50).map((row) => (row || []).slice(0, 20));
+  const width = Math.max(1, ...use.map((row) => row.length));
+  return `<div class="file-preview-note">แสดงตัวอย่าง ${num(use.length)} แถวแรก · สูงสุด ${num(width)} คอลัมน์</div><div class="file-preview-table"><table><tbody>${use.map((row, index) => `<tr>${Array.from({ length: width }, (_, col) => `<${index === 0 ? "th" : "td"}>${h(row[col] ?? "")}</${index === 0 ? "th" : "td"}>`).join("")}</tr>`).join("") || `<tr><td class="empty">ไฟล์ไม่มีข้อมูลที่แสดงตัวอย่างได้</td></tr>`}</tbody></table></div>`;
+}
+
+async function openStoredFilePreview(meta) {
+  const name = meta.name || "ไฟล์ต้นฉบับ";
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const sizeLabel = meta.size ? `${Math.round(Number(meta.size) / 1024).toLocaleString()} KB` : "ไม่ระบุขนาด";
+  const status = meta.status === "error" ? "อ่านไม่ได้" : meta.status === "parsed" ? "พร้อมใช้งาน" : "รอตรวจ";
+  openModal(
+    h(name),
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div><div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="primary-button" id="fileDownload">ดาวน์โหลดไฟล์</button>`,
+  );
+  $("#modal").classList.add("file-preview-modal");
+  $("#filePreviewClose").addEventListener("click", closeModal);
+  let signedUrl = "";
+  const getSigned = async () => signedUrl || (signedUrl = await Sb.signedUrl(meta.path, 600));
+  $("#fileOpenOriginal").addEventListener("click", async () => {
     try {
-      button.disabled = true;
-      if (button.matches("button")) button.textContent = "กำลังเปิด...";
-      const url = await Sb.signedUrl(button.dataset.storageOpen, 300);
-      logAction("view_file", "source_file", button.dataset.fileId || button.dataset.storageOpen, `เปิดดูไฟล์ต้นฉบับ ${button.dataset.fileName || ""}`);
-      window.open(url, "_blank", "noopener");
-    } catch (error) {
-      toast(error.message, "warn");
-    } finally {
-      button.disabled = false;
-      if (button.matches("button")) button.textContent = oldText;
+      window.open(await getSigned(), "_blank", "noopener");
+      logAction("view_file", "source_file", meta.id || meta.path, `เปิดไฟล์ต้นฉบับ ${name} ในแท็บใหม่`);
+    } catch (error) { toast(error.message, "warn"); }
+  });
+  $("#fileDownload").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const old = button.textContent;
+    button.disabled = true;
+    button.textContent = "กำลังดาวน์โหลด...";
+    try {
+      const buffer = await Sb.download(meta.path);
+      const blob = new Blob([buffer], { type: meta.mime || "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      setTimeout(() => { URL.revokeObjectURL(url); anchor.remove(); }, 1000);
+      logAction("download_file", "source_file", meta.id || meta.path, `ดาวน์โหลดไฟล์ ${name}`);
+      toast("เริ่มดาวน์โหลด " + name);
+    } catch (error) { toast(error.message, "warn"); }
+    button.disabled = false;
+    button.textContent = old;
+  });
+
+  try {
+    const target = $("#filePreviewContent");
+    if (!target) return;
+    if (["pdf"].includes(ext) || String(meta.mime).includes("pdf")) {
+      target.innerHTML = `<iframe class="file-preview-frame" src="${h(await getSigned())}" title="ตัวอย่าง ${h(name)}"></iframe>`;
+    } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
+      target.innerHTML = `<img class="file-preview-image" src="${h(await getSigned())}" alt="ตัวอย่าง ${h(name)}" />`;
+    } else if (["xlsx", "xlsm"].includes(ext)) {
+      target.innerHTML = filePreviewTable(await XlsxReader.read(await Sb.download(meta.path)));
+    } else if (["csv", "txt"].includes(ext)) {
+      const text = new TextDecoder("utf-8").decode(await Sb.download(meta.path));
+      target.innerHTML = filePreviewTable(ext === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
+    } else {
+      target.innerHTML = `<div class="file-preview-unavailable"><b>ไฟล์ชนิดนี้ยังแสดงตัวอย่างในหน้าเว็บไม่ได้</b><span>ตรวจรายละเอียดด้านบน แล้วเลือก “เปิดต้นฉบับ” หรือ “ดาวน์โหลดไฟล์” เมื่อต้องการ</span></div>`;
     }
-  }));
+    logAction("preview_file", "source_file", meta.id || meta.path, `ดูตัวอย่างไฟล์ ${name}`);
+  } catch (error) {
+    const target = $("#filePreviewContent");
+    if (target) target.innerHTML = `<div class="file-preview-unavailable bad"><b>สร้างตัวอย่างไม่สำเร็จ</b><span>${h(error.message)}</span><small>ยังสามารถเปิดต้นฉบับหรือดาวน์โหลดได้จากปุ่มด้านล่าง</small></div>`;
+  }
+}
+
+function bindStoredFileLinks(root, selector = "[data-storage-open]") {
+  root.querySelectorAll(selector).forEach((button) => button.addEventListener("click", () => openStoredFilePreview({
+    path: button.dataset.storageOpen,
+    id: button.dataset.fileId,
+    name: button.dataset.fileName,
+    mime: button.dataset.fileMime,
+    size: button.dataset.fileSize,
+    kind: button.dataset.fileKind,
+    company: button.dataset.fileCompany,
+    date: button.dataset.fileDate,
+    status: button.dataset.fileStatus,
+  })));
 }
 
 async function cloudLoad() {
@@ -2928,7 +2994,7 @@ VIEWS.cloud = (root) => {
                   const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
                   return `<tr class="${f.parse_error ? "bad" : ""}">
                   <td>${canRead ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
-                  <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดเปิดไฟล์ต้นฉบับ ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
+                  <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดดูตัวอย่าง ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
                   <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
                   <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
                   <td>${
@@ -2938,7 +3004,7 @@ VIEWS.cloud = (root) => {
                         ? `<span class="file-state ok"><i>✓</i><span><b>พร้อมใช้งาน</b><small>${f.row_count ? `ระบบอ่าน ${num(f.row_count)} แถว` : "ระบบอ่านสำเร็จ"}</small></span></span>`
                         : `<span class="file-state wait"><i>•</i><span><b>รอตรวจไฟล์</b><small>ยังไม่อ่านเข้าระบบ</small></span></span>`
                   }</td>
-                  <td class="right"><div class="file-actions">${f.drive_url ? `<a class="ghost-button xs" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""}<button class="primary-button xs" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}">เปิดดู</button></div></td>
+                  <td class="right"><div class="file-actions">${f.drive_url ? `<a class="ghost-button xs" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""}<button class="primary-button xs" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}">ดูตัวอย่าง</button></div></td>
                 </tr>`;
                 })
                 .join("")}
@@ -4424,6 +4490,7 @@ VIEWS.clarify = (root) => {
 
 function openModal(title, bodyHtml, footHtml) {
   const m = $("#modal");
+  m.classList.remove("file-preview-modal");
   m.innerHTML = `
     <header class="modal-head">
       <h2 id="modalTitle">${title}</h2>
