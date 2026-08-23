@@ -262,6 +262,18 @@ const Sb = (() => {
     return rows;
   }
 
+  async function searchExceptions({ term, from, to, company, limit = 1000 } = {}) {
+    const clean = String(term || "").trim().replace(/[,*()]/g, " ").replace(/\s+/g, " ");
+    if (!clean) return [];
+    const fields = ["code", "company", "bank", "account", "direction", "member_code", "ex_type", "type_name", "employee", "cause", "detail", "stm_raw", "bo_raw"];
+    const or = `(${fields.map((field) => `${field}.ilike.*${clean}*`).join(",")})`;
+    const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+  }
+
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
@@ -429,6 +441,7 @@ const Sb = (() => {
     auditLogs,
     notifications,
     currentExceptions,
+    searchExceptions,
     queueDueJobs,
     claimJob,
     finishJob,

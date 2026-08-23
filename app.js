@@ -190,10 +190,10 @@ function deny(what) {
 }
 
 /* ---------------- data selectors ---------------- */
-function filteredExceptions() {
+function filteredExceptions(source = DB.exceptions) {
   const f = state.filters;
   const x = state.exFilter;
-  return DB.exceptions.filter((e) => {
+  return source.filter((e) => {
     if (!inRange(e.date)) return false;
     if (f.company !== "ALL" && e.company !== f.company) return false;
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
@@ -203,7 +203,8 @@ function filteredExceptions() {
     if (x.sla && !e.overSla) return false;
     if (x.q) {
       const q = x.q.toLowerCase();
-      const hay = `${e.id} ${e.account} ${e.employee} ${e.typeName} ${e.cause} ${e.bank}`.toLowerCase();
+      const provider = typeof pmProviderOf === "function" ? pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) || "" : "";
+      const hay = `${e.id} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -501,6 +502,25 @@ function render() {
    VIEW: Dashboard
    ============================================================= */
 const liveOverviewState = { daily: null, operations: null, quality: null, damages: null, logs: null, notifications: null, loading: false, error: null, key: "", updatedAt: null };
+const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
+
+async function loadLiveExceptionSearch(term) {
+  const key = `${term}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  if (!term || liveExceptionSearch.loading || liveExceptionSearch.key === key) return;
+  liveExceptionSearch.key = key;
+  liveExceptionSearch.loading = true;
+  liveExceptionSearch.error = null;
+  liveExceptionSearch.rows = [];
+  try {
+    const rows = await Sb.searchExceptions({ term, from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 });
+    liveExceptionSearch.rows = (rows || []).map(mapLiveException);
+  } catch (error) {
+    liveExceptionSearch.rows = [];
+    liveExceptionSearch.error = error.message || "ค้นหา Supabase ไม่สำเร็จ";
+  }
+  liveExceptionSearch.loading = false;
+  if (state.route === "exceptions") render();
+}
 
 const LIVE_KIND_LABEL = {
   stm_pdf: "STM / ฝาก-ถอนธนาคาร",
@@ -1180,7 +1200,16 @@ VIEWS.intake = (root) => {
    ============================================================= */
 VIEWS.exceptions = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const list = filteredExceptions();
+  const query = String(state.exFilter.q || "").trim();
+  const searchKey = `${query}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  if (state.dataset === "production" && Sb.signedIn() && query) {
+    loadLiveExceptionSearch(query);
+    const intakeKey = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+    if ((!liveIntakeState.batches || liveIntakeState.key !== intakeKey) && !liveIntakeState.loading) loadLiveIntake();
+  }
+  const serverRows = query && liveExceptionSearch.key === searchKey ? liveExceptionSearch.rows : [];
+  const source = [...new Map(DB.exceptions.concat(serverRows).map((row) => [row.dbId || row.id, row])).values()];
+  const list = filteredExceptions(source);
   const sorted = [...list].sort((a, b) => {
     const k = state.sort.key;
     const dir = state.sort.dir === "asc" ? 1 : -1;
@@ -1192,6 +1221,9 @@ VIEWS.exceptions = (root) => {
   state.page = Math.min(state.page, pages);
   const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
   const x = state.exFilter;
+  const fileMatches = query
+    ? (liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, business_date: batch.business_date, batchCompany: batch.company, subject: batch.subject }))).filter((file) => `${file.file_name} ${file.kind} ${file.company} ${file.batchCompany} ${file.subject}`.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
+    : [];
 
   const th = (key, label) =>
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
@@ -1199,7 +1231,7 @@ VIEWS.exceptions = (root) => {
   root.innerHTML = `
     <section class="panel">
       <div class="toolbar">
-        <input type="search" id="exSearch" placeholder="ค้นหาเลขเคส บัญชี พนักงาน หรือสาเหตุ..." value="${h(x.q)}" />
+        <input type="search" id="exSearch" placeholder="ค้นหาเคส บัญชี บริษัท สมาชิก หรือ Provider เช่น 12PAY..." value="${h(x.q)}" />
         <select id="exType">
           <option value="ALL">ทุกประเภท</option>
           ${allExceptionTypes().map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
@@ -1219,7 +1251,12 @@ VIEWS.exceptions = (root) => {
       <div class="result-line">
         พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
         · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
+        ${query ? ` · ค้นจาก Supabase โดยตรง ${liveExceptionSearch.loading ? '<span class="badge blue">กำลังค้นหา...</span>' : liveExceptionSearch.error ? `<span class="badge red">${h(liveExceptionSearch.error)}</span>` : '<span class="badge green">ค้นแล้ว</span>'}` : ""}
       </div>
+
+      ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
+
+      ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
 
       <div class="table-wrap">
         <table class="rows">
@@ -1286,6 +1323,8 @@ VIEWS.exceptions = (root) => {
   $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
   $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
   $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]));
+  $("#searchGoFiles")?.addEventListener("click", () => go("cloud"));
+  bindStoredFileLinks(root);
   root.querySelectorAll("th[data-sort]").forEach((thEl) =>
     thEl.addEventListener("click", () => {
       const k = thEl.dataset.sort;
@@ -1968,7 +2007,7 @@ function renderLivePm(root) {
         <div class="pm-rate"><strong>${num(p.files.length)}</strong><span>ไฟล์ที่ได้รับ</span></div>
         <p class="pm-note">อ่านแล้ว ${num(p.parsed)} · อ่านไม่ได้ ${num(p.errors)}${p.latest ? ` · ล่าสุด ${h(p.latest.replace("T", " ").slice(0, 16))}` : ""}</p>
         <div class="pm-foot"><span>Exception</span><b>${num(p.exceptions.length)}</b></div>
-        <button class="ghost-button sm" data-provider="${h(p.provider)}">ดูรายการ</button>
+        <button class="ghost-button sm" data-provider="${h(p.provider)}" ${p.exceptions.length ? "" : "disabled"}>${p.exceptions.length ? `ดู Exception (${num(p.exceptions.length)})` : "ไม่พบ Exception"}</button>
       </article>`).join("") || `<div class="panel empty-box">ยังไม่พบไฟล์ที่จำแนกเป็น PM ในช่วงนี้</div>`}
     </section>
 
