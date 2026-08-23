@@ -75,6 +75,13 @@ assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "he
 
 const clarificationText = JSON.stringify(clarification);
 assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"));
+const clarificationSchedule = clarification.nodes.find((node) => node.type === "n8n-nodes-base.scheduleTrigger");
+assert.deepEqual(clarificationSchedule.parameters.rule.interval, [{
+  field: "days",
+  daysInterval: 1,
+  triggerAtHour: 9,
+  triggerAtMinute: 30,
+}], "clarification matching must run only once daily at 09:30");
 assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.splitInBatches"));
 assert.ok(clarification.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.match(clarificationText, /pending_clarification_files/);

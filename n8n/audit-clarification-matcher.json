@@ -2,9 +2,9 @@
   "name": "Audit - Match Clarification Files",
   "nodes": [
     {
-      "parameters": { "rule": { "interval": [{ "field": "minutes", "minutesInterval": 15 }] } },
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 9, "triggerAtMinute": 30 }] } },
       "id": "schedule",
-      "name": "ทุก 15 นาที",
+      "name": "ทุกวัน 09:30",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [-900, 180]
@@ -191,7 +191,7 @@
     }
   ],
   "connections": {
-    "ทุก 15 นาที": { "main": [[{ "node": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ", "type": "main", "index": 0 }]] },
+    "ทุกวัน 09:30": { "main": [[{ "node": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ", "type": "main", "index": 0 }]] },
     "ทดสอบด้วยมือ": { "main": [[{ "node": "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ", "type": "main", "index": 0 }]] },
     "Supabase: หาไฟล์ชี้แจงที่ยังไม่ตรวจ": { "main": [[{ "node": "วนทีละไฟล์", "type": "main", "index": 0 }]] },
     "วนทีละไฟล์": { "main": [[{ "node": "จบรอบตรวจไฟล์ชี้แจง", "type": "main", "index": 0 }], [{ "node": "ดาวน์โหลดไฟล์ชี้แจง", "type": "main", "index": 0 }]] },
