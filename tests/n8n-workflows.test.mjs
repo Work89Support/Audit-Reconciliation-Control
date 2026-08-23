@@ -7,6 +7,7 @@ const backfill = await load("audit-mail-backfill.json");
 const daily = await load("audit-daily-reconcile.json");
 const worker = await load("audit-headless-worker.json");
 const clarification = await load("audit-clarification-matcher.json");
+const telegram = await load("audit-telegram-notifications.json");
 const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
 
@@ -26,6 +27,7 @@ validateGraph(backfill);
 validateGraph(daily);
 validateGraph(worker);
 validateGraph(clarification);
+validateGraph(telegram);
 
 const liveText = JSON.stringify(live);
 assert.ok(live.nodes.some((node) => node.type === "n8n-nodes-base.executeWorkflowTrigger"));
@@ -111,5 +113,15 @@ assert.match(clarificationSql, /clarification_auto_close/, "auto-close must writ
 assert.match(parserQualitySql, /record_source_file_parse_results/, "parser quality RPC must be deployed with the worker");
 assert.match(parserQualitySql, /error_count > 0/, "parse failures must stay outside the automatic queue");
 assert.match(parserQualitySql, /อ่านไฟล์ไม่ผ่าน Quality Gate/, "operators must receive a clear parse failure notification");
+
+const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
+const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");
+assert.doesNotThrow(() => new Function(telegramHourly.parameters.jsCode));
+assert.doesNotThrow(() => new Function(telegramDaily.parameters.jsCode));
+assert.match(telegramHourly.parameters.jsCode, /รายการที่ต้องดำเนินการ/, "hourly alert must lead with an actionable summary");
+assert.match(telegramHourly.parameters.jsCode, /อ่านไฟล์ไม่ได้/, "parse failures must be explained in plain Thai");
+assert.match(telegramHourly.parameters.jsCode, /ต้องตามไฟล์เพิ่ม/, "missing evidence must be separate from parse failures");
+assert.match(telegramHourly.parameters.jsCode, /ฐานข้อมูลล่าสุดก่อนส่งข้อความนี้/, "message must state that counts were checked before sending");
+assert.match(telegramDaily.parameters.jsCode, /ผลตรวจเดือนนี้/, "daily alert must scope reconciliation counts to the current month");
 
 console.log("n8n workflows: graph, idempotency, secrets and throttling checks passed");
