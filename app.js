@@ -512,6 +512,7 @@ function mapLiveException(e) {
     runId: e.run_id,
     date: e.business_date,
     time: String(e.occurred_at || "").slice(0, 8),
+    boTime: String(e.bo_time || e.occurred_at || "").slice(0, 8),
     company: e.company || "ไม่ระบุ",
     bank: e.bank || "-",
     account: e.account || "-",
@@ -1465,6 +1466,7 @@ VIEWS.matching = (root) => {
   state.matchIndex = Math.min(state.matchIndex, list.length - 1);
   const e = list[state.matchIndex];
   const tol = e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit;
+  const bankRule = (DB.banks.find((bank) => bank.code === e.bank) || {}).rule || "ใช้กฎมาตรฐานจากข้อมูลที่มีในไฟล์";
   const ruleBreach = {
     duplicate: "พบรายการยอดเดียวกันซ้ำในฝั่ง BO — เข้าเงื่อนไขเติมซ้ำ",
     backdated: "รายการถูกบันทึกย้อนหลังหลังปิดยอดของช่วงเวลานั้น",
@@ -1529,13 +1531,13 @@ VIEWS.matching = (root) => {
           <code>${h(e.stmRaw)}</code>
           <div class="kv-line"><span>เวลา</span><b>${e.bankAmount === null ? "-" : e.time}</b></div>
           <div class="kv-line"><span>ยอด</span><b>${e.bankAmount === null ? "-" : money(e.bankAmount)}</b></div>
-          <div class="kv-line"><span>กฎที่ใช้</span><b>${h(DB.banks.find((b) => b.code === e.bank).rule)}</b></div>
+          <div class="kv-line"><span>กฎที่ใช้</span><b>${h(bankRule)}</b></div>
         </div>
         <div class="compare-mid"><span>เทียบกับ</span></div>
         <div class="compare-col">
           <h3>ฝั่งระบบหลังบ้าน (BO)</h3>
           <code>${h(e.boRaw)}</code>
-          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : e.boTime}</b></div>
+          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : h(e.boTime || e.time || "-")}</b></div>
           <div class="kv-line"><span>ยอด</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
           <div class="kv-line"><span>ผู้ทำรายการ</span><b>${h(e.employee)}</b></div>
         </div>
