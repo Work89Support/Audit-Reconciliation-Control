@@ -8,6 +8,7 @@ const daily = await load("audit-daily-reconcile.json");
 const worker = await load("audit-headless-worker.json");
 const clarification = await load("audit-clarification-matcher.json");
 const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
+const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
 
 function validateGraph(workflow) {
   const names = new Set(workflow.nodes.map((node) => node.name));
@@ -66,6 +67,7 @@ assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBat
 assert.match(workerText, /claim_daily_recon_jobs/);
 assert.match(workerText, /finish_daily_recon_job/);
 assert.match(workerText, /p_limit[^}]*1/, "each execution must claim exactly one unambiguous job");
+assert.match(workerText, /startOf\('month'\)/, "automatic catch-up must prioritize the current operating month");
 assert.equal(worker.connections["Supabase: ตรวจไฟล์และจัดคิว"].main[0][0].node, "รวมเป็นหนึ่งรอบ", "queue RPC rows must collapse before claiming");
 assert.equal(worker.connections["รวมเป็นหนึ่งรอบ"].main[0][0].node, "Supabase: จองหนึ่งงาน");
 assert.equal(worker.connections["Supabase: ปิดงานสำเร็จ"].main[0][0].node, "จบรอบ Worker");
@@ -73,7 +75,16 @@ assert.match(workerText, /จองหนึ่งงาน'\)\.first\(\)/, "pro
 assert.match(workerText, /pairedItem/, "code nodes must preserve n8n item linking through nested loops");
 assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file references must not fall back to the first loop item");
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
-assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว");
+assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
+assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
+assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
+assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
+assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
+assert.equal(worker.connections["Supabase: บันทึกผลอ่านไฟล์"].main[0][0].node, "ไฟล์ผ่าน Quality Gate?");
+assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0][0].node, "Supabase: สร้างผลการรัน");
+assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "หยุดรอตรวจไฟล์");
+assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ปิดงานสำเร็จ");
+assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว"));
 assert.match(workerText, /n8n-cloud-worker/);
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");
 
@@ -97,5 +108,8 @@ assert.match(clarificationSql, /upper\(coalesce\(e\.company/, "clarification mat
 assert.match(clarificationSql, /tie_count > 1/, "ambiguous matches must not auto-close");
 assert.match(clarificationSql, /v_has_resolution/, "auto-close must require an explicit resolution phrase");
 assert.match(clarificationSql, /clarification_auto_close/, "auto-close must write an audit log");
+assert.match(parserQualitySql, /record_source_file_parse_results/, "parser quality RPC must be deployed with the worker");
+assert.match(parserQualitySql, /error_count > 0/, "parse failures must stay outside the automatic queue");
+assert.match(parserQualitySql, /อ่านไฟล์ไม่ผ่าน Quality Gate/, "operators must receive a clear parse failure notification");
 
 console.log("n8n workflows: graph, idempotency, secrets and throttling checks passed");

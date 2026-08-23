@@ -13,9 +13,23 @@ const Formats = (() => {
   const norm = (s) =>
     String(s ?? "")
       .replace(/​/g, "")
-      .replace(/\s+/g, "")
+      .replace(/[\s_./\\:()\[\]-]+/g, "")
       .trim()
       .toLowerCase();
+
+  const HEADER_ALIASES = {
+    "วันที่ทำรายการ": ["วันที่ทำรายการ", "วันเวลาทำรายการ", "เวลาทำรายการ", "createdat", "createtime", "requesttime"],
+    "วันที่ธนาคาร": ["วันที่ธนาคาร", "วันเวลาธนาคาร", "เวลาธนาคาร", "paymenttime", "banktime", "transfertime"],
+    "จำนวนเงินฝากจริง": ["จำนวนเงินฝากจริง", "ยอดฝากจริง", "ยอดฝาก", "depositamount", "realamount", "โอนจริง"],
+    "จำนวนเงินถอนจริง": ["จำนวนเงินถอนจริง", "ยอดถอนจริง", "ยอดถอน", "withdrawamount", "payoutamount", "p2pจ่าย", "รวมหักเงิน"],
+    "ชื่อธนาคาร": ["ชื่อธนาคาร", "ธนาคาร", "ช่องทาง", "provider", "paymentchannel"],
+    "เวลาทำรายการ": ["เวลาทำรายการ", "วันที่ทำรายการ", "วันเวลาทำรายการ", "createdat", "requesttime"],
+    "เวลาธนาคาร": ["เวลาธนาคาร", "วันที่ธนาคาร", "วันเวลาธนาคาร", "paymenttime", "banktime"],
+    "จำนวน": ["จำนวน", "จำนวนเงิน", "amount", "ยอดเงิน"],
+    "สถานะ": ["สถานะ", "status"],
+  };
+  const aliasesOf = (name) => (HEADER_ALIASES[name] || [name]).map(norm);
+  const hasHeader = (cells, name) => aliasesOf(name).some((want) => cells.some((cell) => cell === want || cell.startsWith(want)));
 
   /* ---------------- นิยามรูปแบบ ---------------- */
   const SPECS = [
@@ -67,7 +81,7 @@ const Formats = (() => {
   const PM_AMT_WIT = ["p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
   const anyCol = (cells, names) => names.some((n) => cells.some((c) => c === norm(n) || c.startsWith(norm(n))));
   function detectPM(rows) {
-    for (let i = 0; i < Math.min(rows.length, 12); i++) {
+    for (let i = 0; i < Math.min(rows.length, 30); i++) {
       const cells = (rows[i] || []).map(norm).filter(Boolean);
       if (cells.length < 3) continue;
       if (anyCol(cells, PM_DATE) && anyCol(cells, PM_STATUS) && anyCol(cells, [...PM_AMT_DEP, ...PM_AMT_WIT])) {
@@ -90,13 +104,13 @@ const Formats = (() => {
     return null;
   }
 
-  /* หา header row (ภายใน 10 บรรทัดแรก) ที่ตรงกับ spec */
+  /* หา header row ภายใน 30 บรรทัดแรก รองรับหัวเรื่อง/แถวว่าง/merged cells ด้านบน */
   function detect(rows) {
-    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    for (let i = 0; i < Math.min(rows.length, 30); i++) {
       const cells = (rows[i] || []).map(norm);
       if (!cells.length) continue;
       for (const spec of SPECS) {
-        if (spec.need.every((w) => cells.some((c) => c === norm(w) || c.startsWith(norm(w))))) {
+        if (spec.need.every((w) => hasHeader(cells, w))) {
           const idx = {};
           (rows[i] || []).forEach((raw, j) => {
             const k = norm(raw);
@@ -110,9 +124,10 @@ const Formats = (() => {
   }
 
   const col = (f, name) => {
-    const k = norm(name);
-    if (f.idx[k] !== undefined) return f.idx[k];
-    for (const key of Object.keys(f.idx)) if (key.startsWith(k)) return f.idx[key];
+    for (const k of aliasesOf(name)) {
+      if (f.idx[k] !== undefined) return f.idx[k];
+      for (const key of Object.keys(f.idx)) if (key.startsWith(k)) return f.idx[key];
+    }
     return undefined;
   };
   const val = (f, r, name) => {

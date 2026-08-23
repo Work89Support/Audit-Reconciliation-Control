@@ -24,26 +24,41 @@ const normalizeCode = `${runtime}
 const meta=$('วนทีละไฟล์').item.json;
 const file=meta.file, job=meta.job, ext=file.ext;
 const input=$input.all();
-let norm, rawRows=[];
-if(ext==='pdf'){
-  const text=String((input[0]&&input[0].json&&input[0].json.text)||'');
-  const lines=text.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
-  const pages=[lines.map(text=>({text,items:text.split(/\\s+/).map(s=>({s}))}))];
-  norm=await PdfStm.parse(file.file_name,pages,job.business_date);
-}else if(ext==='csv'){
-  const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
-  rawRows=Engine.parseCSV(text);
-  norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
-}else{
-  rawRows=input.map(x=>Array.isArray(x.json.row)?x.json.row:Object.values(x.json));
-  norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+let norm, rawRows=[], extractedText='';
+let parseError=null;
+try{
+  if(ext==='pdf'){
+    extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
+    const lines=extractedText.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
+    const pages=[lines.map(text=>({text,items:text.split(/\\s+/).map(s=>({s}))}))];
+    norm=await PdfStm.parse(file.file_name,pages,job.business_date);
+  }else if(ext==='csv'){
+    const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
+    rawRows=Engine.parseCSV(text);
+    norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+  }else{
+    rawRows=input.map(x=>Array.isArray(x.json.row)?x.json.row:Object.values(x.json));
+    norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+  }
+}catch(error){
+  parseError='อ่านไฟล์ไม่สำเร็จ: '+String(error&&error.message||error).slice(0,500);
+  norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
 }
+norm=norm||{format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
+norm.format=norm.format||{source:'unknown',realCode:null};
+const detectedSource=norm.format.source||'unknown';
+const usableRows=(norm.records||[]).length+(norm.aux||[]).length;
+const nonEmptyRows=rawRows.filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')).length;
+if(!parseError&&ext==='pdf'&&!extractedText.trim()) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
+if(!parseError&&ext!=='pdf'&&nonEmptyRows===0) parseError='ไม่พบข้อมูลในไฟล์ตาราง';
+if(!parseError&&ext!=='pdf'&&detectedSource==='unknown') parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
+if(!parseError&&usableRows===0) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
 const fallbackBank=(tag&&tag.bank)||'';
 const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'bo',manual_payment:'bo',manual_bonus:'aux',comm_req:'aux',credit_out:'aux'};
-if(kindSource[file.kind]) norm.format.source=kindSource[file.kind];
+if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 for(const r of (norm.records||[])){
   const pmKey=Formats.canonicalPm(r.channel||r.account||'');
   if(pmKey){r.account=pmKey;r.channel=pmKey;}
@@ -54,12 +69,15 @@ for(const r of (norm.records||[])){
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,records:norm.records||[],aux:norm.aux||[],row_count:ext==='pdf'?(norm.records||[]).length:rawRows.length,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
 
 const reconcileCode = `const performance={now:()=>Date.now()};\n${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
 if(!files.length) throw new Error('ไม่พบไฟล์ที่อ่านได้ในงานนี้');
 const job=files[0].job;
+const qualityErrors=files.filter(f=>f.parse_error).map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:f.parse_error,row_count:f.row_count||0}));
+const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error,row_count:f.row_count||0,parse_error:f.parse_error||null}));
+if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:parseResults,quality_errors:qualityErrors},pairedItem:{item:0}}];
 const stm=[],bo=[];
 for(const f of files){
   if(f.format&&f.format.source==='aux') continue;
@@ -91,7 +109,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:(biz.exceptions||[]).length,worker_version:'1.0.0'}},exceptions,files:files.map(f=>({id:f.file.id,parsed:true,row_count:f.row_count||0,parse_error:null}))},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:(biz.exceptions||[]).length,worker_version:'1.1.0'}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
@@ -102,7 +120,7 @@ const nodes = [
   http("queue", "Supabase: ตรวจไฟล์และจัดคิว", [-820, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').minus({ days: 90 }).toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
   http("claim", "Supabase: จองหนึ่งงาน", [-380, 160], {
@@ -114,7 +132,7 @@ const nodes = [
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const out=[]; for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&f.kind!=='doc_clarify') out.push({json:{job,file:{...f,ext}},pairedItem:{item:0}});}} if(!out.length) throw new Error('ไม่พบไฟล์ที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const out=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&reconKinds.has(f.kind)) out.push({json:{job,file:{...f,ext}},pairedItem:{item:0}});}} if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -127,27 +145,29 @@ const nodes = [
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520] },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
   { parameters: { jsCode: reconcileCode }, id: "reconcile", name: "กระทบยอดและสร้าง Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [980, 80] },
-  http("insert-run", "Supabase: สร้างผลการรัน", [1200, 80], {
+  http("record-parse-results", "Supabase: บันทึกผลอ่านไฟล์", [1200, 80], {
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/record_source_file_parse_results", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_results:x.files});})() }}", options: { response: { response: {} } },
+  }),
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ $('กระทบยอดและสร้าง Exception').first().json.quality_errors.length === 0 }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
+  http("insert-run", "Supabase: สร้างผลการรัน", [1640, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/recon_runs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ business_date: $json.job.business_date, company: $json.job.company, run_by: $json.result.run_by, elapsed_ms: $json.result.elapsed_ms, stm_count: $json.result.stm_count, bo_count: $json.result.bo_count, matched: $json.result.matched, match_rate: $json.result.match_rate, exception_count: $json.exceptions.length, no_stm_count: $json.result.no_stm_count, file_ids: $json.result.file_ids, summary: { ...$json.result.summary, worker: 'n8n-cloud', job_id: $json.job.id } }) }}", options: { response: { response: {} } },
+    jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({ business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:x.exceptions.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary:{...x.result.summary,worker:'n8n-cloud',job_id:x.job.id} });})() }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').item.json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const exception_rows=source.exceptions.map(e=>({...e,run_id:runId})); const ids=source.files.map(f=>f.id).filter(Boolean); return [{json:{...source,run_id:runId,exception_rows,file_filter:'id=in.('+ids.join(',')+')'},pairedItem:{item:0}}];" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 80] },
-  { ...http("insert-exceptions", "Supabase: บันทึก Exception", [1640, 80], {
+  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').first().json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const exception_rows=source.exceptions.map(e=>({...e,run_id:runId})); return [{json:{...source,run_id:runId,exception_rows},pairedItem:{item:0}}];" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 20] },
+  { ...http("insert-exceptions", "Supabase: บันทึก Exception", [2080, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
-  { ...http("mark-files", "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", [1860, 80], {
-    method: "PATCH", url: "={{ $vars.SUPABASE_URL + '/rest/v1/source_files?' + $('เตรียมบันทึก Exception').first().json.file_filter }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
-    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ parsed: true, parsed_at: $now.toISO(), parse_error: null }) }}", options: { response: { response: {} } },
-  }), alwaysOutputData: true },
-  http("finish", "Supabase: ปิดงานสำเร็จ", [2080, 80], {
+  http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('เตรียมบันทึก Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_run_id:x.run_id});})() }}", options: { response: { response: {} } },
   }),
+  { parameters: { jsCode: "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{finished_at:new Date().toISOString(),message:'หยุดก่อนกระทบยอด: มีไฟล์ที่อ่านไม่ผ่าน',job_id:x.job.id,quality_errors:x.quality_errors}}];" }, id: "quality-stop", name: "หยุดรอตรวจไฟล์", type: "n8n-nodes-base.code", typeVersion: 2, position: [1640, 160] },
   { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
 
@@ -168,12 +188,14 @@ const connections = {
   "อ่าน Excel": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "อ่าน CSV": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "แปลงรายการเป็นมาตรฐาน": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
-  "กระทบยอดและสร้าง Exception": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
+  "กระทบยอดและสร้าง Exception": { main: [[{ node: "Supabase: บันทึกผลอ่านไฟล์", type: "main", index: 0 }]] },
+  "Supabase: บันทึกผลอ่านไฟล์": { main: [[{ node: "ไฟล์ผ่าน Quality Gate?", type: "main", index: 0 }]] },
+  "ไฟล์ผ่าน Quality Gate?": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }], [{ node: "หยุดรอตรวจไฟล์", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว", type: "main", index: 0 }]] },
-  "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
   "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
+  "หยุดรอตรวจไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };
 
 const workflow = { name: "Audit - Headless Reconciliation Worker", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
