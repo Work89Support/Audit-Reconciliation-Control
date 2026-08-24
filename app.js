@@ -680,17 +680,45 @@ async function loadLiveOverview(force = false) {
       // table exists, without making all other live data depend on it.
       Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company }).catch(() => []),
     ]);
+    let checklistRows = checklist || [];
+    let exceptionRows = exceptions || [];
+    let damageRows = damages || [];
+    let logRows = logs || [];
+    let clarificationRows = clarifications || [];
+    const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
+      && state.filters.from === OPERATING_START_DATE
+      && state.filters.to === DEFAULT_WORK_DATE
+      && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
+    if (defaultEmptyRange) {
+      const latestOperationalDate = (quality || [])
+        .filter((row) => !row.is_archived && row.business_date)
+        .map((row) => row.business_date)
+        .sort()
+        .pop();
+      if (latestOperationalDate) {
+        state.filters = { ...state.filters, date: latestOperationalDate, from: latestOperationalDate, to: latestOperationalDate, preset: "day" };
+        state.dailySummary.date = latestOperationalDate;
+        [checklistRows, exceptionRows, damageRows, logRows, clarificationRows] = await Promise.all([
+          Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
+          Sb.currentExceptions({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 5000 }),
+          Sb.damages({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
+          Sb.auditLogs({ from: latestOperationalDate, to: latestOperationalDate }),
+          Sb.clarificationMatches({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }).catch(() => []),
+        ]);
+        liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+      }
+    }
     liveOverviewState.daily = daily || [];
     liveOverviewState.operations = operations || [];
     liveOverviewState.quality = quality || [];
-    liveOverviewState.checklist = checklist || [];
+    liveOverviewState.checklist = checklistRows;
     liveOverviewState.settings = settings?.[0] || null;
-    liveOverviewState.damages = damages || [];
-    liveOverviewState.logs = logs || [];
+    liveOverviewState.damages = damageRows;
+    liveOverviewState.logs = logRows;
     liveOverviewState.notifications = notifications || [];
-    liveOverviewState.clarifications = clarifications || [];
+    liveOverviewState.clarifications = clarificationRows;
     liveOverviewState.updatedAt = new Date();
-    hydrateLiveData(quality, operations, exceptions, damages, logs);
+    hydrateLiveData(quality, operations, exceptionRows, damageRows, logRows);
     updateBell();
   } catch (e) {
     liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
@@ -804,9 +832,10 @@ function renderLiveDashboard(root) {
         ${checklist.map((row) => {
           const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
           const future = row.checklist_status === "scheduled";
-          const parsedOk = Number(row.file_count) > 0 && Number(row.parsed_count) === Number(row.file_count) && !Number(row.error_count);
+          const reconFileCount = Number(row.recon_file_count ?? row.file_count ?? 0);
+          const parsedOk = reconFileCount > 0 && Number(row.parsed_count) === reconFileCount && !Number(row.error_count);
           const pending = () => checklistMark(false, "รอวันทำการ", true);
-          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.stm_count)>0, `${num(row.stm_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.bo_count)>0, `${num(row.bo_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.pm_deposit_count)>0, `${num(row.pm_deposit_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(Number(row.pm_withdraw_count)>0, `${num(row.pm_withdraw_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(row.file_count)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}</td></tr>`;
+          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.stm_count)>0, `${num(row.stm_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.bo_count)>0, `${num(row.bo_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.pm_deposit_count)>0, `${num(row.pm_deposit_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(Number(row.pm_withdraw_count)>0, `${num(row.pm_withdraw_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
       </tbody></table></div>
       <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน พร้อมรายชื่อไฟล์จริง ผลกระทบยอด และเคสที่ยังไม่ปิด</p>
