@@ -45,6 +45,8 @@ const classifier = live.nodes.find((node) => node.name === "เดาชนิ�
 assert.ok(classifier.parameters.jsCode.includes("ฝากถอน"), "deposit-withdraw PDFs must be recognized as STM");
 assert.match(classifier.parameters.jsCode, /รายงานหน้า\\s\*BO/, "BO attachment kind must inherit from the email subject");
 assert.match(classifier.parameters.jsCode, /companyOf\(j\.file_name/, "generic BO filenames must resolve company from the attachment name");
+assert.match(classifier.parameters.jsCode, /SK8\?/, "the field alias SK must resolve to canonical company SK8");
+assert.match(classifier.parameters.jsCode, /CPXM/, "CPXM spreadsheets must be recognized as PM statements");
 const attachmentSplitter = live.nodes.find((node) => node.name === "แยกไฟล์แนบทีละไฟล์");
 assert.match(attachmentSplitter.parameters.jsCode, /subject: src\.json\.subject/, "email subject must reach every attachment");
 const sourceFileWriter = live.nodes.find((node) => node.name === "Supabase: บันทึกทะเบียนไฟล์");
