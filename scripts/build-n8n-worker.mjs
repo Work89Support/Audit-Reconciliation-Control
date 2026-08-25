@@ -26,6 +26,7 @@ const file=meta.file, job=meta.job, ext=file.ext;
 const input=$input.all();
 let norm, rawRows=[], extractedText='';
 let parseError=null;
+let acceptedEmptyPm=false;
 try{
   if(ext==='pdf'){
     extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
@@ -35,7 +36,11 @@ try{
   }else if(ext==='csv'){
     const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
     rawRows=Engine.parseCSV(text);
-    norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+    const meaningfulText=text.replace(/^\uFEFF/,'').trim();
+    acceptedEmptyPm=file.kind==='pm_statement'&&Number(file.size_bytes||0)<=16&&!meaningfulText;
+    norm=acceptedEmptyPm
+      ? {format:{source:'stm',realCode:'pm_empty'},records:[],aux:[],warnings:['ไฟล์ PM ไม่มีรายการ (0 รายการ)'],dropped:{}}
+      : Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
   }else{
     rawRows=input.map(x=>Array.isArray(x.json.row)?x.json.row:Object.values(x.json));
     norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
@@ -50,9 +55,10 @@ const detectedSource=norm.format.source||'unknown';
 const usableRows=(norm.records||[]).length+(norm.aux||[]).length;
 const nonEmptyRows=rawRows.filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')).length;
 if(!parseError&&ext==='pdf'&&!extractedText.trim()) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
-if(!parseError&&ext!=='pdf'&&nonEmptyRows===0) parseError='ไม่พบข้อมูลในไฟล์ตาราง';
+if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
+if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown') parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+if(!parseError&&usableRows===0&&!acceptedEmptyPm) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
@@ -130,7 +136,7 @@ const nodes = [
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [-160, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
+    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const out=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&reconKinds.has(f.kind)) out.push({json:{job,file:{...f,ext}},pairedItem:{item:0}});}} if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },

@@ -85,6 +85,10 @@ assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file 
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
+assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
+assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 รายการ\)/, "empty PM exports must have a clear operator message");
+assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
+assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
@@ -146,6 +150,8 @@ assert.match(appSource, /queueableFiles/, "manual processing must only select el
 assert.match(appSource, /ไม่ส่งไปรันจนกว่าจะแก้/, "problem files must be clearly excluded from processing");
 assert.match(appSource, /พักไฟล์ปัญหา/, "processing must explicitly hold problem files instead of running them");
 assert.match(appSource, /f\.kind !== "unknown" && !f\.parse_error/, "the automatic browser worker must exclude problem files");
+assert.match(appSource, /isEmptyPmFile/, "the UI must distinguish a valid empty PM export from a failed file");
+assert.match(appSource, /ไม่มีรายการ \(0\)/, "valid empty PM exports must have a clear status");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");

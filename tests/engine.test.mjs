@@ -70,6 +70,9 @@ const run = (stm, bo, s = settings) => Engine.reconcile(stm, bo, s, [], null);
 
   const blanks = Engine.parseCSV("a,b\n\n \n1,2\n");
   eq("parseCSV: กรองบรรทัดว่าง", blanks.length, 2);
+
+  const empty = Engine.normalize("MR9 azpay-report-withdraw.csv", [], {}, "2026-08-24");
+  ok("normalize: ไฟล์ว่างไม่ทำให้ parser ล้ม", empty && empty.format && empty.format.source === "pm", JSON.stringify(empty));
 })();
 
 /* ================= 2) normalize ================= */

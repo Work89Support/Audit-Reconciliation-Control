@@ -73,6 +73,7 @@ const Engine = (() => {
 
   function mapHeaders(headerRow) {
     const map = {};
+    if (!Array.isArray(headerRow)) return map;
     headerRow.forEach((raw, idx) => {
       const cell = String(raw).trim().toLowerCase();
       if (!cell) return;
@@ -97,9 +98,10 @@ const Engine = (() => {
   ];
 
   function detectFormat(fileName, rows) {
-    const name = fileName.toLowerCase();
+    rows = Array.isArray(rows) ? rows.filter(Array.isArray) : [];
+    const name = String(fileName || "").toLowerCase();
     const headerIdx = rows.findIndex((r) => mapHeaders(r).account !== undefined || mapHeaders(r).amount !== undefined || mapHeaders(r).balance !== undefined);
-    const header = rows[headerIdx >= 0 ? headerIdx : 0];
+    const header = rows[headerIdx >= 0 ? headerIdx : 0] || [];
     const map = mapHeaders(header);
     const blob = (name + " " + rows.slice(0, 8).flat().join(" ")).toLowerCase();
 
