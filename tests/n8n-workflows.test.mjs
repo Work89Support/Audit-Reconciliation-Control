@@ -137,6 +137,8 @@ assert.match(appSource, /DocxReader\.render/, "file preview must render Word doc
 assert.match(docxSource, /word\/document\.xml/, "DOCX reader must extract the main Word document part");
 assert.match(docxSource, /textContent/, "DOCX preview must build safe text nodes instead of trusting document HTML");
 assert.doesNotMatch(docxSource, /innerHTML\s*=/, "DOCX reader must not inject document content as HTML");
+assert.match(appSource, /openPendingNextFile/, "the recommended next-file action must open the problem file instead of navigating to the current page");
+assert.match(appSource, /data-next-file/, "the next-action banner must preserve the target source file");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");

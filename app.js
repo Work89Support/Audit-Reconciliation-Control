@@ -342,15 +342,23 @@ function renderAuditFlow() {
   ];
   const active = { intake: "cloud", matching: "exceptions", approvals: "clarify", kpi: "reports", talk: "reports" }[state.route] || state.route;
   $("#auditFlow").innerHTML = steps.map((step) => `<a href="#/${step.route}" class="${active === step.route ? "active" : ""} ${step.tone}"><i>${step.no}</i><span><b>${h(step.label)}</b><small>${h(step.meta)}</small></span></a>`).join("");
+  if (state.route === "cloud") {
+    $("#auditFlow").querySelector('a[href="#/cloud"]')?.addEventListener("click", (event) => {
+      event.preventDefault();
+      document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 }
 
+let pendingNextFileId = "";
+
 function nextActionForState() {
-  const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => batch.source_files || []);
+  const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, batchCompany: batch.company, business_date: batch.business_date })));
   const unread = files.filter((file) => file.parse_error || file.kind === "unknown");
   const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
   const openExceptions = DB.exceptions.filter((row) => !["closed", "approved"].includes(row.status));
   const waitingClarify = openExceptions.filter((row) => ["clarifying", "answered", "damage"].includes(row.status));
-  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "เปิด Preview แก้บริษัทหรือประเภท แล้วกดบันทึกและรันต่อ", tone: "bad" };
+  if (unread.length) return { route: "cloud", fileId: unread[0].id, label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดเพื่อเปิด Preview ไฟล์แรก แก้บริษัทหรือประเภท แล้วบันทึกและรันต่อ", tone: "bad" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (waitingClarify.length) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(waitingClarify.length)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
   if (openExceptions.length) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(openExceptions.length)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
@@ -361,13 +369,33 @@ function renderNextAction(root) {
   if (state.dataset !== "production" || !Sb.signedIn()) return;
   const action = nextActionForState();
   const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
-  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">ไปต่อ →</button></section>`);
+  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" data-next-file="${h(action.fileId || "")}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">ไปต่อ →</button></section>`);
   const bar = root.querySelector("[data-next-route]");
-  const follow = () => go(bar.dataset.nextRoute);
+  const follow = () => {
+    const fileId = bar.dataset.nextFile;
+    if (fileId) {
+      pendingNextFileId = fileId;
+      if (state.route === "cloud" && openPendingNextFile()) return;
+    }
+    go(bar.dataset.nextRoute);
+  };
   bar.addEventListener("click", follow);
   bar.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); follow(); }
   });
+}
+
+function openPendingNextFile() {
+  if (!pendingNextFileId) return false;
+  const button = Array.from(document.querySelectorAll("[data-storage-open][data-file-id]")).find((item) => item.dataset.fileId === pendingNextFileId);
+  if (!button) {
+    document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return false;
+  }
+  pendingNextFileId = "";
+  button.scrollIntoView({ behavior: "smooth", block: "center" });
+  button.click();
+  return true;
 }
 
 function renderRoleSelect() {
@@ -530,6 +558,7 @@ function render() {
   VIEWS[route.id]($("#viewRoot"));
   renderNextAction($("#viewRoot"));
   addPanelCaptureButtons();
+  if (state.route === "cloud" && pendingNextFileId) requestAnimationFrame(openPendingNextFile);
   $("#sidebar").classList.remove("open");
 }
 
