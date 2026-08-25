@@ -139,6 +139,8 @@ assert.match(docxSource, /textContent/, "DOCX preview must build safe text nodes
 assert.doesNotMatch(docxSource, /innerHTML\s*=/, "DOCX reader must not inject document content as HTML");
 assert.match(appSource, /pendingCloudInbox/, "the recommended action must open the complete Cloud Inbox before individual files");
 assert.match(appSource, /id="cReviewIssues"/, "the complete file list must provide a separate problem-by-problem review action");
+assert.match(appSource, /id="problemFileSummary"/, "all problem files must be summarized before individual review starts");
+assert.match(appSource, /ไฟล์ที่พบปัญหาทั้งหมด/, "the problem summary must have a clear Thai heading");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");

@@ -1492,6 +1492,13 @@ td.wrap { white-space: normal; max-width: 420px; }
 }
 tr.on { background: #f0f7ff; }
 .hint.danger { color: var(--red-txt); }
+.problem-file-summary { border-left: 4px solid var(--critical); }
+.problem-file-summary.ok { border-left-color: var(--low); }
+.problem-file-table { max-height: 560px; overflow: auto; }
+.problem-file-table table { min-width: 1080px; }
+.problem-file-table thead th { position: sticky; top: 0; z-index: 2; background: #edf4fc; }
+.problem-file-table td { vertical-align: top; }
+.problem-file-table .file-name-link { min-width: 260px; max-width: 420px; }
 
 /* ชิปอัตราแลกเปลี่ยนบนแถบบน */
 .fx-chip {

@@ -358,7 +358,7 @@ function nextActionForState() {
   const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
   const openExceptions = DB.exceptions.filter((row) => !["closed", "approved"].includes(row.status));
   const waitingClarify = openExceptions.filter((row) => ["clarifying", "answered", "damage"].includes(row.status));
-  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดไปดูไฟล์ทั้งหมดก่อน แล้วเลือกตรวจไฟล์ปัญหาทีละรายการ", tone: "bad" };
+  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดดูรายชื่อไฟล์ปัญหาทั้งหมดและสาเหตุก่อน แล้วค่อยเปิดตรวจทีละรายการ", tone: "bad" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (waitingClarify.length) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(waitingClarify.length)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
   if (openExceptions.length) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(openExceptions.length)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
@@ -369,7 +369,7 @@ function renderNextAction(root) {
   if (state.dataset !== "production" || !Sb.signedIn()) return;
   const action = nextActionForState();
   const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
-  const buttonLabel = route === "cloud" ? "ดูไฟล์ทั้งหมด →" : "ไปต่อ →";
+  const buttonLabel = route === "cloud" ? "ดูไฟล์ปัญหาทั้งหมด →" : "ไปต่อ →";
   root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">${buttonLabel}</button></section>`);
   const bar = root.querySelector("[data-next-route]");
   const follow = () => {
@@ -378,7 +378,7 @@ function renderNextAction(root) {
       pendingCloudInbox = true;
       if (state.route === "cloud") {
         pendingCloudInbox = false;
-        document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        (document.getElementById("problemFileSummary") || document.getElementById("cloudInbox"))?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
     }
@@ -552,7 +552,7 @@ function render() {
   addPanelCaptureButtons();
   if (state.route === "cloud" && pendingCloudInbox) requestAnimationFrame(() => {
     pendingCloudInbox = false;
-    document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    (document.getElementById("problemFileSummary") || document.getElementById("cloudInbox"))?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   $("#sidebar").classList.remove("open");
 }
@@ -3428,8 +3428,10 @@ VIEWS.cloud = (root) => {
   }
 
   const batches = cloudState.batches || [];
-  const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: b.company })));
-  const problemFiles = allFiles.filter((f) => f.parse_error || f.kind === "unknown");
+  const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: f.company || b.company, subject: b.subject })));
+  const problemFiles = allFiles
+    .filter((f) => f.parse_error || f.kind === "unknown")
+    .sort((a, b) => String(b.business_date || "").localeCompare(String(a.business_date || "")) || String(a.company || "").localeCompare(String(b.company || ""), "th") || String(a.file_name || "").localeCompare(String(b.file_name || ""), "th"));
   const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
   const pickedFiles = readable.filter((f) => cloudState.picked[f.id]);
   const daily = cloudState.daily || [];
@@ -3442,14 +3444,31 @@ VIEWS.cloud = (root) => {
       <article class="ok" data-scroll-cloud="cloudInbox"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())} · กดดูเมล</small></article>
       <article data-scroll-cloud="cloudInbox"><span>ไฟล์ในคลัง</span><strong>${num(allFiles.length)}</strong><small>อ่านได้ ${num(readable.length)} ไฟล์ · กดตรวจ</small></article>
       <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}" data-action-route="daily-summary"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} · กดดูสรุป</small></article>
-      <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}" data-scroll-cloud="cloudInbox"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "กดเปิดไฟล์และแก้ประเภท" : "ไม่มีปัญหา"}</small></article>
+      <article class="${problemFiles.length ? "danger" : ""}" data-scroll-cloud="${problemFiles.length ? "problemFileSummary" : "cloudInbox"}"><span>ไฟล์ที่ต้องตรวจ</span><strong>${num(problemFiles.length)}</strong><small>${problemFiles.length ? "กดดูรายชื่อและสาเหตุทั้งหมด" : "ไม่มีปัญหา"}</small></article>
     </section>
 
     <section class="audit-file-guide action-guide">
       <button type="button" data-scroll-cloud="cloudInbox"><i>1</i><span><b>เปิดไฟล์ที่ได้รับ</b><small>กดเพื่อไปยังไฟล์จากเมล</small></span></button>
-      <button type="button" data-scroll-cloud="cloudInbox"><i>2</i><span><b>Preview และแก้ประเภท</b><small>ตรวจบริษัท วันที่ และชนิดไฟล์</small></span></button>
+      <button type="button" data-scroll-cloud="${problemFiles.length ? "problemFileSummary" : "cloudInbox"}"><i>2</i><span><b>ดูไฟล์ปัญหาทั้งหมด</b><small>ตรวจรายชื่อและสาเหตุก่อนแก้ทีละไฟล์</small></span></button>
       <button type="button" data-action-route="daily-summary"><i>3</i><span><b>ดูผลหลังบันทึก</b><small>ไปสรุป 1 บริษัท 1 วัน</small></span></button>
     </section>
+
+    ${problemFiles.length ? `<section class="panel problem-file-summary" id="problemFileSummary">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Problem files</p><h2>ไฟล์ที่พบปัญหาทั้งหมด</h2><small class="head-sub">รวม ${num(problemFiles.length)} ไฟล์ในช่วง ${h(rangeLabel())} · ตรวจรายชื่อและสาเหตุก่อนเริ่มแก้</small></div>
+        <div class="inline-actions"><button class="primary-button sm" id="cReviewIssues">เริ่มตรวจทีละไฟล์</button><button class="ghost-button sm" type="button" data-scroll-cloud="cloudInbox">ดูไฟล์ทั้งหมดจากเมล</button></div>
+      </div>
+      <div class="table-wrap problem-file-table"><table>
+        <thead><tr><th>#</th><th>วันที่</th><th>บริษัท</th><th>ชื่อไฟล์</th><th>ประเภทปัจจุบัน</th><th>ปัญหาที่พบ</th><th></th></tr></thead>
+        <tbody>${problemFiles.map((file, index) => `<tr class="bad">
+          <td class="tnum">${num(index + 1)}</td><td><b>${h(file.business_date || "-")}</b></td><td>${h(file.company || "ไม่ระบุ")}</td>
+          <td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>${h(file.subject || "กดเพื่อดูตัวอย่าง")}</small></button></td>
+          <td>${h(KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</td>
+          <td><span class="badge red">${file.parse_error ? "อ่านไฟล์ไม่สำเร็จ" : "ยังไม่ทราบประเภท"}</span><small class="sub danger">${h(file.parse_error || "ต้องเปิด Preview แล้วเลือกประเภทไฟล์")}</small></td>
+          <td class="right"><button class="primary-button xs" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}>เปิดตรวจ</button></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </section>` : `<section class="panel problem-file-summary ok" id="problemFileSummary"><div class="panel-heading"><div><p class="eyebrow">Problem files</p><h2>ไม่พบไฟล์ที่มีปัญหา</h2><small class="head-sub">ไฟล์ทั้งหมดมีประเภทแล้วและไม่มีข้อผิดพลาดจากการอ่าน</small></div><button class="ghost-button sm" type="button" data-scroll-cloud="cloudInbox">ดูไฟล์ทั้งหมดจากเมล</button></div></section>`}
 
     ${
       operations.length
@@ -3480,7 +3499,6 @@ VIEWS.cloud = (root) => {
         <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
-          ${problemFiles.length ? `<button class="primary-button sm" id="cReviewIssues">ตรวจไฟล์ปัญหาทีละไฟล์ (${num(problemFiles.length)})</button>` : `<span class="health ok">ไม่มีไฟล์ปัญหา</span>`}
           <button class="ghost-button sm" id="cPickNew">เลือกที่ยังไม่ได้อ่าน</button>
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>ดึงเข้าระบบ ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
