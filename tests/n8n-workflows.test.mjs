@@ -124,6 +124,8 @@ assert.match(reclassifySql, /jsonb_array_length\(v_job\.missing_groups\)=0/, "re
 assert.match(reclassifySql, /'reclassify_and_retry'/, "manual reclassification must be written to the audit log");
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
 assert.match(appSource, /id="fileKindSelect"/, "file preview must let the auditor choose the file type");
+assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
+assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");
 assert.match(appSource, /id="fileReclassify"/, "file preview must provide a save-and-retry action");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");

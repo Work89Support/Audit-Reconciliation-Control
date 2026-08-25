@@ -3083,21 +3083,22 @@ async function openStoredFilePreview(meta) {
   const companyOptions = companyMaster().map((company) => company.code).filter((code, index, rows) => rows.indexOf(code) === index);
   if (meta.company && !companyOptions.includes(meta.company)) companyOptions.unshift(meta.company);
   const kindOptions = [
-    ["stm_pdf", "STM ฝาก-ถอน"],
-    ["bo_main", "BO รายงานหลังบ้าน"],
-    ["pm_statement", "PM ฝาก/ถอน"],
-    ["manual_credit", "ฝากมือ - เครดิต"],
-    ["manual_payment", "ฝากมือ - Payment"],
-    ["manual_bonus", "ฝากมือ - โบนัส"],
-    ["comm_req", "ถอนค่าคอมมิชชั่น"],
-    ["credit_out", "ถอนเครดิต"],
-    ["doc_clarify", "ไฟล์ชี้แจง/หลักฐาน"],
-    ["unknown", "ยังไม่ทราบประเภท"],
+    ["stm_pdf", "STM ฝาก-ถอน", "Statement หรือรายการเดินบัญชีธนาคาร"],
+    ["bo_main", "BO รายงานหลังบ้าน", "รายงานหน้า BO ของบริษัท"],
+    ["pm_statement", "PM ฝาก/ถอน", "AUTOPEER, AZPAY, CYBERPLUS, MYPAY หรือ 12PAY"],
+    ["manual_credit", "ฝากมือ - เครดิต", "รายการเติมเครดิตด้วยมือ"],
+    ["manual_payment", "ฝากมือ - Payment", "รายการฝากมือฝั่ง Payment"],
+    ["manual_bonus", "ฝากมือ - โบนัส", "รายการโบนัส"],
+    ["comm_req", "ถอนค่าคอมมิชชั่น", "รายการถอนคอมมิชชั่น"],
+    ["credit_out", "ถอนเครดิต", "รายงานถอนเครดิต"],
+    ["doc_clarify", "ไฟล์ชี้แจง/หลักฐาน", "เอกสารตอบข้อสงสัยหรือหลักฐานเพิ่มเติม"],
+    ["unknown", "ยังไม่ทราบประเภท", "ใช้เมื่อยังไม่สามารถยืนยันประเภทไฟล์ได้"],
   ];
+  const selectedKindHelp = (kindOptions.find(([kind]) => kind === meta.kind) || kindOptions[kindOptions.length - 1])[2];
   const canReclassify = state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
   openModal(
     h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div>${canReclassify ? `<div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label]) => `<option value="${h(kind)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div>${canReclassify ? `<div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
     `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
@@ -3130,6 +3131,10 @@ async function openStoredFilePreview(meta) {
     } catch (error) { toast(error.message, "warn"); }
     button.disabled = false;
     button.textContent = old;
+  });
+  if (canReclassify) $("#fileKindSelect").addEventListener("change", (event) => {
+    const option = kindOptions.find(([kind]) => kind === event.target.value);
+    $("#fileKindHelp").textContent = option ? option[2] : "ตรวจเนื้อหาไฟล์ก่อนยืนยันประเภท";
   });
   if (canReclassify) $("#fileReclassify").addEventListener("click", async (event) => {
     const button = event.currentTarget;

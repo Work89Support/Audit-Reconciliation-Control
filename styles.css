@@ -1050,6 +1050,14 @@ td.wrap { white-space: normal; max-width: 420px; }
   font-weight: 700;
 }
 .file-preview-editor select { width: 100%; min-height: 40px; background: var(--surface); }
+.file-kind-help {
+  display: block;
+  min-height: 18px;
+  margin-top: 5px;
+  color: var(--blue-dark);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .file-preview-editor p {
   grid-column: 1 / -1;
   margin: 0;
