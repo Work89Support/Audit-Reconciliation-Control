@@ -344,6 +344,32 @@ function renderAuditFlow() {
   $("#auditFlow").innerHTML = steps.map((step) => `<a href="#/${step.route}" class="${active === step.route ? "active" : ""} ${step.tone}"><i>${step.no}</i><span><b>${h(step.label)}</b><small>${h(step.meta)}</small></span></a>`).join("");
 }
 
+function nextActionForState() {
+  const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => batch.source_files || []);
+  const unread = files.filter((file) => file.parse_error || file.kind === "unknown");
+  const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
+  const openExceptions = DB.exceptions.filter((row) => !["closed", "approved"].includes(row.status));
+  const waitingClarify = openExceptions.filter((row) => ["clarifying", "answered", "damage"].includes(row.status));
+  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "เปิด Preview แก้บริษัทหรือประเภท แล้วกดบันทึกและรันต่อ", tone: "bad" };
+  if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
+  if (waitingClarify.length) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(waitingClarify.length)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
+  if (openExceptions.length) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(openExceptions.length)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
+  return { route: "reports", label: "ดูสรุปและออกรายงาน", detail: "งานที่ต้องดำเนินการหมดแล้ว ตรวจรายวันและ Export หลักฐาน", tone: "ok" };
+}
+
+function renderNextAction(root) {
+  if (state.dataset !== "production" || !Sb.signedIn()) return;
+  const action = nextActionForState();
+  const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
+  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">ไปต่อ →</button></section>`);
+  const bar = root.querySelector("[data-next-route]");
+  const follow = () => go(bar.dataset.nextRoute);
+  bar.addEventListener("click", follow);
+  bar.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); follow(); }
+  });
+}
+
 function renderRoleSelect() {
   $("#roleSelect").innerHTML = Object.entries(DB.roles)
     .map(([k, v]) => `<option value="${k}" ${state.role === k ? "selected" : ""}>${h(v.name)}</option>`)
@@ -502,6 +528,7 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
+  renderNextAction($("#viewRoot"));
   addPanelCaptureButtons();
   $("#sidebar").classList.remove("open");
 }
@@ -808,12 +835,12 @@ function renderLiveDashboard(root) {
   const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
 
   root.innerHTML = `
-    <section class="status-strip live-status-strip">
-      <article class="ok"><span>เมลในช่วงที่เลือก</span><strong>${num(totalMail)}</strong><small>${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)}</small></article>
-      <article class="ok"><span>กระทบยอดสำเร็จ</span><strong>${num(completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ</small></article>
-      <article class="warn"><span>ต้องตรวจสอบ</span><strong>${num(needsReview)}</strong><small>ข้อมูลมาแล้วแต่ยังไม่ครบเงื่อนไข</small></article>
-      <article class="bad"><span>รอไฟล์ / ล้มเหลว</span><strong>${num(waiting + failed)}</strong><small>รอไฟล์ ${num(waiting)} · ล้มเหลว ${num(failed)}</small></article>
-      <article class="bad"><span>Exception จริง</span><strong>${num(exceptions.length)}</strong><small>ยอดเสี่ยงรวม ${money0(risk)} บาท</small></article>
+    <section class="status-strip live-status-strip action-tiles">
+      <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${num(totalMail)}</strong><small>${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)} · กดดูไฟล์</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${num(completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
+      <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${num(needsReview)}</strong><small>ข้อมูลมาแล้วแต่ยังไม่ครบ · กดดูสิ่งที่ขาด</small></article>
+      <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${num(waiting + failed)}</strong><small>รอ ${num(waiting)} · ล้มเหลว ${num(failed)} · กดแก้ไฟล์</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${num(exceptions.length)}</strong><small>ยอดเสี่ยง ${money0(risk)} บาท · กดตรวจเคส</small></article>
     </section>
 
     <section class="action-overview">
@@ -845,7 +872,7 @@ function renderLiveDashboard(root) {
       <div class="panel">
         <div class="panel-heading"><div><p class="eyebrow">บริษัทและระบบ</p><h2>แยกงานตามบริษัท</h2></div><span class="health ${needsReview + waiting ? "attention" : "ok"}">${num(companies.length)} กลุ่ม</span></div>
         <div class="company-overview-grid">
-          ${companies.map((c) => `<article class="company-overview-card">
+          ${companies.map((c) => `<article class="company-overview-card action-card" data-summary-company="${h(c.company)}" data-summary-date="${h(c.latest)}" role="link" tabindex="0">
             <div class="company-card-head"><div><strong>${h(c.company)}</strong><span>${h(c.system)}</span></div><small>ล่าสุด ${h(c.latest)}</small></div>
             <div class="company-metrics"><span class="ok">สำเร็จ <b>${num(c.completed)}</b></span><span class="warn">ตรวจ <b>${num(c.review)}</b></span><span class="bad">รอ/พลาด <b>${num(c.waiting + c.error)}</b></span><span>ไฟล์ <b>${num(c.files)}</b></span></div>
             <div class="kind-chips">${[...c.kinds].slice(0, 6).map((kind) => `<i>${h(LIVE_KIND_LABEL[kind] || kind)}</i>`).join("") || "<i>ยังไม่พบชนิดไฟล์</i>"}</div>
@@ -869,12 +896,24 @@ function renderLiveDashboard(root) {
         <thead><tr><th>วันที่</th><th>บริษัท / ระบบ</th><th>สถานะ</th><th class="right">ไฟล์</th><th>ไฟล์ที่ยังขาด</th><th>ผลกระทบยอด</th></tr></thead>
         <tbody>${recent.map((row) => {
           const status = LIVE_STATUS[row.status] || { label: row.status || "ไม่ทราบ", tone: "grey" };
-          return `<tr><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span></td><td class="right tnum">${num(row.file_count)}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(row.exception_count)} exception`}</td></tr>`;
+          return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span></td><td class="right tnum">${num(row.file_count)}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(row.exception_count)} exception`}</td></tr>`;
         }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
       </table></div>
     </section>`;
 
   root.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => go(button.dataset.goto)));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-summary-company]").forEach((item) => {
+    const open = () => {
+      state.dailySummary.date = item.dataset.summaryDate;
+      state.dailySummary.company = item.dataset.summaryCompany;
+      go("daily-summary");
+    };
+    item.addEventListener("click", open);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+  });
   root.querySelectorAll("[data-check-company]").forEach((row) => row.addEventListener("click", () => {
     state.dailySummary.date = row.dataset.checkDate;
     state.dailySummary.company = row.dataset.checkCompany;
@@ -1281,15 +1320,15 @@ function renderDailyCompanySummary(root) {
     }, {})).sort((a, b) => b[1] - a[1]);
     root.innerHTML = controls + `
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
-      <section class="daily-summary-kpis">
-        <article><span>ข้อมูลที่ได้รับ</span><strong>${num(data.files.length)}</strong><small>${num(data.batches.length)} อีเมล</small></article>
-        <article class="${fileErrors ? "bad" : parsed ? "ok" : "warn"}"><span>ไฟล์พร้อมใช้งาน</span><strong>${num(parsed)}/${num(data.files.length)}</strong><small>รออ่าน ${num(waitingFiles)} · อ่านไม่ได้ ${num(fileErrors)}</small></article>
-        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>STM ${num(stm)} · BO ${num(bo)} · ${matchRate.toFixed(2)}%</small></article>
-        <article class="${data.exceptionTotal ? "warn" : "ok"}"><span>Exception ทั้งหมด</span><strong>${num(data.exceptionTotal)}</strong><small>ยอดที่ต้องตรวจ ${money0(risk)} บาท</small></article>
-        <article class="ok"><span>แก้ไขและปิดแล้ว</span><strong>${num(data.fixed.length)}</strong><small>อนุมัติหรือปิดเคสเรียบร้อย</small></article>
-        <article class="${data.stillOpen ? "bad" : "ok"}"><span>ยังแก้ไม่สำเร็จ</span><strong>${num(data.stillOpen)}</strong><small>ยืนยันความเสียหาย ${num(data.confirmedDamage.length)} เคส</small></article>
+      <section class="daily-summary-kpis action-tiles">
+        <article data-action-route="cloud"><span>ข้อมูลที่ได้รับ</span><strong>${num(data.files.length)}</strong><small>${num(data.batches.length)} อีเมล · กดดูไฟล์</small></article>
+        <article data-action-route="cloud" class="${fileErrors ? "bad" : parsed ? "ok" : "warn"}"><span>ไฟล์พร้อมใช้งาน</span><strong>${num(parsed)}/${num(data.files.length)}</strong><small>รอ ${num(waitingFiles)} · อ่านไม่ได้ ${num(fileErrors)} · กดตรวจ</small></article>
+        <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>STM ${num(stm)} · BO ${num(bo)} · ${matchRate.toFixed(2)}% · กดดูผล</small></article>
+        <article data-action-route="exceptions" class="${data.exceptionTotal ? "warn" : "ok"}"><span>Exception ทั้งหมด</span><strong>${num(data.exceptionTotal)}</strong><small>ตรวจ ${money0(risk)} บาท · กดดูเคส</small></article>
+        <article data-action-route="clarify" class="ok"><span>แก้ไขและปิดแล้ว</span><strong>${num(data.fixed.length)}</strong><small>กดดูประวัติการอนุมัติ</small></article>
+        <article data-action-route="clarify" class="${data.stillOpen ? "bad" : "ok"}"><span>ยังแก้ไม่สำเร็จ</span><strong>${num(data.stillOpen)}</strong><small>ความเสียหาย ${num(data.confirmedDamage.length)} · กดติดตาม</small></article>
       </section>
-      <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><div class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์</small></span></div><div class="${parsed === data.files.length && data.files.length ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์<small>${num(parsed)} สำเร็จ</small></span></div><div class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)}</small></span></div><div class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส</small></span></div><div class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.fixed.length)}</small></span></div></section>
+      <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${parsed === data.files.length && data.files.length ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์<small>${num(parsed)} สำเร็จ · กดแก้ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.fixed.length)} · กดติดตาม</small></span></button></section>
 
       <section class="panel company-day-checklist">
         <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : "ครบทุกจุด"}</span></div>
@@ -1311,7 +1350,7 @@ function renderDailyCompanySummary(root) {
 
       <section class="grid-2 daily-summary-grid">
         <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ครบตามกฎ"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
-        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception</span><b>${num(data.exceptionTotal)}</b></li><li><span>มูลค่าความเสียหายที่บันทึก</span><b>${money0(damageTotal)} บาท</b></li></ul></div>
+        <div class="panel" id="dailyReconcileResult"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception</span><b>${num(data.exceptionTotal)}</b></li><li><span>มูลค่าความเสียหายที่บันทึก</span><b>${money0(damageTotal)} บาท</b></li></ul></div>
       </section>
 
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Source files</p><h2>ไฟล์ที่ได้รับทั้งหมด</h2><small class="head-sub">กดชื่อไฟล์เพื่อดูตัวอย่างก่อนดาวน์โหลด</small></div><span class="health ok">${num(data.files.length)} ไฟล์</span></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>รับเมื่อ</th><th>หัวข้อเมล / ผู้ส่ง</th><th>ชื่อไฟล์</th><th>ประเภท</th><th class="right">แถว</th><th>สถานะ</th></tr></thead><tbody>${data.files.map((file) => `<tr><td>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${file.row_count == null ? "-" : num(file.row_count)}</td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span><small class="sub danger">${h(file.parse_error)}</small>` : file.parsed ? `<span class="badge green">พร้อมใช้งาน</span>` : `<span class="badge amber">รออ่าน</span>`}</td></tr>`).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
@@ -1330,6 +1369,19 @@ function renderDailyCompanySummary(root) {
   $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
   $("#dailySummaryExport")?.addEventListener("click", () => exportDailyCompanySummary(dailyCompanyData(state.dailySummary.company)));
   $("#dailyGoExceptions")?.addEventListener("click", () => go("exceptions", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company }, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } }));
+  root.querySelectorAll("[data-daily-route]").forEach((button) => button.addEventListener("click", () => {
+    const route = button.dataset.dailyRoute;
+    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
+    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
+  }));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => {
+    const route = item.dataset.actionRoute;
+    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
+    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
+  }));
+  root.querySelectorAll("[data-scroll-daily]").forEach((item) => item.addEventListener("click", () => {
+    document.getElementById(item.dataset.scrollDaily)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
   bindStoredFileLinks(root);
   root.querySelectorAll("[data-daily-ex]").forEach((row) => row.addEventListener("click", () => {
     const item = (dailyCompanyState.exceptions || []).find((exception) => exception.id === row.dataset.dailyEx);
@@ -1592,10 +1644,10 @@ VIEWS.exceptions = (root) => {
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
 
   root.innerHTML = `
-    <section class="status-strip three clarification-strip">
-      <article class="ok"><span>ปิดจากไฟล์ชี้แจงอัตโนมัติ</span><strong>${num(autoClosedCount)}</strong><small>ตรงชัดเจนและยืนยันว่าแก้แล้ว</small></article>
-      <article class="warn"><span>จับคู่แล้ว รอ Audit อนุมัติ</span><strong>${num(answeredCount)}</strong><small>มีหลักฐาน แต่ยังไม่ควรปิดเอง</small></article>
-      <article class="bad"><span>ต้องให้คุณดู</span><strong>${num(reviewCount)}</strong><small>จับคู่ไม่ได้ กำกวม หรืออ่านไฟล์ไม่สำเร็จ</small></article>
+    <section class="status-strip three clarification-strip action-tiles">
+      <article class="ok" data-action-route="daily-summary"><span>ปิดจากไฟล์ชี้แจงอัตโนมัติ</span><strong>${num(autoClosedCount)}</strong><small>ยืนยันแล้ว · กดดูสรุปรายวัน</small></article>
+      <article class="warn" data-action-route="clarify"><span>จับคู่แล้ว รอ Audit อนุมัติ</span><strong>${num(answeredCount)}</strong><small>มีหลักฐาน · กดตรวจและอนุมัติ</small></article>
+      <article class="bad" data-action-route="clarify"><span>ต้องให้คุณดู</span><strong>${num(reviewCount)}</strong><small>กำกวมหรืออ่านไม่ได้ · กดดำเนินการ</small></article>
     </section>
     <section class="panel">
       <div class="toolbar">
@@ -1693,6 +1745,7 @@ VIEWS.exceptions = (root) => {
   $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
   $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]));
   $("#searchGoFiles")?.addEventListener("click", () => go("cloud"));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
   bindStoredFileLinks(root);
   root.querySelectorAll("th[data-sort]").forEach((thEl) =>
     thEl.addEventListener("click", () => {
@@ -2589,21 +2642,27 @@ function renderLiveReports(root) {
   damages.forEach((row)=>{const ym=String(row.date||"").slice(0,7);monthMap.set(ym,(monthMap.get(ym)||0)+Number(row.amount||0));});
   const monthly=[...monthMap.entries()].sort().map(([label,value])=>({label,value}));
   root.innerHTML=`
-    <section class="status-strip four">
-      <article><span>รายการ STM จริง</span><strong>${num(stm)}</strong><small>${quality.length} งานกระทบยอด</small></article>
-      <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>${stm?((matched/stm)*100).toFixed(2):"0.00"}%</small></article>
-      <article class="bad"><span>Exception</span><strong>${num(exceptions.length)}</strong><small>เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)}</small></article>
-      <article class="bad"><span>ความเสียหายที่บันทึกจริง</span><strong>${money0(totalDamage)}</strong><small>บาท · ${num(damages.length)} รายการ</small></article>
+    <section class="status-strip four action-tiles">
+      <article data-action-route="cloud"><span>รายการ STM จริง</span><strong>${num(stm)}</strong><small>${quality.length} งาน · กดดูไฟล์ต้นทาง</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>${stm?((matched/stm)*100).toFixed(2):"0.00"}% · กดดูผลรายวัน</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception</span><strong>${num(exceptions.length)}</strong><small>เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)} · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${money0(totalDamage)}</strong><small>บาท · ${num(damages.length)} รายการ · กดดูทะเบียน</small></article>
     </section>
     <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
     ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
       <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
-      <tbody>${daily.map((row)=>`<tr><td><b>${h(row.date)}</b></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}</tbody></table></div>
+      <tbody>${daily.map((row)=>`<tr class="action-row" data-report-date="${h(row.date)}" role="link" tabindex="0"><td><b>${h(row.date)}</b><small class="sub">กดดูสรุปรายวัน</small></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}</tbody></table></div>
     </section>`;
   if(monthly.length) Charts.draw("#liveReportDamage","bars",{label:"ความเสียหายรายเดือน",items:monthly,color:"#d03b3b",money:true,metric:"บาท",height:240});
   $("#liveRepException")?.addEventListener("click",()=>exportSheets("Exception_ข้อมูลจริง",[{name:"Exception",title:`Exception ${rangeLabel()}`,headers:["วันที่","เวลา","บริษัท","ประเภท","ระดับ","สถานะ","ยอดเสี่ยง","สาเหตุ"],rows:exceptions.map((e)=>[e.date,e.time,e.company,e.typeName,e.severity,e.status,e.riskAmount,e.cause])}]));
   $("#liveRepDamage")?.addEventListener("click",()=>exportSheets("ความเสียหาย_ข้อมูลจริง",[{name:"ความเสียหาย",title:`ความเสียหาย ${rangeLabel()}`,headers:["วันที่","รหัส","บริษัท","ผู้เกี่ยวข้อง","ยอด","สาเหตุ","หลักฐาน","สถานะการเงิน"],rows:damages.map((d)=>[d.date,d.id,d.company,d.employee,d.amount,d.cause,d.evidence?"มี":"รอ",d.financeStatus])}]));
+  root.querySelectorAll("[data-action-route]").forEach((item)=>item.addEventListener("click",()=>go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-report-date]").forEach((row)=>{
+    const open=()=>{state.dailySummary.date=row.dataset.reportDate;go("daily-summary");};
+    row.addEventListener("click",open);
+    row.addEventListener("keydown",(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();open();}});
+  });
 }
 
 VIEWS.reports = (root) => {
@@ -3075,6 +3134,17 @@ function filePreviewTable(rows) {
   return `<div class="file-preview-note">แสดงตัวอย่าง ${num(use.length)} แถวแรก · สูงสุด ${num(width)} คอลัมน์</div><div class="file-preview-table"><table><tbody>${use.map((row, index) => `<tr>${Array.from({ length: width }, (_, col) => `<${index === 0 ? "th" : "td"}>${h(row[col] ?? "")}</${index === 0 ? "th" : "td"}>`).join("")}</tr>`).join("") || `<tr><td class="empty">ไฟล์ไม่มีข้อมูลที่แสดงตัวอย่างได้</td></tr>`}</tbody></table></div>`;
 }
 
+function updateSourceFileCaches(fileId, changes) {
+  const seen = new Set();
+  [cloudState.batches, liveIntakeState.batches, dailyCompanyState.batches].forEach((batches) => {
+    if (!Array.isArray(batches) || seen.has(batches)) return;
+    seen.add(batches);
+    batches.forEach((batch) => (batch.source_files || []).forEach((file) => {
+      if (file.id === fileId) Object.assign(file, changes);
+    }));
+  });
+}
+
 async function openStoredFilePreview(meta) {
   const name = meta.name || "ไฟล์ต้นฉบับ";
   const ext = (name.split(".").pop() || "").toLowerCase();
@@ -3146,18 +3216,19 @@ async function openStoredFilePreview(meta) {
     try {
       const result = await Sb.reclassifySourceFile(meta.id, company, kind);
       logAction("reclassify_and_retry", "source_file", meta.id, `${name} → ${company} / ${kind}`);
-      liveOverviewState.key = "";
-      liveIntakeState.key = "";
-      dailyCompanyState.date = "";
-      dailyCompanyState.batches = null;
-      cloudState.batches = null;
+      updateSourceFileCaches(meta.id, { company, kind, parsed: false, parsed_at: null, row_count: null, parse_error: null });
       closeModal();
-      const refreshes = [loadLiveOverview(true), loadLiveIntake(true)];
-      if (state.route === "daily-summary") refreshes.push(loadDailyCompanySummary(true));
-      if (state.route === "cloud") refreshes.push(cloudLoad());
-      await Promise.all(refreshes);
       const queued = result && result.queued;
       toast(queued ? "บันทึกแล้ว และส่งเข้าคิวกระทบยอดแล้ว" : "บันทึกแล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว", queued ? "ok" : "warn");
+      render();
+      // Save feels immediate; refresh only the page currently in use instead
+      // of reloading dashboard, intake, daily summary and cloud concurrently.
+      setTimeout(() => {
+        if (state.route === "cloud") cloudLoad();
+        else if (state.route === "daily-summary") loadDailyCompanySummary(true);
+        else if (state.route === "intake") loadLiveIntake(true);
+        else loadLiveOverview(true);
+      }, 300);
     } catch (error) {
       toast("บันทึกประเภทไฟล์ไม่สำเร็จ: " + error.message, "warn");
       button.disabled = false;
@@ -3338,17 +3409,17 @@ VIEWS.cloud = (root) => {
   const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
 
   root.innerHTML = `
-    <section class="status-strip four">
-      <article class="ok"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
-      <article><span>ไฟล์ในคลัง</span><strong>${num(allFiles.length)}</strong><small>อ่านเข้าระบบได้ ${num(readable.length)} ไฟล์</small></article>
-      <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} ไฟล์</small></article>
-      <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "ดูสาเหตุในตาราง" : "ไม่มีปัญหา"}</small></article>
+    <section class="status-strip four action-tiles">
+      <article class="ok" data-scroll-cloud="cloudInbox"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())} · กดดูเมล</small></article>
+      <article data-scroll-cloud="cloudInbox"><span>ไฟล์ในคลัง</span><strong>${num(allFiles.length)}</strong><small>อ่านได้ ${num(readable.length)} ไฟล์ · กดตรวจ</small></article>
+      <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}" data-action-route="daily-summary"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} · กดดูสรุป</small></article>
+      <article class="${allFiles.some((f) => f.parse_error) ? "danger" : ""}" data-scroll-cloud="cloudInbox"><span>อ่านไม่สำเร็จ</span><strong>${num(allFiles.filter((f) => f.parse_error).length)}</strong><small>${allFiles.some((f) => f.parse_error) ? "กดเปิดไฟล์และแก้ประเภท" : "ไม่มีปัญหา"}</small></article>
     </section>
 
-    <section class="audit-file-guide">
-      <div><i>1</i><span><b>กดชื่อไฟล์หรือ “เปิดดู”</b><small>เปิดหลักฐานต้นฉบับจาก Supabase Storage</small></span></div>
-      <div><i>2</i><span><b>ตรวจบริษัท วันที่ และยอด</b><small>เทียบกับหัวข้อเมลและประเภทไฟล์</small></span></div>
-      <div><i>3</i><span><b>ดูสถานะระบบ</b><small>พร้อมใช้งาน / รอตรวจ / อ่านไม่ได้</small></span></div>
+    <section class="audit-file-guide action-guide">
+      <button type="button" data-scroll-cloud="cloudInbox"><i>1</i><span><b>เปิดไฟล์ที่ได้รับ</b><small>กดเพื่อไปยังไฟล์จากเมล</small></span></button>
+      <button type="button" data-scroll-cloud="cloudInbox"><i>2</i><span><b>Preview และแก้ประเภท</b><small>ตรวจบริษัท วันที่ และชนิดไฟล์</small></span></button>
+      <button type="button" data-action-route="daily-summary"><i>3</i><span><b>ดูผลหลังบันทึก</b><small>ไปสรุป 1 บริษัท 1 วัน</small></span></button>
     </section>
 
     ${
@@ -3359,7 +3430,7 @@ VIEWS.cloud = (root) => {
         <thead><tr><th>วันที่</th><th>บริษัท/ระบบ</th><th>สถานะ</th><th class="right">เมล</th><th class="right">ไฟล์</th><th>ไฟล์ที่ขาด</th><th>ผลล่าสุด</th></tr></thead>
         <tbody>${operations
           .map(
-            (j) => `<tr>
+            (j) => `<tr class="action-row" data-summary-company="${h(j.company)}" data-summary-date="${h(j.business_date)}" role="link" tabindex="0">
             <td><b>${h(j.business_date)}</b>${j.late_file ? '<small class="sub danger">มีไฟล์มาช้า · จะรันซ้ำ</small>' : ""}</td>
             <td>${h(j.company)}${j.business_system ? `<small class="sub">${h(j.business_system)}</small>` : ""}</td>
             <td><span class="badge ${jobTone[j.status] || "grey"}">${h(jobLabel[j.status] || j.status)}</span>${j.last_error ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
@@ -3375,7 +3446,7 @@ VIEWS.cloud = (root) => {
         : ""
     }
 
-    <section class="panel">
+    <section class="panel" id="cloudInbox">
       <div class="panel-heading">
         <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
@@ -3470,6 +3541,13 @@ VIEWS.cloud = (root) => {
     render();
   });
   $("#cImport").addEventListener("click", () => cloudImport(pickedFiles));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-scroll-cloud]").forEach((item) => item.addEventListener("click", () => document.getElementById(item.dataset.scrollCloud)?.scrollIntoView({ behavior: "smooth", block: "start" })));
+  root.querySelectorAll("[data-summary-company]").forEach((row) => {
+    const open = () => { state.dailySummary.date = row.dataset.summaryDate; state.dailySummary.company = row.dataset.summaryCompany; go("daily-summary"); };
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } });
+  });
   root.querySelectorAll("[data-pick]").forEach((cb) =>
     cb.addEventListener("change", () => {
       cloudState.picked[cb.dataset.pick] = cb.checked;

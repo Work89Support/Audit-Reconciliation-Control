@@ -127,6 +127,11 @@ assert.match(appSource, /id="fileKindSelect"/, "file preview must let the audito
 assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
 assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");
 assert.match(appSource, /id="fileReclassify"/, "file preview must provide a save-and-retry action");
+assert.match(appSource, /next-action-bar/, "every operational page must show a recommended next action");
+assert.match(appSource, /data-report-date/, "daily report rows must link to their operating-day summary");
+assert.match(appSource, /data-scroll-daily="dailyReconcileResult"/, "daily reconciliation status must open the result section");
+assert.match(appSource, /updateSourceFileCaches/, "manual file correction must update visible data immediately");
+assert.doesNotMatch(appSource, /await Promise\.all\(refreshes\)/, "manual file correction must not block on every page reload");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");
