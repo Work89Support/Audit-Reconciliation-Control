@@ -330,11 +330,12 @@ function renderNav() {
 
 function renderAuditFlow() {
   const files = (cloudState.batches || []).flatMap((batch) => batch.source_files || []);
-  const fileIssues = files.filter((file) => file.parse_error || !file.parsed).length;
+  const fileIssues = files.filter((file) => file.parse_error || file.kind === "unknown").length;
+  const fileWaiting = files.filter((file) => !file.parsed && !file.parse_error && !["unknown", "doc_clarify"].includes(file.kind)).length;
   const openExceptions = DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status));
   const waitingClarify = openExceptions.filter((e) => ["clarifying", "answered", "damage"].includes(e.status));
   const steps = [
-    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ต้องดู ${num(fileIssues)}` : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues ? "warn" : files.length ? "ok" : "" },
+    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ปัญหา ${num(fileIssues)}` : ""}${fileWaiting ? ` · รอระบบ ${num(fileWaiting)}` : fileIssues ? "" : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues ? "warn" : files.length ? "ok" : "" },
     { route: "dashboard", no: 2, label: "ดูภาพรวม", meta: "แยกตามบริษัท", tone: "" },
     { route: "exceptions", no: 3, label: "ตรวจข้อผิดปกติ", meta: `${num(openExceptions.length)} เคสเปิด`, tone: openExceptions.length ? "warn" : "ok" },
     { route: "clarify", no: 4, label: "ติดตาม/อนุมัติ", meta: `${num(waitingClarify.length)} งาน`, tone: waitingClarify.length ? "warn" : "ok" },
@@ -3150,7 +3151,7 @@ VIEWS["audit-log"] = (root) => {
 /* =============================================================
    VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
    ============================================================= */
-const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null };
+const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null, fileView: "all" };
 
 function filePreviewTable(rows) {
   const use = (rows || []).slice(0, 50).map((row) => (row || []).slice(0, 20));
@@ -3324,7 +3325,13 @@ async function cloudLoad() {
 
 /* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
 async function cloudImport(files, opts = {}) {
-  if (!files.length) return toast("ยังไม่ได้เลือกไฟล์", "warn");
+  const blocked = files.filter((file) => file.parse_error || file.kind === "unknown");
+  files = files.filter((file) => !file.parse_error && file.kind !== "unknown");
+  if (blocked.length) toast(`พักไฟล์ปัญหา ${num(blocked.length)} ไฟล์ไว้ก่อน — ต้องแก้ประเภทหรือข้อผิดพลาดก่อนรัน`, "warn");
+  if (!files.length) {
+    if (opts.job) throw new Error(`พักคิวไว้ก่อน: มีไฟล์ปัญหา ${blocked.length} ไฟล์และยังไม่มีไฟล์พร้อมรัน`);
+    return toast("ยังไม่มีไฟล์ที่พร้อมรัน", "warn");
+  }
   if (opts.clear) {
     ImportState.files = [];
     ImportState.lastRun = null;
@@ -3352,8 +3359,8 @@ async function cloudImport(files, opts = {}) {
     }
   }
   hideProgress();
-  logAction("cloud_import", "source_file", `${ok} ไฟล์`, `ดึงจากคลัง Supabase ${ok} ไฟล์${failed.length ? ` · ผิดพลาด ${failed.length}` : ""}`);
-  toast(`อ่านเข้าระบบแล้ว ${ok} ไฟล์${failed.length ? ` · ไม่สำเร็จ ${failed.length}` : ""}`);
+  logAction("cloud_import", "source_file", `${ok} ไฟล์`, `ดึงจากคลัง Supabase ${ok} ไฟล์${blocked.length ? ` · พักไฟล์ปัญหา ${blocked.length}` : ""}${failed.length ? ` · ผิดพลาด ${failed.length}` : ""}`);
+  toast(`อ่านเข้าระบบแล้ว ${ok} ไฟล์${blocked.length ? ` · พักไฟล์ปัญหา ${blocked.length}` : ""}${failed.length ? ` · ไม่สำเร็จ ${failed.length}` : ""}`);
   if (failed.length) console.warn(failed);
   cloudState.picked = {};
   await runReconcileFromImport({ reason: opts.job ? "คิวกระทบยอดรายวัน" : "ดึงจากคลังไฟล์", job: opts.job || null });
@@ -3429,11 +3436,25 @@ VIEWS.cloud = (root) => {
 
   const batches = cloudState.batches || [];
   const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: f.company || b.company, subject: b.subject })));
+  const isProblemFile = (file) => Boolean(file.parse_error || file.kind === "unknown");
+  const isReadyFile = (file) => !isProblemFile(file) && Boolean(file.parsed || file.kind === "doc_clarify");
+  const isWaitingFile = (file) => !isProblemFile(file) && !isReadyFile(file);
   const problemFiles = allFiles
-    .filter((f) => f.parse_error || f.kind === "unknown")
+    .filter(isProblemFile)
     .sort((a, b) => String(b.business_date || "").localeCompare(String(a.business_date || "")) || String(a.company || "").localeCompare(String(b.company || ""), "th") || String(a.file_name || "").localeCompare(String(b.file_name || ""), "th"));
   const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
-  const pickedFiles = readable.filter((f) => cloudState.picked[f.id]);
+  const readyFiles = allFiles.filter(isReadyFile);
+  const waitingFiles = allFiles.filter(isWaitingFile);
+  const queueableFiles = readable.filter((f) => !f.parsed && !f.parse_error && f.kind !== "unknown");
+  const pickedFiles = queueableFiles.filter((f) => cloudState.picked[f.id]);
+  const visibleFile = (file) => cloudState.fileView === "problem"
+    ? isProblemFile(file)
+    : cloudState.fileView === "ready"
+      ? isReadyFile(file)
+      : cloudState.fileView === "waiting"
+        ? isWaitingFile(file)
+        : true;
+  const visibleBatches = batches.map((batch) => ({ ...batch, source_files: (batch.source_files || []).filter(visibleFile) })).filter((batch) => batch.source_files.length);
   const daily = cloudState.daily || [];
   const operations = cloudState.operations || [];
   const jobLabel = { waiting_files: "รอไฟล์", ready: "พร้อม", queued: "เข้าคิว", running: "กำลังรัน", completed: "สำเร็จ", needs_review: "ต้องตรวจสอบ", error: "ล้มเหลว" };
@@ -3442,9 +3463,10 @@ VIEWS.cloud = (root) => {
   root.innerHTML = `
     <section class="status-strip four action-tiles">
       <article class="ok" data-scroll-cloud="cloudInbox"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())} · กดดูเมล</small></article>
-      <article data-scroll-cloud="cloudInbox"><span>ไฟล์ในคลัง</span><strong>${num(allFiles.length)}</strong><small>อ่านได้ ${num(readable.length)} ไฟล์ · กดตรวจ</small></article>
-      <article class="${allFiles.filter((f) => f.parsed).length ? "ok" : ""}" data-action-route="daily-summary"><span>อ่านเข้าระบบแล้ว</span><strong>${num(allFiles.filter((f) => f.parsed).length)}</strong><small>เหลือ ${num(readable.filter((f) => !f.parsed).length)} · กดดูสรุป</small></article>
-      <article class="${problemFiles.length ? "danger" : ""}" data-scroll-cloud="${problemFiles.length ? "problemFileSummary" : "cloudInbox"}"><span>ไฟล์ที่ต้องตรวจ</span><strong>${num(problemFiles.length)}</strong><small>${problemFiles.length ? "กดดูรายชื่อและสาเหตุทั้งหมด" : "ไม่มีปัญหา"}</small></article>
+      <article data-cloud-view="all"><span>ไฟล์ทั้งหมด</span><strong>${num(allFiles.length)}</strong><small>กดดูทุกสถานะ</small></article>
+      <article class="${readyFiles.length ? "ok" : ""}" data-cloud-view="ready"><span>พร้อมใช้งาน</span><strong>${num(readyFiles.length)}</strong><small>อ่านสำเร็จ · กดดูรายการ</small></article>
+      <article data-cloud-view="waiting"><span>รอประมวลผล</span><strong>${num(waitingFiles.length)}</strong><small>ไม่ใช่ไฟล์เสีย · รอระบบอ่าน</small></article>
+      <article class="${problemFiles.length ? "danger" : ""}" data-cloud-view="problem"><span>มีปัญหาต้องแก้</span><strong>${num(problemFiles.length)}</strong><small>${problemFiles.length ? "ไม่ส่งไปรันจนกว่าจะแก้" : "ไม่มีปัญหา"}</small></article>
     </section>
 
     <section class="audit-file-guide action-guide">
@@ -3499,14 +3521,17 @@ VIEWS.cloud = (root) => {
         <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
-          <button class="ghost-button sm" id="cPickNew">เลือกที่ยังไม่ได้อ่าน</button>
-          <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>ดึงเข้าระบบ ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
+          <button class="ghost-button sm" id="cPickNew">เลือกเฉพาะไฟล์ที่พร้อมรัน</button>
+          <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>อ่านไฟล์ที่เลือก ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
+      </div>
+      <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
+        ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>
       ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : ""}
       ${
-        batches.length
-          ? batches
+        visibleBatches.length
+          ? visibleBatches
               .map(
                 (b) => `<div class="mail-card">
         <div class="mail-head">
@@ -3529,14 +3554,19 @@ VIEWS.cloud = (root) => {
                 .sort((x, y) => String(x.file_name).localeCompare(String(y.file_name), "th"))
                 .map((f) => {
                   const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
+                  const canQueue = canRead && !f.parsed && !f.parse_error && f.kind !== "unknown";
                   return `<tr class="${f.parse_error ? "bad" : ""}">
-                  <td>${canRead ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
+                  <td>${canQueue ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
                   <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดดูตัวอย่าง ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
                   <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
                   <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
                   <td>${
                     f.parse_error
                       ? `<span class="file-state bad" title="${h(f.parse_error)}"><i>!</i><span><b>อ่านไม่ได้</b><small>กดดูสาเหตุ</small></span></span>`
+                      : f.kind === "unknown"
+                        ? `<span class="file-state bad"><i>!</i><span><b>ยังไม่ทราบประเภท</b><small>ต้องเปิด Preview และเลือกประเภท</small></span></span>`
+                      : f.kind === "doc_clarify"
+                        ? `<span class="file-state ok"><i>✓</i><span><b>หลักฐานพร้อมตรวจ</b><small>ไม่ต้องส่งเข้าเครื่องอ่านรายการ</small></span></span>`
                       : f.parsed
                         ? `<span class="file-state ok"><i>✓</i><span><b>พร้อมใช้งาน</b><small>${f.row_count ? `ระบบอ่าน ${num(f.row_count)} แถว` : "ระบบอ่านสำเร็จ"}</small></span></span>`
                         : `<span class="file-state wait"><i>•</i><span><b>รอตรวจไฟล์</b><small>ยังไม่อ่านเข้าระบบ</small></span></span>`
@@ -3551,7 +3581,7 @@ VIEWS.cloud = (root) => {
       </div>`,
               )
               .join("")
-          : `<p class="empty-box">${cloudState.loading ? "กำลังโหลด..." : "ยังไม่มีเมลในช่วงวันที่นี้ — ลองขยายช่วงวันที่ในแถบตัวกรองด้านบน หรือตรวจว่า workflow ใน n8n รันแล้ว"}</p>`
+          : `<p class="empty-box">${cloudState.loading ? "กำลังโหลด..." : cloudState.fileView === "all" ? "ยังไม่มีเมลในช่วงวันที่นี้ — ลองขยายช่วงวันที่ในแถบตัวกรองด้านบน หรือตรวจว่า workflow ใน n8n รันแล้ว" : "ไม่มีไฟล์ในสถานะที่เลือก"}</p>`
       }
     </section>
 
@@ -3585,7 +3615,8 @@ VIEWS.cloud = (root) => {
 
   $("#cReload").addEventListener("click", cloudLoad);
   $("#cPickNew").addEventListener("click", () => {
-    readable.filter((f) => !f.parsed).forEach((f) => (cloudState.picked[f.id] = true));
+    cloudState.picked = {};
+    queueableFiles.forEach((f) => (cloudState.picked[f.id] = true));
     render();
   });
   $("#cImport").addEventListener("click", () => cloudImport(pickedFiles));
@@ -3597,6 +3628,16 @@ VIEWS.cloud = (root) => {
     button.click();
   });
   root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-cloud-view]").forEach((item) => item.addEventListener("click", () => {
+    cloudState.fileView = item.dataset.cloudView;
+    render();
+    requestAnimationFrame(() => document.getElementById(cloudState.fileView === "problem" ? "problemFileSummary" : "cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }));
+  root.querySelectorAll("[data-cloud-file-view]").forEach((item) => item.addEventListener("click", () => {
+    cloudState.fileView = item.dataset.cloudFileView;
+    render();
+    requestAnimationFrame(() => document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }));
   root.querySelectorAll("[data-scroll-cloud]").forEach((item) => item.addEventListener("click", () => document.getElementById(item.dataset.scrollCloud)?.scrollIntoView({ behavior: "smooth", block: "start" })));
   root.querySelectorAll("[data-summary-company]").forEach((row) => {
     const open = () => { state.dailySummary.date = row.dataset.summaryDate; state.dailySummary.company = row.dataset.summaryCompany; go("daily-summary"); };
@@ -4456,7 +4497,7 @@ async function cloudWorkerTick() {
     const batches = await Sb.batches({ from: job.business_date, to: job.business_date });
     const files = batches
       .flatMap((b) => (b.source_files || []).filter((f) => String(f.company || b.company || "").toUpperCase() === String(job.company || "").toUpperCase()))
-      .filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
+      .filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify" && f.kind !== "unknown" && !f.parse_error);
     if (!files.length) throw new Error("ไม่พบไฟล์ที่ตัวอ่านรองรับในคิวนี้");
     Store.notify("ok", "เริ่มคิวกระทบยอดรายวัน", `${job.business_date} · ${job.company} · ${files.length} ไฟล์`, "cloud");
     await cloudImport(files, { clear: true, job });

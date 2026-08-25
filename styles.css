@@ -1499,6 +1499,11 @@ tr.on { background: #f0f7ff; }
 .problem-file-table thead th { position: sticky; top: 0; z-index: 2; background: #edf4fc; }
 .problem-file-table td { vertical-align: top; }
 .problem-file-table .file-name-link { min-width: 260px; max-width: 420px; }
+.cloud-file-tabs { display: flex; gap: 7px; overflow-x: auto; margin: 0 0 12px; padding: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.cloud-file-tabs button { flex: 0 0 auto; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: 500 11.5px Kanit, sans-serif; cursor: pointer; }
+.cloud-file-tabs button b { margin-left: 4px; color: inherit; }
+.cloud-file-tabs button:hover { border-color: #8dbbea; color: var(--blue-dark); }
+.cloud-file-tabs button.active { border-color: var(--blue); background: #eaf3ff; color: var(--blue-dark); font-weight: 700; }
 
 /* ชิปอัตราแลกเปลี่ยนบนแถบบน */
 .fx-chip {

@@ -141,6 +141,11 @@ assert.match(appSource, /pendingCloudInbox/, "the recommended action must open t
 assert.match(appSource, /id="cReviewIssues"/, "the complete file list must provide a separate problem-by-problem review action");
 assert.match(appSource, /id="problemFileSummary"/, "all problem files must be summarized before individual review starts");
 assert.match(appSource, /ไฟล์ที่พบปัญหาทั้งหมด/, "the problem summary must have a clear Thai heading");
+assert.match(appSource, /data-cloud-file-view/, "Cloud Inbox must separate ready, waiting and problem files");
+assert.match(appSource, /queueableFiles/, "manual processing must only select eligible files");
+assert.match(appSource, /ไม่ส่งไปรันจนกว่าจะแก้/, "problem files must be clearly excluded from processing");
+assert.match(appSource, /พักไฟล์ปัญหา/, "processing must explicitly hold problem files instead of running them");
+assert.match(appSource, /f\.kind !== "unknown" && !f\.parse_error/, "the automatic browser worker must exclude problem files");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");
