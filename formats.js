@@ -75,7 +75,7 @@ const Formats = (() => {
      เช่น MYPAY(id,amount,provider,status,requestTime) · ATP(วันที่,Ref,Username,ธนาคาร,สร้างฝาก,โอนจริง,Status)
           CBY(วันที่ทำรายการ,Ref Id,จำนวนเงิน,สถานะ) · CBY ถอน(...,จำนวนเงิน,ค่าธรรมเนียม,รวมหักเงิน,สถานะ)
      ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
-  const PM_DATE = ["paymenttime", "วันเวลาอัพเดต", "วันที่ทำรายการ", "วันที่", "requesttime"];
+  const PM_DATE = ["paymenttime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
   const PM_STATUS = ["status", "สถานะ"];
   const PM_AMT_DEP = ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
   const PM_AMT_WIT = ["p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
@@ -283,9 +283,9 @@ const Formats = (() => {
     pm_provider(f, r, i, company, drop, fileDir, meta) {
       const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
       if (!/success|สำเร็จ/.test(status)) return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + ")"), null;
-      const t = stamp(valAny(f, r, ["paymentTime", "วันเวลาอัพเดต", "วันที่ทำรายการ", "วันที่", "requestTime"]));
+      const t = stamp(valAny(f, r, ["paymentTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
-      const id = valAny(f, r, ["id", "Ref Id", "Ref", "reference"]);
+      const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
       const amount =

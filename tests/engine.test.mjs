@@ -112,6 +112,17 @@ await (async function () {
   eq("PM: account เป็น provider มาตรฐาน", n.records[0]?.account, "AUTOPEER");
 })();
 
+(function () {
+  const rows = [
+    ["วันเวลา", "รหัสสมาชิก", "เลขบัญชีสมาชิก", "ชื่อธนาคารสมาชิก", "OrderId", "จำนวนเงินฝาก", "ค่าธรรมเนียม", "รับสุทธิ", "สถานะ"],
+    ["2026-08-24 17:35:46", "AFF26263", "0112601873", "scb", "260824173545-69151724-CP", "100", "2.6", "97.4", "Success"],
+  ];
+  const n = Engine.normalize("AT4 CPXM-599 ฝาก.xlsx", rows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-08-24");
+  eq("PM CPXM: อ่านหัววันเวลาได้", n.records.length, 1);
+  eq("PM CPXM: ยอดฝาก", n.records[0]?.amount, 100);
+  eq("PM CPXM: เป็นฝั่ง STM", n.format.source, "stm");
+})();
+
 /* ================= 4) reconcile: time_diff ================= */
 await (async function () {
   const r = await run([rec({ account: "SCB-1", amount: 100, sec: 3600 })], [rec({ account: "SCB-1", amount: 100, sec: 3800 })]);

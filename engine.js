@@ -53,7 +53,7 @@ const Engine = (() => {
 
   /* ---------------- header mapping ---------------- */
   const DICT = {
-    datetime: ["datetime", "วันที่เวลา", "date_time", "timestamp"],
+    datetime: ["datetime", "วันที่เวลา", "วันเวลา", "date_time", "timestamp"],
     date: ["วันที่", "date", "วันที่ทำรายการ", "transaction date"],
     time: ["เวลา", "time"],
     desc: ["รายการ", "รายละเอียด", "description", "detail", "narrative", "merchant"],
@@ -61,7 +61,7 @@ const Engine = (() => {
     credit: ["ฝาก", "ฝากเงิน", "รับเข้า", "credit", "deposit"],
     balance: ["คงเหลือ", "ยอดคงเหลือ", "balance"],
     channel: ["ช่องทาง", "channel"],
-    account: ["เลขที่บัญชี", "บัญชี", "account", "account_no"],
+    account: ["เลขที่บัญชี", "เลขบัญชีสมาชิก", "บัญชี", "account", "account_no"],
     amount: ["จำนวนเงิน", "ยอดเงิน", "amount", "ยอด"],
     username: ["username", "ผู้ใช้", "user", "employee"],
     company: ["company", "บริษัท", "merchant"],
