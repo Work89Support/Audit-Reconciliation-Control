@@ -32,7 +32,9 @@ const Sb = (() => {
     return cfg();
   }
   const configured = () => !!(cfg().url && cfg().anonKey);
-  const signedIn = () => !!session && session.expires_at > Date.now() / 1000 + 30;
+  /* refresh token ยังใช้ต่ออายุได้ จึงถือว่ายังล็อกอินอยู่ระหว่างที่ access token
+     หมดอายุ หลีกเลี่ยงอาการส่วนหัวมีอีเมลแต่บางหน้าขึ้นว่ายังไม่ได้เข้าสู่ระบบ */
+  const signedIn = () => !!(session && session.user && (session.refresh_token || session.expires_at > Date.now() / 1000 + 30));
   const currentEmail = () => (session && session.user ? session.user.email : "");
   const authUser = () => (session && session.user ? session.user : null);
 
@@ -85,6 +87,13 @@ const Sb = (() => {
     return j.user;
   }
 
+  async function ensureFreshSession() {
+    if (!session || !session.refresh_token) return signedIn();
+    if (Number(session.expires_at || 0) > Date.now() / 1000 + 60) return true;
+    await refreshSession(session.refresh_token);
+    return true;
+  }
+
   /* ---------------- HTTP ---------------- */
   function base() {
     const u = String(cfg().url || "").trim().replace(/\/+$/, "");
@@ -101,7 +110,13 @@ const Sb = (() => {
     );
 
   async function req(path, opts = {}) {
-    const res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
+    await ensureFreshSession();
+    let res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
+    /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
+    if ((res.status === 401 || res.status === 403) && session && session.refresh_token) {
+      await refreshSession(session.refresh_token);
+      res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
+    }
     if (res.status === 401 || res.status === 403) {
       throw new Error("ไม่มีสิทธิ์อ่านข้อมูล — ล็อกอิน Supabase ก่อน (RLS เปิดอยู่)");
     }
