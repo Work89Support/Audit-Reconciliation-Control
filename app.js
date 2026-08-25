@@ -350,7 +350,7 @@ function renderAuditFlow() {
   }
 }
 
-let pendingNextFileId = "";
+let pendingCloudInbox = false;
 
 function nextActionForState() {
   const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, batchCompany: batch.company, business_date: batch.business_date })));
@@ -358,7 +358,7 @@ function nextActionForState() {
   const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
   const openExceptions = DB.exceptions.filter((row) => !["closed", "approved"].includes(row.status));
   const waitingClarify = openExceptions.filter((row) => ["clarifying", "answered", "damage"].includes(row.status));
-  if (unread.length) return { route: "cloud", fileId: unread[0].id, label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดเพื่อเปิด Preview ไฟล์แรก แก้บริษัทหรือประเภท แล้วบันทึกและรันต่อ", tone: "bad" };
+  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดไปดูไฟล์ทั้งหมดก่อน แล้วเลือกตรวจไฟล์ปัญหาทีละรายการ", tone: "bad" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (waitingClarify.length) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(waitingClarify.length)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
   if (openExceptions.length) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(openExceptions.length)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
@@ -369,33 +369,25 @@ function renderNextAction(root) {
   if (state.dataset !== "production" || !Sb.signedIn()) return;
   const action = nextActionForState();
   const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
-  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" data-next-file="${h(action.fileId || "")}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">ไปต่อ →</button></section>`);
+  const buttonLabel = route === "cloud" ? "ดูไฟล์ทั้งหมด →" : "ไปต่อ →";
+  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">${buttonLabel}</button></section>`);
   const bar = root.querySelector("[data-next-route]");
   const follow = () => {
-    const fileId = bar.dataset.nextFile;
-    if (fileId) {
-      pendingNextFileId = fileId;
-      if (state.route === "cloud" && openPendingNextFile()) return;
+    const nextRoute = bar.dataset.nextRoute;
+    if (nextRoute === "cloud") {
+      pendingCloudInbox = true;
+      if (state.route === "cloud") {
+        pendingCloudInbox = false;
+        document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
     }
-    go(bar.dataset.nextRoute);
+    go(nextRoute);
   };
   bar.addEventListener("click", follow);
   bar.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); follow(); }
   });
-}
-
-function openPendingNextFile() {
-  if (!pendingNextFileId) return false;
-  const button = Array.from(document.querySelectorAll("[data-storage-open][data-file-id]")).find((item) => item.dataset.fileId === pendingNextFileId);
-  if (!button) {
-    document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return false;
-  }
-  pendingNextFileId = "";
-  button.scrollIntoView({ behavior: "smooth", block: "center" });
-  button.click();
-  return true;
 }
 
 function renderRoleSelect() {
@@ -558,7 +550,10 @@ function render() {
   VIEWS[route.id]($("#viewRoot"));
   renderNextAction($("#viewRoot"));
   addPanelCaptureButtons();
-  if (state.route === "cloud" && pendingNextFileId) requestAnimationFrame(openPendingNextFile);
+  if (state.route === "cloud" && pendingCloudInbox) requestAnimationFrame(() => {
+    pendingCloudInbox = false;
+    document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   $("#sidebar").classList.remove("open");
 }
 
@@ -3434,6 +3429,7 @@ VIEWS.cloud = (root) => {
 
   const batches = cloudState.batches || [];
   const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: b.company })));
+  const problemFiles = allFiles.filter((f) => f.parse_error || f.kind === "unknown");
   const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
   const pickedFiles = readable.filter((f) => cloudState.picked[f.id]);
   const daily = cloudState.daily || [];
@@ -3484,6 +3480,7 @@ VIEWS.cloud = (root) => {
         <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
+          ${problemFiles.length ? `<button class="primary-button sm" id="cReviewIssues">ตรวจไฟล์ปัญหาทีละไฟล์ (${num(problemFiles.length)})</button>` : `<span class="health ok">ไม่มีไฟล์ปัญหา</span>`}
           <button class="ghost-button sm" id="cPickNew">เลือกที่ยังไม่ได้อ่าน</button>
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>ดึงเข้าระบบ ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
@@ -3574,6 +3571,13 @@ VIEWS.cloud = (root) => {
     render();
   });
   $("#cImport").addEventListener("click", () => cloudImport(pickedFiles));
+  $("#cReviewIssues")?.addEventListener("click", () => {
+    const first = problemFiles[0];
+    const button = Array.from(root.querySelectorAll("[data-storage-open][data-file-id]")).find((item) => item.dataset.fileId === first?.id);
+    if (!button) return toast("ยังไม่พบไฟล์ปัญหาในรายการปัจจุบัน", "warn");
+    button.scrollIntoView({ behavior: "smooth", block: "center" });
+    button.click();
+  });
   root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
   root.querySelectorAll("[data-scroll-cloud]").forEach((item) => item.addEventListener("click", () => document.getElementById(item.dataset.scrollCloud)?.scrollIntoView({ behavior: "smooth", block: "start" })));
   root.querySelectorAll("[data-summary-company]").forEach((row) => {
