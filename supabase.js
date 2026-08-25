@@ -220,14 +220,19 @@ const Sb = (() => {
       .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
       .join("&");
 
-  /* สรุปรายวัน (view) */
-  const dailyStatus = (limit = 30) => json(`/rest/v1/v_daily_status?${q({ limit, order: "business_date.desc" })}`);
+  /* สรุปรายวัน (view) — กรองที่ฐานข้อมูลเพื่อลดเวลารอและปริมาณข้อมูล */
+  function rangedView(name, order, input, defaultLimit) {
+    const opts = typeof input === "number" ? { limit: input } : (input || {});
+    const filters = ["select=*", `order=${order}`, `limit=${opts.limit || defaultLimit}`];
+    if (opts.from) filters.push(`business_date=gte.${encodeURIComponent(opts.from)}`);
+    if (opts.to) filters.push(`business_date=lte.${encodeURIComponent(opts.to)}`);
+    if (opts.company && opts.company !== "ALL") filters.push(`company=eq.${encodeURIComponent(opts.company)}`);
+    return json(`/rest/v1/${name}?${filters.join("&")}`);
+  }
 
-  const operations = (limit = 100) =>
-    json(`/rest/v1/v_recon_operations?${q({ limit, order: "business_date.desc,company.asc" })}`);
-
-  const quality = (limit = 1000) =>
-    json(`/rest/v1/v_recon_quality?${q({ limit, order: "business_date.desc,company.asc" })}`);
+  const dailyStatus = (opts = 30) => rangedView("v_daily_status", "business_date.desc", opts, 30);
+  const operations = (opts = 100) => rangedView("v_recon_operations", "business_date.desc,company.asc", opts, 100);
+  const quality = (opts = 1000) => rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000);
 
   async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {
     const filters = ["select=*", "order=business_date.desc,company.asc", `limit=${limit}`];
@@ -266,18 +271,20 @@ const Sb = (() => {
   }
 
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
-    const rows = [];
     const pageSize = 1000;
-    for (let offset = 0; offset < limit; offset += pageSize) {
+    const fetchPage = async (offset) => {
       const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
       if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
       if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
       if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-      const page = await json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
-      rows.push(...(page || []));
-      if (!page || page.length < pageSize) break;
-    }
-    return rows;
+      return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+    };
+    const first = await fetchPage(0);
+    if (!first || first.length < pageSize || limit <= pageSize) return first || [];
+    const offsets = [];
+    for (let offset = pageSize; offset < limit; offset += pageSize) offsets.push(offset);
+    const rest = await Promise.all(offsets.map(fetchPage));
+    return first.concat(...rest);
   }
 
   async function searchExceptions({ term, from, to, company, limit = 1000 } = {}) {

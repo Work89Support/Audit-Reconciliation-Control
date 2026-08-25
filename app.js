@@ -719,20 +719,20 @@ async function loadLiveOverview(force = false) {
   liveOverviewState.key = key;
   if (state.route === "dashboard") render();
   try {
-    const [daily, operations, quality, checklist, settings, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
-      Sb.dailyStatus(1000),
-      Sb.operations(1000),
-      Sb.quality(1000),
+    let [daily, operations, quality, checklist, settings, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
+      Sb.dailyStatus({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
+      Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
+      Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
       Sb.currentExceptions({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 5000 }),
       Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
-      Sb.auditLogs({ from: state.filters.from, to: state.filters.to }),
-      Sb.notifications(1000),
+      Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
+      Sb.notifications(200),
       // Keep the existing production dashboard usable while the migration is
       // being rolled out. The clarification summary appears as soon as its
       // table exists, without making all other live data depend on it.
-      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company }).catch(() => []),
+      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }).catch(() => []),
     ]);
     let checklistRows = checklist || [];
     let exceptionRows = exceptions || [];
@@ -744,7 +744,8 @@ async function loadLiveOverview(force = false) {
       && state.filters.to === DEFAULT_WORK_DATE
       && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
     if (defaultEmptyRange) {
-      const latestOperationalDate = (quality || [])
+      const latestQuality = await Sb.quality({ company: state.filters.company, limit: 1 });
+      const latestOperationalDate = (latestQuality || [])
         .filter((row) => !row.is_archived && row.business_date)
         .map((row) => row.business_date)
         .sort()
@@ -752,7 +753,10 @@ async function loadLiveOverview(force = false) {
       if (latestOperationalDate) {
         state.filters = { ...state.filters, date: latestOperationalDate, from: latestOperationalDate, to: latestOperationalDate, preset: "day" };
         state.dailySummary.date = latestOperationalDate;
-        [checklistRows, exceptionRows, damageRows, logRows, clarificationRows] = await Promise.all([
+        [daily, operations, quality, checklistRows, exceptionRows, damageRows, logRows, clarificationRows] = await Promise.all([
+          Sb.dailyStatus({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
+          Sb.operations({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
+          Sb.quality({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
           Sb.currentExceptions({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 5000 }),
           Sb.damages({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
@@ -1175,8 +1179,8 @@ async function loadDailyCompanySummary(force = false) {
   try {
     const [batches, quality, operations, checklist, exceptions, damages] = await Promise.all([
       Sb.batches({ from: date, to: date }),
-      Sb.quality(5000),
-      Sb.operations(5000),
+      Sb.quality({ from: date, to: date, limit: 200 }),
+      Sb.operations({ from: date, to: date, limit: 200 }),
       Sb.dailyChecklist({ from: date, to: date }),
       Sb.currentExceptions({ from: date, to: date, company: "ALL", limit: 5000 }),
       Sb.damages({ from: date, to: date, company: "ALL", limit: 5000 }),
@@ -3312,8 +3316,8 @@ async function cloudLoad() {
     const from = state.filters.from || to;
     const [b, d, ops] = await Promise.all([
       Sb.batches({ from, to, company: state.filters.company }),
-      Sb.dailyStatus(30),
-      Sb.operations(100),
+      Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
+      Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
     ]);
     cloudState.batches = b;
     cloudState.daily = d;

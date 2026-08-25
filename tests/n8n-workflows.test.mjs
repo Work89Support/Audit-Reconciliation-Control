@@ -128,6 +128,9 @@ assert.match(reclassifySql, /parse_error=null/, "manual reclassification must cl
 assert.match(reclassifySql, /jsonb_array_length\(v_job\.missing_groups\)=0/, "retry must wait until the required file groups are complete");
 assert.match(reclassifySql, /'reclassify_and_retry'/, "manual reclassification must be written to the audit log");
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
+assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
+assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
+assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, limit: 200 \}\)/, "daily summary must not download all historical quality rows");
 assert.match(appSource, /id="fileKindSelect"/, "file preview must let the auditor choose the file type");
 assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
 assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");
