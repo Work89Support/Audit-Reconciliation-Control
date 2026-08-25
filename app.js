@@ -3080,10 +3080,25 @@ async function openStoredFilePreview(meta) {
   const ext = (name.split(".").pop() || "").toLowerCase();
   const sizeLabel = meta.size ? `${Math.round(Number(meta.size) / 1024).toLocaleString()} KB` : "ไม่ระบุขนาด";
   const status = meta.status === "error" ? "อ่านไม่ได้" : meta.status === "parsed" ? "พร้อมใช้งาน" : "รอตรวจ";
+  const companyOptions = companyMaster().map((company) => company.code).filter((code, index, rows) => rows.indexOf(code) === index);
+  if (meta.company && !companyOptions.includes(meta.company)) companyOptions.unshift(meta.company);
+  const kindOptions = [
+    ["stm_pdf", "STM ฝาก-ถอน"],
+    ["bo_main", "BO รายงานหลังบ้าน"],
+    ["pm_statement", "PM ฝาก/ถอน"],
+    ["manual_credit", "ฝากมือ - เครดิต"],
+    ["manual_payment", "ฝากมือ - Payment"],
+    ["manual_bonus", "ฝากมือ - โบนัส"],
+    ["comm_req", "ถอนค่าคอมมิชชั่น"],
+    ["credit_out", "ถอนเครดิต"],
+    ["doc_clarify", "ไฟล์ชี้แจง/หลักฐาน"],
+    ["unknown", "ยังไม่ทราบประเภท"],
+  ];
+  const canReclassify = state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
   openModal(
     h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div><div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
-    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="primary-button" id="fileDownload">ดาวน์โหลดไฟล์</button>`,
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div>${canReclassify ? `<div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label]) => `<option value="${h(kind)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
   $("#filePreviewClose").addEventListener("click", closeModal);
@@ -3115,6 +3130,34 @@ async function openStoredFilePreview(meta) {
     } catch (error) { toast(error.message, "warn"); }
     button.disabled = false;
     button.textContent = old;
+  });
+  if (canReclassify) $("#fileReclassify").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const old = button.textContent;
+    const company = $("#fileCompanySelect").value;
+    const kind = $("#fileKindSelect").value;
+    button.disabled = true;
+    button.textContent = "กำลังบันทึก...";
+    try {
+      const result = await Sb.reclassifySourceFile(meta.id, company, kind);
+      logAction("reclassify_and_retry", "source_file", meta.id, `${name} → ${company} / ${kind}`);
+      liveOverviewState.key = "";
+      liveIntakeState.key = "";
+      dailyCompanyState.date = "";
+      dailyCompanyState.batches = null;
+      cloudState.batches = null;
+      closeModal();
+      const refreshes = [loadLiveOverview(true), loadLiveIntake(true)];
+      if (state.route === "daily-summary") refreshes.push(loadDailyCompanySummary(true));
+      if (state.route === "cloud") refreshes.push(cloudLoad());
+      await Promise.all(refreshes);
+      const queued = result && result.queued;
+      toast(queued ? "บันทึกแล้ว และส่งเข้าคิวกระทบยอดแล้ว" : "บันทึกแล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว", queued ? "ok" : "warn");
+    } catch (error) {
+      toast("บันทึกประเภทไฟล์ไม่สำเร็จ: " + error.message, "warn");
+      button.disabled = false;
+      button.textContent = old;
+    }
   });
 
   try {

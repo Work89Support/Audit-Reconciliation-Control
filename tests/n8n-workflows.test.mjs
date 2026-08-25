@@ -10,6 +10,9 @@ const clarification = await load("audit-clarification-matcher.json");
 const telegram = await load("audit-telegram-notifications.json");
 const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
+const reclassifySql = await readFile(new URL("../supabase/20260825_manual_file_reclassify.sql", import.meta.url), "utf8");
+const appSource = await readFile(new URL("../app.js", import.meta.url), "utf8");
+const supabaseSource = await readFile(new URL("../supabase.js", import.meta.url), "utf8");
 
 function validateGraph(workflow) {
   const names = new Set(workflow.nodes.map((node) => node.name));
@@ -115,6 +118,13 @@ assert.match(clarificationSql, /clarification_auto_close/, "auto-close must writ
 assert.match(parserQualitySql, /record_source_file_parse_results/, "parser quality RPC must be deployed with the worker");
 assert.match(parserQualitySql, /error_count > 0/, "parse failures must stay outside the automatic queue");
 assert.match(parserQualitySql, /อ่านไฟล์ไม่ผ่าน Quality Gate/, "operators must receive a clear parse failure notification");
+assert.match(reclassifySql, /auth\.uid\(\) is null/, "manual reclassification must require an authenticated user");
+assert.match(reclassifySql, /parse_error=null/, "manual reclassification must clear the stale parser error");
+assert.match(reclassifySql, /jsonb_array_length\(v_job\.missing_groups\)=0/, "retry must wait until the required file groups are complete");
+assert.match(reclassifySql, /'reclassify_and_retry'/, "manual reclassification must be written to the audit log");
+assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
+assert.match(appSource, /id="fileKindSelect"/, "file preview must let the auditor choose the file type");
+assert.match(appSource, /id="fileReclassify"/, "file preview must provide a save-and-retry action");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");

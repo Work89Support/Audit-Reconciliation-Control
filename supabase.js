@@ -307,6 +307,12 @@ const Sb = (() => {
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
   const finishJob = (jobId, runId) => rpc("finish_daily_recon_job", { p_job_id: jobId, p_run_id: runId });
   const failJob = (jobId, error) => rpc("fail_daily_recon_job", { p_job_id: jobId, p_error: String(error || "Unknown error") });
+  const reclassifySourceFile = (fileId, company, kind) => rpc("reclassify_source_file", {
+    p_file_id: fileId,
+    p_company: company,
+    p_kind: kind,
+    p_actor: currentEmail() || "web-auditor",
+  });
 
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
   async function batches({ from, to, company } = {}) {
@@ -471,6 +477,7 @@ const Sb = (() => {
     claimJob,
     finishJob,
     failJob,
+    reclassifySourceFile,
     batches,
     download,
     signedUrl,
