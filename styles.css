@@ -1153,12 +1153,42 @@ td.wrap { white-space: normal; max-width: 420px; }
 }
 .file-preview-unavailable b { color: var(--text); font-size: 15px; }
 .file-preview-unavailable.bad b { color: var(--red-txt); }
+.docx-preview {
+  width: 100%;
+  max-height: min(64vh, 680px);
+  align-self: stretch;
+  overflow: auto;
+  background: #e9eef5;
+}
+.docx-page {
+  width: min(820px, calc(100% - 32px));
+  min-height: 520px;
+  margin: 16px auto;
+  padding: 42px 52px;
+  background: #fff;
+  box-shadow: 0 3px 16px rgba(25, 55, 90, .12);
+  color: #17283a;
+  font-family: Arial, "Noto Sans Thai", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.docx-paragraph { min-height: 1.25em; margin: 0 0 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.docx-paragraph img { display: block; max-width: 100%; max-height: 520px; margin: 10px auto; object-fit: contain; }
+.docx-heading { margin-top: 18px; font-size: 18px; font-weight: 700; }
+.docx-title { font-size: 23px; text-align: center; }
+.docx-table-wrap { width: 100%; margin: 12px 0; overflow-x: auto; }
+.docx-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.docx-table-wrap th, .docx-table-wrap td { padding: 7px 9px; border: 1px solid #9eacba; vertical-align: top; }
+.docx-table-wrap th { background: #edf4fc; }
+.docx-table-wrap .docx-paragraph { margin-bottom: 3px; }
+.docx-warning { margin-bottom: 12px; padding: 8px 10px; border-radius: 7px; background: #fff4d6; color: #805b00; font: 12px/1.5 Kanit, sans-serif; }
 
 @media (max-width: 800px) {
   .file-preview-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .file-preview-content { min-height: 280px; }
   .file-preview-frame { height: 58vh; }
   .file-preview-modal .modal-foot button { flex: 1 1 180px; }
+  .docx-page { width: calc(100% - 20px); margin: 10px; padding: 24px 20px; }
 }
 @media (max-width: 520px) {
   .file-preview-meta { grid-template-columns: 1fr; }

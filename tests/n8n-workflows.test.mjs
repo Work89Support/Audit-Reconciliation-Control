@@ -12,6 +12,7 @@ const clarificationSql = await readFile(new URL("../supabase/20260823_clarificat
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
 const reclassifySql = await readFile(new URL("../supabase/20260825_manual_file_reclassify.sql", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../app.js", import.meta.url), "utf8");
+const docxSource = await readFile(new URL("../docx-reader.js", import.meta.url), "utf8");
 const supabaseSource = await readFile(new URL("../supabase.js", import.meta.url), "utf8");
 
 function validateGraph(workflow) {
@@ -132,6 +133,10 @@ assert.match(appSource, /data-report-date/, "daily report rows must link to thei
 assert.match(appSource, /data-scroll-daily="dailyReconcileResult"/, "daily reconciliation status must open the result section");
 assert.match(appSource, /updateSourceFileCaches/, "manual file correction must update visible data immediately");
 assert.doesNotMatch(appSource, /await Promise\.all\(refreshes\)/, "manual file correction must not block on every page reload");
+assert.match(appSource, /DocxReader\.render/, "file preview must render Word documents inside the audit modal");
+assert.match(docxSource, /word\/document\.xml/, "DOCX reader must extract the main Word document part");
+assert.match(docxSource, /textContent/, "DOCX preview must build safe text nodes instead of trusting document HTML");
+assert.doesNotMatch(docxSource, /innerHTML\s*=/, "DOCX reader must not inject document content as HTML");
 
 const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");

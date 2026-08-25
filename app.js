@@ -3248,6 +3248,10 @@ async function openStoredFilePreview(meta) {
     } else if (["csv", "txt"].includes(ext)) {
       const text = new TextDecoder("utf-8").decode(await Sb.download(meta.path));
       target.innerHTML = filePreviewTable(ext === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
+    } else if (ext === "docx" || String(meta.mime).includes("wordprocessingml")) {
+      const preview = await DocxReader.render(await Sb.download(meta.path));
+      target.replaceChildren(preview.element);
+      $("#modal")._contentCleanup = preview.cleanup;
     } else {
       target.innerHTML = `<div class="file-preview-unavailable"><b>ไฟล์ชนิดนี้ยังแสดงตัวอย่างในหน้าเว็บไม่ได้</b><span>ตรวจรายละเอียดด้านบน แล้วเลือก “เปิดต้นฉบับ” หรือ “ดาวน์โหลดไฟล์” เมื่อต้องการ</span></div>`;
     }
@@ -4986,6 +4990,8 @@ VIEWS.clarify = (root) => {
 
 function openModal(title, bodyHtml, footHtml) {
   const m = $("#modal");
+  if (typeof m._contentCleanup === "function") m._contentCleanup();
+  m._contentCleanup = null;
   m.classList.remove("file-preview-modal");
   m.innerHTML = `
     <header class="modal-head">
@@ -5003,6 +5009,8 @@ function openModal(title, bodyHtml, footHtml) {
 function closeModal() {
   const m = $("#modal");
   if (!m || m.hidden) return;
+  if (typeof m._contentCleanup === "function") m._contentCleanup();
+  m._contentCleanup = null;
   m.classList.remove("on");
   $("#modalOverlay").hidden = true;
   setTimeout(() => (m.hidden = true), 200);
