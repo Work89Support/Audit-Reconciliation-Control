@@ -123,6 +123,17 @@ await (async function () {
   eq("PM CPXM: เป็นฝั่ง STM", n.format.source, "stm");
 })();
 
+(function () {
+  const rows = [
+    ["รหัส", "เวลา", "ประเภท", "ประเภทดำเนินการ", "ยูสเซอร์", "ธนาคาร", "จำนวน", "จำนวนที่ได้รับ", "ค่าธรรรมเนียม", "เวลาทำรายการ", "หมายเหตุ", "ผู้ดำเนินการ"],
+    ["2692707", "2026-08-24 00:05", "ฝาก", "ฝากมือ", "3win42543", "KBANK 1998545397 (ทินกร โฉมสะอาด)(P2P)", "49.00", "49.00", "0", "2026-08-24 00:08", "เติมล่วงหน้า", "PLOY X5"],
+  ];
+  const n = Engine.normalize("MC.xlsx", rows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-08-24");
+  eq("BO แบบย่อ: ตรวจเป็น BO", n.format.source, "bo");
+  eq("BO แบบย่อ: อ่านรายการ", n.records.length, 1);
+  eq("BO แบบย่อ: อ่านยอด", n.records[0]?.amount, 49);
+})();
+
 /* ================= 4) reconcile: time_diff ================= */
 await (async function () {
   const r = await run([rec({ account: "SCB-1", amount: 100, sec: 3600 })], [rec({ account: "SCB-1", amount: 100, sec: 3800 })]);
