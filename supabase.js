@@ -111,24 +111,35 @@ const Sb = (() => {
 
   async function req(path, opts = {}) {
     await ensureFreshSession();
-    let res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
-    /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
-    if ((res.status === 401 || res.status === 403) && session && session.refresh_token) {
-      await refreshSession(session.refresh_token);
-      res = await fetch(base() + path, { ...opts, headers: headers(opts.headers) });
+    const controller = opts.signal ? null : new AbortController();
+    const timeout = controller ? setTimeout(() => controller.abort(), Number(opts.timeoutMs || 30000)) : null;
+    const fetchOpts = { ...opts, signal: opts.signal || controller.signal, headers: headers(opts.headers) };
+    delete fetchOpts.timeoutMs;
+    try {
+      let res = await fetch(base() + path, fetchOpts);
+      /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
+      if ((res.status === 401 || res.status === 403) && session && session.refresh_token) {
+        await refreshSession(session.refresh_token);
+        res = await fetch(base() + path, { ...fetchOpts, headers: headers(opts.headers) });
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("ไม่มีสิทธิ์อ่านข้อมูล — ล็อกอิน Supabase ก่อน (RLS เปิดอยู่)");
+      }
+      if (!res.ok) {
+        let msg = `Supabase ตอบกลับ ${res.status}`;
+        try {
+          const j = await res.json();
+          msg = j.message || j.error_description || j.error || msg;
+        } catch (e) {}
+        throw new Error(msg);
+      }
+      return res;
+    } catch (error) {
+      if (error?.name === "AbortError") throw new Error("Supabase ใช้เวลาตอบกลับนานเกิน 30 วินาที — กรุณาลองใหม่");
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
-    if (res.status === 401 || res.status === 403) {
-      throw new Error("ไม่มีสิทธิ์อ่านข้อมูล — ล็อกอิน Supabase ก่อน (RLS เปิดอยู่)");
-    }
-    if (!res.ok) {
-      let msg = `Supabase ตอบกลับ ${res.status}`;
-      try {
-        const j = await res.json();
-        msg = j.message || j.error_description || j.error || msg;
-      } catch (e) {}
-      throw new Error(msg);
-    }
-    return res;
   }
   const json = async (path, opts) => {
     const res = await req(path, opts);
@@ -289,6 +300,32 @@ const Sb = (() => {
     const pageSize = 1000;
     const fetchPage = async (offset) => {
       const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+      return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+    };
+    const first = await fetchPage(0);
+    if (!first || first.length < pageSize || limit <= pageSize) return first || [];
+    const offsets = [];
+    for (let offset = pageSize; offset < limit; offset += pageSize) offsets.push(offset);
+    const rest = await Promise.all(offsets.map(fetchPage));
+    return first.concat(...rest);
+  }
+
+  /* Dashboard ใช้เฉพาะคอลัมน์สรุป ไม่ดึง stm_raw/bo_raw หลายพันแถว
+     หลักฐานดิบยังโหลดได้จากหน้ารายการผิดปกติเมื่อผู้ใช้ต้องตรวจเคส */
+  async function currentExceptionsSummary({ from, to, company, limit = 5000 } = {}) {
+    const pageSize = 1000;
+    const columns = [
+      "id", "run_id", "code", "business_date", "occurred_at", "company", "bank", "account", "direction",
+      "member_code", "ex_type", "type_name", "severity", "status", "track", "due_at", "system_amount",
+      "bank_amount", "amount_diff", "risk_amount", "currency", "fx_rate", "time_diff_sec", "employee", "shift",
+      "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
+      "resolved_by", "match_confidence",
+    ].join(",");
+    const fetchPage = async (offset) => {
+      const filters = [`select=${columns}`, "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
       if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
       if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
       if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
@@ -500,6 +537,7 @@ const Sb = (() => {
     notifications,
     clarificationMatches,
     currentExceptions,
+    currentExceptionsSummary,
     searchExceptions,
     queueDueJobs,
     claimJob,

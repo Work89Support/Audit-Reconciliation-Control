@@ -563,7 +563,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, auxiliaryLoading: false, auxiliaryError: null, requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 
 async function loadLiveExceptionSearch(term) {
@@ -714,31 +714,23 @@ function hydrateLiveData(quality, operations, exceptions, damages, logs) {
 async function loadLiveOverview(force = false) {
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   if (liveOverviewState.loading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
+  const requestId = ++liveOverviewState.requestId;
   liveOverviewState.loading = true;
+  liveOverviewState.auxiliaryLoading = false;
+  liveOverviewState.auxiliaryError = null;
   liveOverviewState.error = null;
   liveOverviewState.key = key;
   if (state.route === "dashboard") render();
   try {
-    let [daily, operations, quality, checklist, settings, exceptions, damages, logs, notifications, clarifications] = await Promise.all([
+    // Phase 1: ข้อมูลสรุปขนาดเล็กต้องขึ้นหน้าจอก่อน ไม่รอ exception/หลักฐานหลายพันแถว
+    let [daily, operations, quality, checklist, settings] = await Promise.all([
       Sb.dailyStatus({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
-      Sb.currentExceptions({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 5000 }),
-      Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
-      Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
-      Sb.notifications(200),
-      // Keep the existing production dashboard usable while the migration is
-      // being rolled out. The clarification summary appears as soon as its
-      // table exists, without making all other live data depend on it.
-      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }).catch(() => []),
     ]);
     let checklistRows = checklist || [];
-    let exceptionRows = exceptions || [];
-    let damageRows = damages || [];
-    let logRows = logs || [];
-    let clarificationRows = clarifications || [];
     const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
       && state.filters.from === OPERATING_START_DATE
       && state.filters.to === DEFAULT_WORK_DATE
@@ -753,36 +745,57 @@ async function loadLiveOverview(force = false) {
       if (latestOperationalDate) {
         state.filters = { ...state.filters, date: latestOperationalDate, from: latestOperationalDate, to: latestOperationalDate, preset: "day" };
         state.dailySummary.date = latestOperationalDate;
-        [daily, operations, quality, checklistRows, exceptionRows, damageRows, logRows, clarificationRows] = await Promise.all([
+        [daily, operations, quality, checklistRows] = await Promise.all([
           Sb.dailyStatus({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.operations({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.quality({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
-          Sb.currentExceptions({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 5000 }),
-          Sb.damages({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
-          Sb.auditLogs({ from: latestOperationalDate, to: latestOperationalDate }),
-          Sb.clarificationMatches({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }).catch(() => []),
         ]);
         liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
       }
     }
+    if (requestId !== liveOverviewState.requestId) return;
     liveOverviewState.daily = daily || [];
     liveOverviewState.operations = operations || [];
     liveOverviewState.quality = quality || [];
     liveOverviewState.checklist = checklistRows;
     liveOverviewState.settings = settings?.[0] || null;
+    liveOverviewState.updatedAt = new Date();
+    liveOverviewState.loading = false;
+    liveOverviewState.auxiliaryLoading = true;
+    hydrateLiveData(quality, operations, [], [], []);
+    render();
+
+    // Phase 2: เติมรายละเอียดหนักด้านหลัง โดยไม่บล็อกแดชบอร์ดหลัก
+    const aux = await Promise.allSettled([
+      Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 5000 }),
+      Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 }),
+      Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
+      Sb.notifications(200),
+      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
+    ]);
+    if (requestId !== liveOverviewState.requestId) return;
+    const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
+    const exceptionRows = value(0);
+    const damageRows = value(1);
+    const logRows = value(2);
     liveOverviewState.damages = damageRows;
     liveOverviewState.logs = logRows;
-    liveOverviewState.notifications = notifications || [];
-    liveOverviewState.clarifications = clarificationRows;
+    liveOverviewState.notifications = value(3);
+    liveOverviewState.clarifications = value(4);
+    liveOverviewState.auxiliaryError = aux.some((item) => item.status === "rejected") ? "รายละเอียดบางส่วนโหลดไม่สำเร็จ — กดรีเฟรชเพื่อโหลดใหม่" : null;
+    liveOverviewState.auxiliaryLoading = false;
     liveOverviewState.updatedAt = new Date();
     hydrateLiveData(quality, operations, exceptionRows, damageRows, logRows);
     updateBell();
   } catch (e) {
-    liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
+    if (requestId === liveOverviewState.requestId) liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
   }
-  liveOverviewState.loading = false;
-  render();
+  if (requestId === liveOverviewState.requestId) {
+    liveOverviewState.loading = false;
+    liveOverviewState.auxiliaryLoading = false;
+    render();
+  }
 }
 
 function ensureLiveOverview(root) {
@@ -826,6 +839,7 @@ function renderLiveDashboard(root) {
   const needsReview = quality.filter((x) => x.status === "needs_review").length;
   const waiting = quality.filter((x) => x.status === "waiting_files").length;
   const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
+  const exceptionTotal = quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0);
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
 
   const opByKey = new Map(operations.map((x) => [`${x.business_date}|${x.company}|${x.business_system || ""}`, x]));
@@ -871,11 +885,11 @@ function renderLiveDashboard(root) {
       <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${num(completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
       <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${num(needsReview)}</strong><small>ข้อมูลมาแล้วแต่ยังไม่ครบ · กดดูสิ่งที่ขาด</small></article>
       <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${num(waiting + failed)}</strong><small>รอ ${num(waiting)} · ล้มเหลว ${num(failed)} · กดแก้ไฟล์</small></article>
-      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${num(exceptions.length)}</strong><small>ยอดเสี่ยง ${money0(risk)} บาท · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${num(exceptionTotal)}</strong><small>${liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
     </section>
 
     <section class="action-overview">
-      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}</p></div>
+      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
       <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
     </section>
 
