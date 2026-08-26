@@ -3176,6 +3176,28 @@ function updateSourceFileCaches(fileId, changes) {
   });
 }
 
+function exportOcrExcel(meta, ocr) {
+  const parsedRows = Array.isArray(ocr.rows) ? ocr.rows : [];
+  let headers;
+  let rows;
+  if (parsedRows.length) {
+    headers = ["วันที่", "เวลา", "บริษัท", "ธนาคาร/ช่องทาง", "บัญชี", "ทิศทาง", "จำนวนเงิน", "ยอดคงเหลือ", "รายละเอียด", "แถวต้นฉบับ"];
+    const timeOf = (sec) => Number.isFinite(Number(sec)) ? Engine.hhmmss(Number(sec)) : "";
+    rows = parsedRows.map((row) => [
+      row.date || meta.date || "", timeOf(row.sec), row.subco || row.company || meta.company || "",
+      row.bank || row.channel || "", row.account || "", row.direction || "", row.amount ?? "",
+      row.balance ?? "", row.desc || row.detail || "", row.raw || "",
+    ]);
+  } else {
+    headers = ["ลำดับ", "ข้อความที่ OCR อ่านได้"];
+    rows = String(ocr.extracted_text || "").split(/\r?\n/).filter((line) => line.trim()).map((line, index) => [index + 1, line]);
+  }
+  const result = Exporter.workbook([{ name: "OCR", headers, rows, widths: headers.map((_, index) => index === headers.length - 1 ? 52 : 18) }],
+    `${String(meta.name || "pdf-ocr").replace(/\.pdf$/i, "")}-OCR.xlsx`,
+    { title: `ผล OCR: ${meta.name || "PDF"}`, subject: `Google Document AI · ความมั่นใจ ${Math.round(Number(ocr.confidence || 0) * 100)}%` });
+  if (!result.ok) throw new Error(result.reason || "สร้าง Excel ไม่สำเร็จ");
+}
+
 async function openStoredFilePreview(meta) {
   const name = meta.name || "ไฟล์ต้นฉบับ";
   const ext = (name.split(".").pop() || "").toLowerCase();
@@ -3272,6 +3294,20 @@ async function openStoredFilePreview(meta) {
     if (!target) return;
     if (["pdf"].includes(ext) || String(meta.mime).includes("pdf")) {
       target.innerHTML = `<iframe class="file-preview-frame" src="${h(await getSigned())}" title="ตัวอย่าง ${h(name)}"></iframe>`;
+      if (canReclassify && typeof Sb.fileOcr === "function") {
+        try {
+          const ocr = await Sb.fileOcr(meta.id);
+          if (ocr) {
+            target.insertAdjacentHTML("afterbegin", `<div class="file-ocr-summary"><div><b>อ่าน PDF ด้วย OCR แล้ว</b><span>${num(ocr.page_count)} หน้า · ความมั่นใจ ${num(Math.round(Number(ocr.confidence || 0) * 100))}% · ${num(ocr.line_count)} บรรทัด</span></div><button class="ghost-button" id="fileOcrExcel">ดาวน์โหลด Excel OCR</button></div>`);
+            $("#fileOcrExcel").addEventListener("click", () => {
+              try { exportOcrExcel(meta, ocr); toast("สร้าง Excel จากผล OCR แล้ว", "ok"); }
+              catch (error) { toast(error.message, "warn"); }
+            });
+          }
+        } catch (error) {
+          console.warn("Load OCR evidence failed", error);
+        }
+      }
     } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
       target.innerHTML = `<img class="file-preview-image" src="${h(await getSigned())}" alt="ตัวอย่าง ${h(name)}" />`;
     } else if (["xlsx", "xlsm"].includes(ext)) {

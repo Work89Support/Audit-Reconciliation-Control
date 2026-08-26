@@ -336,6 +336,12 @@ const Sb = (() => {
     p_actor: currentEmail() || "web-auditor",
   });
 
+  async function fileOcr(fileId) {
+    if (!fileId) return null;
+    const rows = await json(`/rest/v1/source_file_ocr?source_file_id=eq.${encodeURIComponent(fileId)}&select=*&limit=1`);
+    return rows[0] || null;
+  }
+
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
   async function batches({ from, to, company } = {}) {
     const filters = ["select=*,source_files(*)", "order=received_at.desc"];
@@ -500,6 +506,7 @@ const Sb = (() => {
     finishJob,
     failJob,
     reclassifySourceFile,
+    fileOcr,
     batches,
     download,
     signedUrl,

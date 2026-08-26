@@ -1108,6 +1108,19 @@ td.wrap { white-space: normal; max-width: 420px; }
   background: #f7f9fc;
 }
 .file-preview-content > p { margin-top: 50px; color: var(--muted); }
+.file-ocr-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #b9e3c4;
+  border-radius: 10px;
+  background: #f0fbf3;
+}
+.file-ocr-summary div { display: grid; gap: 2px; }
+.file-ocr-summary span { color: var(--muted); font-size: 12px; }
 .file-preview-frame {
   width: 100%;
   height: min(65vh, 680px);
