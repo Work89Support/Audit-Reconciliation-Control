@@ -30,7 +30,27 @@ let acceptedEmptyPm=false;
 try{
   if(ext==='pdf'){
     extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
-    const lines=extractedText.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
+    const rawLines=extractedText.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
+    // n8n's native PDF extractor returns some KBANK rows in visual-column order:
+    // date time channel+balance description++transaction amount. Rebuild those rows
+    // into the logical order expected by PdfStm (date time transaction amount balance ...).
+    const joined=[];
+    let pending='';
+    for(const line of rawLines){
+      if(/^\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4}\\s+\\d{1,2}:\\d{2}\\b/.test(line)){
+        if(pending) joined.push(pending);
+        pending=line;
+        if(/\\+\\+/.test(pending)){joined.push(pending);pending='';}
+      }else if(pending){
+        pending+=' '+line;
+        if(/\\+\\+/.test(pending)){joined.push(pending);pending='';}
+      }else joined.push(line);
+    }
+    if(pending) joined.push(pending);
+    const lines=joined.map(line=>{
+      const m=line.match(/^(\\d{1,2}-\\d{1,2}-\\d{2,4})\\s+(\\d{1,2}:\\d{2})\\s+(.+?)(-?[\\d,]+\\.\\d{2})\\s+(.*?)\\+\\+(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\\s+(-?[\\d,]+\\.\\d{2})\\s*$/);
+      return m?[m[1],m[2],m[6],m[7],m[4],m[3].trim(),m[5].trim()].filter(Boolean).join(' '):line;
+    });
     const pages=[lines.map(text=>({text,items:text.split(/\\s+/).map(s=>({s}))}))];
     norm=await PdfStm.parse(file.file_name,pages,job.business_date);
   }else if(ext==='csv'){
@@ -119,6 +139,8 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
+const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
+const driveHttp = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: driveCred });
 
 const nodes = [
   { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80] },
@@ -146,7 +168,21 @@ const nodes = [
   }),
   { parameters: { conditions: { options: { caseSensitive: false, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-pdf", leftValue: "={{ $('วนทีละไฟล์').item.json.file.ext }}", rightValue: "pdf", operator: { type: "string", operation: "equals" } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
-  { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 280] },
+  { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF โดยตรง", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 220], onError: "continueRegularOutput" },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-pdf-text", leftValue: "={{ String($json.text ?? $json.data ?? '').trim().length >= 40 }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf-text", name: "PDF มีข้อความ?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1640, 220] },
+  { parameters: { jsCode: "const text=String($json.text??$json.data??'').trim(); return [{json:{text,ocr_used:false,ocr_provider:'native_pdf',ocr_confidence:null,ocr_page_count:Number($json.numpages||0)||null},pairedItem:{item:0}}];" }, id: "format-native-pdf", name: "จัดผล PDF โดยตรง", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 180] },
+  { parameters: { jsCode: "const src=$('ดาวน์โหลดไฟล์จาก Storage').item; if(!src.binary||!src.binary.data) throw new Error('ไม่พบไฟล์ PDF ต้นฉบับสำหรับ OCR'); return [{json:{},binary:src.binary,pairedItem:{item:0}}];" }, id: "restore-pdf-binary", name: "เตรียม PDF สำหรับ OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 280] },
+  driveHttp("google-drive-ocr-upload", "Google Drive OCR: แปลง PDF", [2080, 280], {
+    method: "POST", url: "https://www.googleapis.com/upload/drive/v2/files", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
+    sendQuery: true, queryParameters: { parameters: [{ name: "uploadType", value: "media" }, { name: "convert", value: "true" }, { name: "ocr", value: "true" }, { name: "ocrLanguage", value: "th" }] },
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/pdf" }] }, sendBody: true, contentType: "binaryData", inputDataFieldName: "data",
+    options: { timeout: 180000, response: { response: { responseFormat: "json" } } },
+  }),
+  driveHttp("google-drive-ocr-export", "Google Drive OCR: อ่านข้อความ", [2300, 280], {
+    url: "=https://www.googleapis.com/drive/v2/files/{{ $json.id }}/export", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
+    sendQuery: true, queryParameters: { parameters: [{ name: "mimeType", value: "text/plain" }] }, options: { timeout: 180000, response: { response: { responseFormat: "text" } } },
+  }),
+  { parameters: { jsCode: "const raw=$json.data??$json.body??$json; const text=typeof raw==='string'?raw:(raw&&typeof raw==='object'&&typeof raw.data==='string'?raw.data:JSON.stringify(raw??'')); const cleaned=String(text||'').replace(/\\u0000/g,'').trim(); return [{json:{text:cleaned,ocr_used:true,ocr_provider:'google_drive',ocr_confidence:cleaned?0.8:0,ocr_page_count:null},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: false, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400] },
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520] },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
@@ -188,9 +224,15 @@ const connections = {
   "เลือกไฟล์ของบริษัท": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
   "วนทีละไฟล์": { main: [[{ node: "กระทบยอดและสร้าง Exception", type: "main", index: 0 }], [{ node: "ดาวน์โหลดไฟล์จาก Storage", type: "main", index: 0 }]] },
   "ดาวน์โหลดไฟล์จาก Storage": { main: [[{ node: "เป็น PDF?", type: "main", index: 0 }]] },
-  "เป็น PDF?": { main: [[{ node: "อ่าน PDF", type: "main", index: 0 }], [{ node: "เป็น Excel?", type: "main", index: 0 }]] },
+  "เป็น PDF?": { main: [[{ node: "อ่าน PDF โดยตรง", type: "main", index: 0 }], [{ node: "เป็น Excel?", type: "main", index: 0 }]] },
   "เป็น Excel?": { main: [[{ node: "อ่าน Excel", type: "main", index: 0 }], [{ node: "อ่าน CSV", type: "main", index: 0 }]] },
-  "อ่าน PDF": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
+  "อ่าน PDF โดยตรง": { main: [[{ node: "PDF มีข้อความ?", type: "main", index: 0 }]] },
+  "PDF มีข้อความ?": { main: [[{ node: "จัดผล PDF โดยตรง", type: "main", index: 0 }], [{ node: "เตรียม PDF สำหรับ OCR", type: "main", index: 0 }]] },
+  "จัดผล PDF โดยตรง": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
+  "เตรียม PDF สำหรับ OCR": { main: [[{ node: "Google Drive OCR: แปลง PDF", type: "main", index: 0 }]] },
+  "Google Drive OCR: แปลง PDF": { main: [[{ node: "Google Drive OCR: อ่านข้อความ", type: "main", index: 0 }]] },
+  "Google Drive OCR: อ่านข้อความ": { main: [[{ node: "จัดผล OCR", type: "main", index: 0 }]] },
+  "จัดผล OCR": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "อ่าน Excel": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "อ่าน CSV": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "แปลงรายการเป็นมาตรฐาน": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
@@ -204,6 +246,6 @@ const connections = {
   "หยุดรอตรวจไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };
 
-const workflow = { name: "Audit - Headless Reconciliation Worker", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
+const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
 console.log(`built n8n/audit-headless-worker.json (${workflow.nodes.length} nodes)`);

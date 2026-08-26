@@ -71,6 +71,10 @@ assert.doesNotMatch(dailyText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "dai
 const workerText = JSON.stringify(worker);
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"));
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
+assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
+assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "อ่าน PDF โดยตรง", "PDFs must enter the native parser first");
+assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
+assert.ok(worker.nodes.some((node) => node.name === "Google Drive OCR: แปลง PDF"), "Google Drive OCR fallback must remain available for scanned PDFs");
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 1);
 assert.match(workerText, /claim_daily_recon_jobs/);
 assert.match(workerText, /finish_daily_recon_job/);
