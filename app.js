@@ -817,15 +817,6 @@ function ensureLiveOverview(root) {
 
 function renderLiveDashboard(root) {
   if (!liveOverviewState.quality && !liveOverviewState.loading) loadLiveOverview();
-  if (liveOverviewState.loading && !liveOverviewState.quality) {
-    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังสรุปข้อมูลจริงจาก Supabase</h2><p class="hint">รวมเมล ไฟล์ บริษัท สถานะกระทบยอด และรายการผิดปกติ...</p></div></section>`;
-    return;
-  }
-  if (liveOverviewState.error && !liveOverviewState.quality) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดข้อมูลจริงไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></div></section>`;
-    $("#liveRetry")?.addEventListener("click", () => loadLiveOverview(true));
-    return;
-  }
 
   const inLiveRange = (x) => (!state.filters.from || x.business_date >= state.filters.from) && (!state.filters.to || x.business_date <= state.filters.to) && (state.filters.company === "ALL" || x.company === state.filters.company);
   const daily = (liveOverviewState.daily || []).filter(inLiveRange);
@@ -878,8 +869,14 @@ function renderLiveDashboard(root) {
   const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
   const checklistDate = checklistDates.includes(state.filters.date) ? state.filters.date : (checklistDates[0] || state.filters.date);
   const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
+  const loadNotice = liveOverviewState.loading
+    ? `<section class="alert"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>เปิดดูเมนูและรายงานได้ทันที ระบบจะเติมตัวเลขบนหน้านี้เมื่อข้อมูลมาถึง</span></section>`
+    : liveOverviewState.error
+      ? `<section class="alert bad"><strong>อัปเดตข้อมูลล่าสุดไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></section>`
+      : "";
 
   root.innerHTML = `
+    ${loadNotice}
     <section class="status-strip live-status-strip action-tiles">
       <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${num(totalMail)}</strong><small>${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)} · กดดูไฟล์</small></article>
       <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${num(completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
@@ -970,6 +967,7 @@ function renderLiveDashboard(root) {
     go("cloud");
   });
   $("#liveRefresh")?.addEventListener("click", () => loadLiveOverview(true));
+  $("#liveRetry")?.addEventListener("click", () => loadLiveOverview(true));
 }
 
 VIEWS.dashboard = (root) => {
@@ -1173,11 +1171,12 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
-const dailyCompanyState = { date: "", batches: null, quality: null, operations: null, checklist: null, exceptions: null, damages: null, loading: false, error: null, updatedAt: null };
+const dailyCompanyState = { date: "", batches: null, quality: null, operations: null, checklist: null, exceptions: null, damages: null, loading: false, detailsLoading: false, detailsError: null, requestId: 0, error: null, updatedAt: null };
 
 async function loadDailyCompanySummary(force = false) {
   const date = state.dailySummary.date || PROD_TODAY;
   if (dailyCompanyState.loading || (!force && dailyCompanyState.date === date && dailyCompanyState.batches)) return;
+  const requestId = ++dailyCompanyState.requestId;
   if (dailyCompanyState.date !== date) {
     dailyCompanyState.batches = null;
     dailyCompanyState.quality = null;
@@ -1187,30 +1186,48 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.damages = null;
   }
   dailyCompanyState.loading = true;
+  dailyCompanyState.detailsLoading = false;
+  dailyCompanyState.detailsError = null;
   dailyCompanyState.error = null;
   dailyCompanyState.date = date;
   if (state.route === "daily-summary") render();
   try {
-    const [batches, quality, operations, checklist, exceptions, damages] = await Promise.all([
+    const [batches, quality, operations, checklist] = await Promise.all([
       Sb.batches({ from: date, to: date }),
       Sb.quality({ from: date, to: date, limit: 200 }),
       Sb.operations({ from: date, to: date, limit: 200 }),
       Sb.dailyChecklist({ from: date, to: date }),
-      Sb.currentExceptions({ from: date, to: date, company: "ALL", limit: 5000 }),
-      Sb.damages({ from: date, to: date, company: "ALL", limit: 5000 }),
     ]);
+    if (requestId !== dailyCompanyState.requestId) return;
     dailyCompanyState.batches = batches || [];
     dailyCompanyState.quality = (quality || []).filter((row) => row.business_date === date);
     dailyCompanyState.operations = (operations || []).filter((row) => row.business_date === date);
     dailyCompanyState.checklist = checklist || [];
-    dailyCompanyState.exceptions = (exceptions || []).map(mapLiveException);
-    dailyCompanyState.damages = damages || [];
+    dailyCompanyState.exceptions = [];
+    dailyCompanyState.damages = [];
+    dailyCompanyState.updatedAt = new Date();
+    dailyCompanyState.loading = false;
+    dailyCompanyState.detailsLoading = true;
+    if (state.route === "daily-summary") render();
+
+    const details = await Promise.allSettled([
+      Sb.currentExceptionsSummary({ from: date, to: date, company: "ALL", limit: 2000 }),
+      Sb.damages({ from: date, to: date, company: "ALL", limit: 2000 }),
+    ]);
+    if (requestId !== dailyCompanyState.requestId) return;
+    dailyCompanyState.exceptions = details[0].status === "fulfilled" ? (details[0].value || []).map(mapLiveException) : [];
+    dailyCompanyState.damages = details[1].status === "fulfilled" ? (details[1].value || []) : [];
+    dailyCompanyState.detailsError = details.some((item) => item.status === "rejected") ? "รายละเอียด Exception บางส่วนโหลดไม่สำเร็จ" : null;
+    dailyCompanyState.detailsLoading = false;
     dailyCompanyState.updatedAt = new Date();
   } catch (error) {
-    dailyCompanyState.error = error.message || "โหลดสรุปรายวันไม่สำเร็จ";
+    if (requestId === dailyCompanyState.requestId) dailyCompanyState.error = error.message || "โหลดสรุปรายวันไม่สำเร็จ";
   }
-  dailyCompanyState.loading = false;
-  if (state.route === "daily-summary") render();
+  if (requestId === dailyCompanyState.requestId) {
+    dailyCompanyState.loading = false;
+    dailyCompanyState.detailsLoading = false;
+    if (state.route === "daily-summary") render();
+  }
 }
 
 function dailyCompanyData(company) {
@@ -1338,7 +1355,7 @@ function renderDailyCompanySummary(root) {
   state.dailySummary.company = company;
   const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" value="${h(state.dailySummary.date)}" /></label><label>บริษัท<select id="dailySummaryCompany">${companies.map((code) => `<option value="${h(code)}" ${code === company ? "selected" : ""}>${h(code)}</option>`).join("")}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
   if (dailyCompanyState.loading && !dailyCompanyState.batches) {
-    root.innerHTML = controls + `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังจัดทำสรุปรายวัน</h2><p class="hint">รวมอีเมล ไฟล์ ผลกระทบยอด และสถานะ Exception...</p></div></section>`;
+    root.innerHTML = controls + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
   } else if (dailyCompanyState.error) {
     root.innerHTML = controls + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
   } else {
@@ -1364,7 +1381,8 @@ function renderDailyCompanySummary(root) {
       return acc;
     }, {})).sort((a, b) => b[1] - a[1]);
     root.innerHTML = controls + `
-      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
+      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
+      ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
       <section class="daily-summary-kpis action-tiles">
         <article data-action-route="cloud"><span>ข้อมูลที่ได้รับ</span><strong>${num(data.files.length)}</strong><small>${num(data.batches.length)} อีเมล · กดดูไฟล์</small></article>
         <article data-action-route="cloud" class="${fileErrors ? "bad" : parsed ? "ok" : "warn"}"><span>ไฟล์พร้อมใช้งาน</span><strong>${num(parsed)}/${num(data.files.length)}</strong><small>รอ ${num(waitingFiles)} · อ่านไม่ได้ ${num(fileErrors)} · กดตรวจ</small></article>

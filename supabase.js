@@ -75,8 +75,21 @@ const Sb = (() => {
     }
   }
 
+  async function authFetch(url, opts = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...opts, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") throw new Error("ระบบเข้าสู่ระบบตอบกลับช้าเกิน 15 วินาที — กรุณาลองใหม่");
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function refreshSession(refreshToken) {
-    const res = await fetch(base() + "/auth/v1/token?grant_type=refresh_token", {
+    const res = await authFetch(base() + "/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
       headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
@@ -163,7 +176,7 @@ const Sb = (() => {
 
   async function loadAuthUser() {
     if (!session || !session.access_token) return null;
-    const res = await fetch(base() + "/auth/v1/user", { headers: headers() });
+    const res = await authFetch(base() + "/auth/v1/user", { headers: headers() });
     const user = await res.json();
     if (!res.ok) throw new Error(user.message || "อ่านข้อมูลผู้ใช้ไม่สำเร็จ");
     session.user = user;
