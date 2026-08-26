@@ -1704,11 +1704,41 @@ VIEWS.exceptions = (root) => {
   const fileMatches = query
     ? (liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, business_date: batch.business_date, batchCompany: batch.company, subject: batch.subject }))).filter((file) => `${file.file_name} ${file.kind} ${file.company} ${file.batchCompany} ${file.subject}`.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
     : [];
+  const qualityRows = (liveOverviewState.quality || []).filter((row) =>
+    (!state.filters.from || row.business_date >= state.filters.from)
+    && (!state.filters.to || row.business_date <= state.filters.to)
+    && (state.filters.company === "ALL" || row.company === state.filters.company),
+  );
+  const finishedRuns = qualityRows.filter((row) => !!row.run_id);
+  const completedJobs = qualityRows.filter((row) => row.status === "completed").length;
+  const waitingJobs = qualityRows.filter((row) => ["waiting_files", "ready", "queued", "running"].includes(row.status)).length;
+  const failedJobs = qualityRows.filter((row) => row.status === "error" || Number(row.error_count || 0) > 0).length;
+  const stmTotal = finishedRuns.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+  const boTotal = finishedRuns.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+  const matchedTotal = finishedRuns.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+  const generatedExceptionTotal = finishedRuns.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+  const reconMessage = liveOverviewState.loading && !qualityRows.length
+    ? "กำลังตรวจสถานะงานกระทบยอดจาก Supabase"
+    : !qualityRows.length
+      ? "ยังไม่มีงานกระทบยอดในวันที่และบริษัทที่เลือก"
+      : !finishedRuns.length
+        ? `พบคิวงาน ${num(qualityRows.length)} งาน แต่ยังไม่มีผลรัน — เลข 0 ด้านล่างยังไม่ใช่ผลสำเร็จ`
+        : `มีผลรันแล้ว ${num(finishedRuns.length)} งาน · สำเร็จ ${num(completedJobs)} · ยังรอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}`;
 
   const th = (key, label) =>
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
 
   root.innerHTML = `
+    <section class="panel recon-result-summary">
+      <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
+      <div class="status-strip action-tiles">
+        <article><span>งานที่มีผลรัน</span><strong>${num(finishedRuns.length)}</strong><small>จากคิว ${num(qualityRows.length)} งาน</small></article>
+        <article><span>รายการ STM</span><strong>${num(stmTotal)}</strong><small>ข้อมูลฝาก-ถอน/PM</small></article>
+        <article><span>รายการ BO</span><strong>${num(boTotal)}</strong><small>ข้อมูลรายงานหลังบ้าน</small></article>
+        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matchedTotal)}</strong><small>${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของ STM</small></article>
+        <article class="${generatedExceptionTotal ? "warn" : finishedRuns.length ? "ok" : ""}"><span>Exception จากผลรัน</span><strong>${num(generatedExceptionTotal)}</strong><small>${finishedRuns.length ? "สร้างจากงานที่รันแล้ว" : "ยังสรุปไม่ได้จนกว่าจะมีผลรัน"}</small></article>
+      </div>
+    </section>
     <section class="status-strip three clarification-strip action-tiles">
       <article class="ok" data-action-route="daily-summary"><span>ปิดจากไฟล์ชี้แจงอัตโนมัติ</span><strong>${num(autoClosedCount)}</strong><small>ยืนยันแล้ว · กดดูสรุปรายวัน</small></article>
       <article class="warn" data-action-route="clarify"><span>จับคู่แล้ว รอ Audit อนุมัติ</span><strong>${num(answeredCount)}</strong><small>มีหลักฐาน · กดตรวจและอนุมัติ</small></article>
@@ -1787,6 +1817,11 @@ VIEWS.exceptions = (root) => {
     state.page = 1;
     render();
   };
+  $("#openDailyResult")?.addEventListener("click", () => {
+    state.dailySummary.date = state.filters.date || state.filters.to || DEFAULT_WORK_DATE;
+    if (state.filters.company !== "ALL") state.dailySummary.company = state.filters.company;
+    go("daily-summary");
+  });
   $("#exSearch").addEventListener("input", (e) => {
     state.exFilter.q = e.target.value;
     clearTimeout(window.__q);
