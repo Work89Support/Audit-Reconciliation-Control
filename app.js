@@ -551,6 +551,15 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
+  if (state.dataset === "production" && Sb.signedIn() && route.id !== "dashboard") {
+    const liveNotice = liveOverviewState.loading
+      ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`
+      : liveOverviewState.error
+        ? `<section class="alert warn live-background-notice"><strong>ข้อมูลล่าสุดยังมาไม่ครบ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveBackgroundRetry">ลองใหม่</button></section>`
+        : "";
+    if (liveNotice) $("#viewRoot").insertAdjacentHTML("afterbegin", liveNotice);
+    $("#liveBackgroundRetry")?.addEventListener("click", () => loadLiveOverview(true));
+  }
   renderNextAction($("#viewRoot"));
   addPanelCaptureButtons();
   if (state.route === "cloud" && pendingCloudInbox) requestAnimationFrame(() => {
@@ -803,15 +812,8 @@ function ensureLiveOverview(root) {
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   const stale = liveOverviewState.key !== key;
   if ((!liveOverviewState.quality || stale) && !liveOverviewState.loading) loadLiveOverview(stale);
-  if (liveOverviewState.loading && (!liveOverviewState.quality || stale)) {
-    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังโหลดข้อมูลจริง</h2><p class="hint">อ่านข้อมูลจาก Supabase สำหรับหน้าที่เลือก...</p></div></section>`;
-    return false;
-  }
-  if (liveOverviewState.error && (!liveOverviewState.quality || stale)) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดข้อมูลจริงไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="livePageRetry">ลองใหม่</button></div></section>`;
-    $("#livePageRetry")?.addEventListener("click", () => loadLiveOverview(true));
-    return false;
-  }
+  // อย่าปิดทั้งหน้าระหว่างรอข้อมูลกลาง แต่ละหน้าจะแสดงข้อมูลที่มีอยู่ก่อน
+  // และ render() จะเติมแถบแจ้งสถานะด้านบนจนกว่าการอัปเดตจะเสร็จ
   return true;
 }
 
