@@ -34,6 +34,16 @@ const m2 = R.matchFile("KB นราธิป ถอน-ฝาก 05-06-2026.pdf
 eq("bank: KB นราธิป -> KBANK/3XB", m2.match && m2.match.bank + "/" + m2.match.subco, "KBANK/3XB");
 const m3 = R.matchFile("TMN รุ่งฟ้า ถอน-ฝาก 05-06-2026.pdf"); // title คุณ ติดชื่อ
 eq("bank: TMN รุ่งฟ้า -> 0812792075 (7M)", m3.match && m3.match.account, "0812792075");
+const m4 = R.matchFile("รายการถอน_KB_เพ็ญศรี_10_08_69.pdf");
+eq("bank legacy: KB เพ็ญศรี -> KBANK/7M", m4.match && m4.match.bank + "/" + m4.match.subco, "KBANK/7M");
+eq("bank legacy: รายการถอน -> withdraw", m4.direction, "withdraw");
+const m5 = R.matchFile("UFABET7M_STM_KB_เพ็ญศรี_D_2026-08-10.pdf");
+eq("bank standard D: KB เพ็ญศรี -> KBANK/7M", m5.match && m5.match.bank + "/" + m5.match.subco, "KBANK/7M");
+eq("bank standard D: direction deposit", m5.direction, "deposit");
+const m6 = R.matchFile("UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf");
+eq("bank standard W: direction withdraw", m6.direction, "withdraw");
+const m7 = R.matchFile("UFABET7M_STM_KB_เพ็ญศรี_DW_2026-08-10.pdf");
+eq("bank standard DW: direction both", m7.direction, "both");
 
 /* ---- matchFile: PM ---- */
 const p1 = R.matchFile("3XB 12PAY ถอน 05-06-2026.csv");
@@ -46,6 +56,11 @@ const p2b = R.matchFile("SK Mypay ถอน 05-06-2026.xlsx"); // ตัวย�
 eq("pm: SK (ตัวย่อ) -> MYPAY/SK8", p2b.match && p2b.match.provider + "/" + p2b.match.subco, "MYPAY/SK8");
 const p3 = R.matchFile("รายการฝากCBY PM 05-06-2026.xlsx"); // เขียนติดกัน + ไม่มีบริษัทย่อย
 ok("pm: ไม่มีบริษัทย่อย -> เตือน ambiguousSubco", !p3.match && Array.isArray(p3.ambiguousSubco), JSON.stringify(p3));
+const p4 = R.matchFile("AT4_PM_AZPAY_D_2026-08-24.xlsx");
+eq("pm standard D: AZPAY/AT4", p4.match && p4.match.provider + "/" + p4.match.subco, "AZPAY/AT4");
+eq("pm standard D: direction deposit", p4.direction, "deposit");
+const p5 = R.matchFile("AT4_PM_AZPAY_W_2026-08-24.xlsx");
+eq("pm standard W: direction withdraw", p5.direction, "withdraw");
 
 /* ---- self-match ทุกไฟล์ในทะเบียน ---- */
 let good = 0, wrong = 0, none = 0, noSub = 0;

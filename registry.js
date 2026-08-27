@@ -1321,7 +1321,7 @@ const Registry = (() => {
 ];
 
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
-  const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY" };
+  const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
                   cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY" };
 
@@ -1339,9 +1339,12 @@ const Registry = (() => {
   }
   function dirOf(fileName){
     const r = norm(fileName);
-    if (/ฝาก/.test(r) && /ถอน/.test(r)) return "both";
-    if (/ฝาก/.test(r)) return "deposit";
-    if (/ถอน/.test(r)) return "withdraw";
+    const toks = tokens(fileName);
+    const deposit = /ฝาก|deposit/.test(r) || toks.includes("d") || toks.includes("dw");
+    const withdraw = /ถอน|withdraw/.test(r) || toks.includes("w") || toks.includes("dw");
+    if (deposit && withdraw) return "both";
+    if (deposit) return "deposit";
+    if (withdraw) return "withdraw";
     return null;
   }
   // ตรวจ ธนาคาร/ผู้ให้บริการ จากชื่อไฟล์ (รองรับคำที่เขียนติดกัน)

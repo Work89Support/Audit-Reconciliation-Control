@@ -87,10 +87,11 @@ def set_table_geometry(table, widths_dxa, indent=120):
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
 
-def set_run(run, size=11, bold=False, color=DARK, italic=False, font="Tahoma"):
+def set_run(run, size=11, bold=False, color=DARK, italic=False, font="Arial Unicode MS"):
     run.font.name = font
     run._element.get_or_add_rPr().rFonts.set(qn("w:ascii"), font)
     run._element.get_or_add_rPr().rFonts.set(qn("w:hAnsi"), font)
+    run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), font)
     run._element.get_or_add_rPr().rFonts.set(qn("w:cs"), font)
     run.font.size = Pt(size)
     run.font.bold = bold
@@ -206,10 +207,11 @@ def set_page_number(paragraph):
 def configure_styles(doc):
     styles = doc.styles
     normal = styles["Normal"]
-    normal.font.name = "Tahoma"
-    normal._element.rPr.rFonts.set(qn("w:ascii"), "Tahoma")
-    normal._element.rPr.rFonts.set(qn("w:hAnsi"), "Tahoma")
-    normal._element.rPr.rFonts.set(qn("w:cs"), "Tahoma")
+    normal.font.name = "Arial Unicode MS"
+    normal._element.rPr.rFonts.set(qn("w:ascii"), "Arial Unicode MS")
+    normal._element.rPr.rFonts.set(qn("w:hAnsi"), "Arial Unicode MS")
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), "Arial Unicode MS")
+    normal._element.rPr.rFonts.set(qn("w:cs"), "Arial Unicode MS")
     normal.font.size = Pt(11)
     normal.font.color.rgb = RGBColor.from_string(DARK)
     normal.paragraph_format.space_after = Pt(6)
@@ -222,10 +224,11 @@ def configure_styles(doc):
     }
     for name, (size, color, before, after) in tokens.items():
         st = styles[name]
-        st.font.name = "Tahoma"
-        st._element.rPr.rFonts.set(qn("w:ascii"), "Tahoma")
-        st._element.rPr.rFonts.set(qn("w:hAnsi"), "Tahoma")
-        st._element.rPr.rFonts.set(qn("w:cs"), "Tahoma")
+        st.font.name = "Arial Unicode MS"
+        st._element.rPr.rFonts.set(qn("w:ascii"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:hAnsi"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:eastAsia"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:cs"), "Arial Unicode MS")
         st.font.size = Pt(size)
         st.font.bold = True
         st.font.color.rgb = RGBColor.from_string(color)
@@ -235,10 +238,11 @@ def configure_styles(doc):
 
     for name in ("List Bullet", "List Bullet 2", "List Number"):
         st = styles[name]
-        st.font.name = "Tahoma"
-        st._element.rPr.rFonts.set(qn("w:ascii"), "Tahoma")
-        st._element.rPr.rFonts.set(qn("w:hAnsi"), "Tahoma")
-        st._element.rPr.rFonts.set(qn("w:cs"), "Tahoma")
+        st.font.name = "Arial Unicode MS"
+        st._element.rPr.rFonts.set(qn("w:ascii"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:hAnsi"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:eastAsia"), "Arial Unicode MS")
+        st._element.rPr.rFonts.set(qn("w:cs"), "Arial Unicode MS")
         st.font.size = Pt(11)
         st.paragraph_format.space_after = Pt(4)
         st.paragraph_format.line_spacing = 1.25
@@ -286,8 +290,8 @@ def build():
 
     add_heading(doc, "1. รูปแบบชื่อไฟล์มาตรฐาน", 1)
     add_para(doc, "ตั้งชื่อโดยเรียงข้อมูลตามสูตรนี้ และใช้เครื่องหมายขีดล่าง (_) คั่นแต่ละส่วน", after=5)
-    add_code_line(doc, "COMPANY_TYPE_PROVIDER_DIRECTION_YYYY-MM-DD.ext")
-    add_para(doc, "ส่วน PROVIDER และ DIRECTION ใส่เฉพาะกรณีที่เกี่ยวข้อง หากมีหลายไฟล์ชนิดเดียวกันให้เติม _01, _02 ต่อท้ายวันที่", color=MUTED, after=8)
+    add_code_line(doc, "COMPANY_TYPE_SOURCE_NAME_DIRECTION_YYYY-MM-DD.ext")
+    add_para(doc, "SOURCE คือธนาคารหรือ Provider, NAME คือชื่อเจ้าของบัญชี (ใส่เฉพาะไฟล์ธนาคาร) และ DIRECTION ใช้รหัสสั้น D / W / DW หากมีหลายไฟล์ให้เติม _01, _02 ต่อท้ายวันที่", color=MUTED, after=8)
 
     add_heading(doc, "2. รหัสบริษัทที่อนุญาต", 1)
     add_table(doc, ["รหัส", "บริษัท/ระบบที่ใช้"], [
@@ -312,38 +316,57 @@ def build():
     add_table(doc, ["รหัส", "ใช้เมื่อ", "ไฟล์ที่แนะนำ"], type_rows, [2520, 5100, 1740], font_size=9)
     add_callout(doc, "ไม่ควรส่งเป็น UNKNOWN", "“ยังไม่ทราบประเภท” ใช้เฉพาะภายในระบบตอนรอตรวจ ไม่ควรใช้เป็นชื่อไฟล์ที่ทีมส่งมา", LIGHT_GOLD, GOLD)
 
-    add_heading(doc, "4. รหัสช่องทาง PM และทิศทางรายการ", 1)
+    add_heading(doc, "4. รูปแบบไฟล์ธนาคารและรหัสฝาก–ถอนแบบสั้น", 1)
+    add_para(doc, "ไฟล์ธนาคารต้องมีชื่อเจ้าของบัญชี เพื่อแยกบัญชีที่ใช้กระทบยอดได้ถูกต้อง", after=5)
+    add_code_line(doc, "COMPANY_STM_BANK_ACCOUNTNAME_D/W/DW_YYYY-MM-DD.ext", fill=LIGHT_GREEN)
+    add_table(doc, ["รหัส", "ความหมาย", "ตัวอย่าง"], [
+        ("D", "ฝาก (Deposit)", "UFABET7M_STM_KB_เพ็ญศรี_D_2026-08-10.pdf"),
+        ("W", "ถอน (Withdraw)", "UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf"),
+        ("DW", "มีทั้งฝากและถอน", "UFABET7M_STM_KB_เพ็ญศรี_DW_2026-08-10.pdf"),
+    ], [1200, 2500, 5660], font_size=9)
+    add_callout(doc, "ตัวอย่างจากทีม", "รายการถอน_KB_เพ็ญศรี_10_08_69.pdf ให้เปลี่ยนเป็น UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf", LIGHT_BLUE, BLUE)
+    add_para(doc, "รหัสธนาคารที่แนะนำ", bold=True, after=3)
+    add_table(doc, ["รหัส", "ธนาคาร", "รหัส", "ธนาคาร"], [
+        ("KB", "กสิกรไทย", "SCB", "ไทยพาณิชย์"),
+        ("KTB", "กรุงไทย", "BBL", "กรุงเทพ"),
+        ("BAY", "กรุงศรีอยุธยา", "TTB", "ทีเอ็มบีธนชาต"),
+        ("GSB", "ออมสิน", "UOB", "ยูโอบี"),
+    ], [1200, 3480, 1200, 3480], font_size=9)
+    add_para(doc, "ไฟล์ PM ใช้สูตรสั้น โดยไม่ต้องใส่ชื่อเจ้าของบัญชี", bold=True, before=5, after=3)
+    add_code_line(doc, "COMPANY_PM_PROVIDER_D/W/DW_YYYY-MM-DD.ext")
     add_table(doc, ["หมวด", "ค่าที่ให้ใช้", "ตัวอย่าง"], [
         ("Provider", "AUTOPEER / AZPAY / CYBERPLUS / MYPAY / 12PAY", "AZPAY"),
-        ("ทิศทาง", "DEPOSIT = ฝาก", "DEPOSIT"),
-        ("ทิศทาง", "WITHDRAW = ถอน", "WITHDRAW"),
-        ("ทิศทาง", "DEPOSIT_WITHDRAW = มีทั้งฝากและถอน", "DEPOSIT_WITHDRAW"),
-    ], [1600, 5300, 2460])
+        ("ทิศทาง", "D = ฝาก", "AT4_PM_AZPAY_D_2026-08-24.xlsx"),
+        ("ทิศทาง", "W = ถอน", "AT4_PM_AZPAY_W_2026-08-24.xlsx"),
+        ("ทิศทาง", "DW = มีทั้งฝากและถอน", "AT4_PM_AZPAY_DW_2026-08-24.xlsx"),
+    ], [1600, 4100, 3660], font_size=9)
 
     add_heading(doc, "5. ตัวอย่างชื่อไฟล์ที่ถูกต้อง", 1)
     examples = [
-        ("STM ธนาคาร", "3XB_STM_SCB_2026-08-24.pdf"),
+        ("STM ธนาคารฝาก", "3XB_STM_SCB_สมชาย_D_2026-08-24.pdf"),
+        ("STM ธนาคารถอน", "UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf"),
+        ("STM ฝากและถอน", "FR8_STM_BBL_กิตติ_DW_2026-08-24.pdf"),
         ("BO หลังบ้าน", "FR8_BO_2026-08-24.xlsx"),
-        ("PM ฝาก", "AT4_PM_AUTOPEER_DEPOSIT_2026-08-24.xlsx"),
-        ("PM ถอน", "MC8_PM_AZPAY_WITHDRAW_2026-08-24.csv"),
-        ("PM ฝากและถอน", "SK8_PM_CYBERPLUS_DEPOSIT_WITHDRAW_2026-08-24.xlsx"),
+        ("PM ฝาก", "AT4_PM_AUTOPEER_D_2026-08-24.xlsx"),
+        ("PM ถอน", "MC8_PM_AZPAY_W_2026-08-24.csv"),
+        ("PM ฝากและถอน", "SK8_PM_CYBERPLUS_DW_2026-08-24.xlsx"),
         ("ฝากมือเครดิต", "PS8_MANUAL_CREDIT_2026-08-24.xlsx"),
         ("ฝากมือ Payment", "MR9_MANUAL_PAYMENT_2026-08-24.xlsx"),
         ("ฝากมือโบนัส", "UR9_MANUAL_BONUS_2026-08-24.xlsx"),
         ("ถอนค่าคอม", "3XB_COMMISSION_WITHDRAW_2026-08-24.xlsx"),
         ("ถอนเครดิต", "FR8_CREDIT_WITHDRAW_2026-08-24.xlsx"),
         ("หลักฐาน", "UFABET7M_EVIDENCE_CYBERPLUS_2026-08-24.docx"),
-        ("หลายไฟล์", "3XB_STM_KBANK_2026-08-24_02.pdf"),
+        ("หลายไฟล์", "UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-24_02.pdf"),
     ]
     add_table(doc, ["กรณี", "ชื่อไฟล์"], examples, [2400, 6960])
 
     add_heading(doc, "6. ตัวอย่างที่ไม่ควรใช้ และวิธีแก้", 1)
     bad_rows = [
         ("รายงานล่าสุด.xlsx", "ไม่ทราบบริษัท ประเภท และวันที่", "3XB_BO_2026-08-24.xlsx"),
-        ("ฝากถอน.pdf", "ไม่ทราบบริษัทและวันที่", "FR8_STM_KBANK_2026-08-24.pdf"),
+        ("ฝากถอน.pdf", "ไม่ทราบบริษัท ธนาคาร ชื่อบัญชี และวันที่", "FR8_STM_KB_สมชาย_DW_2026-08-24.pdf"),
         ("mc.xlsx", "ชื่อบริษัทย่อผิดและไม่ทราบประเภท", "MC8_BO_2026-08-24.xlsx"),
         ("U7M เติมมือ.docx", "ชื่อบริษัทไม่ตรงมาตรฐาน", "UFABET7M_EVIDENCE_2026-08-24.docx"),
-        ("AZPAY.csv", "ไม่ทราบบริษัท ฝาก/ถอน และวันที่", "MR9_PM_AZPAY_DEPOSIT_2026-08-24.csv"),
+        ("AZPAY.csv", "ไม่ทราบบริษัท ฝาก/ถอน และวันที่", "MR9_PM_AZPAY_D_2026-08-24.csv"),
         ("แก้ไขล่าสุดจริงสุด.xlsx", "เสี่ยงซ้ำและไม่รู้ลำดับแก้ไข", "AT4_BO_2026-08-24_REV01.xlsx"),
     ]
     add_table(doc, ["ชื่อที่ไม่ควรใช้", "ปัญหา", "แก้เป็น"], bad_rows, [2500, 3100, 3760], header_fill=LIGHT_RED, font_size=8.7)
@@ -361,7 +384,8 @@ def build():
     steps = [
         "ตรวจว่ารหัสบริษัทตรงกับรายการที่อนุญาต 9 บริษัท",
         "ระบุว่าไฟล์เป็น STM, BO, PM, รายการฝากมือ/ถอน หรือ EVIDENCE",
-        "ถ้าเป็น PM ให้ใส่ชื่อ Provider และ DEPOSIT/WITHDRAW",
+        "ถ้าเป็น STM ธนาคาร ให้ใส่รหัสธนาคาร ชื่อเจ้าของบัญชี และ D/W/DW",
+        "ถ้าเป็น PM ให้ใส่ชื่อ Provider และ D/W/DW",
         "เปลี่ยนวันที่เป็น YYYY-MM-DD เช่น 2026-08-24",
         "ตั้งชื่อไฟล์ตามสูตรและเปิดไฟล์ตรวจว่าไม่เสียหรือใส่รหัสผ่าน",
         "ตั้งหัวข้ออีเมลตามเทมเพลต แล้วแนบไฟล์ทั้งหมด",
@@ -375,7 +399,8 @@ def build():
         "☐ ชื่อไฟล์มีรหัสบริษัทที่ถูกต้อง",
         "☐ ชื่อไฟล์มีประเภท เช่น STM / BO / PM / EVIDENCE",
         "☐ วันที่เป็น YYYY-MM-DD และตรงกับข้อมูลภายในไฟล์",
-        "☐ ไฟล์ PM มี Provider และระบุฝาก/ถอน",
+        "☐ ไฟล์ STM มีรหัสธนาคาร ชื่อเจ้าของบัญชี และ D/W/DW",
+        "☐ ไฟล์ PM มี Provider และรหัส D/W/DW",
         "☐ ไฟล์เปิดได้ ไม่เสีย และไม่ติดรหัสผ่าน",
         "☐ ไม่มีชื่อไฟล์ซ้ำ หากซ้ำเติม _01, _02",
         "☐ ไฟล์แก้ไขใช้ REV01, REV02 และไม่ใช้คำว่า “ล่าสุด”",
@@ -393,11 +418,13 @@ def build():
     add_heading(doc, "11. ข้อความพร้อมส่งให้ทีม", 1)
     message = (
         "กรุณาตั้งชื่อไฟล์ก่อนส่งตามรูปแบบ:\n"
-        "COMPANY_TYPE_PROVIDER_DIRECTION_YYYY-MM-DD.ext\n\n"
-        "ตัวอย่าง: AT4_PM_AUTOPEER_DEPOSIT_2026-08-24.xlsx\n"
+        "COMPANY_TYPE_SOURCE_NAME_DIRECTION_YYYY-MM-DD.ext\n\n"
+        "ธนาคาร: UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf\n"
+        "PM: AT4_PM_AUTOPEER_D_2026-08-24.xlsx\n"
         "รหัสบริษัท: 3XB, AT4, FR8, MC8, MR9, PS8, SK8, UFABET7M, UR9\n"
         "ประเภทหลัก: STM, BO, PM, MANUAL_CREDIT, MANUAL_PAYMENT, MANUAL_BONUS, "
         "COMMISSION_WITHDRAW, CREDIT_WITHDRAW, EVIDENCE\n\n"
+        "รหัสฝากถอน: D = ฝาก, W = ถอน, DW = ฝากและถอน\n\n"
         "กรุณาใช้วันที่ YYYY-MM-DD และต้องใส่บริษัท/ประเภทไว้ในชื่อไฟล์ทุกไฟล์ "
         "หากมีหลายไฟล์ให้เติม _01, _02 และหากเป็นไฟล์แก้ไขให้เติม REV01, REV02"
     )
@@ -414,8 +441,8 @@ def build():
         set_run(p.add_run(line), 10, line.startswith("COMPANY_") or line.startswith("ตัวอย่าง:"), DARK)
 
     add_heading(doc, "สรุปแบบสั้น", 1)
-    add_callout(doc, "ชื่อไฟล์ที่ดีต้องตอบได้ 4 ข้อ", "ของบริษัทอะไร · เป็นไฟล์อะไร · เป็นข้อมูลวันไหน · ถ้าเป็น PM คือช่องทางและทิศทางใด", LIGHT_GREEN, GREEN)
-    add_para(doc, "เวอร์ชันเอกสาร: 1.0 | จัดทำสำหรับระบบ Audit AI Reconciliation Control", 9, False, MUTED, before=10, align=WD_ALIGN_PARAGRAPH.CENTER)
+    add_callout(doc, "ชื่อไฟล์ที่ดีต้องตอบได้ 5 ข้อ", "ของบริษัทอะไร · เป็นไฟล์อะไร · ช่องทางใด · ชื่อบัญชีอะไร (กรณีธนาคาร) · ฝาก/ถอนและวันที่ใด", LIGHT_GREEN, GREEN)
+    add_para(doc, "เวอร์ชันเอกสาร: 1.1 | จัดทำสำหรับระบบ Audit AI Reconciliation Control", 9, False, MUTED, before=10, align=WD_ALIGN_PARAGRAPH.CENTER)
 
     doc.save(OUT)
     print(OUT.resolve())
