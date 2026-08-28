@@ -40,6 +40,16 @@ eq("stamp: ISO ค.ศ. ไม่แตะ", Formats.stamp("2026-07-19 10:00:00"
 eq("stamp: DD/MM/YY พ.ศ. 2 หลัก", Formats.stamp("19/07/69 10:00").date, "2026-07-19");
 eq("stamp: เวลาถูก", Formats.stamp("2026-07-19 10:30:15").sec, 10 * 3600 + 30 * 60 + 15);
 
+/* ---------- Formats.pm_provider: MYPAY ถอนสำเร็จบางส่วน ---------- */
+const mypayRows = [
+  ["id", "amount", "provider", "status", "requestTime", "updateTime", "transferredAmount", "submitStatus"],
+  ['="p2p-test"', "10000", "mypays24", "PARTIAL", "2026-08-26 07:54:04", "2026-08-26 08:55:07", "8700", "SENDED"],
+];
+const mypayPartial = Formats.parse("MC mypays24-report-withdraw.csv", mypayRows, "2026-08-26");
+eq("MYPAY partial+sended: อ่านเป็นรายการถอน", mypayPartial.records.length, 1);
+eq("MYPAY partial+sended: ใช้ยอดที่โอนจริง", mypayPartial.records[0].amount, 8700);
+eq("MYPAY partial+sended: ใช้เวลาอัปเดต", mypayPartial.records[0].sec, 8 * 3600 + 55 * 60 + 7);
+
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
 const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
 const dupCount = (records) => Rules.run([{ records, aux: [] }], { businessRules: { dupWindowSec: 300, largeThreshold: 0 } }).exceptions.filter((e) => e.type === "duplicate").length;

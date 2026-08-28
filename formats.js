@@ -75,10 +75,10 @@ const Formats = (() => {
      เช่น MYPAY(id,amount,provider,status,requestTime) · ATP(วันที่,Ref,Username,ธนาคาร,สร้างฝาก,โอนจริง,Status)
           CBY(วันที่ทำรายการ,Ref Id,จำนวนเงิน,สถานะ) · CBY ถอน(...,จำนวนเงิน,ค่าธรรมเนียม,รวมหักเงิน,สถานะ)
      ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
-  const PM_DATE = ["paymenttime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
+  const PM_DATE = ["paymenttime", "updatetime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
   const PM_STATUS = ["status", "สถานะ"];
   const PM_AMT_DEP = ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
-  const PM_AMT_WIT = ["p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
+  const PM_AMT_WIT = ["transferredamount", "p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
   const anyCol = (cells, names) => names.some((n) => cells.some((c) => c === norm(n) || c.startsWith(norm(n))));
   function detectPM(rows) {
     for (let i = 0; i < Math.min(rows.length, 30); i++) {
@@ -249,7 +249,7 @@ const Formats = (() => {
       channels: {},
     };
     const drop = (why) => (out.dropped[why] = (out.dropped[why] || 0) + 1);
-    const fileDir = /ถอน/.test(fileName) ? "withdraw" : /ฝาก/.test(fileName) ? "deposit" : null;
+    const fileDir = /ถอน|withdraw|payout/i.test(fileName) ? "withdraw" : /ฝาก|deposit|payin/i.test(fileName) ? "deposit" : null;
     const pmMeta = { dir: fileDir, provider: pmProviderOf(fileName), subco: subcoOf(fileName, f.title) };
     if (f.spec.code === "pm_provider" && pmMeta.subco) out.company = pmMeta.subco;
 
@@ -282,15 +282,22 @@ const Formats = (() => {
        กรองเฉพาะ Success · ทิศทางจากชื่อไฟล์ (ฝาก/ถอน) หรือ prefix ของ id (DEP/WD) */
     pm_provider(f, r, i, company, drop, fileDir, meta) {
       const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
-      if (!/success|สำเร็จ/.test(status)) return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + ")"), null;
-      const t = stamp(valAny(f, r, ["paymentTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
+      const submitStatus = valAny(f, r, ["submitStatus", "สถานะส่งจ่าย"]).toLowerCase();
+      const transferred = num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง"]));
+      // MYPAY ใช้ PARTIAL + SENDED เมื่อจ่ายเงินจริงบางส่วนสำเร็จ ยอดจริงอยู่ใน transferredAmount
+      // จึงต้องรับเป็นรายการถอนที่เกิดขึ้นจริง แทนการทิ้งทั้งแถวเพราะ status ไม่ใช่ SUCCESS
+      const paidPartial = /partial/.test(status) && /sended|sent|success|สำเร็จ/.test(submitStatus) && transferred > 0;
+      if (!/success|สำเร็จ/.test(status) && !paidPartial) {
+        return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
+      }
+      const t = stamp(valAny(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
       const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
       const amount =
         dir === "withdraw"
-          ? num(valAny(f, r, ["P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
+          ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
           : num(valAny(f, r, ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
@@ -302,7 +309,7 @@ const Formats = (() => {
         date: t.date,
         sec: t.sec,
         amount: Math.round(amount * 100) / 100,
-        requested: num(valAny(f, r, ["แจ้งถอน", "สร้างฝาก"])) || null,
+        requested: num(valAny(f, r, ["แจ้งถอน", "สร้างฝาก", "amount"])) || null,
         fee: num(valAny(f, r, ["ค่าธรรมเนียม", "fee"])),
         direction: dir,
         account: provider,
@@ -317,6 +324,7 @@ const Formats = (() => {
         ref: valAny(f, r, ["Ref", "Ref Id", "reference", "id"]),
         status,
         partial: /partial/.test(status),
+        submitStatus,
         crossDay: false,
         lateNight: t.sec >= 82800,
         minutePrecision: !t.secPrecision,

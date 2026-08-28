@@ -89,6 +89,20 @@ const KPLUS = `
 `;
 eq("KBANK: ไม่มี 'LINE BK' ยังตรวจเป็น KBANK", P.header(toPages(KPLUS)).bank, "KBANK");
 
+/* Worker รับ pages ที่ Extract PDF คืนมาโดยตรง: statement วันก่อนหน้าทั้งฉบับ
+   ต้องเข้าในรอบวันที่รายงาน และยังเก็บ sourceDate ไว้ตรวจย้อนหลัง */
+const workerSrc = src.replace(
+  "async function parse(fileName, arrayBuffer, businessDate) {\n    const pages = await textLines(arrayBuffer);",
+  "async function parse(fileName, pages, businessDate) {",
+);
+const workerSb = { console };
+vm.createContext(workerSb);
+vm.runInContext(workerSrc + "\n;globalThis.__P = PdfStm;", workerSb);
+const lagged = await workerSb.__P.parse("KB report.pdf", toPages(KPLUS), "2026-08-10");
+eq("KBANK reporting lag: อ่านรายการวันก่อนหน้าได้", lagged.records.length, 1);
+eq("KBANK reporting lag: จัดเข้าวันที่รายงาน", lagged.records[0] && lagged.records[0].date, "2026-08-10");
+eq("KBANK reporting lag: เก็บวันที่ต้นฉบับ", lagged.records[0] && lagged.records[0].sourceDate, "2026-08-09");
+
 /* ---- BAY edge: ยอดจำนวนเต็ม + มีเลขทศนิยมในรายละเอียด (ต้องไม่แย่งคอลัมน์ยอด) ---- */
 const BAY_EDGE = `
 19/06/2026 22:28:12 ค่าโอน 5.50 โอนเงิน 144 1278 MOBILE SCB PIMPORN

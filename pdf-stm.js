@@ -356,6 +356,18 @@ const PdfStm = (() => {
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
 
+    // ทีมใช้งานตั้งรอบจากวันที่ในหัวข้ออีเมล แต่ statement ธนาคารบางฉบับ
+    // (โดยเฉพาะ KBANK) เป็นรายการของวันก่อนหน้า 1 วันทั้งฉบับ เมื่อทุกแถว
+    // เป็นวันก่อนหน้ารอบเดียวกัน ให้ถือเป็น reporting lag ปกติและนำมาชนในรอบ
+    // ที่ทีมระบุ โดยเก็บวันที่ต้นฉบับไว้ที่ sourceDate เพื่อสอบทานย้อนหลังได้
+    const expectedPreviousDate = businessDate
+      ? new Date(Date.parse(businessDate + "T00:00:00Z") - 86400000).toISOString().slice(0, 10)
+      : null;
+    const observedDates = new Set(rows.map((r) => r.date).filter(Boolean));
+    const previousDayReport = !!(
+      businessDate && expectedPreviousDate && observedDates.size === 1 && observedDates.has(expectedPreviousDate)
+    );
+
     const company = typeof Formats !== "undefined" ? Formats.companyOf(fileName) : null;
     const dropped = {};
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
@@ -364,12 +376,14 @@ const PdfStm = (() => {
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
       if (r.isFee) return drop("ค่าธรรมเนียม/โยกเงินออกธนาคาร TrueMoney (ไม่ใช่รายการลูกค้า)");
-      if (businessDate && r.date && r.date !== businessDate) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
+      if (businessDate && r.date && r.date !== businessDate && !previousDayReport) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       records.push({
         rowNo: i + 1,
         source: "stm",
         formatCode: "stm_pdf",
-        date: r.date,
+        date: previousDayReport ? businessDate : r.date,
+        sourceDate: r.date,
+        reportLagDays: previousDayReport ? 1 : 0,
         sec: r.sec,
         amount: Math.round(r.amount * 100) / 100,
         balance: r.balance,
@@ -391,6 +405,7 @@ const PdfStm = (() => {
     });
 
     const warnings = [];
+    if (previousDayReport) warnings.push(`Statement เป็นข้อมูลวันที่ ${expectedPreviousDate} และถูกนำเข้ารอบ ${businessDate} ตามวันที่รายงาน`);
     if (!head.bank) warnings.push("ระบุธนาคารจากหัวกระดาษไม่ได้ — ใช้ตัวอ่านแบบทั่วไป");
     if (!head.account) warnings.push("อ่านเลขบัญชีจากหัวกระดาษไม่ได้ — ต้องระบุเองในหน้าตั้งค่าบัญชี");
     if (!records.length) warnings.push("ไม่พบบรรทัดรายการใน PDF — อาจเป็นไฟล์สแกนภาพ ต้องขอไฟล์ที่เป็นข้อความ");
