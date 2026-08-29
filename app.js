@@ -1270,8 +1270,25 @@ async function loadDailyCompanySummary(force = false) {
     const fulfilled = core.filter((item) => item.status === "fulfilled").length;
     if (!fulfilled) throw new Error("Supabase ยังไม่ตอบกลับข้อมูลของวันที่และบริษัทที่เลือก");
     const valueAt = (index) => core[index].status === "fulfilled" ? (core[index].value || []) : [];
+    const selectedQuality = valueAt(1).filter((row) => row.business_date === date);
+    /* หน้าเปิดครั้งแรกยึดวันที่วันนี้ แต่ผลรันอาจเพิ่งเสร็จถึงวันก่อนหน้า
+       ถ้าวันนี้ยังไม่มีผล ให้พาไปวันที่ล่าสุดที่บริษัทนี้มีผลจริงทันที */
+    if (date === PROD_TODAY && !selectedQuality.some((row) => row.run_id)) {
+      const latestRows = await Sb.quality({ company, limit: 100 });
+      if (requestId !== dailyCompanyState.requestId) return;
+      const latestDate = (latestRows || [])
+        .filter((row) => row.run_id && row.business_date && !row.is_archived)
+        .map((row) => row.business_date)
+        .sort()
+        .pop();
+      if (latestDate && latestDate !== date) {
+        state.dailySummary.date = latestDate;
+        dailyCompanyState.loading = false;
+        return loadDailyCompanySummary(true);
+      }
+    }
     dailyCompanyState.batches = valueAt(0);
-    dailyCompanyState.quality = valueAt(1).filter((row) => row.business_date === date);
+    dailyCompanyState.quality = selectedQuality;
     dailyCompanyState.operations = valueAt(2).filter((row) => row.business_date === date);
     dailyCompanyState.checklist = valueAt(3);
     const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist"].filter((_, index) => core[index].status === "rejected");

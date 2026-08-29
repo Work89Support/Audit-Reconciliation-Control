@@ -28,5 +28,6 @@ assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษั
 assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");
 assert.match(app, /ภาพรวมการกระทบยอด 3 จุด/, "หน้ารายวันต้องสรุป STM\/PM เทียบ BO ในจุดเดียว");
 assert.match(app, /ขั้นถัดไปที่แนะนำ/, "หน้ารายวันต้องบอกงานถัดไปที่ผู้ตรวจควรทำ");
+assert.match(app, /date === PROD_TODAY && !selectedQuality\.some/, "หน้ารายวันต้องเลื่อนไปวันที่ล่าสุดที่มีผลจริงเมื่อวันนี้ยังไม่มีผลรัน");
 
-console.log("App shell QA follow-up: 21 checks passed");
+console.log("App shell QA follow-up: 22 checks passed");

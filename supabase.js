@@ -337,12 +337,20 @@ const Sb = (() => {
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence",
     ].join(",");
+    /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
+       เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
+       (View เดิม timeout บ่อยเมื่อเครื่องฐานข้อมูลมีโหลดสูง) */
+    const jobFilters = ["select=last_run_id", "status=eq.completed", "last_run_id=not.is.null", "limit=1000"];
+    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
+    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
+    if (!runIds.length) return [];
+    const runFilter = `run_id=in.(${runIds.join(",")})`;
     const fetchPage = async (offset) => {
-      const filters = [`select=${columns}`, "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
-      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-      return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+      const filters = [`select=${columns}`, runFilter, "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];

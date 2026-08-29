@@ -176,6 +176,8 @@ assert.match(templateKindSql, /COMMISSION_\(WITHDRAW\|EVIDENCE\)_/, "commission 
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
+assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");
+assert.match(supabaseSource, /rest\/v1\/exceptions\?\$\{filters\.join\("&"\)\}/, "exception summary must read current-run rows directly from the indexed table");
 assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, company, limit: 50 \}\)/, "daily summary must load only the selected company and day");
 assert.match(appSource, /const core = await Promise\.allSettled/, "a slow daily-summary section must not blank the whole report");
 assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 1500 \}\)/, "daily summary details must stay within the selected company");
