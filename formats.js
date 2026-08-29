@@ -18,6 +18,14 @@ const Formats = (() => {
       .toLowerCase();
 
   const HEADER_ALIASES = {
+    "เวลา": ["เวลา"],
+    "ประเภท": ["ประเภท"],
+    "ยูสเซอร์": ["ยูสเซอร์", "username", "user"],
+    "บัญชีลูกค้าแบบย่อ": ["บัญชี"],
+    "บัญชีบริษัทแบบย่อ": ["บัญชีบริษัท"],
+    "ยอดเงินแบบย่อ": ["ยอดเงิน"],
+    "โน้ต": ["โน้ต", "note", "หมายเหตุ"],
+    "ผู้ดำเนินการ": ["ผู้ดำเนินการ", "operator"],
     "วันที่ทำรายการ": ["วันที่ทำรายการ", "วันเวลาทำรายการ", "เวลาทำรายการ", "createdat", "createtime", "requesttime"],
     "วันที่ธนาคาร": ["วันที่ธนาคาร", "วันเวลาธนาคาร", "เวลาธนาคาร", "paymenttime", "banktime", "transfertime"],
     "จำนวนเงินฝากจริง": ["จำนวนเงินฝากจริง", "ยอดฝากจริง", "ยอดฝาก", "depositamount", "realamount", "โอนจริง"],
@@ -33,6 +41,12 @@ const Formats = (() => {
 
   /* ---------------- นิยามรูปแบบ ---------------- */
   const SPECS = [
+    {
+      code: "bo_compact",
+      label: "รายงานบัญชีฝาก-ถอน (BO แบบย่อ)",
+      side: "bo",
+      need: ["เวลา", "ประเภท", "ยูสเซอร์", "บัญชีบริษัทแบบย่อ", "ยอดเงินแบบย่อ"],
+    },
     {
       code: "bo_main",
       label: "รายงานบัญชีฝาก-ถอน (BO)",
@@ -284,6 +298,47 @@ const Formats = (() => {
   }
 
   const ROW = {
+    bo_compact(f, r, i, company, drop) {
+      const t = stamp(val(f, r, "เวลา"));
+      if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
+      const amount = num(val(f, r, "ยอดเงินแบบย่อ"));
+      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
+      const type = val(f, r, "ประเภท");
+      const companyAccount = val(f, r, "บัญชีบริษัทแบบย่อ");
+      const customerAccount = val(f, r, "บัญชีลูกค้าแบบย่อ");
+      const note = val(f, r, "โน้ต");
+      const pm = canonicalPm(companyAccount);
+      const direction = /ถอน|withdraw|payout/i.test(type + " " + companyAccount)
+        ? "withdraw"
+        : "deposit";
+      const ref = (note.match(/\b(?:P2C|DEP|WD|WIT)[-A-Z0-9]+\b/i) || [])[0] || note;
+      return {
+        rowNo: i + 1,
+        source: "bo",
+        formatCode: "bo_compact",
+        date: t.date,
+        sec: t.sec,
+        boDate: t.date,
+        boSec: t.sec,
+        amount: Math.round(amount * 100) / 100,
+        direction,
+        account: pm || companyAccount || "UNKNOWN",
+        channel: pm || companyAccount,
+        isPmChannel: !!pm,
+        bank: "",
+        company,
+        memberCode: val(f, r, "ยูสเซอร์"),
+        custAccount: customerAccount,
+        ref,
+        username: val(f, r, "ผู้ดำเนินการ"),
+        note,
+        crossDay: false,
+        lateNight: t.sec >= 82800,
+        minutePrecision: !t.secPrecision,
+        raw: r.join(" | "),
+      };
+    },
+
     /* ไฟล์ export จาก payment gateway (MYPAY/12PAY/ATP/AZPAY/CYBERPLUS)
        คอลัมน์: id, amount, provider, status, requestTime, fee, reference, customerId, realAmount, payee, paymentTime ...
        กรองเฉพาะ Success · ทิศทางจากชื่อไฟล์ (ฝาก/ถอน) หรือ prefix ของ id (DEP/WD) */

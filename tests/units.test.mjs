@@ -62,6 +62,17 @@ eq("AUTOPEER _W_: ใช้ยอด P2P จ่าย", autopeerWithdraw.records
 eq("AUTOPEER _W_: เก็บยอดที่แจ้งถอน", autopeerWithdraw.records[1].requested, 1920);
 eq("AUTOPEER _W_: ระบุทิศทางถอน", autopeerWithdraw.records[1].direction, "withdraw");
 
+const compactBoRows = [
+  ["UFABET7M"],
+  ["เวลา", "ประเภท", "ยูสเซอร์", "บัญชี", "บัญชีบริษัท", "ยอดเงิน", "โบนัส", "โน้ต", "ผู้ดำเนินการ", "แก้ไข"],
+  ["2026-08-27 23:42", "ถอน", "ufpyo7mm146703", "ศราวุธ เทพกิจ (BBL) 6940541482", "ATP PAYMENT ถอน 00000ATP", "1000", "0", "P2C-20260827-234211-EUBLWK", "ไว", "แก้ไข"],
+];
+const compactBo = Formats.parse("UFABET7M_BO_DW_2026-08-27.xlsx", compactBoRows, "2026-08-27");
+eq("BO แบบย่อ: ตรวจรูปแบบ", compactBo.code, "bo_compact");
+eq("BO แบบย่อ: provider ATP เป็น AUTOPEER", compactBo.records[0].account, "AUTOPEER");
+eq("BO แบบย่อ: ทิศทางถอน", compactBo.records[0].direction, "withdraw");
+eq("BO แบบย่อ: อ่าน ref จากโน้ต", compactBo.records[0].ref, "P2C-20260827-234211-EUBLWK");
+
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
 const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
 const dupCount = (records) => Rules.run([{ records, aux: [] }], { businessRules: { dupWindowSec: 300, largeThreshold: 0 } }).exceptions.filter((e) => e.type === "duplicate").length;
