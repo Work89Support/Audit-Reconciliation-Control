@@ -53,7 +53,7 @@ const rec = (o) => ({
 });
 
 const settings = { toleranceDeposit: 120, toleranceWithdraw: 120, minuteTolerance: 60 };
-const run = (stm, bo, s = settings) => Engine.reconcile(stm, bo, s, [], null);
+const run = (stm, bo, s = settings, masterAccounts = []) => Engine.reconcile(stm, bo, s, masterAccounts, null);
 
 /* ================= 1) parseCSV ================= */
 (function () {
@@ -110,6 +110,20 @@ await (async function () {
   const n = Engine.normalize("AT4 Autopeer ฝาก.xlsx", rows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-08-01");
   eq("PM: เป็นฝั่ง STM", n.format.source, "stm");
   eq("PM: account เป็น provider มาตรฐาน", n.records[0]?.account, "AUTOPEER");
+})();
+
+/* PM provider เป็น match key ไม่ใช่เลขบัญชีบริษัท จึงไม่ควรถูก master list
+   ตีความเป็น wrong_account หลังจับคู่สำเร็จ */
+await (async function () {
+  const pm = rec({ account: "AUTOPEER", amount: 500, sec: 3600 });
+  pm.isPmChannel = true;
+  pm.channel = "AUTOPEER";
+  const bo = rec({ account: "AUTOPEER", amount: 500, sec: 3605 });
+  bo.isPmChannel = true;
+  bo.channel = "AUTOPEER";
+  const r = await run([pm], [bo], settings, [{ id: "0123456789", bank: "SCB" }]);
+  eq("PM provider: จับคู่สำเร็จ", r.matched, 1);
+  eq("PM provider: ไม่สร้าง wrong_account เท็จ", r.exceptions.filter((x) => x.type === "wrong_account").length, 0);
 })();
 
 (function () {

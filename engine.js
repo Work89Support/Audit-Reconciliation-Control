@@ -580,7 +580,10 @@ const Engine = (() => {
     const BANK_ALIAS = { KBANK: "KBANK", KPLUS: "KBANK", SCB: "SCB", GSB: "GSB", BBL: "BBL", KTB: "KTB", BAAC: "BAAC", TTB: "TTB", BAY: "BAY", KK: "KKP", KKP: "KKP", UOB: "UOB", CIMB: "CIMB", LHB: "LHB", TISCO: "TISCO", GHB: "GHB" };
     matched.forEach((m) => {
       const truth = masterBank.get(m.s.account);
-      if (masterSet.size && !truth) {
+      /* ไฟล์ PM ใช้ชื่อ provider (เช่น AUTOPEER/CYBERPLUS) เป็น match key ไม่ใช่
+         เลขบัญชีธนาคารบริษัท จึงห้ามนำ provider ไปเทียบกับ master account list
+         มิฉะนั้นคู่ที่ยอด/เวลา/ช่องทางตรงกันจะถูกสร้าง wrong_account เท็จเกือบทั้งหมด */
+      if (masterSet.size && !truth && !m.s.isPmChannel) {
         exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
         return;
       }
