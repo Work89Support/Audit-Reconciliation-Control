@@ -98,6 +98,15 @@ assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromF
 assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "อ่าน PDF โดยตรง", "PDFs must enter the native parser first");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
+assert.equal(worker.connections["ดาวน์โหลดไฟล์จาก Storage"].main[0][0].node, "คืนชื่อไฟล์ต้นฉบับ", "downloaded binaries must restore the original attachment name");
+const originalNameNode = worker.nodes.find((node) => node.name === "คืนชื่อไฟล์ต้นฉบับ");
+assert.ok(originalNameNode, "worker must preserve the original Gmail attachment name");
+assert.match(originalNameNode.parameters.jsCode, /meta\.file\.file_name/, "the displayed binary name must come from source_files.file_name");
+for (const name of ["อ่าน Excel", "อ่าน CSV"]) {
+  assert.equal(worker.nodes.find((node) => node.name === name).onError, "continueRegularOutput", `${name} must not stop the entire job when one file is malformed`);
+}
+assert.match(workerText, /upstreamError/, "extractor failures must become per-file quality errors");
+assert.match(workerText, /อ่านไฟล์ไม่สำเร็จ \('/, "quality errors must identify the original attachment name");
 assert.ok(worker.nodes.some((node) => node.name === "Google Drive OCR: แปลง PDF"), "Google Drive OCR fallback must remain available for scanned PDFs");
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 1);
 assert.match(workerText, /claim_daily_recon_jobs/);
