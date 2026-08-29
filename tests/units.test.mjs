@@ -50,6 +50,18 @@ eq("MYPAY partial+sended: อ่านเป็นรายการถอน", 
 eq("MYPAY partial+sended: ใช้ยอดที่โอนจริง", mypayPartial.records[0].amount, 8700);
 eq("MYPAY partial+sended: ใช้เวลาอัปเดต", mypayPartial.records[0].sec, 8 * 3600 + 55 * 60 + 7);
 
+const autopeerWithdrawRows = [
+  ["UFABET7M"],
+  ["วันที่", "Ref", "Username", "ธนาคาร", "เลขบัญชี", "ชื่อ - นามสกุล ผู้รับ", "แจ้งถอน", "P2P จ่าย", "Progress", "Status"],
+  ["27/08/2026 23:42", "P2C-20260827-234211-EUBLWK", "ufpyo7mm146703", "ธนาคารกรุงเทพ", "6940541482", "ศราวุธ เทพกิจ", "1000", "1000", "1000/1000", "SUCCESS"],
+  ["27/08/2026 23:32", "P2C-20260827-233242-YQPJGV", "ufpyo7mm106968", "ธนาคารไทยพาณิชย์", "4341146018", "ชัยณรงค์ ชัยทัศน์", "1920", "1600", "1600/1920", "SUCCESS-PARTIAL"],
+];
+const autopeerWithdraw = Formats.parse("UFABET7M_PM_AUTOPEER_W_2026-08-27.xlsx", autopeerWithdrawRows, "2026-08-27");
+eq("AUTOPEER _W_: อ่านเป็นรายการถอน", autopeerWithdraw.records.length, 2);
+eq("AUTOPEER _W_: ใช้ยอด P2P จ่าย", autopeerWithdraw.records[1].amount, 1600);
+eq("AUTOPEER _W_: เก็บยอดที่แจ้งถอน", autopeerWithdraw.records[1].requested, 1920);
+eq("AUTOPEER _W_: ระบุทิศทางถอน", autopeerWithdraw.records[1].direction, "withdraw");
+
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
 const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
 const dupCount = (records) => Rules.run([{ records, aux: [] }], { businessRules: { dupWindowSec: 300, largeThreshold: 0 } }).exceptions.filter((e) => e.type === "duplicate").length;

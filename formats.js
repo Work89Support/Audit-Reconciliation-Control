@@ -249,7 +249,14 @@ const Formats = (() => {
       channels: {},
     };
     const drop = (why) => (out.dropped[why] = (out.dropped[why] || 0) + 1);
-    const fileDir = /ถอน|withdraw|payout/i.test(fileName) ? "withdraw" : /ฝาก|deposit|payin/i.test(fileName) ? "deposit" : null;
+    // Provider exports also use compact D/W tokens, for example
+    // UFABET7M_PM_AUTOPEER_W_2026-08-27.xlsx. Treat those tokens as the
+    // direction before falling back to the long Thai/English words.
+    const fileDir = /(?:^|[_\-\s])W(?:[_\-\s.]|$)|ถอน|withdraw|payout/i.test(fileName)
+      ? "withdraw"
+      : /(?:^|[_\-\s])D(?:[_\-\s.]|$)|ฝาก|deposit|payin/i.test(fileName)
+        ? "deposit"
+        : null;
     const pmMeta = { dir: fileDir, provider: pmProviderOf(fileName), subco: subcoOf(fileName, f.title) };
     if (f.spec.code === "pm_provider" && pmMeta.subco) out.company = pmMeta.subco;
 
