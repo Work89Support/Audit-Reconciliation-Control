@@ -344,6 +344,10 @@ const Engine = (() => {
     const t0 = performance.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
+    /* กรอบผ่อนปรนสำหรับคู่ exact ที่ไม่กำกวม: ใช้เมื่อ account/provider + ยอด +
+       ทิศทางตรง และทั้งสองฝั่งมีผู้สมัครเพียงคู่เดียวเท่านั้น เพื่อไม่ให้ยอดกลม ๆ
+       ที่เกิดซ้ำ (100/500/1,000) ถูกจับผิดรายการ */
+    const exactUniqueTol = Math.max(tolDep, tolWit, Number(settings.exactUniqueTolerance || 0));
     /* อายุเคสสำหรับ SLA: ถ้าผู้เรียกส่ง settings.asOf (เวลาจริง เป็น epoch ms) มา จะคิดอายุจากเวลาที่ผ่านจริง
        ถ้าไม่ส่งมา จะ fallback เป็นสูตรเดิม (สมมติ "ตอนนี้" = ปลายวันที่ตรวจ) เพื่อความเข้ากันได้กับข้อมูลย้อนหลัง/ตัวอย่าง */
     const asOf = settings && settings.asOf ? Number(settings.asOf) : null;
@@ -433,9 +437,49 @@ const Engine = (() => {
       "จับคู่ 3 จุด (ในเกณฑ์)",
     );
 
-    // pass 1b: รายการที่ยังไม่แม็ป — หา BO บัญชี+ยอด+ทิศทางเดียวกันที่ใกล้สุด (นอกเกณฑ์แต่ <1 ชม.) = ต่างเวลา
+    // pass 1b: ผ่อนเวลาให้คู่ exact ที่มีเพียงคู่เดียว (ค่าใช้งานจริง 10 นาที)
+    const stmFar = [];
+    const pendingByKey = new Map();
+    stmMid.forEach((s) => {
+      const k = key2(s.account, s.amount) + "|" + (s.direction || "");
+      let arr = pendingByKey.get(k);
+      if (!arr) pendingByKey.set(k, (arr = []));
+      arr.push(s);
+    });
+    const extendedMatched = new Set();
     await chunked(
       stmMid,
+      10000,
+      (s) => {
+        const cands = exactIdx.get(key2(s.account, s.amount)) || [];
+        const eligible = cands.filter((ci) => {
+          if (boUsed[ci]) return false;
+          const b = boRecords[ci];
+          return dirOK(s, b) && Math.abs(b.sec - s.sec) <= exactUniqueTol;
+        });
+        if (exactUniqueTol > tolOf(s.direction, s, null) && eligible.length === 1) {
+          const ci = eligible[0];
+          const b = boRecords[ci];
+          const key = key2(s.account, s.amount) + "|" + (s.direction || "");
+          const competingStm = (pendingByKey.get(key) || []).some((other) =>
+            other !== s && !extendedMatched.has(other) && Math.abs(other.sec - b.sec) <= exactUniqueTol,
+          );
+          if (!competingStm) {
+            boUsed[ci] = 1;
+            extendedMatched.add(s);
+            matched.push({ s, b, dt: Math.abs(b.sec - s.sec), extendedTimeMatch: true });
+            return;
+          }
+        }
+        stmFar.push(s);
+      },
+      onProgress,
+      "จับคู่ยอดตรงที่ไม่กำกวม",
+    );
+
+    // pass 1c: รายการที่ยังไม่แม็ป — หา BO บัญชี+ยอด+ทิศทางเดียวกันที่ใกล้สุด (นอกเกณฑ์แต่ <1 ชม.) = ต่างเวลา
+    await chunked(
+      stmFar,
       10000,
       (s) => {
         const cands = exactIdx.get(key2(s.account, s.amount));

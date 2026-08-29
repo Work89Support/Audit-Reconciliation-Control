@@ -2385,6 +2385,7 @@ VIEWS.matching = (root) => {
         <div class="setting-list">
           <label><span>Time tolerance ฝาก</span><input type="number" id="tolD" value="${DB.settings.toleranceDeposit}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
           <label><span>Time tolerance ถอน</span><input type="number" id="tolW" value="${DB.settings.toleranceWithdraw}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
+          <label><span>คู่ยอดตรงที่ไม่กำกวม</span><input type="number" value="${DB.settings.exactUniqueTolerance || 600}" disabled /><b>วินาที</b></label>
           <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="tolA" value="${DB.settings.diffAlert}" ${ruleEditable ? "" : "disabled"} /><b>บาท</b></label>
         </div>
         <button class="primary-button" id="tolSave" ${ruleEditable ? "" : "disabled"}>บันทึกและคำนวณผลใหม่</button>
@@ -2398,6 +2399,8 @@ VIEWS.matching = (root) => {
           <li>Apply bank rule (X1/X2/XB, ยอดยกมา, รอบวันที่)</li>
           <li>สร้าง candidate จาก account + amount</li>
           <li>คำนวณ time difference และให้คะแนน</li>
+          <li>ถ้าบัญชี/Provider + ฝาก–ถอน + ยอดตรง และมีผู้สมัครเพียงคู่เดียว ระบบจับให้อัตโนมัติได้ถึง ${num(DB.settings.exactUniqueTolerance || 600)} วินาที</li>
+          <li>ถ้ามียอดซ้ำหลายรายการ ระบบไม่เดาคู่และยังส่งให้ Audit ตรวจ</li>
           <li>ผ่าน threshold = matched, ไม่ผ่าน = exception</li>
           <li>ส่ง exception เข้า workflow ชี้แจง</li>
         </ol>

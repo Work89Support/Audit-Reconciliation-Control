@@ -408,6 +408,7 @@ const DB = (() => {
   const settings = {
     toleranceDeposit: 90,
     toleranceWithdraw: 180,
+    exactUniqueTolerance: 600,
     diffAlert: 1,
     slaEvidenceDays: 3,
     /* สายงานชี้แจง 2 แบบตามที่แผนกใช้จริง */

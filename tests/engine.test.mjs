@@ -142,6 +142,26 @@ await (async function () {
   eq("time_diff: ชนิด", r.exceptions[0].type, "time_diff");
 })();
 
+/* คู่ยอดตรงที่ไม่กำกวม: ผ่อนเวลาได้โดยไม่เดาคู่จากยอดซ้ำ */
+await (async function () {
+  const extended = { ...settings, exactUniqueTolerance: 600 };
+  const unique = await run(
+    [rec({ account: "EXT-1", amount: 500, sec: 3600 })],
+    [rec({ account: "EXT-1", amount: 500, sec: 4096 })],
+    extended,
+  );
+  eq("extended exact: ห่าง 496 วินาทีแต่มีคู่เดียว = matched", unique.matched, 1);
+  eq("extended exact: ไม่สร้าง time_diff", unique.exceptions.length, 0);
+
+  const ambiguous = await run(
+    [rec({ account: "EXT-2", amount: 100, sec: 3600 }), rec({ account: "EXT-2", amount: 100, sec: 3650 })],
+    [rec({ account: "EXT-2", amount: 100, sec: 3900 })],
+    extended,
+  );
+  eq("extended exact: มียอดซ้ำหลายผู้สมัครไม่เดาคู่", ambiguous.matched, 0);
+  ok("extended exact: ยอดซ้ำยังส่งตรวจ", ambiguous.exceptions.some((row) => row.type === "time_diff"), JSON.stringify(ambiguous.exceptions.map((row) => row.type)));
+})();
+
 /* ================= 5) reconcile: amount_diff ================= */
 await (async function () {
   const r = await run([rec({ account: "SCB-2", amount: 100, sec: 3600 })], [rec({ account: "SCB-2", amount: 105, sec: 3610 })]);
