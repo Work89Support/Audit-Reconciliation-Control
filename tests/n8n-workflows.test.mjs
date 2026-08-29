@@ -180,7 +180,8 @@ assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, 
 assert.match(supabaseSource, /rest\/v1\/exceptions\?\$\{filters\.join\("&"\)\}/, "exception summary must read current-run rows directly from the indexed table");
 assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, company, limit: 50 \}\)/, "daily summary must load only the selected company and day");
 assert.match(appSource, /const core = await Promise\.allSettled/, "a slow daily-summary section must not blank the whole report");
-assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 1500 \}\)/, "daily summary details must stay within the selected company");
+assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 250 \}\)/, "daily summary must load only a fast first page for the selected company");
+assert.match(appSource, /limit: 5000[\s\S]+exportDailyCompanySummary/, "full exception details must be loaded only when the auditor exports");
 assert.match(appSource, /id="fileKindSelect"/, "file preview must let the auditor choose the file type");
 assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
 assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");

@@ -29,5 +29,7 @@ assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผ�
 assert.match(app, /ภาพรวมการกระทบยอด 3 จุด/, "หน้ารายวันต้องสรุป STM\/PM เทียบ BO ในจุดเดียว");
 assert.match(app, /ขั้นถัดไปที่แนะนำ/, "หน้ารายวันต้องบอกงานถัดไปที่ผู้ตรวจควรทำ");
 assert.match(app, /date === PROD_TODAY && !selectedQuality\.some/, "หน้ารายวันต้องเลื่อนไปวันที่ล่าสุดที่มีผลจริงเมื่อวันนี้ยังไม่มีผลรัน");
+assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/, "หน้ารายวันต้องมีตารางภาพรวมแบบสเปรดชีต");
+assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
 
-console.log("App shell QA follow-up: 22 checks passed");
+console.log("App shell QA follow-up: 24 checks passed");

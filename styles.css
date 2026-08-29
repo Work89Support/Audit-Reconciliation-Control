@@ -1681,6 +1681,15 @@ tr.on { background: #f0f7ff; }
 .daily-audit-flow span { min-width: 0; font-weight: 600; font-size: 12.5px; }
 .daily-audit-flow small { display: block; margin-top: 1px; color: var(--muted); font-weight: 400; font-size: 10.5px; }
 .daily-summary-grid { align-items: stretch; }
+.audit-sheet-panel { margin-bottom: 14px; border-top: 3px solid var(--blue); }
+.audit-sheet-wrap { max-height: 410px; overflow: auto; }
+.audit-sheet { min-width: 1080px; font-size: 12px; }
+.audit-sheet thead th { position: sticky; top: 0; z-index: 2; background: #edf4fc; }
+.audit-sheet tbody tr:hover td { background: #f7fbff; }
+.audit-sheet td { vertical-align: middle; }
+.audit-sheet td:last-child { display: flex; gap: 6px; justify-content: flex-end; }
+.sheet-progress { display: inline-flex; min-width: 54px; justify-content: center; padding: 4px 7px; border-radius: 999px; color: #805b00; background: #fff0c2; font-weight: 700; }
+.sheet-progress.ok { color: #166534; background: #dcfce7; }
 .daily-summary-grid > .panel { margin-bottom: 14px; }
 .daily-kind-list { display: grid; gap: 7px; margin-bottom: 12px; }
 .daily-kind-list > div {
