@@ -14,5 +14,13 @@ assert.match(html, /หน้านี้ใช้ข้อมูลจริง
 assert.doesNotMatch(html, /gmail\.js/, "หน้าเว็บต้องไม่โหลดตัวอ่าน Gmail ที่เลิกใช้แล้ว");
 assert.equal(existsSync(join(root, "gmail.js")), false, "ต้องลบ gmail.js ที่ไม่ได้ใช้แล้ว");
 assert.equal(existsSync(join(root, "fx.js")), false, "ต้องลบ fx.js placeholder ที่ไม่ได้ใช้แล้ว");
+assert.match(app, /const core = await Promise\.allSettled/, "ตัวโหลดภาพรวมต้องยอมให้ข้อมูลบางส่วนสำเร็จได้");
+assert.match(app, /ตัวเลขส่วนนี้จะแสดง “—” แทนศูนย์/, "หน้าเว็บต้องไม่แสดงศูนย์ปลอมเมื่อข้อมูลจริง timeout");
+assert.match(app, /const cloudQueryKey = \(\) =>/, "คลังไฟล์ต้องสร้าง cache key ตามตัวกรอง");
+assert.match(app, /requestId !== cloudState\.requestId \|\| key !== cloudQueryKey\(\)/, "ผลค้นหาเก่าต้องเขียนทับตัวกรองใหม่ไม่ได้");
+assert.match(app, /retryTransientFileRequest\(action, attempts = 3\)/, "Preview ต้องลองใหม่เมื่อ Storage หรือฐานข้อมูล timeout");
+assert.match(app, /const exceptionsAvailable = liveOverviewState\.exceptionsReady/, "หน้า Exception ต้องแยกข้อมูลไม่พร้อมออกจากศูนย์จริง");
+assert.match(app, /const operationsAvailable = Array\.isArray\(liveOverviewState\.operations\)/, "หน้ารายงานต้องแยกคิวไม่พร้อมออกจากไม่มีข้อมูล");
+assert.match(app, /const logsAvailable = liveOverviewState\.logsReady/, "Audit Log ต้องไม่แสดงศูนย์เมื่อ query ล้มเหลว");
 
-console.log("App shell QA follow-up: 7 checks passed");
+console.log("App shell QA follow-up: 15 checks passed");

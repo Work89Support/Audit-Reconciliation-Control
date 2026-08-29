@@ -578,7 +578,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, loading: false, auxiliaryLoading: false, auxiliaryError: null, requestId: 0, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 
 async function loadLiveExceptionSearch(term) {
@@ -730,28 +730,56 @@ async function loadLiveOverview(force = false) {
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   if (liveOverviewState.loading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
   const requestId = ++liveOverviewState.requestId;
+  const changedFilter = liveOverviewState.key !== key;
   liveOverviewState.loading = true;
   liveOverviewState.auxiliaryLoading = false;
   liveOverviewState.auxiliaryError = null;
+  liveOverviewState.coreErrors = [];
   liveOverviewState.error = null;
   liveOverviewState.key = key;
+  if (changedFilter) {
+    liveOverviewState.daily = null;
+    liveOverviewState.operations = null;
+    liveOverviewState.quality = null;
+    liveOverviewState.checklist = null;
+    liveOverviewState.damages = null;
+    liveOverviewState.logs = null;
+    liveOverviewState.clarifications = null;
+    liveOverviewState.exceptionsReady = false;
+    liveOverviewState.damagesReady = false;
+    liveOverviewState.logsReady = false;
+    DB.exceptions = [];
+    DB.damages = [];
+  }
   if (state.route === "dashboard") render();
   try {
     // Phase 1: ข้อมูลสรุปขนาดเล็กต้องขึ้นหน้าจอก่อน ไม่รอ exception/หลักฐานหลายพันแถว
-    let [daily, operations, quality, checklist, settings] = await Promise.all([
+    const core = await Promise.allSettled([
       Sb.dailyStatus({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
     ]);
-    let checklistRows = checklist || [];
+    if (requestId !== liveOverviewState.requestId) return;
+    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "การตั้งค่าระบบ"];
+    const coreValue = (index, fallback) => core[index].status === "fulfilled" ? (core[index].value ?? fallback) : fallback;
+    let daily = coreValue(0, liveOverviewState.daily);
+    let operations = coreValue(1, liveOverviewState.operations);
+    let quality = coreValue(2, liveOverviewState.quality);
+    let checklistRows = coreValue(3, liveOverviewState.checklist);
+    const settings = coreValue(4, liveOverviewState.settings ? [liveOverviewState.settings] : null);
+    liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []);
+    const qualityReady = core[2].status === "fulfilled";
     const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
       && state.filters.from === DEFAULT_RANGE_FROM
       && state.filters.to === DEFAULT_WORK_DATE
+      && qualityReady
       && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
     if (defaultEmptyRange) {
-      const latestQuality = await Sb.quality({ company: state.filters.company, limit: 1 });
+      const latestLookup = await Promise.allSettled([Sb.quality({ company: state.filters.company, limit: 1 })]);
+      const latestQuality = latestLookup[0].status === "fulfilled" ? latestLookup[0].value : [];
+      if (latestLookup[0].status === "rejected") liveOverviewState.coreErrors.push("ค้นหาวันล่าสุด");
       const latestOperationalDate = (latestQuality || [])
         .filter((row) => !row.is_archived && row.business_date)
         .map((row) => row.business_date)
@@ -760,25 +788,33 @@ async function loadLiveOverview(force = false) {
       if (latestOperationalDate) {
         state.filters = { ...state.filters, date: latestOperationalDate, from: latestOperationalDate, to: latestOperationalDate, preset: "day" };
         state.dailySummary.date = latestOperationalDate;
-        [daily, operations, quality, checklistRows] = await Promise.all([
+        const latest = await Promise.allSettled([
           Sb.dailyStatus({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.operations({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.quality({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
         ]);
+        daily = latest[0].status === "fulfilled" ? latest[0].value : daily;
+        operations = latest[1].status === "fulfilled" ? latest[1].value : operations;
+        quality = latest[2].status === "fulfilled" ? latest[2].value : quality;
+        checklistRows = latest[3].status === "fulfilled" ? latest[3].value : checklistRows;
+        liveOverviewState.coreErrors.push(...latest.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []));
         liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
       }
     }
     if (requestId !== liveOverviewState.requestId) return;
-    liveOverviewState.daily = daily || [];
-    liveOverviewState.operations = operations || [];
-    liveOverviewState.quality = quality || [];
-    liveOverviewState.checklist = checklistRows;
-    liveOverviewState.settings = settings?.[0] || null;
+    if (daily !== null) liveOverviewState.daily = daily || [];
+    if (operations !== null) liveOverviewState.operations = operations || [];
+    if (quality !== null) liveOverviewState.quality = quality || [];
+    if (checklistRows !== null) liveOverviewState.checklist = checklistRows || [];
+    if (settings !== null) liveOverviewState.settings = Array.isArray(settings) ? (settings[0] || null) : settings;
+    liveOverviewState.error = liveOverviewState.coreErrors.length
+      ? `ข้อมูลบางส่วนยังไม่พร้อม: ${[...new Set(liveOverviewState.coreErrors)].join(", ")} — ตัวเลขส่วนนี้จะแสดง “—” แทนศูนย์`
+      : null;
     liveOverviewState.updatedAt = new Date();
     liveOverviewState.loading = false;
     liveOverviewState.auxiliaryLoading = true;
-    hydrateLiveData(quality, operations, [], [], []);
+    hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], [], [], []);
     render();
 
     // Phase 2: เติมรายละเอียดหนักด้านหลัง โดยไม่บล็อกแดชบอร์ดหลัก
@@ -791,17 +827,20 @@ async function loadLiveOverview(force = false) {
     ]);
     if (requestId !== liveOverviewState.requestId) return;
     const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
-    const exceptionRows = value(0);
-    const damageRows = value(1);
-    const logRows = value(2);
-    liveOverviewState.damages = damageRows;
-    liveOverviewState.logs = logRows;
-    liveOverviewState.notifications = value(3);
-    liveOverviewState.clarifications = value(4);
+    const exceptionRows = value(0, DB.exceptions || []);
+    const damageRows = value(1, liveOverviewState.damages || []);
+    const logRows = value(2, liveOverviewState.logs || []);
+    liveOverviewState.exceptionsReady = aux[0].status === "fulfilled";
+    liveOverviewState.damagesReady = aux[1].status === "fulfilled";
+    liveOverviewState.logsReady = aux[2].status === "fulfilled";
+    if (aux[1].status === "fulfilled") liveOverviewState.damages = damageRows;
+    if (aux[2].status === "fulfilled") liveOverviewState.logs = logRows;
+    if (aux[3].status === "fulfilled") liveOverviewState.notifications = value(3);
+    if (aux[4].status === "fulfilled") liveOverviewState.clarifications = value(4);
     liveOverviewState.auxiliaryError = aux.some((item) => item.status === "rejected") ? "รายละเอียดบางส่วนโหลดไม่สำเร็จ — กดรีเฟรชเพื่อโหลดใหม่" : null;
     liveOverviewState.auxiliaryLoading = false;
     liveOverviewState.updatedAt = new Date();
-    hydrateLiveData(quality, operations, exceptionRows, damageRows, logRows);
+    hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], exceptionRows, damageRows, logRows);
     updateBell();
   } catch (e) {
     if (requestId === liveOverviewState.requestId) liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
@@ -840,6 +879,9 @@ function renderLiveDashboard(root) {
   const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
   const exceptionTotal = quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0);
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
+  const dailyAvailable = Array.isArray(liveOverviewState.daily) && !liveOverviewState.coreErrors.includes("ยอดเมลและไฟล์");
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const showMetric = (available, value) => available ? num(value) : "—";
 
   const opByKey = new Map(operations.map((x) => [`${x.business_date}|${x.company}|${x.business_system || ""}`, x]));
   const companyMap = new Map();
@@ -880,7 +922,7 @@ function renderLiveDashboard(root) {
   const loadNotice = liveOverviewState.loading
     ? `<section class="alert"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>เปิดดูเมนูและรายงานได้ทันที ระบบจะเติมตัวเลขบนหน้านี้เมื่อข้อมูลมาถึง</span></section>`
     : liveOverviewState.error
-      ? `<section class="alert bad"><strong>อัปเดตข้อมูลล่าสุดไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></section>`
+      ? `<section class="alert warn"><strong>ข้อมูลจริงมาไม่ครบทุกส่วน</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></section>`
       : !daily.length && !operations.length && !quality.length
         ? `<section class="alert warn"><strong>ไม่พบข้อมูลในช่วง ${h(rangeLabel())}</strong><span>ข้อมูลอาจอยู่ก่อนช่วงวันที่ที่เลือก ลองขยายช่วงย้อนหลัง หรือเปิดคลังไฟล์เพื่อตรวจวันที่จากเมลจริง</span><button class="ghost-button sm" id="expandDateRange">ขยายย้อนหลัง 90 วัน</button><button class="ghost-button sm" data-goto="cloud">เปิดคลังไฟล์</button></section>`
         : "";
@@ -888,15 +930,15 @@ function renderLiveDashboard(root) {
   root.innerHTML = `
     ${loadNotice}
     <section class="status-strip live-status-strip action-tiles">
-      <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${num(totalMail)}</strong><small>${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)} · กดดูไฟล์</small></article>
-      <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${num(completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
-      <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${num(needsReview)}</strong><small>ข้อมูลมาแล้วแต่ยังไม่ครบ · กดดูสิ่งที่ขาด</small></article>
-      <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${num(waiting + failed)}</strong><small>รอ ${num(waiting)} · ล้มเหลว ${num(failed)} · กดแก้ไฟล์</small></article>
-      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${num(exceptionTotal)}</strong><small>${liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
+      <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${showMetric(dailyAvailable, totalMail)}</strong><small>${dailyAvailable ? `${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)}` : "ข้อมูลเมลยังไม่พร้อม"} · กดดูไฟล์</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${showMetric(qualityAvailable, completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
+      <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${showMetric(qualityAvailable, needsReview)}</strong><small>${qualityAvailable ? "ข้อมูลมาแล้วแต่ยังไม่ครบ" : "ผลกระทบยอดยังไม่พร้อม"} · กดดูสิ่งที่ขาด</small></article>
+      <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${showMetric(qualityAvailable, waiting + failed)}</strong><small>${qualityAvailable ? `รอ ${num(waiting)} · ล้มเหลว ${num(failed)}` : "ผลกระทบยอดยังไม่พร้อม"} · กดแก้ไฟล์</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
     </section>
 
     <section class="action-overview">
-      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
+      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${!qualityAvailable ? "กำลังรอผลกระทบยอดจริง" : needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${!qualityAvailable ? "ระบบไม่สรุปเป็นศูนย์จนกว่าจะอ่านผลจริงสำเร็จ" : `${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}`}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
       <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
     </section>
 
@@ -1741,8 +1783,13 @@ VIEWS.exceptions = (root) => {
   const boTotal = finishedRuns.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
   const matchedTotal = finishedRuns.reduce((sum, row) => sum + Number(row.matched || 0), 0);
   const generatedExceptionTotal = finishedRuns.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const exceptionsAvailable = liveOverviewState.exceptionsReady;
+  const resultMetric = (available, value) => available ? num(value) : "—";
   const reconMessage = liveOverviewState.loading && !qualityRows.length
     ? "กำลังตรวจสถานะงานกระทบยอดจาก Supabase"
+    : !qualityAvailable
+      ? "ผลกระทบยอดจริงยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"
     : !qualityRows.length
       ? "ยังไม่มีงานกระทบยอดในวันที่และบริษัทที่เลือก"
       : !finishedRuns.length
@@ -1756,12 +1803,12 @@ VIEWS.exceptions = (root) => {
     <section class="panel recon-result-summary">
       <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
       <div class="status-strip six action-tiles">
-        <article class="${sorted.length ? "warn" : "ok"}"><span>Exception ในคิว</span><strong>${num(sorted.length)}</strong><small>ตรงกับรายการด้านล่างหลังใช้ตัวกรอง</small></article>
-        <article><span>งานที่มีผลรัน</span><strong>${num(finishedRuns.length)}</strong><small>จากคิว ${num(qualityRows.length)} งาน</small></article>
-        <article><span>รายการ STM</span><strong>${num(stmTotal)}</strong><small>ข้อมูลฝาก-ถอน/PM</small></article>
-        <article><span>รายการ BO</span><strong>${num(boTotal)}</strong><small>ข้อมูลรายงานหลังบ้าน</small></article>
-        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matchedTotal)}</strong><small>${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของ STM</small></article>
-        <article class="${generatedExceptionTotal ? "warn" : finishedRuns.length ? "ok" : ""}"><span>Exception จากผลรัน</span><strong>${num(generatedExceptionTotal)}</strong><small>${finishedRuns.length ? "สร้างจากงานที่รันแล้ว" : "ยังสรุปไม่ได้จนกว่าจะมีผลรัน"}</small></article>
+        <article class="${exceptionsAvailable && sorted.length ? "warn" : exceptionsAvailable ? "ok" : ""}"><span>Exception ในคิว</span><strong>${resultMetric(exceptionsAvailable, sorted.length)}</strong><small>${exceptionsAvailable ? "ตรงกับรายการด้านล่างหลังใช้ตัวกรอง" : "กำลังรอข้อมูลจริง"}</small></article>
+        <article><span>งานที่มีผลรัน</span><strong>${resultMetric(qualityAvailable, finishedRuns.length)}</strong><small>${qualityAvailable ? `จากคิว ${num(qualityRows.length)} งาน` : "กำลังรอข้อมูลจริง"}</small></article>
+        <article><span>รายการ STM</span><strong>${resultMetric(qualityAvailable, stmTotal)}</strong><small>ข้อมูลฝาก-ถอน/PM</small></article>
+        <article><span>รายการ BO</span><strong>${resultMetric(qualityAvailable, boTotal)}</strong><small>ข้อมูลรายงานหลังบ้าน</small></article>
+        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${resultMetric(qualityAvailable, matchedTotal)}</strong><small>${qualityAvailable ? `${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของ STM` : "กำลังรอข้อมูลจริง"}</small></article>
+        <article class="${generatedExceptionTotal ? "warn" : finishedRuns.length ? "ok" : ""}"><span>Exception จากผลรัน</span><strong>${resultMetric(qualityAvailable, generatedExceptionTotal)}</strong><small>${qualityAvailable && finishedRuns.length ? "สร้างจากงานที่รันแล้ว" : "ยังสรุปไม่ได้จนกว่าจะมีผลรัน"}</small></article>
       </div>
     </section>
     <section class="status-strip three clarification-strip action-tiles">
@@ -2529,6 +2576,7 @@ function renderLivePm(root) {
     (batch.source_files || []).map((file) => ({ ...file, company: intakeCompanyOf(file, batch), provider: pmProviderOf(`${file.file_name} ${file.kind}`), receivedAt: file.received_at || batch.received_at })),
   ).filter((file) => file.provider || file.kind === "pm_statement");
   const pmExceptions = scopedExceptions().map((e) => ({ ...e, provider: pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) })).filter((e) => e.provider);
+  const pmExceptionsAvailable = liveOverviewState.exceptionsReady;
   const providerNames = [...new Set(pmFiles.map((f) => f.provider).concat(pmExceptions.map((e) => e.provider)).filter(Boolean))].sort();
   const providers = providerNames.map((provider) => {
     const files = pmFiles.filter((f) => f.provider === provider);
@@ -2546,7 +2594,7 @@ function renderLivePm(root) {
       <article class="ok"><span>ไฟล์ PM จริง</span><strong>${num(pmFiles.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article><span>Provider ที่พบ</span><strong>${num(providers.length)}</strong><small>${h(providerNames.join(" / ") || "ยังไม่พบ")}</small></article>
       <article class="${pmFiles.some((f) => !f.parsed) ? "warn" : "ok"}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(pmFiles.filter((f) => f.parsed).length)}</strong><small>รออ่าน ${num(pmFiles.filter((f) => !f.parsed && !f.parse_error).length)}</small></article>
-      <article class="${pmExceptions.length ? "bad" : "ok"}"><span>Exception ที่ระบุ Provider ได้</span><strong>${num(pmExceptions.length)}</strong><small>คำนวณจากข้อมูลจริง</small></article>
+      <article class="${pmExceptionsAvailable && pmExceptions.length ? "bad" : pmExceptionsAvailable ? "ok" : ""}"><span>Exception ที่ระบุ Provider ได้</span><strong>${pmExceptionsAvailable ? num(pmExceptions.length) : "—"}</strong><small>${pmExceptionsAvailable ? "คำนวณจากข้อมูลจริง" : "กำลังรอข้อมูล Exception จริง"}</small></article>
     </section>
 
     <section class="grid-3">
@@ -2755,6 +2803,11 @@ function renderLiveReports(root) {
   const matched = quality.reduce((sum,row)=>sum+Number(row.matched||0),0);
   const stm = quality.reduce((sum,row)=>sum+Number(row.stm_count||0),0);
   const totalDamage = damages.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const operationsAvailable = Array.isArray(liveOverviewState.operations) && !liveOverviewState.coreErrors.includes("คิวกระทบยอด");
+  const exceptionsAvailable = liveOverviewState.exceptionsReady;
+  const damagesAvailable = liveOverviewState.damagesReady;
+  const reportMetric = (available, value, formatter = num) => available ? formatter(value) : "—";
   const dateMap = new Map();
   operations.forEach((row)=>{
     const item=dateMap.get(row.business_date)||{date:row.business_date,mails:0,files:0,completed:0,review:0,waiting:0,error:0};
@@ -2768,16 +2821,16 @@ function renderLiveReports(root) {
   const monthly=[...monthMap.entries()].sort().map(([label,value])=>({label,value}));
   root.innerHTML=`
     <section class="status-strip four action-tiles">
-      <article data-action-route="cloud"><span>รายการ STM จริง</span><strong>${num(stm)}</strong><small>${quality.length} งาน · กดดูไฟล์ต้นทาง</small></article>
-      <article class="ok" data-action-route="daily-summary"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>${stm?((matched/stm)*100).toFixed(2):"0.00"}% · กดดูผลรายวัน</small></article>
-      <article class="bad" data-action-route="exceptions"><span>Exception</span><strong>${num(exceptions.length)}</strong><small>เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)} · กดตรวจเคส</small></article>
-      <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${money0(totalDamage)}</strong><small>บาท · ${num(damages.length)} รายการ · กดดูทะเบียน</small></article>
+      <article data-action-route="cloud"><span>รายการ STM จริง</span><strong>${reportMetric(qualityAvailable, stm)}</strong><small>${qualityAvailable ? `${quality.length} งาน` : "กำลังรอข้อมูลจริง"} · กดดูไฟล์ต้นทาง</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>จับคู่สำเร็จ</span><strong>${reportMetric(qualityAvailable, matched)}</strong><small>${qualityAvailable ? `${stm?((matched/stm)*100).toFixed(2):"0.00"}%` : "กำลังรอข้อมูลจริง"} · กดดูผลรายวัน</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception</span><strong>${reportMetric(exceptionsAvailable, exceptions.length)}</strong><small>${exceptionsAvailable ? `เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)}` : "กำลังรอข้อมูลจริง"} · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${reportMetric(damagesAvailable, totalDamage, money0)}</strong><small>${damagesAvailable ? `บาท · ${num(damages.length)} รายการ` : "กำลังรอข้อมูลจริง"} · กดดูทะเบียน</small></article>
     </section>
     <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
     ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
       <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
-      <tbody>${daily.map((row)=>`<tr class="action-row" data-report-date="${h(row.date)}" role="link" tabindex="0"><td><b>${h(row.date)}</b><small class="sub">กดดูสรุปรายวัน</small></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">ยังไม่มีข้อมูลในช่วงนี้</td></tr>`}</tbody></table></div>
+      <tbody>${daily.map((row)=>`<tr class="action-row" data-report-date="${h(row.date)}" role="link" tabindex="0"><td><b>${h(row.date)}</b><small class="sub">กดดูสรุปรายวัน</small></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">${operationsAvailable ? "ยังไม่มีข้อมูลในช่วงนี้" : "ข้อมูลคิวกระทบยอดยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"}</td></tr>`}</tbody></table></div>
     </section>`;
   if(monthly.length) Charts.draw("#liveReportDamage","bars",{label:"ความเสียหายรายเดือน",items:monthly,color:"#d03b3b",money:true,metric:"บาท",height:240});
   $("#liveRepException")?.addEventListener("click",()=>exportSheets("Exception_ข้อมูลจริง",[{name:"Exception",title:`Exception ${rangeLabel()}`,headers:["วันที่","เวลา","บริษัท","ประเภท","ระดับ","สถานะ","ยอดเสี่ยง","สาเหตุ"],rows:exceptions.map((e)=>[e.date,e.time,e.company,e.typeName,e.severity,e.status,e.riskAmount,e.cause])}]));
@@ -3205,10 +3258,11 @@ VIEWS.users = (root) => {
 VIEWS["audit-log"] = (root) => {
   if (!ensureLiveOverview(root)) return;
   const logs = DB.auditLog.filter((l) => inRange(String(l.at).slice(0, 10)));
+  const logsAvailable = liveOverviewState.logsReady;
   root.innerHTML = `
     <section class="panel">
       <div class="panel-heading">
-        <div><p class="eyebrow">Audit Log</p><h2>บันทึกทุกการเปลี่ยนแปลง (${logs.length} จาก ${DB.auditLog.length} รายการ)</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}</small></div>
+        <div><p class="eyebrow">Audit Log</p><h2>${logsAvailable ? `บันทึกทุกการเปลี่ยนแปลง (${logs.length} จาก ${DB.auditLog.length} รายการ)` : "กำลังรอบันทึกจากฐานข้อมูลจริง"}</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}${logsAvailable ? "" : " · ยังไม่สรุปเป็น 0"}</small></div>
         <div class="inline-actions">
           <input type="search" id="logSearch" placeholder="ค้นหา user / เคส / action" />
           <button class="ghost-button sm" id="logExport">Export CSV</button>
@@ -3224,7 +3278,7 @@ VIEWS["audit-log"] = (root) => {
               <td><span class="badge blue">${h(l.action)}</span></td><td>${h(l.entity)}</td>
               <td class="mono">${h(l.target)}</td><td class="muted">${h(l.detail)}</td></tr>`,
               )
-              .join("")}
+              .join("") || `<tr><td colspan="6" class="empty">${logsAvailable ? "ยังไม่มีบันทึกในช่วงนี้" : "ข้อมูล Audit Log ยังโหลดไม่สำเร็จ — กดลองใหม่จากแถบแจ้งเตือนด้านบน"}</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -3251,7 +3305,26 @@ VIEWS["audit-log"] = (root) => {
 /* =============================================================
    VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
    ============================================================= */
-const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, picked: {}, busy: "", activeJob: null, fileView: "all" };
+const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
+
+const cloudQueryKey = () => `${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
+
+function isTransientFileError(error) {
+  return /timeout|timed out|abort|network|fetch|connection|temporar|gateway|database/i.test(String(error?.message || error || ""));
+}
+
+async function retryTransientFileRequest(action, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return await action(); }
+    catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientFileError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+  throw lastError;
+}
 
 function filePreviewTable(rows) {
   const use = (rows || []).slice(0, 50).map((row) => (row || []).slice(0, 20));
@@ -3321,7 +3394,9 @@ async function openStoredFilePreview(meta) {
   $("#modal").classList.add("file-preview-modal");
   $("#filePreviewClose").addEventListener("click", closeModal);
   let signedUrl = "";
-  const getSigned = async () => signedUrl || (signedUrl = await Sb.signedUrl(meta.path, 600));
+  let downloaded = null;
+  const getSigned = async () => signedUrl || (signedUrl = await retryTransientFileRequest(() => Sb.signedUrl(meta.path, 600)));
+  const getDownload = async () => downloaded || (downloaded = await retryTransientFileRequest(() => Sb.download(meta.path)));
   $("#fileOpenOriginal").addEventListener("click", async () => {
     try {
       window.open(await getSigned(), "_blank", "noopener");
@@ -3334,7 +3409,7 @@ async function openStoredFilePreview(meta) {
     button.disabled = true;
     button.textContent = "กำลังดาวน์โหลด...";
     try {
-      const buffer = await Sb.download(meta.path);
+      const buffer = await getDownload();
       const blob = new Blob([buffer], { type: meta.mime || "application/octet-stream" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -3405,12 +3480,12 @@ async function openStoredFilePreview(meta) {
     } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
       target.innerHTML = `<img class="file-preview-image" src="${h(await getSigned())}" alt="ตัวอย่าง ${h(name)}" />`;
     } else if (["xlsx", "xlsm"].includes(ext)) {
-      target.innerHTML = filePreviewTable(await XlsxReader.read(await Sb.download(meta.path)));
+      target.innerHTML = filePreviewTable(await XlsxReader.read(await getDownload()));
     } else if (["csv", "txt"].includes(ext)) {
-      const text = new TextDecoder("utf-8").decode(await Sb.download(meta.path));
+      const text = new TextDecoder("utf-8").decode(await getDownload());
       target.innerHTML = filePreviewTable(ext === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
     } else if (ext === "docx" || String(meta.mime).includes("wordprocessingml")) {
-      const preview = await DocxReader.render(await Sb.download(meta.path));
+      const preview = await DocxReader.render(await getDownload());
       target.replaceChildren(preview.element);
       $("#modal")._contentCleanup = preview.cleanup;
     } else {
@@ -3419,7 +3494,7 @@ async function openStoredFilePreview(meta) {
     logAction("preview_file", "source_file", meta.id || meta.path, `ดูตัวอย่างไฟล์ ${name}`);
   } catch (error) {
     const target = $("#filePreviewContent");
-    if (target) target.innerHTML = `<div class="file-preview-unavailable bad"><b>สร้างตัวอย่างไม่สำเร็จ</b><span>${h(error.message)}</span><small>ยังสามารถเปิดต้นฉบับหรือดาวน์โหลดได้จากปุ่มด้านล่าง</small></div>`;
+    if (target) target.innerHTML = `<div class="file-preview-unavailable bad"><b>สร้างตัวอย่างไม่สำเร็จหลังลองใหม่ 3 ครั้ง</b><span>${h(error.message)}</span><small>ยังสามารถเปิดต้นฉบับหรือดาวน์โหลดได้จากปุ่มด้านล่าง หรือปิดแล้วเปิด Preview ใหม่</small></div>`;
   }
 }
 
@@ -3437,23 +3512,38 @@ function bindStoredFileLinks(root, selector = "[data-storage-open]") {
   })));
 }
 
-async function cloudLoad() {
+async function cloudLoad(force = false) {
+  const key = cloudQueryKey();
+  if (cloudState.loading && !force) return;
+  if (!force && cloudState.key === key && cloudState.batches !== null) return;
+  const requestId = ++cloudState.requestId;
+  const changedFilter = cloudState.key !== key;
+  cloudState.key = key;
   cloudState.loading = true;
   cloudState.error = null;
+  cloudState.partialError = null;
+  if (changedFilter) {
+    cloudState.batches = null;
+    cloudState.daily = null;
+    cloudState.operations = null;
+    cloudState.picked = {};
+  }
   render();
-  try {
-    const to = state.filters.to || DB.BUSINESS_DATE;
-    const from = state.filters.from || to;
-    const [b, d, ops] = await Promise.all([
-      Sb.batches({ from, to, company: state.filters.company }),
-      Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
-      Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
-    ]);
-    cloudState.batches = b;
-    cloudState.daily = d;
-    cloudState.operations = ops;
-  } catch (e) {
-    cloudState.error = e.message;
+  const to = state.filters.to || DB.BUSINESS_DATE;
+  const from = state.filters.from || to;
+  const result = await Promise.allSettled([
+    Sb.batches({ from, to, company: state.filters.company }),
+    Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
+    Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
+  ]);
+  if (requestId !== cloudState.requestId || key !== cloudQueryKey()) return;
+  if (result[0].status === "fulfilled") cloudState.batches = result[0].value || [];
+  if (result[1].status === "fulfilled") cloudState.daily = result[1].value || [];
+  if (result[2].status === "fulfilled") cloudState.operations = result[2].value || [];
+  const failed = result.flatMap((item, index) => item.status === "rejected" ? [["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด"][index]] : []);
+  if (failed.length) {
+    cloudState.partialError = `โหลดไม่สำเร็จ: ${failed.join(", ")}`;
+    cloudState.error = result[0].status === "rejected" ? `${cloudState.partialError} — ยังไม่แสดงจำนวนไฟล์เพื่อป้องกันยอดศูนย์ปลอม` : null;
   }
   cloudState.loading = false;
   render();
@@ -3566,8 +3656,8 @@ VIEWS.cloud = (root) => {
     return;
   }
 
-  if (cloudState.batches === null && !cloudState.loading) {
-    cloudLoad();
+  if ((cloudState.batches === null || cloudState.key !== cloudQueryKey()) && !cloudState.loading) {
+    cloudLoad(cloudState.key !== cloudQueryKey());
   }
 
   const batches = cloudState.batches || [];
@@ -3654,7 +3744,7 @@ VIEWS.cloud = (root) => {
 
     <section class="panel" id="cloudInbox">
       <div class="panel-heading">
-        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
+        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : cloudState.partialError ? h(cloudState.partialError) : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
           <button class="ghost-button sm" id="cPickNew">เลือกเฉพาะไฟล์ที่พร้อมรัน</button>
@@ -3664,7 +3754,7 @@ VIEWS.cloud = (root) => {
       <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
         ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>
-      ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : ""}
+      ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : cloudState.partialError ? `<p class="hint warn">${h(cloudState.partialError)} · ส่วนที่โหลดสำเร็จยังเปิดดูได้</p>` : ""}
       ${
         visibleBatches.length
           ? visibleBatches
@@ -3749,7 +3839,7 @@ VIEWS.cloud = (root) => {
         : ""
     }`;
 
-  $("#cReload").addEventListener("click", cloudLoad);
+  $("#cReload").addEventListener("click", () => cloudLoad(true));
   $("#cPickNew").addEventListener("click", () => {
     cloudState.picked = {};
     queueableFiles.forEach((f) => (cloudState.picked[f.id] = true));
@@ -5628,6 +5718,9 @@ function enterProductionApp() {
   cloudState.batches = null;
   cloudState.daily = null;
   cloudState.operations = null;
+  cloudState.key = "";
+  cloudState.error = null;
+  cloudState.partialError = null;
   liveOverviewState.daily = null;
   liveOverviewState.operations = null;
   liveOverviewState.quality = null;
@@ -5636,6 +5729,10 @@ function enterProductionApp() {
   liveOverviewState.damages = null;
   liveOverviewState.logs = null;
   liveOverviewState.notifications = null;
+  liveOverviewState.exceptionsReady = false;
+  liveOverviewState.damagesReady = false;
+  liveOverviewState.logsReady = false;
+  liveOverviewState.coreErrors = [];
   liveOverviewState.key = "";
   dailyCompanyState.date = "";
   dailyCompanyState.company = "";
