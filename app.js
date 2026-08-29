@@ -1906,26 +1906,27 @@ VIEWS.exceptions = (root) => {
       : !finishedRuns.length
         ? `พบคิวงาน ${num(qualityRows.length)} งาน แต่ยังไม่มีผลรัน — เลข 0 ด้านล่างยังไม่ใช่ผลสำเร็จ`
         : `มีผลรันแล้ว ${num(finishedRuns.length)} งาน · สำเร็จ ${num(completedJobs)} · ยังรอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}`;
+  const overviewLoading = liveOverviewState.loading || liveOverviewState.auxiliaryLoading;
 
   const th = (key, label) =>
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
 
   root.innerHTML = `
+    ${overviewLoading ? `<section class="recon-loading-banner" role="status" aria-live="polite"><span class="spinner"></span><div><b>กำลังโหลดข้อมูลจริง…</b><small>${liveOverviewState.loading ? "กำลังอ่านผลกระทบยอดและรายการผิดปกติจาก Supabase" : "ข้อมูลหลักมาแล้ว กำลังเติมรายละเอียดไฟล์และสถานะล่าสุด"}</small></div><span class="recon-loading-pulse" aria-hidden="true"></span></section>` : ""}
     <section class="panel recon-result-summary">
       <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
-      <div class="status-strip six action-tiles">
-        <article class="${exceptionsAvailable && sorted.length ? "warn" : exceptionsAvailable ? "ok" : ""}"><span>Exception ในคิว</span><strong>${resultMetric(exceptionsAvailable, sorted.length)}</strong><small>${exceptionsAvailable ? "ตรงกับรายการด้านล่างหลังใช้ตัวกรอง" : "กำลังรอข้อมูลจริง"}</small></article>
-        <article><span>งานที่มีผลรัน</span><strong>${resultMetric(qualityAvailable, finishedRuns.length)}</strong><small>${qualityAvailable ? `จากคิว ${num(qualityRows.length)} งาน` : "กำลังรอข้อมูลจริง"}</small></article>
-        <article><span>รายการ STM</span><strong>${resultMetric(qualityAvailable, stmTotal)}</strong><small>ข้อมูลฝาก-ถอน/PM</small></article>
-        <article><span>รายการ BO</span><strong>${resultMetric(qualityAvailable, boTotal)}</strong><small>ข้อมูลรายงานหลังบ้าน</small></article>
-        <article class="ok"><span>จับคู่สำเร็จ</span><strong>${resultMetric(qualityAvailable, matchedTotal)}</strong><small>${qualityAvailable ? `${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของ STM` : "กำลังรอข้อมูลจริง"}</small></article>
-        <article class="${generatedExceptionTotal ? "warn" : finishedRuns.length ? "ok" : ""}"><span>Exception จากผลรัน</span><strong>${resultMetric(qualityAvailable, generatedExceptionTotal)}</strong><small>${qualityAvailable && finishedRuns.length ? "สร้างจากงานที่รันแล้ว" : "ยังสรุปไม่ได้จนกว่าจะมีผลรัน"}</small></article>
+      <div class="recon-kpi-grid">
+        <article class="recon-kpi run"><span>งานที่ประมวลผลแล้ว</span><strong>${resultMetric(qualityAvailable, finishedRuns.length)}<small> / ${qualityAvailable ? num(qualityRows.length) : "—"} งาน</small></strong><p>${qualityAvailable ? `สำเร็จ ${num(completedJobs)} · รอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}` : "กำลังรอข้อมูลจริง"}</p></article>
+        <article class="recon-kpi"><span>รายการ STM / PM</span><strong>${resultMetric(qualityAvailable, stmTotal)}</strong><p>ข้อมูลฝากและถอนที่ระบบอ่านได้</p></article>
+        <article class="recon-kpi"><span>รายการ BO</span><strong>${resultMetric(qualityAvailable, boTotal)}</strong><p>ข้อมูลรายการจากระบบหลังบ้าน</p></article>
+        <article class="recon-kpi match"><span>จับคู่สำเร็จ</span><strong>${resultMetric(qualityAvailable, matchedTotal)}</strong><p>${qualityAvailable ? `${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของรายการ STM / PM` : "กำลังรอข้อมูลจริง"}</p></article>
       </div>
-    </section>
-    <section class="status-strip three clarification-strip action-tiles">
-      <article class="ok" data-action-route="daily-summary"><span>ปิดจากไฟล์ชี้แจงอัตโนมัติ</span><strong>${num(autoClosedCount)}</strong><small>ยืนยันแล้ว · กดดูสรุปรายวัน</small></article>
-      <article class="warn" data-action-route="clarify"><span>จับคู่แล้ว รอ Audit อนุมัติ</span><strong>${num(answeredCount)}</strong><small>มีหลักฐาน · กดตรวจและอนุมัติ</small></article>
-      <article class="bad" data-action-route="clarify"><span>ต้องให้คุณดู</span><strong>${num(reviewCount)}</strong><small>กำกวมหรืออ่านไม่ได้ · กดดำเนินการ</small></article>
+      <div class="recon-work-grid">
+        <button type="button" class="warn" data-action-route="exceptions"><i>${resultMetric(exceptionsAvailable, sorted.length)}</i><span><b>รายการรอตรวจ</b><small>${qualityAvailable ? `สร้างจากผลรัน ${num(generatedExceptionTotal)} รายการ` : "กำลังรอข้อมูลจริง"}</small></span><em>ดูรายการด้านล่าง ↓</em></button>
+        <button type="button" class="amber" data-action-route="clarify"><i>${num(answeredCount)}</i><span><b>รอ Audit อนุมัติ</b><small>มีคำชี้แจงหรือหลักฐานแล้ว</small></span><em>เปิดตรวจ →</em></button>
+        <button type="button" class="red" data-action-route="clarify"><i>${num(reviewCount)}</i><span><b>ต้องให้คุณตรวจ</b><small>ข้อมูลกำกวมหรือไฟล์อ่านไม่ได้</small></span><em>ดำเนินการ →</em></button>
+        <button type="button" class="green" data-action-route="daily-summary"><i>${num(autoClosedCount)}</i><span><b>ปิดเคสอัตโนมัติ</b><small>ยืนยันจากไฟล์ชี้แจงสำเร็จ</small></span><em>ดูสรุป →</em></button>
+      </div>
     </section>
     <section class="panel">
       <div class="toolbar">

@@ -841,6 +841,35 @@ table.matrix td:first-child { white-space: normal; }
 .case-meta-more > div b { display: block; color: var(--text); font-size: 12px; font-weight: 500; }
 .case-meta-more p { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
 
+.recon-loading-banner { position: relative; display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px 16px; overflow: hidden; border: 1px solid #b9d9fb; border-radius: 10px; background: #f4f9ff; color: var(--blue-dark); }
+.recon-loading-banner > div { display: grid; gap: 1px; }
+.recon-loading-banner b { font-size: 13.5px; }
+.recon-loading-banner small { color: var(--muted); font-size: 11.5px; }
+.recon-loading-pulse { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; overflow: hidden; background: #d8eaff; }
+.recon-loading-pulse::after { content: ""; display: block; width: 36%; height: 100%; background: var(--blue); animation: recon-load 1.25s ease-in-out infinite; }
+@keyframes recon-load { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
+
+.recon-result-summary { display: grid; gap: 14px; }
+.recon-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.recon-kpi { min-width: 0; padding: 14px 15px; border: 1px solid var(--line); border-top: 3px solid var(--blue); border-radius: 10px; background: #fff; }
+.recon-kpi.run { border-top-color: var(--amber); }
+.recon-kpi.match { border-top-color: var(--low); background: #f8fcf9; }
+.recon-kpi > span { color: var(--muted); font-size: 12px; }
+.recon-kpi strong { display: block; margin: 5px 0 2px; color: var(--blue-dark); font-size: 25px; line-height: 1.1; }
+.recon-kpi strong small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.recon-kpi p { margin: 0; color: var(--muted); font-size: 11px; }
+.recon-work-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.recon-work-grid button { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; align-items: center; min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: 9px; background: #fff; color: var(--text); font-family: inherit; text-align: left; }
+.recon-work-grid button:hover { border-color: var(--blue); background: #f8fbff; }
+.recon-work-grid button.amber { border-left-color: var(--amber); }
+.recon-work-grid button.red { border-left-color: var(--critical); }
+.recon-work-grid button.green { border-left-color: var(--low); }
+.recon-work-grid i { grid-row: 1 / 3; color: var(--blue-dark); font-size: 21px; font-style: normal; font-weight: 700; }
+.recon-work-grid span { display: grid; min-width: 0; }
+.recon-work-grid b { font-size: 12px; }
+.recon-work-grid small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.recon-work-grid em { grid-column: 2; color: var(--blue-dark); font-size: 10.5px; font-style: normal; font-weight: 600; }
+
 .timeline { list-style: none; margin: 0; padding: 0 0 0 20px; display: grid; gap: 14px; position: relative; }
 .timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
 .timeline li { position: relative; }
@@ -898,6 +927,7 @@ table.matrix td:first-child { white-space: normal; }
   .filter-fields { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .compare { grid-template-columns: 1fr; }
   .compare-mid { padding: 4px 0; }
+  .recon-kpi-grid, .recon-work-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
   .main { padding: 16px 14px 48px; }
@@ -918,6 +948,7 @@ table.matrix td:first-child { white-space: normal; }
   .drawer-primary-actions, .drawer-more-actions > div { grid-template-columns: 1fr 1fr; }
   .drawer-next { align-items: flex-start; flex-direction: column; }
   .drawer-next b { text-align: left; }
+  .recon-kpi-grid, .recon-work-grid { grid-template-columns: 1fr; }
   .setting-list label { grid-template-columns: 1fr; }
   .sev-row { grid-template-columns: 12px 1fr auto; }
   .sev-row small { display: none; }

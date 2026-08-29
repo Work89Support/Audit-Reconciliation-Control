@@ -10,7 +10,7 @@ const html = readFileSync(join(root, "index.html"), "utf8");
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
 assert.match(app, /const OPERATING_START_DATE = "2026-08-27"/, "รอบใช้งานจริงต้องเริ่มวันที่ 27 สิงหาคม 2026");
 assert.match(app, /candidate < OPERATING_START_DATE \? OPERATING_START_DATE : candidate/, "ช่วงข้อมูลเริ่มต้นต้องไม่ย้อนก่อนวันเริ่มใช้งานจริง");
-assert.match(app, /Exception ในคิว[\s\S]+sorted\.length/, "การ์ด Exception ต้องตรงกับรายการที่กรองแล้ว");
+assert.match(app, /resultMetric\(exceptionsAvailable, sorted\.length\)[\s\S]+รายการรอตรวจ/, "การ์ดรายการรอตรวจต้องตรงกับรายการที่กรองแล้ว");
 assert.match(app, /ขยายย้อนหลัง 90 วัน/, "หน้าไม่มีข้อมูลต้องแนะนำให้ขยายช่วงวัน");
 assert.match(html, /หน้านี้ใช้ข้อมูลจริงจาก Supabase/, "หน้า login ต้องอธิบายสาเหตุที่ต้องเข้าสู่ระบบ");
 assert.doesNotMatch(html, /gmail\.js/, "หน้าเว็บต้องไม่โหลดตัวอ่าน Gmail ที่เลิกใช้แล้ว");
@@ -38,5 +38,7 @@ assert.ok(app.includes('data-file-status="${file.parse_error ? "error" : file.pa
 assert.match(app, /Sb\.exceptionFiles\(e\.runId, e\.clarificationFileId\)/, "Drawer ต้องโหลดไฟล์ที่ใช้สร้าง recon run เฉพาะตอนเปิดเคส");
 assert.match(app, /ไฟล์ประกอบของเคสนี้/, "Drawer ต้องมีส่วนไฟล์ประกอบที่เข้าใจง่าย");
 assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
+assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
+assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
 
 console.log("App shell QA follow-up: 29 checks passed");
