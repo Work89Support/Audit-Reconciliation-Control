@@ -6,7 +6,7 @@
     <title>Audit AI Reconciliation</title>
     <meta name="description" content="ศูนย์ควบคุมงานออดิทตรวจบัญชีฝาก-ถอน จับคู่ STM กับ BO อัตโนมัติ" />
     <link rel="stylesheet" href="fonts/kanit.css" />
-    <link rel="stylesheet" href="styles.css?v=guided-workflow-20260825-1" />
+    <link rel="stylesheet" href="styles.css?v=qa-followup-20260829-1" />
   </head>
   <body>
     <a class="skip-link" href="#viewRoot">ข้ามไปเนื้อหาหลัก</a>
@@ -23,6 +23,10 @@
         <p class="eyebrow">ระบบตรวจสอบและกระทบยอด</p>
         <h1 id="loginTitle">เข้าสู่ระบบ</h1>
         <p class="login-lead">เข้าสู่ระบบด้วยอีเมลและรหัสผ่าน หรือใช้บัญชี Google ที่ล็อกอินอยู่ในอุปกรณ์นี้</p>
+        <div class="login-context-note">
+          <b>หน้านี้ใช้ข้อมูลจริงจาก Supabase</b>
+          <span>กรุณาเข้าสู่ระบบก่อน จึงจะดูคลังไฟล์ ผลกระทบยอด และหลักฐานของบริษัทได้</span>
+        </div>
         <label>อีเมล
           <input type="email" id="loginEmail" autocomplete="username" required placeholder="name@company.com" />
         </label>
@@ -135,11 +139,10 @@
     <script src="engine.js"></script>
     <script src="store.js"></script>
     <script src="supabase.js?v=dashboard-noblock-20260826-2"></script>
-    <script src="gmail.js"></script>
     <script src="charts.js"></script>
     <script src="xlsx-writer.js"></script>
     <script src="export.js"></script>
     <script src="docs.js"></script>
-    <script src="app.js?v=recon-result-summary-20260826-4"></script>
+    <script src="app.js?v=qa-followup-20260829-1"></script>
   </body>
 </html>

@@ -131,39 +131,6 @@ create index if not exists exceptions_severity_idx on public.exceptions (severit
 create index if not exists exceptions_track_idx    on public.exceptions (track, status);
 
 -- -------------------------------------------------------------
--- 5) อัตราแลกเปลี่ยน USDT/THB รายวัน (log ห้ามทับของเดิม)
--- -------------------------------------------------------------
-create table if not exists public.fx_rates (
-  id          uuid primary key default gen_random_uuid(),
-  rate_date   date not null unique,
-  quote       text default 'USDT',
-  base        text default 'THB',
-  rate        numeric(12,4) not null check (rate > 0 and rate < 1000),
-  recorded_by text,
-  recorded_at timestamptz default now(),
-  note        text,
-  ref_source  text,
-  ref_rate    numeric(12,4),
-  revisions   jsonb default '[]'::jsonb
-);
-
--- เก็บค่าเดิมลง revisions อัตโนมัติเมื่อมีการแก้
-create or replace function public.fx_keep_revision() returns trigger as $$
-begin
-  if new.rate is distinct from old.rate or new.note is distinct from old.note then
-    new.revisions := coalesce(old.revisions, '[]'::jsonb) || jsonb_build_object(
-      'rate', old.rate, 'by', old.recorded_by, 'at', old.recorded_at, 'note', old.note
-    );
-    new.recorded_at := now();
-  end if;
-  return new;
-end $$ language plpgsql;
-
-drop trigger if exists fx_rates_revision on public.fx_rates;
-create trigger fx_rates_revision before update on public.fx_rates
-  for each row execute function public.fx_keep_revision();
-
--- -------------------------------------------------------------
 -- 6) ทะเบียนความเสียหาย
 -- -------------------------------------------------------------
 create table if not exists public.damages (
@@ -592,7 +559,6 @@ alter table public.mail_batches enable row level security;
 alter table public.source_files enable row level security;
 alter table public.recon_runs   enable row level security;
 alter table public.exceptions   enable row level security;
-alter table public.fx_rates     enable row level security;
 alter table public.damages      enable row level security;
 alter table public.clarify_docs enable row level security;
 alter table public.audit_log    enable row level security;
@@ -604,7 +570,7 @@ alter table public.recon_notifications enable row level security;
 do $$
 declare t text;
 begin
-  foreach t in array array['mail_batches','source_files','recon_runs','exceptions','fx_rates','damages','clarify_docs','audit_log','mail_sources','recon_requirements','daily_recon_jobs','recon_notifications']
+  foreach t in array array['mail_batches','source_files','recon_runs','exceptions','damages','clarify_docs','audit_log','mail_sources','recon_requirements','daily_recon_jobs','recon_notifications']
   loop
     execute format('drop policy if exists %I on public.%I', t || '_auth_read', t);
     execute format('create policy %I on public.%I for select to authenticated using (true)', t || '_auth_read', t);

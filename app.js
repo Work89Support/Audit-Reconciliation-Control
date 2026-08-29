@@ -101,10 +101,16 @@ const PROD_TODAY = (() => {
 })();
 const OPERATING_START_DATE = "2026-08-24";
 const DEFAULT_WORK_DATE = PROD_TODAY < OPERATING_START_DATE ? OPERATING_START_DATE : PROD_TODAY;
+/* เปิดมาครั้งแรกให้เห็นข้อมูลย้อนหลัง 30 วัน ไม่ทำให้หน้าสรุปขึ้น 0 เพียงเพราะช่วงเริ่มต้นแคบเกินไป */
+const DEFAULT_RANGE_FROM = (() => {
+  const [y, m, d] = DEFAULT_WORK_DATE.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d - 30));
+  return date.toISOString().slice(0, 10);
+})();
 const state = {
   route: "cloud",
   role: "lead",
-  filters: { date: DEFAULT_WORK_DATE, from: OPERATING_START_DATE, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
+  filters: { date: DEFAULT_WORK_DATE, from: DEFAULT_RANGE_FROM, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
   sort: { key: "time", dir: "asc" },
@@ -741,7 +747,7 @@ async function loadLiveOverview(force = false) {
     ]);
     let checklistRows = checklist || [];
     const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
-      && state.filters.from === OPERATING_START_DATE
+      && state.filters.from === DEFAULT_RANGE_FROM
       && state.filters.to === DEFAULT_WORK_DATE
       && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
     if (defaultEmptyRange) {
@@ -875,7 +881,9 @@ function renderLiveDashboard(root) {
     ? `<section class="alert"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>เปิดดูเมนูและรายงานได้ทันที ระบบจะเติมตัวเลขบนหน้านี้เมื่อข้อมูลมาถึง</span></section>`
     : liveOverviewState.error
       ? `<section class="alert bad"><strong>อัปเดตข้อมูลล่าสุดไม่สำเร็จ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></section>`
-      : "";
+      : !daily.length && !operations.length && !quality.length
+        ? `<section class="alert warn"><strong>ไม่พบข้อมูลในช่วง ${h(rangeLabel())}</strong><span>ข้อมูลอาจอยู่ก่อนช่วงวันที่ที่เลือก ลองขยายช่วงย้อนหลัง หรือเปิดคลังไฟล์เพื่อตรวจวันที่จากเมลจริง</span><button class="ghost-button sm" id="expandDateRange">ขยายย้อนหลัง 90 วัน</button><button class="ghost-button sm" data-goto="cloud">เปิดคลังไฟล์</button></section>`
+        : "";
 
   root.innerHTML = `
     ${loadNotice}
@@ -946,6 +954,12 @@ function renderLiveDashboard(root) {
     </section>`;
 
   root.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => go(button.dataset.goto)));
+  $("#expandDateRange")?.addEventListener("click", () => {
+    state.filters.from = shiftDays(state.filters.to || DEFAULT_WORK_DATE, -90);
+    state.filters.preset = "custom";
+    liveOverviewState.key = "";
+    render();
+  });
   root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
   root.querySelectorAll("[data-summary-company]").forEach((item) => {
     const open = () => {
@@ -1741,7 +1755,8 @@ VIEWS.exceptions = (root) => {
   root.innerHTML = `
     <section class="panel recon-result-summary">
       <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
-      <div class="status-strip action-tiles">
+      <div class="status-strip six action-tiles">
+        <article class="${sorted.length ? "warn" : "ok"}"><span>Exception ในคิว</span><strong>${num(sorted.length)}</strong><small>ตรงกับรายการด้านล่างหลังใช้ตัวกรอง</small></article>
         <article><span>งานที่มีผลรัน</span><strong>${num(finishedRuns.length)}</strong><small>จากคิว ${num(qualityRows.length)} งาน</small></article>
         <article><span>รายการ STM</span><strong>${num(stmTotal)}</strong><small>ข้อมูลฝาก-ถอน/PM</small></article>
         <article><span>รายการ BO</span><strong>${num(boTotal)}</strong><small>ข้อมูลรายงานหลังบ้าน</small></article>
