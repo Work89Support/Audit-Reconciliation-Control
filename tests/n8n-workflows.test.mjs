@@ -142,7 +142,9 @@ assert.match(directionSql, /PS8/, "the newest database normalizer must preserve 
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
-assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, limit: 200 \}\)/, "daily summary must not download all historical quality rows");
+assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, company, limit: 50 \}\)/, "daily summary must load only the selected company and day");
+assert.match(appSource, /const core = await Promise\.allSettled/, "a slow daily-summary section must not blank the whole report");
+assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 1500 \}\)/, "daily summary details must stay within the selected company");
 assert.match(appSource, /id="fileKindSelect"/, "file preview must let the auditor choose the file type");
 assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
 assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");
