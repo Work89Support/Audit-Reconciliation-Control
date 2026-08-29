@@ -99,13 +99,14 @@ const PROD_TODAY = (() => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
-const OPERATING_START_DATE = "2026-08-24";
+const OPERATING_START_DATE = "2026-08-27";
 const DEFAULT_WORK_DATE = PROD_TODAY < OPERATING_START_DATE ? OPERATING_START_DATE : PROD_TODAY;
-/* เปิดมาครั้งแรกให้เห็นข้อมูลย้อนหลัง 30 วัน ไม่ทำให้หน้าสรุปขึ้น 0 เพียงเพราะช่วงเริ่มต้นแคบเกินไป */
+/* เปิดมาครั้งแรกให้เห็นย้อนหลังไม่เกิน 30 วัน แต่ไม่ย้อนก่อนวันเริ่มใช้งานจริง */
 const DEFAULT_RANGE_FROM = (() => {
   const [y, m, d] = DEFAULT_WORK_DATE.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d - 30));
-  return date.toISOString().slice(0, 10);
+  const candidate = date.toISOString().slice(0, 10);
+  return candidate < OPERATING_START_DATE ? OPERATING_START_DATE : candidate;
 })();
 const state = {
   route: "cloud",
@@ -920,7 +921,7 @@ function renderLiveDashboard(root) {
     return groups.length ? [...new Set(groups)].map((kind) => LIVE_KIND_LABEL[kind] || kind).join(", ") : "ครบ";
   };
   const activeStart = liveOverviewState.settings?.operational_start_date || OPERATING_START_DATE;
-  const historyCutoff = liveOverviewState.settings?.history_cutoff_date || "2026-08-23";
+  const historyCutoff = liveOverviewState.settings?.history_cutoff_date || "2026-08-26";
   const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
   const checklistDate = checklistDates.includes(state.filters.date) ? state.filters.date : (checklistDates[0] || state.filters.date);
   const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
