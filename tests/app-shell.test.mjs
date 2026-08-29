@@ -24,5 +24,7 @@ assert.match(app, /const operationsAvailable = Array\.isArray\(liveOverviewState
 assert.match(app, /const logsAvailable = liveOverviewState\.logsReady/, "Audit Log ต้องไม่แสดงศูนย์เมื่อ query ล้มเหลว");
 assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษัทจริงออกจากแถวรวมชื่อระบบ");
 assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");
+assert.match(app, /ภาพรวมการกระทบยอด 3 จุด/, "หน้ารายวันต้องสรุป STM\/PM เทียบ BO ในจุดเดียว");
+assert.match(app, /ขั้นถัดไปที่แนะนำ/, "หน้ารายวันต้องบอกงานถัดไปที่ผู้ตรวจควรทำ");
 
-console.log("App shell QA follow-up: 17 checks passed");
+console.log("App shell QA follow-up: 19 checks passed");

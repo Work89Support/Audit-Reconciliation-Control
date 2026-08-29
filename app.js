@@ -1452,17 +1452,36 @@ function renderDailyCompanySummary(root) {
       acc[label] = (acc[label] || 0) + 1;
       return acc;
     }, {})).sort((a, b) => b[1] - a[1]);
+    const stmFiles = data.files.filter((file) => file.kind === "stm_pdf").length;
+    const boFiles = data.files.filter((file) => file.kind === "bo_main").length;
+    const pmFiles = data.files.filter((file) => file.kind === "pm_statement").length;
+    const evidenceFiles = data.files.filter((file) => file.kind === "doc_clarify").length;
+    const nextWork = fileErrors
+      ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
+      : waitingFiles
+        ? { route: "cloud", tone: "warn", title: `รอระบบอ่าน ${num(waitingFiles)} ไฟล์`, detail: "ตรวจสถานะไฟล์ก่อนเริ่มกระทบยอด", button: "ดูไฟล์" }
+        : missing.length
+          ? { route: "cloud", tone: "warn", title: `ตามไฟล์ที่ยังขาด ${num(missing.length)} ประเภท`, detail: missing.join(" · "), button: "ดูสิ่งที่ขาด" }
+          : data.stillOpen
+            ? { route: "exceptions", tone: "warn", title: `ตรวจรายการค้าง ${num(data.stillOpen)} เคส`, detail: "เปิดหลักฐานและติดตามผลการชี้แจง", button: "ตรวจเคส" }
+            : { route: "reports", tone: "ok", title: "ตรวจครบแล้ว พร้อมออกรายงาน", detail: "ตรวจยอดสรุปอีกครั้งแล้ว Export เก็บเป็นหลักฐาน", button: "ดูรายงาน" };
     root.innerHTML = controls + `
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
-      <section class="daily-summary-kpis action-tiles">
-        <article data-action-route="cloud"><span>ข้อมูลที่ได้รับ</span><strong>${num(data.files.length)}</strong><small>${num(data.batches.length)} อีเมล · กดดูไฟล์</small></article>
-        <article data-action-route="cloud" class="${fileErrors ? "bad" : parsed ? "ok" : "warn"}"><span>ไฟล์พร้อมใช้งาน</span><strong>${num(parsed)}/${num(data.files.length)}</strong><small>รอ ${num(waitingFiles)} · อ่านไม่ได้ ${num(fileErrors)} · กดตรวจ</small></article>
-        <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่สำเร็จ</span><strong>${num(matched)}</strong><small>STM ${num(stm)} · BO ${num(bo)} · ${matchRate.toFixed(2)}% · กดดูผล</small></article>
-        <article data-action-route="exceptions" class="${data.exceptionTotal ? "warn" : "ok"}"><span>Exception ทั้งหมด</span><strong>${num(data.exceptionTotal)}</strong><small>ตรวจ ${money0(risk)} บาท · กดดูเคส</small></article>
-        <article data-action-route="clarify" class="ok"><span>แก้ไขและปิดแล้ว</span><strong>${num(data.fixed.length)}</strong><small>กดดูประวัติการอนุมัติ</small></article>
-        <article data-action-route="clarify" class="${data.stillOpen ? "bad" : "ok"}"><span>ยังแก้ไม่สำเร็จ</span><strong>${num(data.stillOpen)}</strong><small>ความเสียหาย ${num(data.confirmedDamage.length)} · กดติดตาม</small></article>
+      <section class="panel daily-focus-board">
+        <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>
+        <div class="daily-reconcile-tiles action-tiles">
+          <article data-action-route="cloud"><span>รายการ STM / PM</span><strong>${num(stm)}</strong><small>${num(stmFiles + pmFiles)} ไฟล์ต้นทาง</small></article>
+          <article data-action-route="cloud"><span>รายการ BO</span><strong>${num(bo)}</strong><small>${num(boFiles)} ไฟล์ต้นทาง</small></article>
+          <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่ผ่าน 3 จุด</span><strong>${num(matched)}</strong><small>${matchRate.toFixed(2)}% ของ STM / PM</small></article>
+          <article data-action-route="exceptions" class="${data.exceptionTotal ? "warn" : "ok"}"><span>ต้องตรวจสอบ</span><strong>${num(data.exceptionTotal)}</strong><small>ยอดเสี่ยง ${money0(risk)} บาท</small></article>
+          <article data-action-route="clarify" class="${data.stillOpen ? "bad" : "ok"}"><span>ยังไม่ปิด</span><strong>${num(data.stillOpen)}</strong><small>ปิดแล้ว ${num(data.fixed.length)} เคส</small></article>
+        </div>
+        <div class="daily-difference-strip"><div class="${stm === bo ? "ok" : "warn"}"><span>จำนวนรายการ STM/PM เทียบ BO</span><b>${num(stm - bo)}</b></div><div class="${data.exceptionTotal ? "bad" : "ok"}"><span>รายการที่ต้องตรวจต่อ</span><b>${num(data.exceptionTotal)}</b></div><div class="${damageTotal ? "bad" : "ok"}"><span>ความเสียหายที่ยืนยันแล้ว</span><b>${money0(damageTotal)} บาท</b></div></div>
+        <button type="button" class="daily-next-work ${nextWork.tone}" data-action-route="${nextWork.route}"><span><small>ขั้นถัดไปที่แนะนำ</small><b>${h(nextWork.title)}</b><em>${h(nextWork.detail)}</em></span><strong>${h(nextWork.button)} →</strong></button>
+      </section>
+      <section class="daily-source-summary" aria-label="ไฟล์ที่ได้รับ"><article><span>อีเมล / ไฟล์</span><b>${num(data.batches.length)} / ${num(data.files.length)}</b></article><article><span>STM ธนาคาร</span><b>${num(stmFiles)} ไฟล์</b></article><article><span>BO หลังบ้าน</span><b>${num(boFiles)} ไฟล์</b></article><article><span>PM ฝาก/ถอน</span><b>${num(pmFiles)} ไฟล์</b></article><article><span>หลักฐานชี้แจง</span><b>${num(evidenceFiles)} ไฟล์</b></article><article class="${fileErrors ? "bad" : "ok"}"><span>อ่านสำเร็จ</span><b>${num(parsed)}/${num(data.files.length)}</b></article>
       </section>
       <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${parsed === data.files.length && data.files.length ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์<small>${num(parsed)} สำเร็จ · กดแก้ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.fixed.length)} · กดติดตาม</small></span></button></section>
 
