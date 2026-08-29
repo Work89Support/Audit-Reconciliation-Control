@@ -85,6 +85,12 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, mailbox: $json.mailbox, label: $json.label, subject: $json.subject, sender: $json.sender, source_email: $json.source_email, source_name: $json.source_name, business_system: $json.business_system, received_at: $json.received_at, company: $json.company, business_date: $json.business_date, is_supplement: $json.is_supplement, file_count: $json.file_count, status: 'new' }) }}",
         "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
           "response": {
             "response": {
               "neverError": false
@@ -101,6 +107,9 @@
         300
       ],
       "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000,
       "credentials": {
         "supabaseApi": {
           "id": "REPLACE_SUPABASE_CRED",
@@ -231,6 +240,12 @@
         "contentType": "binaryData",
         "inputDataFieldName": "data",
         "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
           "response": {
             "response": {
               "neverError": false
@@ -246,6 +261,9 @@
         1540,
         300
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000,
       "credentials": {
         "supabaseApi": {
           "id": "REPLACE_SUPABASE_CRED",
@@ -276,6 +294,12 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ batch_id: $('เดาชนิดไฟล์และตั้ง path').item.json.batch_id, file_name: $('เดาชนิดไฟล์และตั้ง path').item.json.file_name, from_zip: $('เดาชนิดไฟล์และตั้ง path').item.json.from_zip || null, mime_type: $('เดาชนิดไฟล์และตั้ง path').item.json.mime_type, size_bytes: $('เดาชนิดไฟล์และตั้ง path').item.json.size_bytes, storage_path: $('เดาชนิดไฟล์และตั้ง path').item.json.storage_path, checksum: null, company: $('เดาชนิดไฟล์และตั้ง path').item.json.company || null, kind: $('เดาชนิดไฟล์และตั้ง path').item.json.kind, parsed: false }) }}",
         "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
           "response": {
             "response": {
               "neverError": false
@@ -291,6 +315,9 @@
         1760,
         300
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000,
       "credentials": {
         "supabaseApi": {
           "id": "REPLACE_SUPABASE_CRED",
@@ -300,8 +327,21 @@
     },
     {
       "parameters": {
+        "jsCode": "/* ลดการอัปเดตซ้ำ: คืน 1 item ต่อ Gmail message หลังอัปโหลดไฟล์ครบ */\nconst files = $('เดาชนิดไฟล์และตั้ง path').all();\nconst messages = new Map();\nfor (const item of files) {\n  const id = item.json.gmail_message_id;\n  if (!id) continue;\n  const current = messages.get(id) || { gmail_message_id: id, file_count: 0 };\n  current.file_count += 1;\n  messages.set(id, current);\n}\nreturn [...messages.values()].map(json => ({ json }));"
+      },
+      "id": "unique-mails",
+      "name": "สรุปครั้งเดียวต่อเมล",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "method": "PATCH",
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?gmail_message_id=eq.{{ $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id }}",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?gmail_message_id=eq.{{ $json.gmail_message_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "sendHeaders": true,
@@ -319,8 +359,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ status: 'stored', file_count: $('เดาชนิดไฟล์และตั้ง path').all().filter(file => file.json.gmail_message_id === $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id).length }) }}",
+        "jsonBody": "={{ JSON.stringify({ status: 'stored', file_count: $json.file_count }) }}",
         "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          },
           "response": {
             "response": {
               "neverError": true
@@ -333,10 +379,13 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1980,
+        2200,
         300
       ],
       "executeOnce": false,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 3000,
       "credentials": {
         "supabaseApi": {
           "id": "REPLACE_SUPABASE_CRED",
@@ -347,7 +396,7 @@
     {
       "parameters": {
         "operation": "addLabels",
-        "messageId": "={{ $('เดาชนิดไฟล์และตั้ง path').item.json.gmail_message_id }}",
+        "messageId": "={{ $json.gmail_message_id }}",
         "labelIds": [
           "REPLACE_INGESTED_LABEL_ID"
         ]
@@ -357,7 +406,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        2200,
+        2420,
         300
       ],
       "executeOnce": false,
@@ -499,6 +548,17 @@
       ]
     },
     "Supabase: บันทึกทะเบียนไฟล์": {
+      "main": [
+        [
+          {
+            "node": "สรุปครั้งเดียวต่อเมล",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "สรุปครั้งเดียวต่อเมล": {
       "main": [
         [
           {

@@ -60,6 +60,23 @@ const attachmentSplitter = live.nodes.find((node) => node.name === "แยกไ
 assert.match(attachmentSplitter.parameters.jsCode, /subject: src\.json\.subject/, "email subject must reach every attachment");
 const sourceFileWriter = live.nodes.find((node) => node.name === "Supabase: บันทึกทะเบียนไฟล์");
 assert.match(sourceFileWriter.parameters.jsonBody, /company:/, "source files must preserve their operating company");
+for (const name of [
+  "Supabase: บันทึกทะเบียนเมล",
+  "Supabase Storage: อัปไฟล์",
+  "Supabase: บันทึกทะเบียนไฟล์",
+  "Supabase: อัปเดตสถานะเมล",
+]) {
+  const node = live.nodes.find((item) => item.name === name);
+  assert.equal(node.parameters.options.batching.batch.batchSize, 1, `${name} must not overload Supabase with concurrent requests`);
+  assert.ok(node.parameters.options.batching.batch.batchInterval >= 500, `${name} must pause between requests`);
+  assert.equal(node.retryOnFail, true, `${name} must retry transient Supabase failures`);
+  assert.ok(node.maxTries >= 3, `${name} must allow transient failures to recover`);
+}
+const mailSummary = live.nodes.find((node) => node.name === "สรุปครั้งเดียวต่อเมล");
+assert.ok(mailSummary, "ingest must collapse file results to one status update per email");
+assert.match(mailSummary.parameters.jsCode, /new Map\(\)/, "mail status updates must be deduplicated by Gmail message ID");
+assert.equal(live.connections["Supabase: บันทึกทะเบียนไฟล์"].main[0][0].node, "สรุปครั้งเดียวต่อเมล");
+assert.equal(live.connections["สรุปครั้งเดียวต่อเมล"].main[0][0].node, "Supabase: อัปเดตสถานะเมล");
 
 const listNode = backfill.nodes.find((node) => node.name === "Gmail: ค้นเมลสูงสุด 20 ฉบับ");
 assert.equal(listNode.parameters.limit, 20);
