@@ -12,6 +12,7 @@ const clarificationSql = await readFile(new URL("../supabase/20260823_clarificat
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
 const reclassifySql = await readFile(new URL("../supabase/20260825_manual_file_reclassify.sql", import.meta.url), "utf8");
 const directionSql = await readFile(new URL("../supabase/20260827_filename_direction_detection.sql", import.meta.url), "utf8");
+const mailDateSql = await readFile(new URL("../supabase/20260829_mail_subject_date_normalization.sql", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../app.js", import.meta.url), "utf8");
 const docxSource = await readFile(new URL("../docx-reader.js", import.meta.url), "utf8");
 const supabaseSource = await readFile(new URL("../supabase.js", import.meta.url), "utf8");
@@ -156,6 +157,9 @@ assert.match(reclassifySql, /'reclassify_and_retry'/, "manual reclassification m
 assert.match(directionSql, /audit_file_direction/, "the database must recognize compact D/W/DW direction codes");
 assert.match(directionSql, /audit_is_bank_statement_pdf/, "legacy single-direction bank PDFs must be classified as STM");
 assert.match(directionSql, /PS8/, "the newest database normalizer must preserve all canonical operating companies");
+assert.match(mailDateSql, /normalize_mail_batch_business_date/, "mail dates must be normalized before every database write");
+assert.match(mailDateSql, /\(\?:19\|20\)/, "mail dates must recognize ISO subjects before Thai short-year dates");
+assert.match(mailDateSql, /y := y \+ 1957/, "Thai two-digit Buddhist years must convert to Gregorian years");
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
