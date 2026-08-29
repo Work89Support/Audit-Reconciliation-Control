@@ -31,5 +31,10 @@ assert.match(app, /ขั้นถัดไปที่แนะนำ/, "หน
 assert.match(app, /date === PROD_TODAY && !selectedQuality\.some/, "หน้ารายวันต้องเลื่อนไปวันที่ล่าสุดที่มีผลจริงเมื่อวันนี้ยังไม่มีผลรัน");
 assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/, "หน้ารายวันต้องมีตารางภาพรวมแบบสเปรดชีต");
 assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
+assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");
+assert.match(app, /data-case-files=/, "ตาราง Exception ต้องมีปุ่มเปิดไฟล์ประกอบโดยตรง");
+assert.match(app, /Sb\.exceptionFiles\(e\.runId, e\.clarificationFileId\)/, "Drawer ต้องโหลดไฟล์ที่ใช้สร้าง recon run เฉพาะตอนเปิดเคส");
+assert.match(app, /ไฟล์ประกอบของเคสนี้/, "Drawer ต้องมีส่วนไฟล์ประกอบที่เข้าใจง่าย");
+assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
 
-console.log("App shell QA follow-up: 24 checks passed");
+console.log("App shell QA follow-up: 29 checks passed");

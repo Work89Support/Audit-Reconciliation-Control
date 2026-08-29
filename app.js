@@ -581,6 +581,7 @@ function render() {
    ============================================================= */
 const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
+const exceptionSupportCache = new Map();
 
 async function loadLiveExceptionSearch(term) {
   const key = `${term}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
@@ -1961,7 +1962,7 @@ VIEWS.exceptions = (root) => {
           <thead><tr>
             ${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}
             <th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}
-            ${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}
+            ${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th>
           </tr></thead>
           <tbody>
             ${
@@ -1978,9 +1979,10 @@ VIEWS.exceptions = (root) => {
               <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
               <td>${h(e.employee)}<small class="sub">${h(DB.shifts.find((s) => s.code === e.shift).name)}</small></td>
               <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+              <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
             </tr>`,
                 )
-                .join("") || `<tr><td colspan="10" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`
+                .join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`
             }
           </tbody>
         </table>
@@ -2037,24 +2039,72 @@ VIEWS.exceptions = (root) => {
     }),
   );
   root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", () => openException(tr.dataset.ex)));
+  root.querySelectorAll("[data-case-open]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openException(button.dataset.caseOpen);
+  }));
+  root.querySelectorAll("[data-case-files]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openException(button.dataset.caseFiles, { focusFiles: true });
+  }));
 };
 
 /* =============================================================
    Drawer: Exception detail + evidence timeline + close checklist
    ============================================================= */
-function openException(id) {
+function exceptionFileAttrs(file, e) {
+  return `data-storage-open="${h(file.storage_path || "")}" data-file-id="${h(file.id || "")}" data-file-name="${h(file.file_name || "ไฟล์ต้นฉบับ")}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || e.company || "")}" data-file-date="${h(e.date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}`;
+}
+
+function exceptionFilesMarkup(files, e) {
+  if (!files.length) return `<div class="case-files-empty"><b>ยังไม่พบไฟล์ที่ผูกกับผลรันนี้</b><span>ใช้ปุ่ม “ดูไฟล์และสถานะทั้งหมด” เพื่อตรวจไฟล์ของบริษัทและวันที่เดียวกัน</span><button class="ghost-button sm" id="caseGoAllFiles">ดูไฟล์และสถานะทั้งหมด</button></div>`;
+  return `<div class="case-file-grid">${files.map((file) => `<article class="case-file-card"><div><b title="${h(file.file_name)}">${h(file.file_name)}</b><span>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")} · ${file.parsed ? "อ่านสำเร็จ" : file.parse_error ? "อ่านไม่ได้" : "รอประมวลผล"}</span></div><button class="primary-button sm" ${exceptionFileAttrs(file, e)} ${file.storage_path ? "" : "disabled"}>Preview</button></article>`).join("")}</div>`;
+}
+
+async function loadExceptionSupport(e, options = {}) {
+  const host = $("#caseSourceFiles");
+  if (!host || state.dataset !== "production" || !Sb.signedIn()) return;
+  const cacheKey = `${e.runId || ""}|${e.clarificationFileId || ""}`;
+  try {
+    const detailPromise = e._detailLoaded || !e.dbId ? Promise.resolve(null) : Sb.exceptionDetail(e.dbId);
+    const filesPromise = exceptionSupportCache.has(cacheKey)
+      ? Promise.resolve(exceptionSupportCache.get(cacheKey))
+      : Sb.exceptionFiles(e.runId, e.clarificationFileId).then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
+    const [detail, files] = await Promise.all([detailPromise, filesPromise]);
+    if (detail) {
+      const notes = e.notes || [];
+      const evidence = e.evidence || [];
+      Object.assign(e, mapLiveException(detail), { notes, evidence, _detailLoaded: true });
+      const stm = $("#caseRawStm");
+      const bo = $("#caseRawBo");
+      if (stm) stm.textContent = e.stmRaw || "— ไม่พบรายการฝั่ง STM —";
+      if (bo) bo.textContent = e.boRaw || "— ไม่พบรายการฝั่ง BO —";
+    }
+    if (!document.body.contains(host)) return;
+    host.innerHTML = exceptionFilesMarkup(files, e);
+    bindStoredFileLinks(host);
+    $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
+    if (options.focusFiles) setTimeout(() => host.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  } catch (error) {
+    if (!document.body.contains(host)) return;
+    host.innerHTML = `<div class="case-files-empty bad"><b>โหลดไฟล์ประกอบไม่สำเร็จ</b><span>${h(error.message)}</span><button class="ghost-button sm" id="caseFilesRetry">ลองใหม่</button></div>`;
+    $("#caseFilesRetry")?.addEventListener("click", () => (exceptionSupportCache.delete(cacheKey), loadExceptionSupport(e, options)));
+  }
+}
+
+function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
   if (!e) return;
   state.selected = id;
   const drawer = $("#drawer");
   const overlay = $("#drawerOverlay");
   const checklist = [
-    { key: "raw", label: "มี Raw STM และ BO row", ok: true },
+    { key: "raw", label: "โหลดข้อมูลรายการ STM / BO แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
     { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause },
     { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee },
     { key: "evidence", label: "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence },
-    { key: "note", label: "มี note จาก Audit", ok: e.notes.length > 0 },
-    { key: "amount", label: "ระบุยอดเสียหายหรือยืนยันว่าไม่มี", ok: e.status === "damage" || e.status === "approved" || e.status === "closed" },
+    { key: "note", label: "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote },
+    { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
   const ready = checklist.every((c) => c.ok);
 
@@ -2068,6 +2118,7 @@ function openException(id) {
     </header>
 
     <div class="drawer-body">
+      <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
       <div class="kv-grid">
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
         <div><span>บัญชี</span><b>${h(e.account)} (${h(e.bank)})</b></div>
@@ -2087,10 +2138,15 @@ function openException(id) {
       ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
       ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}</span></div>` : ""}
 
-      <h3 class="drawer-h3">Evidence Timeline</h3>
+      <section class="case-source-section" id="caseFilesSection">
+        <div class="case-section-head"><div><p class="eyebrow">ไฟล์ที่ใช้กระทบยอด</p><h3>ไฟล์ประกอบของเคสนี้</h3></div><button class="ghost-button sm" id="caseOpenAllFiles">ดูไฟล์ทั้งหมดของบริษัท/วัน</button></div>
+        <div id="caseSourceFiles" class="case-files-loading"><span class="spinner"></span><span>กำลังหาไฟล์ STM / BO / PM ที่ใช้สร้างเคส...</span></div>
+      </section>
+
+      <h3 class="drawer-h3">ข้อมูลที่ระบบใช้ตัดสิน</h3>
       <ol class="timeline">
-        <li><span class="t-dot"></span><div><b>Raw STM</b><code>${h(e.stmRaw)}</code></div></li>
-        <li><span class="t-dot"></span><div><b>Raw BO</b><code>${h(e.boRaw)}</code></div></li>
+        <li><span class="t-dot"></span><div><b>รายการฝั่ง STM / PM</b><code id="caseRawStm">${h(e.stmRaw)}</code></div></li>
+        <li><span class="t-dot"></span><div><b>รายการฝั่ง BO</b><code id="caseRawBo">${h(e.boRaw)}</code></div></li>
         <li><span class="t-dot"></span><div><b>ผลการจับคู่</b><span>${
           e.ruleBased
             ? `ตรวจด้วยกฎธุรกิจจากรายงานหลังบ้าน (ไม่ต้องใช้ statement): ${h(e.typeName)}`
@@ -2101,7 +2157,7 @@ function openException(id) {
         ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(n.at)}</b><span>${h(n.text)}</span></div></li>`).join("")}
       </ol>
 
-      <h3 class="drawer-h3">Close Checklist</h3>
+      <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
       <ul class="close-check">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
@@ -2132,13 +2188,10 @@ function openException(id) {
       </div>
     </div>
 
-    <footer class="drawer-foot">
-      <button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button>
-      <button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button>
-      <button class="ghost-button" id="btnClarify">ส่งให้ผู้ดูแลบริษัทชี้แจง</button>
-      <button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button>
-      <button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button>
-      <button class="primary-button" id="btnApprove">อนุมัติและปิดเคส</button>
+    <footer class="drawer-foot" id="caseActionSection">
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${!e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <details class="drawer-more-actions"><summary>เอกสารและการดำเนินการอื่น</summary><div><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>`;
 
   drawer.hidden = false;
@@ -2147,6 +2200,14 @@ function openException(id) {
 
   $("#drawerClose").addEventListener("click", closeDrawer);
   overlay.addEventListener("click", closeDrawer, { once: true });
+  $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  $("#btnAttachQuick").addEventListener("click", () => $("#evInput")?.click());
+  $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
+  drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
+    const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : drawer.querySelector(".kv-grid");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  loadExceptionSupport(e, options);
 
   $("#evInput").addEventListener("change", (evt) => {
     if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");

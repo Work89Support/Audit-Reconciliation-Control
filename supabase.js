@@ -376,6 +376,26 @@ const Sb = (() => {
     return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
   }
 
+  /* โหลดรายละเอียดหนักเฉพาะตอนผู้ตรวจเปิดเคส ไม่ดึง raw evidence ทุกแถวในหน้ารวม */
+  async function exceptionDetail(exceptionId) {
+    if (!exceptionId) return null;
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=*&limit=1`);
+    return rows[0] || null;
+  }
+
+  /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
+  async function exceptionFiles(runId, clarificationFileId) {
+    const ids = [];
+    if (runId) {
+      const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(runId)}&select=file_ids&limit=1`);
+      (runs[0]?.file_ids || []).forEach((id) => ids.push(id));
+    }
+    if (clarificationFileId) ids.push(clarificationFileId);
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (!unique.length) return [];
+    return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
+  }
+
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
@@ -560,6 +580,8 @@ const Sb = (() => {
     currentExceptions,
     currentExceptionsSummary,
     searchExceptions,
+    exceptionDetail,
+    exceptionFiles,
     queueDueJobs,
     claimJob,
     finishJob,
