@@ -622,6 +622,11 @@ const LIVE_STATUS = {
   error: { label: "ล้มเหลว", tone: "red" },
 };
 
+// ตารางคิวรุ่นเก่าเคยสร้างแถวรวมตามชื่อระบบ (PM / SYS123 / XXX)
+// แถวเหล่านั้นไม่ใช่บริษัทและต้องไม่ถูกนำไปปนกับสรุป 9 บริษัทจริง
+const LIVE_COMPANY_CODES = new Set(["3XB", "AT4", "FR8", "MC8", "MR9", "PS8", "SK8", "UR9", "UFABET7M", "7M"]);
+const isLiveCompanyRow = (row) => LIVE_COMPANY_CODES.has(String(row?.company || "").trim().toUpperCase());
+
 const CHECKLIST_STATUS = {
   scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
   missing_files: { label: "ยังไม่ได้รับไฟล์", tone: "red" },
@@ -781,7 +786,7 @@ async function loadLiveOverview(force = false) {
       const latestQuality = latestLookup[0].status === "fulfilled" ? latestLookup[0].value : [];
       if (latestLookup[0].status === "rejected") liveOverviewState.coreErrors.push("ค้นหาวันล่าสุด");
       const latestOperationalDate = (latestQuality || [])
-        .filter((row) => !row.is_archived && row.business_date)
+        .filter((row) => isLiveCompanyRow(row) && !row.is_archived && row.business_date)
         .map((row) => row.business_date)
         .sort()
         .pop();
@@ -795,8 +800,8 @@ async function loadLiveOverview(force = false) {
           Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
         ]);
         daily = latest[0].status === "fulfilled" ? latest[0].value : daily;
-        operations = latest[1].status === "fulfilled" ? latest[1].value : operations;
-        quality = latest[2].status === "fulfilled" ? latest[2].value : quality;
+        operations = latest[1].status === "fulfilled" ? (latest[1].value || []).filter(isLiveCompanyRow) : operations;
+        quality = latest[2].status === "fulfilled" ? (latest[2].value || []).filter(isLiveCompanyRow) : quality;
         checklistRows = latest[3].status === "fulfilled" ? latest[3].value : checklistRows;
         liveOverviewState.coreErrors.push(...latest.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []));
         liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
@@ -804,8 +809,8 @@ async function loadLiveOverview(force = false) {
     }
     if (requestId !== liveOverviewState.requestId) return;
     if (daily !== null) liveOverviewState.daily = daily || [];
-    if (operations !== null) liveOverviewState.operations = operations || [];
-    if (quality !== null) liveOverviewState.quality = quality || [];
+    if (operations !== null) liveOverviewState.operations = (operations || []).filter(isLiveCompanyRow);
+    if (quality !== null) liveOverviewState.quality = (quality || []).filter(isLiveCompanyRow);
     if (checklistRows !== null) liveOverviewState.checklist = checklistRows || [];
     if (settings !== null) liveOverviewState.settings = Array.isArray(settings) ? (settings[0] || null) : settings;
     liveOverviewState.error = liveOverviewState.coreErrors.length

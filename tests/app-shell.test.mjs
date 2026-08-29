@@ -22,5 +22,7 @@ assert.match(app, /retryTransientFileRequest\(action, attempts = 3\)/, "Preview 
 assert.match(app, /const exceptionsAvailable = liveOverviewState\.exceptionsReady/, "หน้า Exception ต้องแยกข้อมูลไม่พร้อมออกจากศูนย์จริง");
 assert.match(app, /const operationsAvailable = Array\.isArray\(liveOverviewState\.operations\)/, "หน้ารายงานต้องแยกคิวไม่พร้อมออกจากไม่มีข้อมูล");
 assert.match(app, /const logsAvailable = liveOverviewState\.logsReady/, "Audit Log ต้องไม่แสดงศูนย์เมื่อ query ล้มเหลว");
+assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษัทจริงออกจากแถวรวมชื่อระบบ");
+assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");
 
-console.log("App shell QA follow-up: 15 checks passed");
+console.log("App shell QA follow-up: 17 checks passed");
