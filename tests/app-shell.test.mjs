@@ -33,6 +33,8 @@ assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/
 assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
 assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");
 assert.match(app, /data-case-files=/, "ตาราง Exception ต้องมีปุ่มเปิดไฟล์ประกอบโดยตรง");
+assert.match(app, /class="case-file-row"/, "ไฟล์ประกอบในเคสต้องแสดงเป็นรายการที่กด Preview ได้ทั้งแถว");
+assert.ok(app.includes('data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"`'), "attribute สถานะไฟล์ต้องปิด quote ครบเพื่อไม่ให้ DOM ของรายการไฟล์เสีย");
 assert.match(app, /Sb\.exceptionFiles\(e\.runId, e\.clarificationFileId\)/, "Drawer ต้องโหลดไฟล์ที่ใช้สร้าง recon run เฉพาะตอนเปิดเคส");
 assert.match(app, /ไฟล์ประกอบของเคสนี้/, "Drawer ต้องมีส่วนไฟล์ประกอบที่เข้าใจง่าย");
 assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
