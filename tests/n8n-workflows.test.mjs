@@ -183,6 +183,8 @@ assert.match(templateKindSql, /MANUAL_\(PAYMENT\|CREDIT\|BONUS\)_/, "manual file
 assert.match(templateKindSql, /COMMISSION_\(WITHDRAW\|EVIDENCE\)_/, "commission templates must be reclassified without preview");
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
 assert.match(supabaseSource, /replaceSourceFile/, "the browser client must expose safe file replacement");
+assert.match(supabaseSource, /method:\s*"DELETE"/, "a failed replacement RPC must remove its orphaned Storage upload");
+assert.match(supabaseSource, /ระบบแทนที่ไฟล์ยังตั้งค่าไม่ครบ/, "missing replacement RPC must show a short Thai recovery message");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
 assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");

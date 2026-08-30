@@ -3684,7 +3684,9 @@ async function openStoredFilePreview(meta) {
         else loadLiveOverview(true);
       }, 300);
     } catch (error) {
-      toast("บันทึกประเภทไฟล์ไม่สำเร็จ: " + error.message, "warn");
+      const action = pendingReplacementFile ? "แทนที่ไฟล์ไม่สำเร็จ" : "บันทึกประเภทไฟล์ไม่สำเร็จ";
+      const detail = String(error?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่");
+      toast(`${action}: ${detail}`, "warn");
       button.disabled = false;
       button.textContent = old;
     }

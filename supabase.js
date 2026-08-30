@@ -444,17 +444,35 @@ const Sb = (() => {
       body: buffer,
       timeoutMs: 120000,
     });
-    return rpc("replace_source_file", {
-      p_file_id: fileId,
-      p_file_name: file.name,
-      p_mime_type: file.type || "application/octet-stream",
-      p_size_bytes: file.size,
-      p_storage_path: storagePath,
-      p_checksum: checksum,
-      p_company: company,
-      p_kind: kind,
-      p_actor: currentEmail() || "web-auditor",
-    });
+    try {
+      return await rpc("replace_source_file", {
+        p_file_id: fileId,
+        p_file_name: file.name,
+        p_mime_type: file.type || "application/octet-stream",
+        p_size_bytes: file.size,
+        p_storage_path: storagePath,
+        p_checksum: checksum,
+        p_company: company,
+        p_kind: kind,
+        p_actor: currentEmail() || "web-auditor",
+      });
+    } catch (error) {
+      // The upload and database update are one user action. If the RPC fails,
+      // remove the unreferenced object so retries do not leak files in Storage.
+      try {
+        await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`, {
+          method: "DELETE",
+          timeoutMs: 30000,
+        });
+      } catch (cleanupError) {
+        console.warn("cleanup replacement upload failed", cleanupError);
+      }
+      const detail = String(error?.message || error || "");
+      if (/replace_source_file/i.test(detail) && /schema cache|could not find the function/i.test(detail)) {
+        throw new Error("ระบบแทนที่ไฟล์ยังตั้งค่าไม่ครบ กรุณาแจ้งผู้ดูแลระบบ แล้วลองใหม่อีกครั้ง");
+      }
+      throw error;
+    }
   }
 
   async function fileOcr(fileId) {
