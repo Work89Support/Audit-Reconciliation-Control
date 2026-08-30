@@ -415,6 +415,19 @@ const Sb = (() => {
     p_active: !!active,
     p_companies: [...new Set((companies || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))],
   });
+  const adminInviteUser = (email, fullName, role, active, companies) =>
+    json("/functions/v1/admin-invite-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      timeoutMs: 45000,
+      body: JSON.stringify({
+        email: String(email || "").trim().toLowerCase(),
+        full_name: String(fullName || "").trim(),
+        role,
+        active: !!active,
+        companies: [...new Set((companies || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))],
+      }),
+    });
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
@@ -669,6 +682,7 @@ const Sb = (() => {
     myAccess,
     adminUserAccess,
     adminSaveUserAccess,
+    adminInviteUser,
     reclassifySourceFile,
     manualMatchClarificationFile,
     replaceSourceFile,

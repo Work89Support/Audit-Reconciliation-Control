@@ -267,6 +267,9 @@ h3 { font-size: 15px; }
 .access-user-form input[type="email"], .access-user-form input[type="text"], .access-user-form select { width: 100%; }
 .access-user-form .access-active { display: flex; align-items: center; min-height: 46px; gap: 8px; white-space: nowrap; }
 .access-user-form fieldset { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.access-submit { grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+.access-submit small { color: var(--muted); }
+.access-user-form input[readonly] { background: #eef3f8; color: var(--muted); cursor: not-allowed; }
 .access-user-form legend { padding: 0 8px; font-weight: 800; }
 .company-access-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 8px; }
 .company-access-grid label { display: inline-flex; align-items: center; gap: 6px; }

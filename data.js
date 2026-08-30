@@ -86,8 +86,8 @@ const DB = (() => {
     exec: { name: "ผู้บริหาร / การเงิน", desc: "อ่านภาพรวมและรายงานโดยแก้ข้อมูลไม่ได้", can: ["view", "export"] },
     admin: {
       name: "ผู้ดูแลระบบ",
-      desc: "จัดการผู้ใช้ บทบาท บริษัท และการตั้งค่าระบบ โดยไม่อนุมัติเคสแทน Audit Lead",
-      can: ["view", "rules", "users", "settings", "export"],
+      desc: "เห็นทุกหน้าและทุกบริษัท ช่วยทำงานได้ทุกขั้นตอน รวมจัดการผู้ใช้ โดยไม่มีสิทธิ์ลบหลักฐานถาวร",
+      can: ["view", "note", "status", "request_clarify", "respond", "attach", "approve", "close_case", "close_cycle", "rules", "users", "settings", "export"],
     },
   };
 

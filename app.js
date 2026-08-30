@@ -90,7 +90,8 @@ const ROUTE_ROLES = {
   lead: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
-  admin: ["dashboard", "daily-summary", "rules", "notifications", "audit-log", "users"],
+  /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
+  admin: Object.keys(ROUTE_MAP),
 };
 
 /* ---------------- state ---------------- */
@@ -403,7 +404,7 @@ function confirmQuickClose(e) {
 function renderNav() {
   const allowed = ROUTE_ROLES[state.role];
   $("#navList").innerHTML = ROUTES.map((g) => {
-    const items = g.items.filter((it) => allowed.includes(it.id) && !it.hidden);
+    const items = g.items.filter((it) => allowed.includes(it.id) && (!it.hidden || state.role === "admin"));
     if (!items.length) return "";
     return (
       `<span class="nav-label">${h(g.group)}</span>` +
@@ -3483,7 +3484,7 @@ VIEWS.rules = (root) => {
    ============================================================= */
 VIEWS.users = async (root) => {
   const caps = [
-    ["view", "ดูข้อมูล / dashboard"],
+    ["view", "ดูหน้าที่ได้รับสิทธิ์ / dashboard"],
     ["note", "ใส่ note"],
     ["status", "เปลี่ยนสถานะ"],
     ["request_clarify", "ส่งให้ชี้แจง"],
@@ -3509,7 +3510,8 @@ VIEWS.users = async (root) => {
   root.innerHTML = `
     ${loadError ? `<section class="alert warn"><strong>ยังโหลดทะเบียนผู้ใช้ไม่ได้</strong><span>${h(loadError)}</span></section>` : ""}
     <section class="panel access-admin-panel">
-      <div class="panel-heading"><div><p class="eyebrow">User access</p><h2>เพิ่มหรือแก้สิทธิ์ผู้ใช้</h2><small class="head-sub">ผู้ใช้ต้องสมัครหรือได้รับเชิญใน Supabase Auth ก่อน จึงกำหนดสิทธิ์จากหน้านี้ได้</small></div></div>
+      <div class="panel-heading"><div><p class="eyebrow">User access</p><h2 id="accessFormTitle">เพิ่มผู้ใช้ใหม่</h2><small class="head-sub">กรอกข้อมูลครั้งเดียว ระบบจะส่งอีเมลเชิญเข้าใช้งานและกำหนดสิทธิ์ให้ทันที ไม่ต้องเปิดหน้า Supabase</small></div>
+      <button class="primary-button" type="button" id="newAccessUser">+ เพิ่มผู้ใช้</button></div>
       <form id="accessUserForm" class="access-user-form">
         <label>อีเมล<input id="accessEmail" type="email" required placeholder="name@company.com"></label>
         <label>ชื่อที่แสดง<input id="accessName" type="text" required placeholder="ชื่อ-นามสกุล"></label>
@@ -3518,7 +3520,7 @@ VIEWS.users = async (root) => {
         <fieldset><legend>บริษัทที่รับผิดชอบ</legend><div class="company-access-grid">
           ${companyMaster().map((company) => `<label><input type="checkbox" name="accessCompany" value="${h(company.code)}"> ${h(company.code)}</label>`).join("")}
         </div><small>Audit Lead, ผู้บริหาร และผู้ดูแลระบบเห็นทุกบริษัทโดยตำแหน่งอยู่แล้ว</small></fieldset>
-        <button class="primary-button" type="submit">บันทึกสิทธิ์</button>
+        <div class="access-submit"><small id="accessSubmitHint">ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน</small><button class="primary-button" type="submit">ส่งคำเชิญและบันทึกสิทธิ์</button></div>
       </form>
     </section>
 
@@ -3562,6 +3564,19 @@ VIEWS.users = async (root) => {
       </div>
     </section>`;
 
+  const resetAccessForm = () => {
+    $("#accessUserForm").reset();
+    $("#accessActive").checked = true;
+    $("#accessRole").value = "monitor";
+    $("#accessEmail").readOnly = false;
+    $("#accessFormTitle").textContent = "เพิ่มผู้ใช้ใหม่";
+    $("#accessSubmitHint").textContent = "ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน";
+    $("#accessUserForm button[type='submit']").textContent = "ส่งคำเชิญและบันทึกสิทธิ์";
+  };
+  $("#newAccessUser")?.addEventListener("click", () => {
+    resetAccessForm();
+    $("#accessEmail").focus();
+  });
   root.querySelectorAll(".access-user-row").forEach((row) => row.addEventListener("click", () => {
     const user = users.find((item) => item.email === row.dataset.email);
     if (!user) return;
@@ -3569,6 +3584,10 @@ VIEWS.users = async (root) => {
     $("#accessName").value = user.full_name || "";
     $("#accessRole").value = user.role || "monitor";
     $("#accessActive").checked = user.active !== false;
+    $("#accessEmail").readOnly = true;
+    $("#accessFormTitle").textContent = "แก้สิทธิ์ผู้ใช้";
+    $("#accessSubmitHint").textContent = "บันทึกการเปลี่ยนแปลงโดยไม่ส่งคำเชิญซ้ำ";
+    $("#accessUserForm button[type='submit']").textContent = "บันทึกการเปลี่ยนแปลง";
     const selected = new Set(user.companies || []);
     $$('[name="accessCompany"]', root).forEach((box) => { box.checked = selected.has(box.value); });
     $("#accessEmail").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -3580,15 +3599,21 @@ VIEWS.users = async (root) => {
     button.textContent = "กำลังบันทึก...";
     try {
       const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
-      await Sb.adminSaveUserAccess($("#accessEmail").value, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
-      toast("บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว");
+      const email = $("#accessEmail").value.trim().toLowerCase();
+      const existing = users.some((user) => String(user.email || "").toLowerCase() === email);
+      if (existing) {
+        await Sb.adminSaveUserAccess(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      } else {
+        await Sb.adminInviteUser(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      }
+      toast(existing ? "บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว" : "ส่งอีเมลเชิญและกำหนดสิทธิ์แล้ว");
       logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
       VIEWS.users(root);
     } catch (error) {
       toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
     } finally {
       button.disabled = false;
-      button.textContent = "บันทึกสิทธิ์";
+      button.textContent = users.some((user) => String(user.email || "").toLowerCase() === $("#accessEmail").value.trim().toLowerCase()) ? "บันทึกการเปลี่ยนแปลง" : "ส่งคำเชิญและบันทึกสิทธิ์";
     }
   });
 };

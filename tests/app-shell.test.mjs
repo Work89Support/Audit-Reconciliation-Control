@@ -8,6 +8,8 @@ const app = readFileSync(join(root, "app.js"), "utf8");
 const html = readFileSync(join(root, "index.html"), "utf8");
 const sb = readFileSync(join(root, "supabase.js"), "utf8");
 const accessSql = readFileSync(join(root, "supabase/20260830_user_roles_company_access.sql"), "utf8");
+const adminSql = readFileSync(join(root, "supabase/20260830_admin_full_access.sql"), "utf8");
+const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/index.ts"), "utf8");
 
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
 assert.match(app, /const OPERATING_START_DATE = "2026-08-27"/, "รอบใช้งานจริงต้องเริ่มวันที่ 27 สิงหาคม 2026");
@@ -54,14 +56,24 @@ assert.match(app, /เคสใหม่ ยังไม่ได้ส่งช
 assert.match(app, /data-clarify-company=/, "การ์ดบริษัทในหน้าชี้แจงต้องกดเปิดรายการเคสได้");
 assert.match(app, /ตรวจคำชี้แจงที่ตอบแล้ว/, "ปุ่มคิวอนุมัติต้องบอกชัดว่าเป็นคำชี้แจงที่ทีมตอบแล้ว");
 assert.match(app, /id: "users", label: "ผู้ใช้และสิทธิ์"/, "ผู้ดูแลระบบต้องมีหน้าจัดการผู้ใช้จริง");
+assert.match(app, /admin: Object\.keys\(ROUTE_MAP\)/, "ผู้ดูแลระบบต้องเข้าถึงทุก route");
+assert.match(app, /!it\.hidden \|\| state\.role === "admin"/, "ผู้ดูแลระบบต้องเห็นหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป");
+assert.match(app, /id="newAccessUser">\+ เพิ่มผู้ใช้/, "หน้าระบบต้องเพิ่มผู้ใช้ใหม่ได้โดยตรง");
+assert.match(app, /Sb\.adminInviteUser\(/, "ผู้ใช้ใหม่ต้องถูกเชิญผ่าน Edge Function ที่ปลอดภัย");
 assert.match(app, /async function applyAuthenticatedRole\(\)[\s\S]+await Sb\.myAccess\(\)/, "บทบาทต้องอ่านจาก Supabase ไม่ใช่ metadata ฝั่ง browser");
 assert.doesNotMatch(app, /user\.user_metadata\?\.role/, "ห้ามเชื่อ role จาก user_metadata");
 assert.match(app, /function enterProductionApp|async function enterProductionApp/, "ต้องมีทางเข้าระบบหลังตรวจสิทธิ์");
 assert.match(app, /canAccessCompany\(e\.company\)/, "รายการ Exception ต้องกรองตามบริษัทที่รับผิดชอบ");
 assert.match(sb, /const myAccess = \(\) => rpc\("get_my_access"\)/, "client ต้องอ่านสิทธิ์จริงผ่าน RPC");
+assert.match(sb, /\/functions\/v1\/admin-invite-user/, "client ต้องเรียก Edge Function สำหรับเชิญผู้ใช้");
 assert.match(accessSql, /create table if not exists public\.app_profiles/, "migration ต้องมีทะเบียนโปรไฟล์ผู้ใช้");
 assert.match(accessSql, /create table if not exists public\.user_company_access/, "migration ต้องมีขอบเขตบริษัทต่อผู้ใช้");
 assert.match(accessSql, /drop policy if exists mail_batches_auth_read|t\|\|'_auth_read'/, "migration ต้องยกเลิก policy อ่านได้ทุกบริษัทเดิม");
 assert.match(accessSql, /public\.has_company_access\(company\)/, "RLS ต้องตรวจบริษัทของผู้ใช้");
+assert.match(adminSql, /'monitor','lead','shift_lead','admin'/, "RLS ต้องอนุญาต admin ช่วยอัปเดต workflow");
+assert.match(inviteFn, /SUPABASE_SERVICE_ROLE_KEY/, "การเชิญผู้ใช้ต้องใช้ service role เฉพาะฝั่ง Edge Function");
+assert.match(inviteFn, /caller\.role !== "admin"/, "Edge Function ต้องตรวจบทบาทผู้เรียกซ้ำฝั่ง server");
+assert.match(inviteFn, /inviteUserByEmail/, "Edge Function ต้องส่งอีเมลเชิญจริง");
+assert.doesNotMatch(app + sb, /SUPABASE_SERVICE_ROLE_KEY/, "frontend ห้ามอ้าง service role key");
 
-console.log("App shell QA follow-up: 50 checks passed");
+console.log("App shell QA follow-up: 60 checks passed");
