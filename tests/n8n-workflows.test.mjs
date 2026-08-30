@@ -136,6 +136,9 @@ assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1
 assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ปิดงานสำเร็จ");
 assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว"));
 assert.match(workerText, /n8n-cloud-worker/);
+assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
+assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
+assert.match(workerText, /worker_version:'1\.2\.3'/, "worker version must identify the cross-day false-positive fix");
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");
 
 const clarificationText = JSON.stringify(clarification);

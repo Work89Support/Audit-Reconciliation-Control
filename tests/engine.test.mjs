@@ -99,6 +99,17 @@ await (async function () {
   eq("exact: matched", r.matched, 1);
   eq("exact: ไม่มี exception", r.exceptions.length, 0);
   eq("exact: matchRate", Math.round(r.matchRate), 100);
+  eq("exact: ส่ง key ของ BO ที่จับสำเร็จให้ Worker", r.matchedBoKeys.length, 1);
+})();
+
+/* รายการก่อน/หลังเที่ยงคืนต้องเทียบ timestamp จริง ไม่ใช่ลบเฉพาะวินาทีในวัน */
+await (async function () {
+  const r = await run(
+    [rec({ account: "MID-1", amount: 200, date: "2026-08-30", sec: 60, direction: "deposit" })],
+    [rec({ account: "MID-1", amount: 200, date: "2026-08-29", sec: 86340, direction: "deposit", crossDay: true })],
+  );
+  eq("midnight exact: 23:59 กับ 00:01 ต่าง 120 วินาที = matched", r.matched, 1);
+  eq("midnight exact: ไม่สร้าง cross_day ซ้ำ", r.exceptions.length, 0);
 })();
 
 /* ===== 18) รายงาน PM เป็น statement ฝั่ง STM และใช้ provider เป็น match key ===== */

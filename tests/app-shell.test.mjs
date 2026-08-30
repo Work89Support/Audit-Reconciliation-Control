@@ -40,5 +40,6 @@ assert.match(app, /ไฟล์ประกอบของเคสนี้/, "
 assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
 assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
 assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
+assert.match(app, /function safeExceptionDetail\(e\)/, "เคสย้อนหลังที่วันที่เสียต้องไม่แสดง undefined หรือ NaN ต่อผู้ใช้");
 
-console.log("App shell QA follow-up: 29 checks passed");
+console.log("App shell QA follow-up: 30 checks passed");

@@ -81,6 +81,15 @@ eq("duplicate: คนละวัน ไม่ใช่ซ้ำ", dupCount([rec
 eq("duplicate: วันเดียวกัน+ใกล้กัน = ซ้ำ", dupCount([recBase({ boSec: 36000, sec: 36000, ref: "r1" }), recBase({ boSec: 36100, sec: 36100, ref: "r2" })]), 1);
 eq("duplicate: ref เดียวกัน ไม่นับ", dupCount([recBase({ ref: "same" }), recBase({ boSec: 36100, sec: 36100, ref: "same" })]), 0);
 
+/* ---------- Rules: cross-day ต้องมีวันที่จริงครบสองฝั่ง ---------- */
+const crossDayCount = (record) =>
+  Rules.run([{ records: [recBase({ crossDay: true, largeThreshold: 0, ...record })], aux: [] }], { businessRules: { largeThreshold: 0 } }).exceptions.filter((e) => e.type === "cross_day");
+eq("cross-day: วันที่ BO หาย ไม่เปิดเคสเท็จ", crossDayCount({ boDate: undefined, date: "2026-08-29" }).length, 0);
+eq("cross-day: วันเดียวกัน ไม่เปิดเคส", crossDayCount({ boDate: "2026-08-29", date: "2026-08-29" }).length, 0);
+const validCrossDay = crossDayCount({ boDate: "2026-08-29", date: "2026-08-30", boSec: 86340, sec: 60 });
+eq("cross-day: คนละวันจริงยังเปิดเคส", validCrossDay.length, 1);
+ok("cross-day: รายละเอียดไม่มี undefined/NaN", !/undefined|NaN/.test(validCrossDay[0]?.detail || ""), validCrossDay[0]?.detail);
+
 /* ---------- Charts.spark: กัน NaN ---------- */
 ok("spark: จุดเดียว ไม่มี NaN", !Charts.spark([5]).includes("NaN"), Charts.spark([5]));
 ok("spark: ว่าง คืน <svg ไม่ throw", Charts.spark([]).includes("<svg"));

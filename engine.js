@@ -325,6 +325,24 @@ const Engine = (() => {
   const SLA_OF = { critical: 4, high: 8, medium: 48, low: 72 };
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const key2 = (a, amt) => a + "|" + amt.toFixed(2);
+  const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  const canonicalDirection = (v) => (/ถอน|withdraw/i.test(String(v || "")) ? "withdraw" : /ฝาก|deposit/i.test(String(v || "")) ? "deposit" : String(v || ""));
+  const recordKey = (r) =>
+    [r.account || "-", Number(r.amount || 0).toFixed(2), r.date || "", Number.isFinite(Number(r.sec)) ? Number(r.sec) : "", canonicalDirection(r.direction)].join("|");
+  /* เทียบ timestamp จริงเมื่อมีวันที่ทั้งสองฝั่ง เพื่อรองรับ 23:59 -> 00:01
+     ถ้าวันที่ขาด ใช้เวลาในวันแทน และปล่อย quality gate เป็นผู้แจ้งปัญหาวันที่ */
+  const timeDistance = (a, b) => {
+    if (!a || !b) return Infinity;
+    const aSec = Number(a.sec);
+    const bSec = Number(b.sec);
+    if (!Number.isFinite(aSec) || !Number.isFinite(bSec)) return Infinity;
+    if (isIsoDate(a.date) && isIsoDate(b.date)) {
+      const aDay = Date.parse(a.date + "T00:00:00Z");
+      const bDay = Date.parse(b.date + "T00:00:00Z");
+      if (Number.isFinite(aDay) && Number.isFinite(bDay)) return Math.abs(aDay / 1000 + aSec - (bDay / 1000 + bSec));
+    }
+    return Math.abs(aSec - bSec);
+  };
 
   function chunked(items, size, worker, onProgress, label) {
     return new Promise((resolve) => {
@@ -418,7 +436,7 @@ const Engine = (() => {
             if (boUsed[ci]) continue;
             const b = boRecords[ci];
             if (!dirOK(s, b)) continue;
-            const dt = Math.abs(b.sec - s.sec);
+            const dt = timeDistance(b, s);
             if (dt <= tolOf(s.direction, s, b) && dt < bestDt) {
               bestDt = dt;
               best = ci;
@@ -455,19 +473,19 @@ const Engine = (() => {
         const eligible = cands.filter((ci) => {
           if (boUsed[ci]) return false;
           const b = boRecords[ci];
-          return dirOK(s, b) && Math.abs(b.sec - s.sec) <= exactUniqueTol;
+          return dirOK(s, b) && timeDistance(b, s) <= exactUniqueTol;
         });
         if (exactUniqueTol > tolOf(s.direction, s, null) && eligible.length === 1) {
           const ci = eligible[0];
           const b = boRecords[ci];
           const key = key2(s.account, s.amount) + "|" + (s.direction || "");
           const competingStm = (pendingByKey.get(key) || []).some((other) =>
-            other !== s && !extendedMatched.has(other) && Math.abs(other.sec - b.sec) <= exactUniqueTol,
+            other !== s && !extendedMatched.has(other) && timeDistance(other, b) <= exactUniqueTol,
           );
           if (!competingStm) {
             boUsed[ci] = 1;
             extendedMatched.add(s);
-            matched.push({ s, b, dt: Math.abs(b.sec - s.sec), extendedTimeMatch: true });
+            matched.push({ s, b, dt: timeDistance(b, s), extendedTimeMatch: true });
             return;
           }
         }
@@ -490,7 +508,7 @@ const Engine = (() => {
             if (boUsed[ci]) continue;
             const b = boRecords[ci];
             if (!dirOK(s, b)) continue;
-            const dt = Math.abs(b.sec - s.sec);
+            const dt = timeDistance(b, s);
             if (dt < bestDt) {
               bestDt = dt;
               best = ci;
@@ -522,7 +540,7 @@ const Engine = (() => {
             if (boUsed[ci]) continue;
             const b = boRecords[ci];
             if (!dirOK(s, b)) continue;
-            const dt = Math.abs(b.sec - s.sec);
+            const dt = timeDistance(b, s);
             if (dt < bestDt) {
               bestDt = dt;
               best = ci;
@@ -626,6 +644,8 @@ const Engine = (() => {
       crossDayWindow,
       noStmSide: summarizeNoStm(noStmSide),
       noStmCount: noStmSide.length,
+      /* ใช้เฉพาะใน Worker เพื่อไม่ให้ Rules เปิด cross_day ซ้ำกับคู่ที่ Engine จับสำเร็จ */
+      matchedBoKeys: matched.map((m) => recordKey(m.b)),
     };
 
     function summarizeNoStm(list) {

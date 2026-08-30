@@ -44,7 +44,15 @@ const Rules = (() => {
 
   const round2 = (n) => Math.round(n * 100) / 100;
   const pad = (n) => String(n).padStart(2, "0");
-  const hhmmss = (s) => `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+  const hhmmss = (s) => {
+    const sec = Number(s);
+    if (!Number.isFinite(sec) || sec < 0) return "ไม่พบเวลา";
+    return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor((sec % 3600) / 60))}:${pad(Math.floor(sec % 60))}`;
+  };
+  const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  const canonicalDirection = (v) => (/ถอน|withdraw/i.test(String(v || "")) ? "withdraw" : /ฝาก|deposit/i.test(String(v || "")) ? "deposit" : String(v || ""));
+  const sourceKey = (o) =>
+    [o.account || "-", Number(o.amount ?? o.systemAmount ?? o.bankAmount ?? 0).toFixed(2), o.date || "", Number.isFinite(Number(o.sec)) ? Number(o.sec) : "", canonicalDirection(o.direction)].join("|");
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const SLA_OF = { critical: 4, high: 8, medium: 48, low: 72 };
 
@@ -92,6 +100,7 @@ const Rules = (() => {
       evidence: [],
       fromImport: true,
       ruleBased: true,
+      sourceKey: sourceKey(o),
     };
   }
 
@@ -197,6 +206,9 @@ const Rules = (() => {
   function crossDay(records, out) {
     records.forEach((r) => {
       if (!r.crossDay) return;
+      /* ถ้าวันใดวันหนึ่งหาย หรือเป็นวันเดียวกันจริง ห้ามสร้างเคสข้ามวัน
+         เพราะข้อความ undefined/NaN เคยทำให้คู่ที่จับได้สำเร็จถูกเปิดเป็นเคสซ้ำ */
+      if (!isIsoDate(r.boDate) || !isIsoDate(r.date) || r.boDate === r.date) return;
       out.push(
         mk("cross_day", {
           ...r,

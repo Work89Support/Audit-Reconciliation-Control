@@ -648,6 +648,13 @@ const CHECKLIST_STATUS = {
 const checklistMark = (ok, value, optional = false) =>
   `<span class="check-mark ${ok ? "ok" : optional ? "optional" : "missing"}"><b>${ok ? "✓" : optional ? "–" : "!"}</b>${h(value)}</span>`;
 
+function safeExceptionDetail(e) {
+  const detail = String(e.detail || "");
+  if (!/undefined|NaN(?::NaN)*/i.test(detail)) return detail;
+  if ((e.ex_type || e.type) === "cross_day") return "ข้อมูลวันที่หรือเวลาฝั่ง BO ไม่ครบ — ไม่ควรใช้รายการนี้ตัดสินว่าเป็นรายการข้ามวัน กรุณาประมวลผลใหม่ด้วย Worker เวอร์ชันล่าสุด";
+  return detail.replace(/undefined/gi, "ไม่พบข้อมูล").replace(/NaN(?::NaN)*/gi, "ไม่พบเวลา");
+}
+
 function mapLiveException(e) {
   const severity = e.severity || "medium";
   const slaHours = Number(sevMeta(severity).sla || 48);
@@ -682,7 +689,7 @@ function mapLiveException(e) {
     employee: e.employee || "ไม่ระบุ",
     shift: e.shift || "day",
     cause: e.cause || "รอตรวจสอบสาเหตุ",
-    detail: e.detail || "",
+    detail: safeExceptionDetail(e),
     stmRaw: e.stm_raw || "—",
     boRaw: e.bo_raw || "—",
     ageHours,
