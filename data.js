@@ -69,8 +69,8 @@ const DB = (() => {
 
   const roles = {
     monitor: {
-      name: "Audit Monitor",
-      desc: "ตรวจรายการ ใส่ note ส่งชี้แจง",
+      name: "เจ้าหน้าที่ Audit",
+      desc: "ตรวจไฟล์และรายการ ใส่หมายเหตุ และส่งให้บริษัทชี้แจง",
       can: ["view", "note", "status", "request_clarify", "export"],
     },
     lead: {
@@ -79,14 +79,14 @@ const DB = (() => {
       can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules"],
     },
     shift_lead: {
-      name: "Shift Lead",
-      desc: "ตอบชี้แจงและแนบหลักฐาน",
+      name: "ผู้ชี้แจงบริษัท",
+      desc: "เห็นเฉพาะบริษัทที่รับผิดชอบ ตอบชี้แจงและแนบหลักฐาน",
       can: ["view", "respond", "attach"],
     },
-    exec: { name: "Executive / Finance", desc: "อ่าน dashboard และรายงาน", can: ["view", "export"] },
+    exec: { name: "ผู้บริหาร / การเงิน", desc: "อ่านภาพรวมและรายงานโดยแก้ข้อมูลไม่ได้", can: ["view", "export"] },
     admin: {
-      name: "System Admin",
-      desc: "ตั้งค่า rule, data source, user, role",
+      name: "ผู้ดูแลระบบ",
+      desc: "จัดการผู้ใช้ บทบาท บริษัท และการตั้งค่าระบบ โดยไม่อนุมัติเคสแทน Audit Lead",
       can: ["view", "rules", "users", "settings", "export"],
     },
   };

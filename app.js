@@ -59,7 +59,7 @@ const ROUTES = [
     group: "ตรวจสอบและอนุมัติ",
     items: [
       { id: "clarify", label: "ติดตามและอนุมัติ", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception กำหนดส่ง และเปิดคิวอนุมัติจากจุดเดียว โดยไม่แบ่งกะ", filters: true },
-      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false, hidden: true },
+      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
     ],
   },
@@ -77,6 +77,7 @@ const ROUTES = [
       { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
       { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
+      { id: "users", label: "ผู้ใช้และสิทธิ์", icon: "users", title: "ผู้ใช้ บทบาท และบริษัท", desc: "กำหนดหน้าที่และบริษัทที่ผู้ใช้แต่ละคนรับผิดชอบ สิทธิ์ถูกบังคับซ้ำที่ฐานข้อมูล", filters: false },
     ],
   },
 ];
@@ -85,11 +86,11 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
-  lead: Object.keys(ROUTE_MAP),
-  shift_lead: ["cloud", "dashboard", "daily-summary", "exceptions", "clarify", "approvals", "damage", "talk", "notifications"],
-  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "talk", "notifications"],
-  admin: Object.keys(ROUTE_MAP),
+  monitor: ["cloud", "dashboard", "daily-summary", "exceptions", "matching", "clarify", "reports", "notifications"],
+  lead: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
+  shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
+  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
+  admin: ["dashboard", "daily-summary", "rules", "notifications", "audit-log", "users"],
 };
 
 /* ---------------- state ---------------- */
@@ -122,13 +123,22 @@ const state = {
   damageCycle: "C1",
   dailySummary: { date: DEFAULT_WORK_DATE, company: "3XB" },
   dataset: "production",
+  access: { email: "", fullName: "", role: "monitor", companies: [], active: false, loaded: false },
   chat: [],
 };
 
 const can = (cap) => DB.roles[state.role].can.includes(cap);
-const companyMaster = () => state.dataset === "production"
-  ? DB.companies.map((company) => company.code === "7M" ? { ...company, code: "UFABET7M", name: "UFABET7M" } : company)
-  : DB.companies;
+const canAccessCompany = (company) => {
+  const code = String(company || "").trim().toUpperCase();
+  if (state.dataset !== "production" || ["lead", "exec", "admin"].includes(state.role)) return true;
+  return state.access.companies.includes("*") || state.access.companies.includes(code);
+};
+const companyMaster = () => {
+  const rows = state.dataset === "production"
+    ? DB.companies.map((company) => company.code === "7M" ? { ...company, code: "UFABET7M", name: "UFABET7M" } : company)
+    : DB.companies;
+  return rows.filter((company) => canAccessCompany(company.code));
+};
 
 /* รายชื่อประเภท exception ทั้งหมด = ที่ตั้งไว้ในระบบ + ที่เกิดจริงจากกฎธุรกิจ */
 function allExceptionTypes() {
@@ -141,7 +151,12 @@ function allExceptionTypes() {
   });
   return out;
 }
-const currentUser = () => DB.users.find((u) => u.role === state.role) || DB.users[0];
+const currentUser = () => ({
+  username: state.access.email || (typeof Sb !== "undefined" ? Sb.currentEmail() : "") || "ผู้ใช้งานระบบ",
+  name: state.access.fullName || state.access.email || "ผู้ใช้งานระบบ",
+  role: state.role,
+  shift: "",
+});
 
 /* ---------------- audit log + toast ---------------- */
 function logAction(action, entity, target, detail) {
@@ -169,7 +184,22 @@ function saveOverride(e) {
   };
   Store.persist();
   if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
+    const authId = Sb.authUser()?.id || null;
+    const stamp = new Date().toISOString();
     const payload = { status: e.status, updated_at: new Date().toISOString() };
+    if (e.status === "clarifying") Object.assign(payload, {
+      requested_by: e.requestedBy || authId,
+      requested_at: e.requestedAt || stamp,
+    });
+    if (e.status === "answered") Object.assign(payload, {
+      response_text: e.responseText || e.resolutionNote || (e.notes || []).map((note) => note.text).filter(Boolean).join("\n") || "ชี้แจงพร้อมหลักฐาน",
+      responded_by: e.respondedBy || authId,
+      responded_at: e.respondedAt || stamp,
+    });
+    if (["approved", "closed"].includes(e.status)) Object.assign(payload, {
+      approved_by: e.approvedBy || authId,
+      approved_at: e.approvedAt || stamp,
+    });
     if (e.status === "closed" && e.resolutionNote) Object.assign(payload, {
       resolution_note: e.resolutionNote,
       resolved_at: e.resolvedAt || new Date().toISOString(),
@@ -220,6 +250,7 @@ function filteredExceptions(source = DB.exceptions) {
   const f = state.filters;
   const x = state.exFilter;
   return source.filter((e) => {
+    if (!canAccessCompany(e.company)) return false;
     if (!inRange(e.date)) return false;
     if (f.company !== "ALL" && e.company !== f.company) return false;
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
@@ -241,6 +272,7 @@ function scopedExceptions() {
   const f = state.filters;
   return DB.exceptions.filter(
     (e) =>
+      canAccessCompany(e.company) &&
       inRange(e.date) &&
       (f.company === "ALL" || e.company === f.company) &&
       (f.direction === "ALL" || e.direction === f.direction),
@@ -380,8 +412,8 @@ function renderNav() {
           (it) =>
             `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}" title="${h(it.label)}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[it.icon]}"/></svg><span>${h(it.label)}</span>
-              ${it.id === "exceptions" ? `<b class="nav-count">${DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status)).length}</b>` : ""}
-              ${it.id === "approvals" ? `<b class="nav-count">${DB.exceptions.filter((e) => e.status === "answered").length}</b>` : ""}
+              ${it.id === "exceptions" ? `<b class="nav-count">${DB.exceptions.filter((e) => canAccessCompany(e.company) && !["closed", "approved"].includes(e.status)).length}</b>` : ""}
+              ${it.id === "approvals" ? `<b class="nav-count">${DB.exceptions.filter((e) => canAccessCompany(e.company) && e.status === "answered").length}</b>` : ""}
             </a>`,
         )
         .join("")
@@ -779,6 +811,14 @@ function mapLiveException(e) {
     resolvedAt: e.resolved_at || null,
     resolvedBy: e.resolved_by || null,
     matchConfidence: Number(e.match_confidence || 0),
+    assignedTo: e.assigned_to || null,
+    requestedBy: e.requested_by || null,
+    requestedAt: e.requested_at || null,
+    responseText: e.response_text || "",
+    respondedBy: e.responded_by || null,
+    respondedAt: e.responded_at || null,
+    approvedBy: e.approved_by || null,
+    approvedAt: e.approved_at || null,
   };
 }
 
@@ -3441,7 +3481,7 @@ VIEWS.rules = (root) => {
 /* =============================================================
    VIEW: Users & permission
    ============================================================= */
-VIEWS.users = (root) => {
+VIEWS.users = async (root) => {
   const caps = [
     ["view", "ดูข้อมูล / dashboard"],
     ["note", "ใส่ note"],
@@ -3457,7 +3497,31 @@ VIEWS.users = (root) => {
     ["settings", "ตั้งค่าระบบ"],
     ["export", "export รายงาน"],
   ];
+  root.innerHTML = `<section class="panel"><div class="loading-block"><span class="spinner"></span><strong>กำลังโหลดผู้ใช้และสิทธิ์จริงจาก Supabase</strong></div></section>`;
+  let users = [];
+  let loadError = "";
+  try {
+    users = await Sb.adminUserAccess();
+    if (!Array.isArray(users)) users = users ? [users] : [];
+  } catch (error) {
+    loadError = error.message || "โหลดผู้ใช้ไม่สำเร็จ";
+  }
   root.innerHTML = `
+    ${loadError ? `<section class="alert warn"><strong>ยังโหลดทะเบียนผู้ใช้ไม่ได้</strong><span>${h(loadError)}</span></section>` : ""}
+    <section class="panel access-admin-panel">
+      <div class="panel-heading"><div><p class="eyebrow">User access</p><h2>เพิ่มหรือแก้สิทธิ์ผู้ใช้</h2><small class="head-sub">ผู้ใช้ต้องสมัครหรือได้รับเชิญใน Supabase Auth ก่อน จึงกำหนดสิทธิ์จากหน้านี้ได้</small></div></div>
+      <form id="accessUserForm" class="access-user-form">
+        <label>อีเมล<input id="accessEmail" type="email" required placeholder="name@company.com"></label>
+        <label>ชื่อที่แสดง<input id="accessName" type="text" required placeholder="ชื่อ-นามสกุล"></label>
+        <label>บทบาท<select id="accessRole">${Object.entries(DB.roles).map(([key, role]) => `<option value="${key}">${h(role.name)}</option>`).join("")}</select></label>
+        <label class="access-active"><input id="accessActive" type="checkbox" checked> เปิดใช้งาน</label>
+        <fieldset><legend>บริษัทที่รับผิดชอบ</legend><div class="company-access-grid">
+          ${companyMaster().map((company) => `<label><input type="checkbox" name="accessCompany" value="${h(company.code)}"> ${h(company.code)}</label>`).join("")}
+        </div><small>Audit Lead, ผู้บริหาร และผู้ดูแลระบบเห็นทุกบริษัทโดยตำแหน่งอยู่แล้ว</small></fieldset>
+        <button class="primary-button" type="submit">บันทึกสิทธิ์</button>
+      </form>
+    </section>
+
     <section class="panel">
       <div class="panel-heading"><div><p class="eyebrow">Permission Matrix</p><h2>สิทธิ์ตามบทบาท</h2></div>
       <span class="health ok">ไม่มีบทบาทใดลบข้อมูลได้</span></div>
@@ -3483,20 +3547,50 @@ VIEWS.users = (root) => {
       <div class="panel-heading"><div><p class="eyebrow">Users</p><h2>ผู้ใช้งานในระบบ</h2></div></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Username</th><th>ชื่อ</th><th>บทบาท</th><th>กะ</th><th>คำอธิบายสิทธิ์</th></tr></thead>
+          <thead><tr><th>อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>บริษัทที่รับผิดชอบ</th><th>สถานะ</th></tr></thead>
           <tbody>
-            ${DB.users
+            ${users
               .map(
-                (u) => `<tr><td class="mono">${h(u.username)}</td><td>${h(u.name)}</td>
-              <td><span class="badge blue">${h(DB.roles[u.role].name)}</span></td>
-              <td>${h(DB.shifts.find((s) => s.code === u.shift).name)}</td>
-              <td class="muted">${h(DB.roles[u.role].desc)}</td></tr>`,
+                (u) => `<tr class="access-user-row" data-email="${h(u.email)}"><td class="mono">${h(u.email)}</td><td>${h(u.full_name || "-")}</td>
+              <td><span class="badge blue">${h(DB.roles[u.role]?.name || u.role)}</span></td>
+              <td>${(u.companies || []).length ? (u.companies || []).map((company) => `<span class="badge">${h(company)}</span>`).join(" ") : '<span class="muted">ทุกบริษัทตามบทบาท</span>'}</td>
+              <td>${u.active ? '<span class="badge green">ใช้งาน</span>' : '<span class="badge red">ระงับ</span>'}</td></tr>`,
               )
-              .join("")}
+              .join("") || `<tr><td colspan="5" class="empty">ยังไม่มีผู้ใช้ในทะเบียนสิทธิ์</td></tr>`}
           </tbody>
         </table>
       </div>
     </section>`;
+
+  root.querySelectorAll(".access-user-row").forEach((row) => row.addEventListener("click", () => {
+    const user = users.find((item) => item.email === row.dataset.email);
+    if (!user) return;
+    $("#accessEmail").value = user.email || "";
+    $("#accessName").value = user.full_name || "";
+    $("#accessRole").value = user.role || "monitor";
+    $("#accessActive").checked = user.active !== false;
+    const selected = new Set(user.companies || []);
+    $$('[name="accessCompany"]', root).forEach((box) => { box.checked = selected.has(box.value); });
+    $("#accessEmail").scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
+  $("#accessUserForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = "กำลังบันทึก...";
+    try {
+      const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
+      await Sb.adminSaveUserAccess($("#accessEmail").value, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      toast("บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว");
+      logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
+      VIEWS.users(root);
+    } catch (error) {
+      toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
+    } finally {
+      button.disabled = false;
+      button.textContent = "บันทึกสิทธิ์";
+    }
+  });
 };
 
 /* =============================================================
@@ -6178,27 +6272,53 @@ function prepareProductionData() {
   state.dataset = "production";
 }
 
-function applyAuthenticatedRole() {
+async function applyAuthenticatedRole() {
   const user = Sb.authUser() || {};
   const email = String(user.email || "").toLowerCase();
   const app = window.APP_CONFIG || {};
-  const requested = app.roleByEmail?.[email] || user.app_metadata?.role || user.user_metadata?.role || app.defaultRole || "monitor";
-  state.role = ROUTE_ROLES[requested] ? requested : "monitor";
-  $("#signedUser").textContent = user.email || "ผู้ใช้งานระบบ";
+  let access = null;
+  try {
+    access = await Sb.myAccess();
+    if (Array.isArray(access)) access = access[0] || null;
+  } catch (error) {
+    /* ช่วง deploy migration ให้บัญชี bootstrap เดิมยังเข้าไปติดตั้ง schema ได้
+       บัญชีอื่นจะไม่ถูกอนุญาตจากค่า default หรือ metadata ใน browser */
+    const bootstrapRole = app.roleByEmail?.[email];
+    if (!bootstrapRole) throw error;
+    access = { email, full_name: email, role: bootstrapRole, active: true, companies: ["*"], migration_pending: true };
+  }
+  if (!access?.active) throw new Error("บัญชีนี้ถูกระงับหรือยังไม่ได้กำหนดสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ");
+  const requested = ROUTE_ROLES[access.role] ? access.role : "monitor";
+  state.role = requested;
+  state.access = {
+    email: access.email || email,
+    fullName: access.full_name || access.email || email,
+    role: requested,
+    companies: Array.isArray(access.companies) ? access.companies.map((value) => String(value).toUpperCase()) : [],
+    active: true,
+    loaded: !access.migration_pending,
+  };
+  if (state.filters.company !== "ALL" && !canAccessCompany(state.filters.company)) state.filters.company = "ALL";
+  if (state.dailySummary.company && !canAccessCompany(state.dailySummary.company)) state.dailySummary.company = companyMaster()[0]?.code || "";
+  $("#signedUser").innerHTML = `${h(state.access.fullName)}<small>${h(DB.roles[state.role].name)}</small>`;
 }
 
-function enterProductionApp() {
+async function enterProductionApp() {
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
-  const app = window.APP_CONFIG || {};
-  const allowed = Array.isArray(app.allowedEmails) ? app.allowedEmails.map((value) => String(value).trim().toLowerCase()) : [];
-  if (!email || (allowed.length && !allowed.includes(email))) {
+  if (!email) {
     Sb.signOut();
-    showLoginGate("บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งาน กรุณาติดต่อผู้ดูแลระบบ");
+    showLoginGate("ไม่พบอีเมลของบัญชี กรุณาเข้าสู่ระบบใหม่");
     return false;
   }
   prepareProductionData();
-  applyAuthenticatedRole();
+  try {
+    await applyAuthenticatedRole();
+  } catch (error) {
+    Sb.signOut();
+    showLoginGate(error.message || "ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้ได้");
+    return false;
+  }
   $("#loginGate").hidden = true;
   $("#appShell").hidden = false;
   state.route = parseHash();
@@ -6258,7 +6378,7 @@ async function boot() {
     error.hidden = true;
     try {
       await Sb.signIn($("#loginEmail").value.trim(), $("#loginPassword").value);
-      enterProductionApp();
+      await enterProductionApp();
     } catch (e) {
       showLoginGate(e.message || "เข้าสู่ระบบไม่สำเร็จ");
     } finally {
@@ -6343,8 +6463,8 @@ async function boot() {
   }
 
   if (authCallback === "recovery") showPasswordResetGate();
-  else if (authCallback) enterProductionApp();
-  else if (restored) enterProductionApp();
+  else if (authCallback) await enterProductionApp();
+  else if (restored) await enterProductionApp();
   else showLoginGate();
   /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
   const savedSys = Store.data.companySystems || {};

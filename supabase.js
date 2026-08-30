@@ -335,7 +335,8 @@ const Sb = (() => {
       "member_code", "ex_type", "type_name", "severity", "status", "track", "due_at", "system_amount",
       "bank_amount", "amount_diff", "risk_amount", "currency", "fx_rate", "time_diff_sec", "employee", "shift",
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
-      "resolved_by", "match_confidence",
+      "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
+      "responded_by", "responded_at", "approved_by", "approved_at",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
        เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
@@ -402,6 +403,18 @@ const Sb = (() => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+
+  /* สิทธิ์ใช้งานจริงมาจากฐานข้อมูลเท่านั้น ไม่อ่าน role จาก user_metadata
+     เพื่อป้องกันผู้ใช้แก้ metadata ฝั่ง client แล้วขยายสิทธิ์ตนเอง */
+  const myAccess = () => rpc("get_my_access");
+  const adminUserAccess = () => rpc("admin_list_user_access");
+  const adminSaveUserAccess = (email, fullName, role, active, companies) => rpc("admin_upsert_user_access", {
+    p_email: String(email || "").trim().toLowerCase(),
+    p_full_name: String(fullName || "").trim(),
+    p_role: role,
+    p_active: !!active,
+    p_companies: [...new Set((companies || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))],
+  });
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
@@ -653,6 +666,9 @@ const Sb = (() => {
     claimJob,
     finishJob,
     failJob,
+    myAccess,
+    adminUserAccess,
+    adminSaveUserAccess,
     reclassifySourceFile,
     manualMatchClarificationFile,
     replaceSourceFile,

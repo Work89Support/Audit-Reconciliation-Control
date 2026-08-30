@@ -260,6 +260,20 @@ h3 { font-size: 15px; }
 .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .signed-user { display: grid; gap: 1px; font-size: 11px; color: var(--muted); }
 .signed-user b { color: var(--text); font-size: 12px; font-weight: 500; }
+.signed-user small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 600; }
+
+.access-user-form { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr auto; gap: 14px; align-items: end; }
+.access-user-form > label { display: grid; gap: 7px; font-weight: 700; color: var(--text); }
+.access-user-form input[type="email"], .access-user-form input[type="text"], .access-user-form select { width: 100%; }
+.access-user-form .access-active { display: flex; align-items: center; min-height: 46px; gap: 8px; white-space: nowrap; }
+.access-user-form fieldset { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.access-user-form legend { padding: 0 8px; font-weight: 800; }
+.company-access-grid { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 8px; }
+.company-access-grid label { display: inline-flex; align-items: center; gap: 6px; }
+.access-user-row { cursor: pointer; }
+.access-user-row:hover { background: #f2f7ff; }
+@media (max-width: 1080px) { .access-user-form { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 680px) { .access-user-form { grid-template-columns: 1fr; } .access-user-form fieldset { grid-column: 1; } }
 .role-switch { display: grid; gap: 2px; font-size: 11px; color: var(--muted); }
 .role-switch select { min-height: 38px; }
 
