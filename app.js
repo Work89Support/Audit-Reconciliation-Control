@@ -5564,24 +5564,43 @@ function issueClarificationDoc(e, narrative) {
 VIEWS.clarify = (root) => {
   if (!ensureLiveOverview(root)) return;
   if (state.dataset === "production" && Sb.signedIn()) {
-    const rows = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
+    const rows = scopedExceptions().filter((e) => ["open", "clarifying", "answered"].includes(e.status));
+    const newRows = rows.filter((e) => e.status === "open");
+    const waitingRows = rows.filter((e) => e.status === "clarifying");
+    const answeredRows = rows.filter((e) => e.status === "answered");
     const groups = [...new Set(rows.map((e) => e.company || "ไม่ระบุ"))].sort((a, b) => a.localeCompare(b, "th"));
     root.innerHTML = `
       <section class="status-strip four">
-        <article class="warn"><span>รอชี้แจงทั้งหมด</span><strong>${num(rows.length)}</strong><small>ข้อมูลจริงจาก Supabase</small></article>
+        <article class="warn"><span>เคสใหม่ ยังไม่ได้ส่งชี้แจง</span><strong>${num(newRows.length)}</strong><small>ต้องตรวจและส่งให้ทีม</small></article>
         <article><span>บริษัทที่เกี่ยวข้อง</span><strong>${num(groups.length)}</strong><small>ไม่แบ่งกะ</small></article>
-        <article class="ok"><span>ชี้แจงกลับมาแล้ว</span><strong>${num(rows.filter((e) => e.status === "answered").length)}</strong><small>รอตรวจทาน</small></article>
-        <article class="bad"><span>เกิน SLA</span><strong>${num(rows.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
+        <article><span>ส่งแล้ว รอทีมตอบ</span><strong>${num(waitingRows.length)}</strong><small>กำลังติดตามคำชี้แจง</small></article>
+        <article class="ok"><span>ทีมตอบแล้ว</span><strong>${num(answeredRows.length)}</strong><small>รอ Audit ตรวจและอนุมัติ</small></article>
       </section>
       <section class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">ยึดบริษัทจากรายการ Exception จริง ไม่จัดกลุ่มตามกะ</small></div><button class="primary-button sm" id="openApprovalQueue">เปิดคิวรออนุมัติ (${num(rows.filter((e) => e.status === "answered").length)})</button></div>
+        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">กดการ์ดบริษัทเพื่อเปิดรายการที่ต้องดำเนินการทั้งหมด</small></div><button class="primary-button sm" id="openApprovalQueue" ${answeredRows.length ? "" : "disabled"}>ตรวจคำชี้แจงที่ตอบแล้ว (${num(answeredRows.length)})</button></div>
         <div class="company-overview-grid">${groups.map((company) => {
           const own = rows.filter((e) => (e.company || "ไม่ระบุ") === company);
-          return `<article class="company-overview-card"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small>เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span class="warn">รอชี้แจง <b>${num(own.filter((e) => e.status === "clarifying").length)}</b></span><span class="ok">ตอบแล้ว <b>${num(own.filter((e) => e.status === "answered").length)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div></article>`;
+          const ownNew = own.filter((e) => e.status === "open").length;
+          const ownWaiting = own.filter((e) => e.status === "clarifying").length;
+          const ownAnswered = own.filter((e) => e.status === "answered").length;
+          return `<article class="company-overview-card action-card" role="button" tabindex="0" data-clarify-company="${h(company)}" aria-label="เปิดเคสของบริษัท ${h(company)}"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small class="${own.some((e) => e.overSla) ? "danger" : ""}">เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span>ยังไม่ได้ส่ง <b>${num(ownNew)}</b></span><span class="warn">รอทีมตอบ <b>${num(ownWaiting)}</b></span><span class="ok">ตอบแล้ว <b>${num(ownAnswered)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div><div class="company-card-action">ดูเคสทั้งหมด <span aria-hidden="true">→</span></div></article>`;
         }).join("") || `<p class="empty-box">ไม่มีงานชี้แจงในช่วงที่เลือก</p>`}</div>
       </section>
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
     root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
+    const openCompanyCases = (company) => go("exceptions", {
+      filters: { company },
+      exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
+    });
+    root.querySelectorAll("[data-clarify-company]").forEach((card) => {
+      card.addEventListener("click", () => openCompanyCases(card.dataset.clarifyCompany));
+      card.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openCompanyCases(card.dataset.clarifyCompany);
+        }
+      });
+    });
     $("#openApprovalQueue")?.addEventListener("click", () => go("approvals"));
     return;
   }

@@ -48,5 +48,8 @@ assert.match(app, /async function loadLiveDamage\(force = false\)/, "ทะเ�
 assert.match(app, /ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้/, "ทะเบียนความเสียหายต้องอธิบายสถานะว่างโดยไม่แสดงศูนย์ให้เข้าใจผิด");
 assert.match(app, /await Sb\.post\("damages"[\s\S]+await loadLiveDamage\(true\)/, "บันทึกความเสียหายต้องรอ Supabase สำเร็จและรีเฟรชทะเบียนทันที");
 assert.match(app, /บันทึก Supabase ไม่สำเร็จ:[\s\S]+DB\.damages = DB\.damages\.filter/, "หากบันทึกจริงล้มเหลวต้องย้อนสถานะ optimistic ออก");
+assert.match(app, /เคสใหม่ ยังไม่ได้ส่งชี้แจง/, "หน้าชี้แจงต้องแยกเคสใหม่ออกจากเคสที่ส่งให้ทีมแล้ว");
+assert.match(app, /data-clarify-company=/, "การ์ดบริษัทในหน้าชี้แจงต้องกดเปิดรายการเคสได้");
+assert.match(app, /ตรวจคำชี้แจงที่ตอบแล้ว/, "ปุ่มคิวอนุมัติต้องบอกชัดว่าเป็นคำชี้แจงที่ทีมตอบแล้ว");
 
-console.log("App shell QA follow-up: 37 checks passed");
+console.log("App shell QA follow-up: 40 checks passed");
