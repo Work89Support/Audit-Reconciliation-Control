@@ -1206,19 +1206,52 @@ td.wrap { white-space: normal; max-width: 420px; }
 }
 .file-replacement-ready {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 3px 10px;
-  align-items: center;
+  gap: 10px;
   margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid #8fd5a3;
-  border-radius: 10px;
-  background: #effaf2;
+  padding: 12px;
+  border: 1px solid #9ad8aa;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f1fbf4, #f8fcfa);
   color: #16713a;
 }
 .file-replacement-ready[hidden] { display: none; }
-.file-replacement-ready b { font-size: 12px; }
-.file-replacement-ready span {
+.file-replacement-ready-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.file-replacement-ready-head > i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #24a157;
+  color: #fff;
+  font-style: normal;
+  font-weight: 800;
+}
+.file-replacement-ready-head > div { display: grid; gap: 1px; min-width: 0; }
+.file-replacement-ready b { color: var(--text); font-size: 13px; }
+.file-replacement-ready small { color: var(--muted); font-size: 11px; }
+.file-replacement-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.file-replacement-compare > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.file-replacement-compare > i { color: #24a157; font-style: normal; font-weight: 800; }
+.file-replacement-compare span {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
@@ -1227,10 +1260,9 @@ td.wrap { white-space: normal; max-width: 420px; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.file-replacement-ready small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 11px;
+@media (max-width: 680px) {
+  .file-replacement-compare { grid-template-columns: 1fr; }
+  .file-replacement-compare > i { justify-self: center; transform: rotate(90deg); }
 }
 .file-preview-content {
   min-height: 360px;
