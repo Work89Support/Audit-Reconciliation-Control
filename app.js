@@ -163,11 +163,20 @@ function saveOverride(e) {
     status: e.status,
     hasEvidence: e.hasEvidence,
     notes: e.notes,
+    resolutionNote: e.resolutionNote || "",
+    resolvedAt: e.resolvedAt || null,
+    resolvedBy: e.resolvedBy || null,
     evidence: (e.evidence || []).map((f) => ({ name: f.name, size: f.size, at: f.at })),
   };
   Store.persist();
   if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
-    Sb.patch("exceptions", `id=eq.${encodeURIComponent(e.dbId)}`, { status: e.status, updated_at: new Date().toISOString() }).catch((err) => {
+    const payload = { status: e.status, updated_at: new Date().toISOString() };
+    if (e.status === "closed" && e.resolutionNote) Object.assign(payload, {
+      resolution_note: e.resolutionNote,
+      resolved_at: e.resolvedAt || new Date().toISOString(),
+      resolved_by: e.resolvedBy || Sb.currentEmail() || currentUser().username,
+    });
+    Sb.patch("exceptions", `id=eq.${encodeURIComponent(e.dbId)}`, payload).catch((err) => {
       toast("บันทึกสถานะกลับ Supabase ไม่สำเร็จ: " + err.message, "warn");
     });
   }
@@ -180,6 +189,9 @@ function applyStoredState() {
     e.status = o.status ?? e.status;
     e.hasEvidence = o.hasEvidence ?? e.hasEvidence;
     e.notes = o.notes || e.notes;
+    e.resolutionNote = o.resolutionNote || e.resolutionNote;
+    e.resolvedAt = o.resolvedAt || e.resolvedAt;
+    e.resolvedBy = o.resolvedBy || e.resolvedBy;
     e.evidence = o.evidence || e.evidence;
   });
   if (Store.data.settings) Object.assign(DB.settings, Store.data.settings);
@@ -316,6 +328,46 @@ const sevMeta = (code) => DB.severities.find((s) => s.code === code) || { name: 
 const isEmptyPmFile = (file) => file?.parsed && !file?.parse_error && file?.kind === "pm_statement" && Number(file?.row_count || 0) === 0 && Number(file?.size_bytes || 0) <= 16;
 const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรายการ (0)" : "พร้อมใช้งาน";
 
+/* ปิดด่วนได้เมื่อมีรายการครบทั้งสองฝั่งและยอดเท่ากัน ผู้ตรวจยังต้องกดยืนยันเอง */
+function isQuickCloseEligible(e) {
+  return e
+    && !["closed", "approved", "damage"].includes(e.status)
+    && e.bankAmount !== null && e.bankAmount !== undefined
+    && e.systemAmount !== null && e.systemAmount !== undefined
+    && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
+}
+
+function completeQuickClose(e) {
+  if (!can("approve")) return deny("ปิดเคส");
+  if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
+  const note = "Audit ยืนยันรายการครบทั้ง STM และ BO/ระบบ และยอดตรงกัน";
+  e.status = "closed";
+  e.resolutionNote = note;
+  e.resolvedAt = new Date().toISOString();
+  e.resolvedBy = (typeof Sb !== "undefined" && Sb.signedIn() ? Sb.currentEmail() : "") || currentUser().username;
+  e.notes = e.notes || [];
+  e.notes.push({ by: currentUser().username, at: nowStamp(), text: note });
+  logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · ต่างเวลา ${num(e.timeDiffSec || 0)} วินาที`);
+  saveOverride(e);
+  closeModal();
+  closeDrawer();
+  toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
+  renderNav();
+  render();
+}
+
+function confirmQuickClose(e) {
+  if (!can("approve")) return deny("ปิดเคส");
+  if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
+  openModal(
+    `ยืนยันปิดเคส ${h(e.id)}`,
+    `<div class="quick-close-box"><strong>พบข้อมูลครบทั้งสองฝั่งและยอดตรงกัน</strong><div class="quick-close-grid"><div><span>STM / ธนาคาร</span><b>${money(e.bankAmount)}</b></div><div><span>BO / ระบบ</span><b>${money(e.systemAmount)}</b></div><div><span>ผลต่างยอด</span><b>${money(Number(e.systemAmount) - Number(e.bankAmount))}</b></div><div><span>ผลต่างเวลา</span><b>${num(e.timeDiffSec || 0)} วินาที</b></div></div><small>ระบบจะบันทึกผู้ยืนยัน เวลา และเหตุผลไว้ใน Audit Log การปิดนี้เป็นการตัดสินใจของผู้ตรวจ ไม่ใช่การปิดอัตโนมัติ</small></div>`,
+    `<button class="ghost-button" id="quickCloseCancel">กลับไปตรวจ</button><button class="primary-button" id="quickCloseConfirm">ยืนยันยอดตรงและปิดเคส</button>`,
+  );
+  $("#quickCloseCancel").addEventListener("click", closeModal);
+  $("#quickCloseConfirm").addEventListener("click", () => completeQuickClose(e));
+}
+
 /* ---------------- shell rendering ---------------- */
 function renderNav() {
   const allowed = ROUTE_ROLES[state.role];
@@ -327,7 +379,7 @@ function renderNav() {
       items
         .map(
           (it) =>
-            `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}">
+            `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}" title="${h(it.label)}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[it.icon]}"/></svg><span>${h(it.label)}</span>
               ${it.id === "exceptions" ? `<b class="nav-count">${DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status)).length}</b>` : ""}
               ${it.id === "approvals" ? `<b class="nav-count">${DB.exceptions.filter((e) => e.status === "answered").length}</b>` : ""}
@@ -336,6 +388,17 @@ function renderNav() {
         .join("")
     );
   }).join("");
+}
+
+function setSidebarCollapsed(collapsed) {
+  const shell = $("#appShell");
+  const button = $("#navToggle");
+  if (!shell || !button) return;
+  shell.classList.toggle("sidebar-collapsed", collapsed);
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.setAttribute("aria-label", collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู");
+  button.title = collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู";
+  try { localStorage.setItem("audit-sidebar-collapsed", collapsed ? "1" : "0"); } catch (_) {}
 }
 
 function renderAuditFlow() {
@@ -1937,7 +2000,7 @@ VIEWS.exceptions = (root) => {
       <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
       <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
       <td class="sheet-explanation ${explanation ? "answered" : "waiting"}">${explanation ? h(explanation) : "<span>เว้นไว้รอชี้แจง</span>"}</td>
-      <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจ</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ไฟล์</button></div></td>
+      <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจ</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ไฟล์</button>${isQuickCloseEligible(e) && can("approve") ? `<button class="primary-button xs quick-close" data-case-quick-close="${h(e.id)}">ปิดเคส</button>` : ""}</div></td>
     </tr>`;
   }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
 
@@ -2077,6 +2140,11 @@ VIEWS.exceptions = (root) => {
     event.stopPropagation();
     openException(button.dataset.caseFiles, { focusFiles: true });
   }));
+  root.querySelectorAll("[data-case-quick-close]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const exception = DB.exceptions.find((item) => item.id === button.dataset.caseQuickClose);
+    if (exception) confirmQuickClose(exception);
+  }));
 };
 
 /* =============================================================
@@ -2141,7 +2209,8 @@ function openException(id, options = {}) {
     { key: "note", label: "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote },
     { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
-  const ready = checklist.every((c) => c.ok);
+  const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
+  const ready = checklist.every((c) => c.ok) || quickCloseEligible;
 
   drawer.innerHTML = `
     <header class="drawer-head">
@@ -2188,6 +2257,7 @@ function openException(id, options = {}) {
       </ol>
 
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
+      ${quickCloseEligible ? `<p class="quick-close-hint"><b>ปิดเคสได้ทันที:</b> พบทั้ง STM และ BO/ระบบ และยอดตรงกัน ผู้ตรวจสามารถยืนยันปิดเคสได้โดยไม่ต้องรอหลักฐานเพิ่ม</p>` : ""}
       <ul class="close-check">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
@@ -2219,8 +2289,8 @@ function openException(id, options = {}) {
     </div>
 
     <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${!e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${quickCloseEligible ? "ยอดสองฝั่งตรงกัน — ยืนยันเพื่อปิดเคสได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${quickCloseEligible ? "ยืนยันยอดตรงและปิดเคส" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <details class="drawer-more-actions"><summary>เอกสารและการดำเนินการอื่น</summary><div><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>`;
 
@@ -2346,6 +2416,7 @@ function openException(id, options = {}) {
   });
   $("#btnApprove").addEventListener("click", () => {
     if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
+    if (quickCloseEligible) return confirmQuickClose(e);
     if (!ready) return toast("เช็คลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
     e.status = "closed";
     logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
@@ -6174,9 +6245,19 @@ async function boot() {
   $("#autoStatus").addEventListener("click", () => go("cloud"));
   $("#navToggle").addEventListener("click", () => {
     const sb = $("#sidebar");
-    sb.classList.toggle("open");
-    $("#navToggle").setAttribute("aria-expanded", sb.classList.contains("open"));
+    if (window.matchMedia("(max-width: 1080px)").matches) {
+      sb.classList.toggle("open");
+      $("#navToggle").setAttribute("aria-expanded", String(sb.classList.contains("open")));
+      return;
+    }
+    setSidebarCollapsed(!$("#appShell").classList.contains("sidebar-collapsed"));
   });
+
+  if (!window.matchMedia("(max-width: 1080px)").matches) {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem("audit-sidebar-collapsed") === "1"; } catch (_) {}
+    setSidebarCollapsed(collapsed);
+  }
 
   if (authCallback === "recovery") showPasswordResetGate();
   else if (authCallback) enterProductionApp();
