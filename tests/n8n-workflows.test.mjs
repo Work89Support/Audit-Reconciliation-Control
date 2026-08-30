@@ -11,6 +11,7 @@ const telegram = await load("audit-telegram-notifications.json");
 const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
 const reclassifySql = await readFile(new URL("../supabase/20260825_manual_file_reclassify.sql", import.meta.url), "utf8");
+const replacementSql = await readFile(new URL("../supabase/20260830_source_file_replacement.sql", import.meta.url), "utf8");
 const directionSql = await readFile(new URL("../supabase/20260827_filename_direction_detection.sql", import.meta.url), "utf8");
 const mailDateSql = await readFile(new URL("../supabase/20260829_mail_subject_date_normalization.sql", import.meta.url), "utf8");
 const templateKindSql = await readFile(new URL("../supabase/20260829_template_file_classification.sql", import.meta.url), "utf8");
@@ -164,6 +165,10 @@ assert.match(reclassifySql, /auth\.uid\(\) is null/, "manual reclassification mu
 assert.match(reclassifySql, /parse_error=null/, "manual reclassification must clear the stale parser error");
 assert.match(reclassifySql, /jsonb_array_length\(v_job\.missing_groups\)=0/, "retry must wait until the required file groups are complete");
 assert.match(reclassifySql, /'reclassify_and_retry'/, "manual reclassification must be written to the audit log");
+assert.match(replacementSql, /source_file_replacements/, "file replacement must preserve an immutable audit history");
+assert.match(replacementSql, /auth\.uid\(\) is null/, "file replacement must require an authenticated user");
+assert.match(replacementSql, /replace_source_file_and_retry/, "file replacement must write an audit event");
+assert.match(replacementSql, /old_storage_path/, "file replacement history must preserve the original storage object");
 assert.match(directionSql, /audit_file_direction/, "the database must recognize compact D/W/DW direction codes");
 assert.match(directionSql, /audit_is_bank_statement_pdf/, "legacy single-direction bank PDFs must be classified as STM");
 assert.match(directionSql, /PS8/, "the newest database normalizer must preserve all canonical operating companies");
@@ -174,6 +179,7 @@ assert.match(templateKindSql, /PM_\[A-Z0-9\]\+_\(D\|W\|DW\)_/, "generic PM templ
 assert.match(templateKindSql, /MANUAL_\(PAYMENT\|CREDIT\|BONUS\)_/, "manual file templates must be reclassified without preview");
 assert.match(templateKindSql, /COMMISSION_\(WITHDRAW\|EVIDENCE\)_/, "commission templates must be reclassified without preview");
 assert.match(supabaseSource, /reclassifySourceFile/, "the browser client must expose the reclassification RPC");
+assert.match(supabaseSource, /replaceSourceFile/, "the browser client must expose safe file replacement");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
 assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");
@@ -186,6 +192,8 @@ assert.match(appSource, /id="fileKindSelect"/, "file preview must let the audito
 assert.match(appSource, /id="fileKindHelp"/, "file preview must explain the selected file type");
 assert.match(appSource, /Statement หรือรายการเดินบัญชีธนาคาร/, "STM guidance must be visible in file preview");
 assert.match(appSource, /id="fileReclassify"/, "file preview must provide a save-and-retry action");
+assert.match(appSource, /id="fileReplaceUpload"/, "file preview must let the auditor upload a corrected replacement");
+assert.match(appSource, /id="fileReplacementInput"/, "replacement upload must use an explicit local file input");
 assert.match(appSource, /next-action-bar/, "every operational page must show a recommended next action");
 assert.match(appSource, /data-report-date/, "daily report rows must link to their operating-day summary");
 assert.match(appSource, /data-scroll-daily="dailyReconcileResult"/, "daily reconciliation status must open the result section");

@@ -3540,6 +3540,27 @@ function exportOcrExcel(meta, ocr) {
   if (!result.ok) throw new Error(result.reason || "สร้าง Excel ไม่สำเร็จ");
 }
 
+async function validateReplacementFile(file) {
+  if (!file || !file.size) throw new Error("ไฟล์ใหม่ไม่มีข้อมูล");
+  if (file.size > 50 * 1024 * 1024) throw new Error("ไฟล์ใหม่ต้องมีขนาดไม่เกิน 50 MB");
+  const ext = (String(file.name || "").split(".").pop() || "").toLowerCase();
+  if (!["xlsx", "xlsm", "csv", "txt", "pdf", "docx"].includes(ext)) {
+    throw new Error("รองรับไฟล์ XLSX, XLSM, CSV, TXT, PDF และ DOCX เท่านั้น");
+  }
+  const buffer = await file.arrayBuffer();
+  if (["xlsx", "xlsm"].includes(ext)) {
+    try { await XlsxReader.read(buffer); }
+    catch (error) { throw new Error("ไฟล์ Excel ใหม่ยังเปิดไม่ได้ กรุณาเปิดใน Excel แล้ว Save As เป็น .xlsx ก่อนอัปโหลด"); }
+  } else if (ext === "pdf") {
+    const signature = new TextDecoder("latin1").decode(new Uint8Array(buffer.slice(0, 5)));
+    if (signature !== "%PDF-") throw new Error("ไฟล์ที่เลือกใช้นามสกุล PDF แต่เนื้อหาไม่ใช่ PDF ที่สมบูรณ์");
+  } else if (ext === "docx") {
+    const bytes = new Uint8Array(buffer.slice(0, 2));
+    if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error("ไฟล์ DOCX ใหม่ไม่สมบูรณ์ กรุณาเปิดและบันทึกใหม่ก่อนอัปโหลด");
+  }
+  return true;
+}
+
 async function openStoredFilePreview(meta) {
   const name = meta.name || "ไฟล์ต้นฉบับ";
   const ext = (name.split(".").pop() || "").toLowerCase();
@@ -3564,7 +3585,7 @@ async function openStoredFilePreview(meta) {
   openModal(
     h(name),
     `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div>${canReclassify ? `<div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
-    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
+    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
   $("#filePreviewClose").addEventListener("click", closeModal);
@@ -3632,6 +3653,71 @@ async function openStoredFilePreview(meta) {
       button.textContent = old;
     }
   });
+  if (canReclassify) {
+    const replacementInput = $("#fileReplacementInput");
+    const replacementButton = $("#fileReplaceUpload");
+    replacementButton.addEventListener("click", () => {
+      replacementInput.value = "";
+      replacementInput.click();
+    });
+    replacementInput.addEventListener("change", async () => {
+      const file = replacementInput.files && replacementInput.files[0];
+      if (!file) return;
+      const company = $("#fileCompanySelect").value;
+      const kind = $("#fileKindSelect").value;
+      const saveButton = $("#fileReclassify");
+      const oldLabel = replacementButton.textContent;
+      try {
+        replacementButton.disabled = true;
+        saveButton.disabled = true;
+        replacementButton.textContent = "กำลังตรวจไฟล์ใหม่...";
+        await validateReplacementFile(file);
+        const confirmed = window.confirm(
+          `แทนที่ไฟล์ “${name}” ด้วย “${file.name}” ใช่หรือไม่?\n\nไฟล์เดิมจะยังเก็บไว้ในประวัติ และไฟล์ใหม่จะถูกส่งกลับเข้าคิวตรวจอัตโนมัติ`,
+        );
+        if (!confirmed) return;
+        replacementButton.textContent = "กำลังอัปโหลด...";
+        const result = await Sb.replaceSourceFile(meta.id, meta.path, file, company, kind);
+        logAction("replace_source_file_and_retry", "source_file", meta.id, `${name} → ${file.name}`);
+        updateSourceFileCaches(meta.id, {
+          file_name: result?.file_name || file.name,
+          mime_type: result?.mime_type || file.type || "application/octet-stream",
+          size_bytes: result?.size_bytes || file.size,
+          storage_path: result?.storage_path,
+          checksum: result?.checksum || null,
+          company,
+          kind,
+          parsed: false,
+          parsed_at: null,
+          row_count: null,
+          parse_error: null,
+        });
+        closeModal();
+        const queued = !!result?.queued;
+        toast(
+          queued
+            ? "อัปโหลดไฟล์ใหม่แล้ว เก็บไฟล์เดิมในประวัติ และส่งเข้าคิวตรวจแล้ว"
+            : "อัปโหลดไฟล์ใหม่แล้ว — ระบบเก็บไฟล์เดิมไว้ และกำลังรอไฟล์บังคับให้ครบ",
+          queued ? "ok" : "warn",
+        );
+        render();
+        setTimeout(() => {
+          if (state.route === "cloud") cloudLoad();
+          else if (state.route === "daily-summary") loadDailyCompanySummary(true);
+          else if (state.route === "intake") loadLiveIntake(true);
+          else loadLiveOverview(true);
+        }, 300);
+      } catch (error) {
+        toast("อัปโหลดไฟล์ใหม่ไม่สำเร็จ: " + error.message, "warn");
+      } finally {
+        if (replacementButton && document.body.contains(replacementButton)) {
+          replacementButton.disabled = false;
+          replacementButton.textContent = oldLabel;
+        }
+        if (saveButton && document.body.contains(saveButton)) saveButton.disabled = false;
+      }
+    });
+  }
 
   try {
     const target = $("#filePreviewContent");

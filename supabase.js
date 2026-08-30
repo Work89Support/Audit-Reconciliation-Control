@@ -414,6 +414,49 @@ const Sb = (() => {
     p_actor: currentEmail() || "web-auditor",
   });
 
+  const replacementSafeName = (name) => String(name || "replacement.bin")
+    .normalize("NFKD")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(-140) || "replacement.bin";
+
+  async function sha256Hex(buffer) {
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function replaceSourceFile(fileId, currentStoragePath, file, company, kind) {
+    if (!fileId || !file || !file.size) throw new Error("กรุณาเลือกไฟล์ใหม่ที่มีข้อมูล");
+    const buffer = await file.arrayBuffer();
+    const checksum = await sha256Hex(buffer);
+    const basePath = String(currentStoragePath || "manual")
+      .replace(/^\/+|\/+$/g, "")
+      .split("/")
+      .slice(0, -1)
+      .join("/") || "manual";
+    const storagePath = `${basePath}/replacements/${fileId}/${Date.now()}-${replacementSafeName(file.name)}`;
+    await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "false",
+      },
+      body: buffer,
+      timeoutMs: 120000,
+    });
+    return rpc("replace_source_file", {
+      p_file_id: fileId,
+      p_file_name: file.name,
+      p_mime_type: file.type || "application/octet-stream",
+      p_size_bytes: file.size,
+      p_storage_path: storagePath,
+      p_checksum: checksum,
+      p_company: company,
+      p_kind: kind,
+      p_actor: currentEmail() || "web-auditor",
+    });
+  }
+
   async function fileOcr(fileId) {
     if (!fileId) return null;
     const rows = await json(`/rest/v1/source_file_ocr?source_file_id=eq.${encodeURIComponent(fileId)}&select=*&limit=1`);
@@ -587,6 +630,7 @@ const Sb = (() => {
     finishJob,
     failJob,
     reclassifySourceFile,
+    replaceSourceFile,
     fileOcr,
     batches,
     download,
