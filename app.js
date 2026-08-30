@@ -3682,10 +3682,22 @@ async function openStoredFilePreview(meta) {
   ];
   const selectedKindHelp = (kindOptions.find(([kind]) => kind === meta.kind) || kindOptions[kindOptions.length - 1])[2];
   const canReclassify = state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
+  const canMatchClarification = canReclassify && meta.kind === "doc_clarify";
+  const clarificationPanel = canMatchClarification ? `<section class="file-clarification-match" id="fileClarificationMatch">
+    <div class="file-clarification-head"><div><small>ใช้ไฟล์นี้เป็นหลักฐาน</small><b>จับคู่กับเคสที่ยังไม่พบคู่ของ ${h(meta.company || "บริษัทนี้")}</b><span>เลือกได้หลายเคสหรือเลือกทั้งหมด ระบบจะส่งสถานะเป็น “มีคำชี้แจง—รอ Audit ตรวจ” และยังไม่ปิดเคสอัตโนมัติ</span></div><span class="spinner" id="fileClarificationSpinner"></span></div>
+    <div class="file-clarification-tools">
+      <label><input type="checkbox" id="fileClarificationSameDay" checked> เฉพาะวันที่ ${h(meta.date || "เดียวกับไฟล์")}</label>
+      <label><input type="checkbox" id="fileClarificationMissingOnly" checked> เฉพาะเคสที่ยังไม่พบคู่</label>
+      <button class="ghost-button" id="fileClarificationSelectAll" type="button">เลือกทั้งหมดที่แสดง</button>
+      <b id="fileClarificationCount">กำลังค้นหาเคส...</b>
+    </div>
+    <div class="file-clarification-list" id="fileClarificationList"><div class="empty">กำลังโหลดเคสของบริษัท...</div></div>
+    <label class="file-clarification-note">บันทึกสำหรับผู้ตรวจ<textarea id="fileClarificationNote" rows="2">แนบไฟล์ชี้แจงจากทีม — รอ Audit ตรวจสอบและอนุมัติ</textarea></label>
+  </section>` : "";
   openModal(
     h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${canReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><div class="file-replacement-ready-head"><i aria-hidden="true">✓</i><div><b>ไฟล์ใหม่พร้อมตรวจ</b><small>ระบบยังเก็บไฟล์เดิมไว้ จนกว่าคุณจะกด “บันทึกและรันต่อ”</small></div></div><div class="file-replacement-compare"><div><small>ไฟล์เดิม</small><span>${h(name)}</span></div><i aria-hidden="true">→</i><div><small>ไฟล์ใหม่</small><span id="fileReplacementReadyName"></span></div></div></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
-    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${clarificationPanel}${canReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><div class="file-replacement-ready-head"><i aria-hidden="true">✓</i><div><b>ไฟล์ใหม่พร้อมตรวจ</b><small>ระบบยังเก็บไฟล์เดิมไว้ จนกว่าคุณจะกด “บันทึกและรันต่อ”</small></div></div><div class="file-replacement-compare"><div><small>ไฟล์เดิม</small><span>${h(name)}</span></div><i aria-hidden="true">→</i><div><small>ไฟล์ใหม่</small><span id="fileReplacementReadyName"></span></div></div></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
   $("#filePreviewClose").addEventListener("click", closeModal);
@@ -3695,6 +3707,86 @@ async function openStoredFilePreview(meta) {
   let pendingReplacementObjectUrl = "";
   const getSigned = async () => signedUrl || (signedUrl = await retryTransientFileRequest(() => Sb.signedUrl(meta.path, 600)));
   const getDownload = async () => downloaded || (downloaded = await retryTransientFileRequest(() => Sb.download(meta.path)));
+  if (canMatchClarification) {
+    const selectedCases = new Set();
+    let clarificationCandidates = [];
+    const isOpen = (row) => !["closed", "approved", "damage"].includes(row.status);
+    const isMissingPair = (row) => row.bankAmount == null || row.systemAmount == null || /ไม่พบ|มากกว่า|missing/i.test(`${row.type} ${row.typeName}`);
+    const visibleCandidates = () => clarificationCandidates.filter((row) => {
+      if (!isOpen(row)) return false;
+      if ($("#fileClarificationSameDay")?.checked && meta.date && row.date !== meta.date) return false;
+      if ($("#fileClarificationMissingOnly")?.checked && !isMissingPair(row)) return false;
+      return true;
+    });
+    const renderClarificationCandidates = () => {
+      const list = $("#fileClarificationList");
+      if (!list) return;
+      const visible = visibleCandidates();
+      list.innerHTML = visible.length ? visible.map((row) => `<label class="file-clarification-case ${selectedCases.has(row.dbId) ? "selected" : ""}">
+        <input type="checkbox" value="${h(row.dbId)}" ${selectedCases.has(row.dbId) ? "checked" : ""}>
+        <span><b>${h(row.id)}</b><small>${h(row.date)} · ${h(row.typeName)}</small></span>
+        <span><b>${h(row.account || row.bank || "-")}</b><small>${h(row.direction || "-")}</small></span>
+        <span class="file-clarification-amount"><b>STM ${row.bankAmount == null ? "—" : money(row.bankAmount)}</b><small>BO ${row.systemAmount == null ? "—" : money(row.systemAmount)}</small></span>
+      </label>`).join("") : `<div class="empty">ไม่พบเคสค้างตามตัวกรองนี้ ลองปิด “เฉพาะวันที่” หรือ “เฉพาะเคสที่ยังไม่พบคู่”</div>`;
+      list.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
+        if (input.checked) selectedCases.add(input.value); else selectedCases.delete(input.value);
+        renderClarificationCandidates();
+      }));
+      $("#fileClarificationCount").textContent = `เลือก ${num(selectedCases.size)} จาก ${num(visible.length)} เคสที่แสดง`;
+      $("#fileMatchClarification").disabled = selectedCases.size === 0;
+    };
+    $("#fileClarificationSameDay").addEventListener("change", renderClarificationCandidates);
+    $("#fileClarificationMissingOnly").addEventListener("change", renderClarificationCandidates);
+    $("#fileClarificationSelectAll").addEventListener("click", () => {
+      const visible = visibleCandidates();
+      const allSelected = visible.length && visible.every((row) => selectedCases.has(row.dbId));
+      visible.forEach((row) => allSelected ? selectedCases.delete(row.dbId) : selectedCases.add(row.dbId));
+      renderClarificationCandidates();
+    });
+    $("#fileMatchClarification").addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const ids = [...selectedCases];
+      if (!ids.length) return;
+      button.disabled = true;
+      button.textContent = `กำลังจับคู่ ${num(ids.length)} เคส...`;
+      try {
+        const note = $("#fileClarificationNote").value.trim();
+        const result = await Sb.manualMatchClarificationFile(meta.id, ids, note);
+        DB.exceptions.forEach((row) => {
+          if (!ids.includes(row.dbId)) return;
+          Object.assign(row, {
+            status: "answered", hasEvidence: true, clarificationFileId: meta.id,
+            resolutionNote: note, resolvedBy: Sb.currentEmail() || "web-auditor", matchConfidence: 100,
+          });
+        });
+        exceptionSupportCache.clear();
+        logAction("clarification_manual_multi_match", "source_file", meta.id, `จับคู่ ${name} กับ ${ids.length} เคสของ ${meta.company}`);
+        closeModal();
+        toast(`แนบไฟล์ชี้แจงกับ ${num(result?.matched_count || ids.length)} เคสแล้ว — รอ Audit ตรวจและอนุมัติ`, "ok");
+        render();
+        setTimeout(() => loadLiveOverview(true), 300);
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "จับคู่กับเคสที่เลือก";
+        toast(`จับคู่ไฟล์ชี้แจงไม่สำเร็จ: ${error.message}`, "warn");
+      }
+    });
+    const localRows = DB.exceptions.filter((row) => String(row.company).toUpperCase() === String(meta.company || "").toUpperCase());
+    clarificationCandidates = localRows;
+    renderClarificationCandidates();
+    Sb.currentExceptionsSummary({ from: OPERATING_START_DATE, to: DEFAULT_WORK_DATE, company: meta.company, limit: 5000 })
+      .then((rows) => {
+        const merged = new Map(localRows.map((row) => [row.dbId, row]));
+        (rows || []).map(mapLiveException).forEach((row) => merged.set(row.dbId, row));
+        clarificationCandidates = [...merged.values()].sort((a, b) => (a.date === meta.date ? -1 : 0) - (b.date === meta.date ? -1 : 0) || String(b.date).localeCompare(String(a.date)) || String(a.time).localeCompare(String(b.time)));
+        $("#fileClarificationSpinner")?.remove();
+        renderClarificationCandidates();
+      })
+      .catch((error) => {
+        $("#fileClarificationSpinner")?.remove();
+        $("#fileClarificationCount").textContent = localRows.length ? `แสดงข้อมูลที่โหลดไว้ ${num(localRows.length)} เคส` : `โหลดเคสไม่สำเร็จ: ${error.message}`;
+      });
+  }
   $("#fileOpenOriginal").addEventListener("click", async () => {
     try {
       window.open(await getSigned(), "_blank", "noopener");

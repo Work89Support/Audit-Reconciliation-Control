@@ -413,6 +413,12 @@ const Sb = (() => {
     p_kind: kind,
     p_actor: currentEmail() || "web-auditor",
   });
+  const manualMatchClarificationFile = (fileId, exceptionIds, note) => rpc("manual_match_clarification_file", {
+    p_file_id: fileId,
+    p_exception_ids: [...new Set((exceptionIds || []).filter(Boolean))],
+    p_actor: currentEmail() || "web-auditor",
+    p_note: note || "Audit จับคู่ไฟล์ชี้แจงกับเคสที่เลือก",
+  });
 
   const replacementSafeName = (name) => String(name || "replacement.bin")
     .normalize("NFKD")
@@ -648,6 +654,7 @@ const Sb = (() => {
     finishJob,
     failJob,
     reclassifySourceFile,
+    manualMatchClarificationFile,
     replaceSourceFile,
     fileOcr,
     batches,
