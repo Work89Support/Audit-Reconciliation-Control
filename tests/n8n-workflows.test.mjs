@@ -132,7 +132,9 @@ assert.match(workerText, /record_source_file_parse_results/, "every file parse r
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
 assert.equal(worker.connections["Supabase: บันทึกผลอ่านไฟล์"].main[0][0].node, "ไฟล์ผ่าน Quality Gate?");
 assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0][0].node, "Supabase: สร้างผลการรัน");
-assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "หยุดรอตรวจไฟล์");
+assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "บันทึกว่าอ่านแล้วและรอไฟล์");
+assert.match(workerText, /finish_daily_recon_parse_only/, "an incomplete file set must finish parsing without creating a reconciliation run");
+assert.match(workerText, /missing_groups/, "the reconciliation gate must require both file sides before creating a run");
 assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ปิดงานสำเร็จ");
 assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเครื่องหมายไฟล์อ่านแล้ว"));
 assert.match(workerText, /n8n-cloud-worker/);

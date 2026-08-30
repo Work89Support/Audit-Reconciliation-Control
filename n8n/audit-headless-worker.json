@@ -626,7 +626,7 @@
           "conditions": [
             {
               "id": "quality-ok",
-              "leftValue": "={{ $('กระทบยอดและสร้าง Exception').first().json.quality_errors.length === 0 }}",
+              "leftValue": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return x.quality_errors.length === 0 && Array.isArray(x.job.missing_groups) && x.job.missing_groups.length === 0;})() }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -789,16 +789,42 @@
     },
     {
       "parameters": {
-        "jsCode": "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{finished_at:new Date().toISOString(),message:'หยุดก่อนกระทบยอด: มีไฟล์ที่อ่านไม่ผ่าน',job_id:x.job.id,quality_errors:x.quality_errors}}];"
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_parse_only",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id});})() }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
       },
       "id": "quality-stop",
-      "name": "หยุดรอตรวจไฟล์",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "name": "บันทึกว่าอ่านแล้วและรอไฟล์",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1640,
         160
-      ]
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
     },
     {
       "parameters": {
@@ -1136,7 +1162,7 @@
         ],
         [
           {
-            "node": "หยุดรอตรวจไฟล์",
+            "node": "บันทึกว่าอ่านแล้วและรอไฟล์",
             "type": "main",
             "index": 0
           }
@@ -1187,7 +1213,7 @@
         ]
       ]
     },
-    "หยุดรอตรวจไฟล์": {
+    "บันทึกว่าอ่านแล้วและรอไฟล์": {
       "main": [
         [
           {
