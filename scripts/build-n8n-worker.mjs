@@ -128,8 +128,10 @@ if(!stm.length){
 }else{
   result=await Engine.reconcile(stm,bo,{...${settings},asOf:Date.now()},Registry.ACCOUNTS.map(a=>({id:a.account,bank:a.bank,company:a.subco,type:a.type,active:true})),null);
 }
+const matchedBoKeys=new Set(result.matchedBoKeys||[]);
+const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!(e.type==='cross_day'&&e.sourceKey&&matchedBoKeys.has(e.sourceKey)));
 const best=new Map();
-for(const e of (result.exceptions||[]).concat(biz.exceptions||[])){
+for(const e of (result.exceptions||[]).concat(resolvedRuleExceptions)){
   const k=[e.type,e.account,e.time,e.systemAmount??''].join('|');
   const old=best.get(k); if(!old||(!old.detail&&e.detail)) best.set(k,e);
 }
@@ -141,12 +143,24 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:(biz.exceptions||[]).length,worker_version:'1.2.2',exact_unique_tolerance_sec:600,pm_master_account_guard:true}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.2.3',exact_unique_tolerance_sec:600,pm_master_account_guard:true}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
-const driveHttp = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: driveCred });
+const driveHttp = (id, name, position, parameters) => ({
+  parameters,
+  id,
+  name,
+  type: "n8n-nodes-base.httpRequest",
+  typeVersion: 4.2,
+  position,
+  credentials: driveCred,
+  retryOnFail: true,
+  maxTries: 3,
+  waitBetweenTries: 1000,
+  onError: "continueRegularOutput",
+});
 
 const nodes = [
   { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80] },
@@ -199,7 +213,7 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_results:x.files});})() }}", options: { response: { response: {} } },
   }),
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ $('กระทบยอดและสร้าง Exception').first().json.quality_errors.length === 0 }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "loose", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return x.quality_errors.length === 0 && Array.isArray(x.job.missing_groups) && x.job.missing_groups.length === 0;})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
   http("insert-run", "Supabase: สร้างผลการรัน", [1640, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/recon_runs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
@@ -216,7 +230,11 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('เตรียมบันทึก Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_run_id:x.run_id});})() }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{finished_at:new Date().toISOString(),message:'หยุดก่อนกระทบยอด: มีไฟล์ที่อ่านไม่ผ่าน',job_id:x.job.id,quality_errors:x.quality_errors}}];" }, id: "quality-stop", name: "หยุดรอตรวจไฟล์", type: "n8n-nodes-base.code", typeVersion: 2, position: [1640, 160] },
+  http("quality-stop", "บันทึกว่าอ่านแล้วและรอไฟล์", [1640, 160], {
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_parse_only", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id});})() }}", options: { response: { response: {} } },
+  }),
   { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
 
@@ -246,12 +264,12 @@ const connections = {
   "แปลงรายการเป็นมาตรฐาน": { main: [[{ node: "วนทีละไฟล์", type: "main", index: 0 }]] },
   "กระทบยอดและสร้าง Exception": { main: [[{ node: "Supabase: บันทึกผลอ่านไฟล์", type: "main", index: 0 }]] },
   "Supabase: บันทึกผลอ่านไฟล์": { main: [[{ node: "ไฟล์ผ่าน Quality Gate?", type: "main", index: 0 }]] },
-  "ไฟล์ผ่าน Quality Gate?": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }], [{ node: "หยุดรอตรวจไฟล์", type: "main", index: 0 }]] },
+  "ไฟล์ผ่าน Quality Gate?": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }], [{ node: "บันทึกว่าอ่านแล้วและรอไฟล์", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
   "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
   "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
-  "หยุดรอตรวจไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
+  "บันทึกว่าอ่านแล้วและรอไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };
 
 const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
