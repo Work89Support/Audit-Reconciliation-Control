@@ -114,6 +114,7 @@ const state = {
   filters: { date: DEFAULT_WORK_DATE, from: DEFAULT_RANGE_FROM, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
+  exceptionView: "sheet",
   sort: { key: "time", dir: "asc" },
   page: 1,
   perPage: 12,
@@ -1918,6 +1919,40 @@ VIEWS.exceptions = (root) => {
   const th = (key, label) =>
     `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
 
+  const auditSheetRows = rows.map((e) => {
+    const hasStm = e.bankAmount !== null;
+    const hasBo = e.systemAmount !== null;
+    const result = hasStm && hasBo
+      ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
+      : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
+    const explanation = e.resolutionNote || (e.notes || []).at(-1)?.text || "";
+    return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
+      <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(e.id)}</small></td>
+      <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${h(e.account)}</td>
+      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(e.date)} ${h(e.time)}</b><small>${h(e.bank)}</small>` : ""}</td>
+      <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
+      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(e.date)} ${h(e.boTime || e.time)}</b><small>${h(e.employee)}</small>` : ""}</td>
+      <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
+      <td class="right tnum">${hasStm && hasBo ? `${num(e.timeDiffSec)} วิ` : ""}</td>
+      <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
+      <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
+      <td class="sheet-explanation ${explanation ? "answered" : "waiting"}">${explanation ? h(explanation) : "<span>เว้นไว้รอชี้แจง</span>"}</td>
+      <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจ</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ไฟล์</button></div></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
+
+  const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
+    <td><b>${e.id}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
+    <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td><td>${h(e.typeName)}</td>
+    <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
+    <td class="right tnum">${e.bankAmount === null ? '<span class="muted">—</span>' : money(e.bankAmount)}</td>
+    <td class="right tnum">${diffLabel(e)}${e.riskAmount ? `<small class="sub">ตรวจ ${money(e.riskAmount)}</small>` : ""}</td>
+    <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
+    <td>${h(e.employee)}<small class="sub">${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift || "-")}</small></td>
+    <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+    <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
+  </tr>`).join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
+
   root.innerHTML = `
     ${overviewLoading ? `<section class="recon-loading-banner" role="status" aria-live="polite"><span class="spinner"></span><div><b>กำลังโหลดข้อมูลจริง…</b><small>${liveOverviewState.loading ? "กำลังอ่านผลกระทบยอดและรายการผิดปกติจาก Supabase" : "ข้อมูลหลักมาแล้ว กำลังเติมรายละเอียดไฟล์และสถานะล่าสุด"}</small></div><span class="recon-loading-pulse" aria-hidden="true"></span></section>` : ""}
     <section class="panel recon-result-summary">
@@ -1961,39 +1996,22 @@ VIEWS.exceptions = (root) => {
         ${query ? ` · ค้นจาก Supabase โดยตรง ${liveExceptionSearch.loading ? '<span class="badge blue">กำลังค้นหา...</span>' : liveExceptionSearch.error ? `<span class="badge red">${h(liveExceptionSearch.error)}</span>` : '<span class="badge green">ค้นแล้ว</span>'}` : ""}
       </div>
 
+      <div class="audit-view-bar">
+        <div><b>รูปแบบการตรวจ</b><span>${state.exceptionView === "sheet" ? "ตารางรวมเหมือน Excel — ช่องว่างคือยังไม่พบคู่และต้องรอชี้แจง" : "คิวเคสสำหรับติดตาม SLA หลักฐาน และการอนุมัติ"}</span></div>
+        <div class="audit-view-switch" role="group" aria-label="เลือกรูปแบบการตรวจ">
+          <button type="button" class="${state.exceptionView === "sheet" ? "active" : ""}" data-ex-view="sheet">ตารางกระทบยอด</button>
+          <button type="button" class="${state.exceptionView === "cases" ? "active" : ""}" data-ex-view="cases">คิวเคส</button>
+        </div>
+      </div>
+
       ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.batchCompany || file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
 
       ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
 
-      <div class="table-wrap">
-        <table class="rows">
-          <thead><tr>
-            ${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}
-            <th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}
-            ${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th>
-          </tr></thead>
-          <tbody>
-            ${
-              rows
-                .map(
-                  (e) => `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
-              <td><b>${e.id}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td>
-              <td class="tnum">${e.time}</td>
-              <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td>
-              <td>${h(e.typeName)}</td>
-              <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
-              <td class="right tnum">${e.bankAmount === null ? '<span class="muted">—</span>' : money(e.bankAmount)}</td>
-              <td class="right tnum">${diffLabel(e)}${e.riskAmount ? `<small class="sub">ตรวจ ${money(e.riskAmount)}</small>` : ""}</td>
-              <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
-              <td>${h(e.employee)}<small class="sub">${h(DB.shifts.find((s) => s.code === e.shift).name)}</small></td>
-              <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
-              <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
-            </tr>`,
-                )
-                .join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`
-            }
-          </tbody>
-        </table>
+      <div class="table-wrap ${state.exceptionView === "sheet" ? "reconciliation-sheet-wrap" : ""}">
+        ${state.exceptionView === "sheet" ? `<table class="rows reconciliation-sheet">
+          <thead><tr><th rowspan="2">สถานะ</th><th rowspan="2">วันที่</th><th rowspan="2">บริษัท</th><th rowspan="2">บัญชี / Provider</th><th colspan="2" class="sheet-group stm">ฝั่ง STM / ธนาคาร</th><th colspan="2" class="sheet-group bo">ฝั่ง BO / ระบบ</th><th rowspan="2" class="right">ต่างเวลา</th><th rowspan="2" class="right">ต่างยอด</th><th rowspan="2">ผลการจับคู่</th><th rowspan="2">คำชี้แจง / หมายเหตุ</th><th rowspan="2">ทำรายการ</th></tr><tr><th>วันที่ / เวลา</th><th class="right">ยอด</th><th>วันที่ / เวลา</th><th class="right">ยอด</th></tr></thead><tbody>${auditSheetRows}</tbody>
+        </table>` : `<table class="rows"><thead><tr>${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}<th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th></tr></thead><tbody>${caseQueueRows}</tbody></table>`}
       </div>
 
       <div class="pager">
@@ -2036,6 +2054,10 @@ VIEWS.exceptions = (root) => {
   $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
   $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
   $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]));
+  root.querySelectorAll("[data-ex-view]").forEach((button) => button.addEventListener("click", () => {
+    state.exceptionView = button.dataset.exView;
+    render();
+  }));
   $("#searchGoFiles")?.addEventListener("click", () => go("cloud"));
   root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
   bindStoredFileLinks(root);
@@ -5643,22 +5665,29 @@ function closeModal() {
 /* ตัวสร้างชุดข้อมูลแต่ละชีต ตามช่วงวันที่ปัจจุบัน */
 const SHEET_BUILDERS = {
   exceptions: {
-    label: "รายการผิดปกติ (Exception)",
+    label: "ตารางกระทบยอด / รายการผิดปกติ",
     build: () => {
       const rows = filteredExceptions();
       return {
-        name: "Exception",
-        title: "รายการผิดปกติ",
-        headers: ["เคส", "วันที่", "เวลา", "บริษัท", "บัญชี", "ธนาคาร", "ทิศทาง", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่างยอด", "ยอดที่ต้องตรวจ", "ผลต่างเวลา (วิ)", "ระดับ", "สถานะ", "พนักงาน", "กะ", "สมาชิก", "สายชี้แจง", "กำหนดส่ง", "อายุเคส (ชม.)", "SLA (ชม.)", "เกิน SLA", "สาเหตุ", "สิ่งที่ระบบตรวจพบ"],
-        widths: [11, 12, 10, 12, 13, 9, 8, 22, 13, 13, 13, 15, 13, 10, 14, 17, 10, 14, 12, 14, 12, 10, 10, 34, 70],
-        rows: rows.map((e) => [
-          e.id, e.date, e.time, e.company, e.account, e.bank, e.direction, e.typeName,
-          e.systemAmount ?? "", e.bankAmount ?? "", e.amountDiff, e.riskAmount, e.timeDiffSec,
-          sevMeta(e.severity).name, statusMeta(e.status).name, e.employee,
-          (DB.shifts.find((sh) => sh.code === e.shift) || {}).name || e.shift,
-          e.member || "", trackMeta(e.track).short, dueOf(e).short,
-          e.ageHours, e.slaHours, e.overSla ? "เกิน" : "ปกติ", e.cause, e.detail || "",
-        ]),
+        name: "กระทบยอด",
+        title: "ตารางกระทบยอด — ช่องว่างหมายถึงไม่พบคู่และรอชี้แจง",
+        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA"],
+        widths: [14, 11, 12, 12, 9, 18, 21, 15, 13, 21, 18, 13, 13, 13, 24, 42, 10, 14, 10],
+        rows: rows.map((e) => {
+          const hasStm = e.bankAmount !== null;
+          const hasBo = e.systemAmount !== null;
+          const explanation = e.resolutionNote || (e.notes || []).at(-1)?.text || "";
+          const result = hasStm && hasBo
+            ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
+            : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
+          return [
+            statusMeta(e.status).name, e.id, e.date, e.company, e.direction, e.account,
+            hasStm ? `${e.date} ${e.time}` : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
+            hasBo ? `${e.date} ${e.boTime || e.time}` : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
+            hasStm && hasBo ? e.timeDiffSec : "", hasStm && hasBo ? e.amountDiff : "", result,
+            explanation || "เว้นไว้รอชี้แจง", sevMeta(e.severity).name, dueOf(e).short, e.overSla ? "เกิน" : "ปกติ",
+          ];
+        }),
       };
     },
   },
