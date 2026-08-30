@@ -197,6 +197,9 @@ assert.match(appSource, /Statement หรือรายการเดินบ
 assert.match(appSource, /id="fileReclassify"/, "file preview must provide a save-and-retry action");
 assert.match(appSource, /id="fileReplaceUpload"/, "file preview must let the auditor upload a corrected replacement");
 assert.match(appSource, /id="fileReplacementInput"/, "replacement upload must use an explicit local file input");
+assert.match(appSource, /pendingReplacementFile = file/, "replacement upload must be staged for auditor review before saving");
+assert.match(appSource, /ไฟล์ใหม่พร้อมบันทึก/, "replacement preview must explain that the new file is waiting for save-and-retry");
+assert.match(appSource, /replacement\s*\? await Sb\.replaceSourceFile/, "save-and-retry must commit the staged replacement file");
 assert.match(appSource, /next-action-bar/, "every operational page must show a recommended next action");
 assert.match(appSource, /data-report-date/, "daily report rows must link to their operating-day summary");
 assert.match(appSource, /data-scroll-daily="dailyReconcileResult"/, "daily reconciliation status must open the result section");

@@ -3591,13 +3591,15 @@ async function openStoredFilePreview(meta) {
   const canReclassify = state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
   openModal(
     h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b>${h(sizeLabel)}</span><span><b>สถานะ</b>${h(status)}</span></div>${canReclassify ? `<div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${canReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><b>ไฟล์ใหม่พร้อมบันทึก</b><span id="fileReplacementReadyName"></span><small>ตรวจตัวอย่าง บริษัท และประเภทด้านล่าง แล้วกด “บันทึกและรันต่อ” เพื่อแทนที่ไฟล์เดิมและส่งเข้าคิว</small></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
     `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
   $("#filePreviewClose").addEventListener("click", closeModal);
   let signedUrl = "";
   let downloaded = null;
+  let pendingReplacementFile = null;
+  let pendingReplacementObjectUrl = "";
   const getSigned = async () => signedUrl || (signedUrl = await retryTransientFileRequest(() => Sb.signedUrl(meta.path, 600)));
   const getDownload = async () => downloaded || (downloaded = await retryTransientFileRequest(() => Sb.download(meta.path)));
   $("#fileOpenOriginal").addEventListener("click", async () => {
@@ -3637,14 +3639,41 @@ async function openStoredFilePreview(meta) {
     const company = $("#fileCompanySelect").value;
     const kind = $("#fileKindSelect").value;
     button.disabled = true;
-    button.textContent = "กำลังบันทึก...";
+    button.textContent = pendingReplacementFile ? "กำลังอัปโหลดและบันทึก..." : "กำลังบันทึก...";
     try {
-      const result = await Sb.reclassifySourceFile(meta.id, company, kind);
-      logAction("reclassify_and_retry", "source_file", meta.id, `${name} → ${company} / ${kind}`);
-      updateSourceFileCaches(meta.id, { company, kind, parsed: false, parsed_at: null, row_count: null, parse_error: null });
+      const replacement = pendingReplacementFile;
+      const result = replacement
+        ? await Sb.replaceSourceFile(meta.id, meta.path, replacement, company, kind)
+        : await Sb.reclassifySourceFile(meta.id, company, kind);
+      logAction(
+        replacement ? "replace_source_file_and_retry" : "reclassify_and_retry",
+        "source_file",
+        meta.id,
+        replacement ? `${name} → ${replacement.name}` : `${name} → ${company} / ${kind}`,
+      );
+      updateSourceFileCaches(meta.id, {
+        ...(replacement ? {
+          file_name: result?.file_name || replacement.name,
+          mime_type: result?.mime_type || replacement.type || "application/octet-stream",
+          size_bytes: result?.size_bytes || replacement.size,
+          storage_path: result?.storage_path,
+          checksum: result?.checksum || null,
+        } : {}),
+        company,
+        kind,
+        parsed: false,
+        parsed_at: null,
+        row_count: null,
+        parse_error: null,
+      });
       closeModal();
       const queued = result && result.queued;
-      toast(queued ? "บันทึกแล้ว และส่งเข้าคิวกระทบยอดแล้ว" : "บันทึกแล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว", queued ? "ok" : "warn");
+      toast(
+        replacement
+          ? (queued ? "แทนที่ไฟล์แล้ว และส่งไฟล์ใหม่เข้าคิวตรวจแล้ว" : "แทนที่ไฟล์แล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว")
+          : (queued ? "บันทึกแล้ว และส่งเข้าคิวกระทบยอดแล้ว" : "บันทึกแล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว"),
+        queued ? "ok" : "warn",
+      );
       render();
       // Save feels immediate; refresh only the page currently in use instead
       // of reloading dashboard, intake, daily summary and cloud concurrently.
@@ -3670,8 +3699,6 @@ async function openStoredFilePreview(meta) {
     replacementInput.addEventListener("change", async () => {
       const file = replacementInput.files && replacementInput.files[0];
       if (!file) return;
-      const company = $("#fileCompanySelect").value;
-      const kind = $("#fileKindSelect").value;
       const saveButton = $("#fileReclassify");
       const oldLabel = replacementButton.textContent;
       try {
@@ -3680,46 +3707,51 @@ async function openStoredFilePreview(meta) {
         replacementButton.textContent = "กำลังตรวจไฟล์ใหม่...";
         await validateReplacementFile(file);
         const confirmed = window.confirm(
-          `แทนที่ไฟล์ “${name}” ด้วย “${file.name}” ใช่หรือไม่?\n\nไฟล์เดิมจะยังเก็บไว้ในประวัติ และไฟล์ใหม่จะถูกส่งกลับเข้าคิวตรวจอัตโนมัติ`,
+          `เตรียมแทนที่ไฟล์ “${name}” ด้วย “${file.name}” ใช่หรือไม่?\n\nระบบจะแสดงตัวอย่างไฟล์ใหม่ให้ตรวจอีกครั้ง และจะยังไม่แทนที่ไฟล์เดิมจนกด “บันทึกและรันต่อ”`,
         );
         if (!confirmed) return;
-        replacementButton.textContent = "กำลังอัปโหลด...";
-        const result = await Sb.replaceSourceFile(meta.id, meta.path, file, company, kind);
-        logAction("replace_source_file_and_retry", "source_file", meta.id, `${name} → ${file.name}`);
-        updateSourceFileCaches(meta.id, {
-          file_name: result?.file_name || file.name,
-          mime_type: result?.mime_type || file.type || "application/octet-stream",
-          size_bytes: result?.size_bytes || file.size,
-          storage_path: result?.storage_path,
-          checksum: result?.checksum || null,
-          company,
-          kind,
-          parsed: false,
-          parsed_at: null,
-          row_count: null,
-          parse_error: null,
-        });
-        closeModal();
-        const queued = !!result?.queued;
-        toast(
-          queued
-            ? "อัปโหลดไฟล์ใหม่แล้ว เก็บไฟล์เดิมในประวัติ และส่งเข้าคิวตรวจแล้ว"
-            : "อัปโหลดไฟล์ใหม่แล้ว — ระบบเก็บไฟล์เดิมไว้ และกำลังรอไฟล์บังคับให้ครบ",
-          queued ? "ok" : "warn",
-        );
-        render();
-        setTimeout(() => {
-          if (state.route === "cloud") cloudLoad();
-          else if (state.route === "daily-summary") loadDailyCompanySummary(true);
-          else if (state.route === "intake") loadLiveIntake(true);
-          else loadLiveOverview(true);
-        }, 300);
+        pendingReplacementFile = file;
+        const target = $("#filePreviewContent");
+        const replacementExt = (file.name.split(".").pop() || "").toLowerCase();
+        const buffer = await file.arrayBuffer();
+        target.innerHTML = `<span class="spinner"></span><p>กำลังแสดงตัวอย่างไฟล์ใหม่...</p>`;
+        if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
+        pendingReplacementObjectUrl = "";
+        if (replacementExt === "pdf") {
+          pendingReplacementObjectUrl = URL.createObjectURL(file);
+          target.innerHTML = `<iframe class="file-preview-frame" src="${h(pendingReplacementObjectUrl)}" title="ตัวอย่าง ${h(file.name)}"></iframe>`;
+        } else if (["xlsx", "xlsm"].includes(replacementExt)) {
+          target.innerHTML = filePreviewTable(await XlsxReader.read(buffer));
+        } else if (["csv", "txt"].includes(replacementExt)) {
+          const text = new TextDecoder("utf-8").decode(buffer);
+          target.innerHTML = filePreviewTable(replacementExt === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
+        } else if (replacementExt === "docx") {
+          const preview = await DocxReader.render(buffer);
+          target.replaceChildren(preview.element);
+          $("#modal")._contentCleanup = () => {
+            preview.cleanup();
+            if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
+          };
+        }
+        if (replacementExt !== "docx") $("#modal")._contentCleanup = () => {
+          if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
+        };
+        $("#modalTitle").textContent = file.name;
+        $("#filePreviewSize").textContent = `${Math.max(1, Math.round(file.size / 1024)).toLocaleString()} KB`;
+        $("#filePreviewStatus").textContent = "ไฟล์ใหม่พร้อมบันทึก";
+        $("#fileReplacementReadyName").textContent = file.name;
+        $("#fileReplacementReady").hidden = false;
+        replacementButton.textContent = "เปลี่ยนไฟล์ใหม่อีกครั้ง";
+        $("#fileOpenOriginal").textContent = "เปิดไฟล์เดิมในแท็บใหม่";
+        $("#fileDownload").textContent = "ดาวน์โหลดไฟล์เดิม";
+        toast("แสดงไฟล์ใหม่แล้ว ตรวจข้อมูลก่อนกดบันทึกและรันต่อ", "ok");
       } catch (error) {
-        toast("อัปโหลดไฟล์ใหม่ไม่สำเร็จ: " + error.message, "warn");
+        pendingReplacementFile = null;
+        toast("ตรวจไฟล์ใหม่ไม่สำเร็จ: " + error.message, "warn");
       } finally {
         if (replacementButton && document.body.contains(replacementButton)) {
           replacementButton.disabled = false;
-          replacementButton.textContent = oldLabel;
+          if (!pendingReplacementFile) replacementButton.textContent = oldLabel;
         }
         if (saveButton && document.body.contains(saveButton)) saveButton.disabled = false;
       }
@@ -3730,7 +3762,9 @@ async function openStoredFilePreview(meta) {
     const target = $("#filePreviewContent");
     if (!target) return;
     if (["pdf"].includes(ext) || String(meta.mime).includes("pdf")) {
-      target.innerHTML = `<iframe class="file-preview-frame" src="${h(await getSigned())}" title="ตัวอย่าง ${h(name)}"></iframe>`;
+      const originalUrl = await getSigned();
+      if (pendingReplacementFile) return;
+      target.innerHTML = `<iframe class="file-preview-frame" src="${h(originalUrl)}" title="ตัวอย่าง ${h(name)}"></iframe>`;
       if (canReclassify && typeof Sb.fileOcr === "function") {
         try {
           const ocr = await Sb.fileOcr(meta.id);
@@ -3746,14 +3780,20 @@ async function openStoredFilePreview(meta) {
         }
       }
     } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
-      target.innerHTML = `<img class="file-preview-image" src="${h(await getSigned())}" alt="ตัวอย่าง ${h(name)}" />`;
+      const originalUrl = await getSigned();
+      if (pendingReplacementFile) return;
+      target.innerHTML = `<img class="file-preview-image" src="${h(originalUrl)}" alt="ตัวอย่าง ${h(name)}" />`;
     } else if (["xlsx", "xlsm"].includes(ext)) {
-      target.innerHTML = filePreviewTable(await XlsxReader.read(await getDownload()));
+      const originalRows = await XlsxReader.read(await getDownload());
+      if (pendingReplacementFile) return;
+      target.innerHTML = filePreviewTable(originalRows);
     } else if (["csv", "txt"].includes(ext)) {
       const text = new TextDecoder("utf-8").decode(await getDownload());
+      if (pendingReplacementFile) return;
       target.innerHTML = filePreviewTable(ext === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
     } else if (ext === "docx" || String(meta.mime).includes("wordprocessingml")) {
       const preview = await DocxReader.render(await getDownload());
+      if (pendingReplacementFile) { preview.cleanup(); return; }
       target.replaceChildren(preview.element);
       $("#modal")._contentCleanup = preview.cleanup;
     } else {
