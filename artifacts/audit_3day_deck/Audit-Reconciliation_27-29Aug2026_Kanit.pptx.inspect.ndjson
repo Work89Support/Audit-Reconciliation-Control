@@ -1,0 +1,817 @@
+{"kind":"deck","id":"pr/h2rsc9","name":"Deck"}
+{"kind":"layout","layoutId":"83ce00be-865f-477d-8524-a2f924c7f568","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"cc5ffce7-22e6-4880-b4d2-c74df09d0ec8","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/i04dav","slide":1,"title":"AUDIT RECONCILIATION","textShapes":5}
+{"kind":"shape","id":"sh/0zutonil","slide":1,"bbox":[0,0,12,720]}
+{"kind":"textbox","id":"sh/zylsfi10","slide":1,"text":"AUDIT RECONCILIATION","textPreview":"AUDIT RECONCILIATION","textChars":20,"textLines":1,"bbox":[64,54,420,26]}
+{"kind":"textbox","id":"sh/excbmd0f","slide":1,"text":"สรุปการกระทบยอด\n27–29 สิงหาคม 2026","textPreview":"สรุปการกระทบยอด | 27–29 สิงหาคม 2026","textChars":34,"textLines":2,"bbox":[64,164,760,165]}
+{"kind":"textbox","id":"sh/dw3ad8ja","slide":1,"text":"ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า","textPreview":"ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า","textChars":66,"textLines":1,"bbox":[68,354,805,60]}
+{"kind":"shape","id":"sh/cvutk3ip","slide":1,"bbox":[64,507,1110,120]}
+{"kind":"textbox","id":"sh/rulsby14","slide":1,"text":"ข้อสรุปสำคัญ","textPreview":"ข้อสรุปสำคัญ","textChars":12,"textLines":1,"bbox":[88,528,180,24]}
+{"kind":"textbox","id":"sh/qtcrit0j","slide":1,"text":"ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”","textPreview":"ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”","textChars":105,"textLines":1,"bbox":[88,561,1010,42]}
+{"kind":"notes","id":"nt/i04dav","slide":1,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/tmiow3","slide":2,"title":"EXECUTIVE OVERVIEW","textShapes":46}
+{"kind":"textbox","id":"sh/lgriponi","slide":2,"text":"EXECUTIVE OVERVIEW","textPreview":"EXECUTIVE OVERVIEW","textChars":18,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/yd0ju9or","slide":2,"text":"ภาพรวม 3 วัน","textPreview":"ภาพรวม 3 วัน","textChars":12,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/ze90ne5c","slide":2,"text":"อ่านไฟล์ครบ 305 ไฟล์หลัก และสร้างผลกระทบยอดครบทั้ง 9 บริษัท","textPreview":"อ่านไฟล์ครบ 305 ไฟล์หลัก และสร้างผลกระทบยอดครบทั้ง 9 บริษัท","textChars":59,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/8ji103mt","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/94ritone","slide":2,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/mh0jyto3","slide":2,"bbox":[56,205,215,118]}
+{"kind":"shape","id":"sh/ni90ry58","slide":2,"bbox":[56,205,6,118]}
+{"kind":"textbox","id":"sh/onyhoz6p","slide":2,"text":"ไฟล์หลักที่อ่านสำเร็จ","textPreview":"ไฟล์หลักที่อ่านสำเร็จ","textChars":21,"textLines":1,"bbox":[78,221,179,22]}
+{"kind":"textbox","id":"sh/p87ih4na","slide":2,"text":"305","textPreview":"305","textChars":3,"textLines":1,"bbox":[78,248,179,38]}
+{"kind":"textbox","id":"sh/d83a98zu","slide":2,"text":"ไม่รวมไฟล์ชี้แจง/หลักฐาน","textPreview":"ไม่รวมไฟล์ชี้แจง/หลักฐาน","textChars":24,"textLines":1,"bbox":[78,293,179,20]}
+{"kind":"shape","id":"sh/c7u9g3ip","slide":2,"bbox":[285,205,215,118]}
+{"kind":"shape","id":"sh/b61s7yh4","slide":2,"bbox":[285,205,6,118]}
+{"kind":"textbox","id":"sh/q5sret0j","slide":2,"text":"รายการ STM / PM","textPreview":"รายการ STM / PM","textChars":15,"textLines":1,"bbox":[307,221,179,22]}
+{"kind":"textbox","id":"sh/lw3ad8z6","slide":2,"text":"47,741","textPreview":"47,741","textChars":6,"textLines":1,"bbox":[307,248,179,38]}
+{"kind":"textbox","id":"sh/0butk3il","slide":2,"text":"ข้อมูลฝาก–ถอนฝั่งธนาคาร","textPreview":"ข้อมูลฝาก–ถอนฝั่งธนาคาร","textChars":23,"textLines":1,"bbox":[307,293,179,20]}
+{"kind":"shape","id":"sh/zalsbyh0","slide":2,"bbox":[514,205,215,118]}
+{"kind":"shape","id":"sh/y9crit0f","slide":2,"bbox":[514,205,6,118]}
+{"kind":"textbox","id":"sh/90nahsz2","slide":2,"text":"รายการ BO","textPreview":"รายการ BO","textChars":9,"textLines":1,"bbox":[536,221,179,22]}
+{"kind":"textbox","id":"sh/8zetonyx","slide":2,"text":"51,601","textPreview":"51,601","textChars":6,"textLines":1,"bbox":[536,248,179,38]}
+{"kind":"textbox","id":"sh/s3mdkr6t","slide":2,"text":"ข้อมูลจากระบบหลังบ้าน","textPreview":"ข้อมูลจากระบบหลังบ้าน","textChars":21,"textLines":1,"bbox":[536,293,179,20]}
+{"kind":"shape","id":"sh/t4vudw7e","slide":2,"bbox":[743,205,215,118]}
+{"kind":"shape","id":"sh/6hkvihon","slide":2,"bbox":[743,205,6,118]}
+{"kind":"textbox","id":"sh/7idcbmp8","slide":2,"text":"จับคู่สำเร็จ","textPreview":"จับคู่สำเร็จ","textChars":12,"textLines":1,"bbox":[765,221,179,22]}
+{"kind":"textbox","id":"sh/g7mdor65","slide":2,"text":"21,810","textPreview":"21,810","textChars":6,"textLines":1,"bbox":[765,248,179,38]}
+{"kind":"textbox","id":"sh/h8vuhw7a","slide":2,"text":"45.68% ของ STM / PM","textPreview":"45.68% ของ STM / PM","textChars":19,"textLines":1,"bbox":[765,293,179,20]}
+{"kind":"shape","id":"sh/u54vm1oz","slide":2,"bbox":[972,205,215,118]}
+{"kind":"shape","id":"sh/f6dcf6pk","slide":2,"bbox":[972,205,6,118]}
+{"kind":"textbox","id":"sh/wb2tc76l","slide":2,"text":"บริษัท / วัน","textPreview":"บริษัท / วัน","textChars":12,"textLines":1,"bbox":[994,221,179,22]}
+{"kind":"textbox","id":"sh/xcbu5c76","slide":2,"text":"9 × 3","textPreview":"9 × 3","textChars":5,"textLines":1,"bbox":[994,248,179,38]}
+{"kind":"textbox","id":"sh/zi1o7ed0","slide":2,"text":"ทุก job สถานะ completed","textPreview":"ทุก job สถานะ completed","textChars":23,"textLines":1,"bbox":[994,293,179,20]}
+{"kind":"textbox","id":"sh/yhs7y9cf","slide":2,"text":"แนวโน้มรายวัน","textPreview":"แนวโน้มรายวัน","textChars":13,"textLines":1,"bbox":[56,358,300,30]}
+{"kind":"shape","id":"sh/l4j694v6","slide":2,"bbox":[56,398,1090,192]}
+{"kind":"textbox","id":"sh/0jap0zul","slide":2,"text":"วัน","textPreview":"วัน","textChars":3,"textLines":1,"bbox":[64,407,174,20]}
+{"kind":"textbox","id":"sh/beho3ud4","slide":2,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[254,407,104,20]}
+{"kind":"textbox","id":"sh/qd8nupcj","slide":2,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[374,407,174,20]}
+{"kind":"textbox","id":"sh/dgj654vu","slide":2,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[564,407,174,20]}
+{"kind":"textbox","id":"sh/cfa5wzu9","slide":2,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[754,407,174,20]}
+{"kind":"textbox","id":"sh/3ahozuds","slide":2,"text":"อัตราจับคู่","textPreview":"อัตราจับคู่","textChars":11,"textLines":1,"bbox":[944,407,194,20]}
+{"kind":"shape","id":"sh/298nqpc7","slide":2,"bbox":[56,446,1090,0]}
+{"kind":"textbox","id":"sh/ihsrad8r","slide":2,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,455,174,20]}
+{"kind":"textbox","id":"sh/ji1s3i9c","slide":2,"text":"110","textPreview":"110","textChars":3,"textLines":1,"bbox":[254,455,104,20]}
+{"kind":"textbox","id":"sh/4ja9cnqx","slide":2,"text":"14,967","textPreview":"14,967","textChars":6,"textLines":1,"bbox":[374,455,174,20]}
+{"kind":"textbox","id":"sh/5kja5sri","slide":2,"text":"15,933","textPreview":"15,933","textChars":6,"textLines":1,"bbox":[564,455,174,20]}
+{"kind":"textbox","id":"sh/utsr6d8v","slide":2,"text":"6,263","textPreview":"6,263","textChars":5,"textLines":1,"bbox":[754,455,174,20]}
+{"kind":"textbox","id":"sh/vu1szi9g","slide":2,"text":"41.85%","textPreview":"41.85%","textChars":6,"textLines":1,"bbox":[944,455,194,20]}
+{"kind":"shape","id":"sh/wva983q1","slide":2,"bbox":[56,494,1090,0]}
+{"kind":"shape","id":"sh/hwja18r6","slide":2,"bbox":[57,494,1088,48]}
+{"kind":"textbox","id":"sh/mp8r2tsj","slide":2,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,503,174,20]}
+{"kind":"textbox","id":"sh/7qhsvy94","slide":2,"text":"103","textPreview":"103","textChars":3,"textLines":1,"bbox":[254,503,104,20]}
+{"kind":"textbox","id":"sh/pk7u1wbm","slide":2,"text":"16,389","textPreview":"16,389","textChars":6,"textLines":1,"bbox":[374,503,174,20]}
+{"kind":"textbox","id":"sh/ojed8rah","slide":2,"text":"17,345","textPreview":"17,345","textChars":6,"textLines":1,"bbox":[564,503,174,20]}
+{"kind":"textbox","id":"sh/ni5cz6tw","slide":2,"text":"8,009","textPreview":"8,009","textChars":5,"textLines":1,"bbox":[754,503,174,20]}
+{"kind":"textbox","id":"sh/2hwv61sb","slide":2,"text":"48.87%","textPreview":"48.87%","textChars":6,"textLines":1,"bbox":[944,503,194,20]}
+{"kind":"shape","id":"sh/1gnuxwbq","slide":2,"bbox":[56,542,1090,0]}
+{"kind":"textbox","id":"sh/0fed4ra5","slide":2,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,551,174,20]}
+{"kind":"textbox","id":"sh/fe5cvmtk","slide":2,"text":"92","textPreview":"92","textChars":2,"textLines":1,"bbox":[254,551,104,20]}
+{"kind":"textbox","id":"sh/edwv2hsz","slide":2,"text":"16,385","textPreview":"16,385","textChars":6,"textLines":1,"bbox":[374,551,174,20]}
+{"kind":"textbox","id":"sh/dcnutcbu","slide":2,"text":"18,323","textPreview":"18,323","textChars":6,"textLines":1,"bbox":[564,551,174,20]}
+{"kind":"textbox","id":"sh/sbud07a9","slide":2,"text":"7,538","textPreview":"7,538","textChars":5,"textLines":1,"bbox":[754,551,174,20]}
+{"kind":"textbox","id":"sh/4vydgr25","slide":2,"text":"46.01%","textPreview":"46.01%","textChars":6,"textLines":1,"bbox":[944,551,194,20]}
+{"kind":"shape","id":"sh/5w7u9cja","slide":2,"bbox":[56,603,90,30]}
+{"kind":"textbox","id":"sh/itgvehkz","slide":2,"text":"หมายเหตุ","textPreview":"หมายเหตุ","textChars":8,"textLines":1,"bbox":[56,607,90,22]}
+{"kind":"textbox","id":"sh/jupc7m1k","slide":2,"text":"29 ส.ค. มีไฟล์ชี้แจงเพิ่ม 17 ไฟล์ ซึ่งเก็บเป็นหลักฐานและไม่ถูกนับใน 92 ไฟล์ธุรกรรม","textPreview":"29 ส.ค. มีไฟล์ชี้แจงเพิ่ม 17 ไฟล์ ซึ่งเก็บเป็นหลักฐานและไม่ถูกนับใน 92 ไฟล์ธุรกรรม","textChars":82,"textLines":1,"bbox":[160,608,930,24]}
+{"kind":"notes","id":"nt/tmiow3","slide":2,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/stjz3f","slide":3,"title":"CONTROL INTERPRETATION","textShapes":15}
+{"kind":"textbox","id":"sh/c7a54b21","slide":3,"text":"CONTROL INTERPRETATION","textPreview":"CONTROL INTERPRETATION","textChars":22,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/r614v61g","slide":3,"text":"อ่านสถานะให้ถูกก่อนถามทีม","textPreview":"อ่านสถานะให้ถูกก่อนถามทีม","textChars":25,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/q5sn21kv","slide":3,"text":"คำว่า completed ยืนยันว่าอ่านไฟล์และรันจบ ไม่ได้ยืนยันว่าทุกรายการจับคู่สำเร็จ","textPreview":"คำว่า completed ยืนยันว่าอ่านไฟล์และรันจบ ไม่ได้ยืนยันว่าทุกรายการจับคู่สำเร็จ","textChars":78,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/lc361gji","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/0bu58b2d","slide":3,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/zalozq1s","slide":3,"bbox":[56,214,360,190]}
+{"kind":"shape","id":"sh/y9cn6lk7","slide":3,"bbox":[80,236,38,30]}
+{"kind":"textbox","id":"sh/9gn650ju","slide":3,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[80,240,38,22]}
+{"kind":"textbox","id":"sh/8fu5cvi9","slide":3,"text":"ครบไฟล์","textPreview":"ครบไฟล์","textChars":7,"textLines":1,"bbox":[134,234,230,34]}
+{"kind":"textbox","id":"sh/etw3258r","slide":3,"text":"ไฟล์หลักถูกบันทึกและอ่านสำเร็จ","textPreview":"ไฟล์หลักถูกบันทึกและอ่านสำเร็จ","textChars":30,"textLines":1,"bbox":[80,294,305,68]}
+{"kind":"shape","id":"sh/fu54bqpc","slide":3,"bbox":[446,214,360,190]}
+{"kind":"shape","id":"sh/gfel4vqh","slide":3,"bbox":[470,236,38,30]}
+{"kind":"textbox","id":"sh/1gnmd072","slide":3,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[470,240,38,22]}
+{"kind":"textbox","id":"sh/2hg3658n","slide":3,"text":"รันครบ","textPreview":"รันครบ","textChars":6,"textLines":1,"bbox":[524,234,230,34]}
+{"kind":"textbox","id":"sh/3ip4fap8","slide":3,"text":"สร้างผล STM, BO, match และ exception","textPreview":"สร้างผล STM, BO, match และ exception","textChars":36,"textLines":1,"bbox":[470,294,305,68]}
+{"kind":"shape","id":"sh/ojyl8fqt","slide":3,"bbox":[836,214,360,190]}
+{"kind":"shape","id":"sh/pk7mhk7e","slide":3,"bbox":[860,236,38,30]}
+{"kind":"textbox","id":"sh/ilc3ul8j","slide":3,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[860,240,38,22]}
+{"kind":"textbox","id":"sh/jmlk36p4","slide":3,"text":"จับคู่ครบ","textPreview":"จับคู่ครบ","textChars":9,"textLines":1,"bbox":[914,234,230,34]}
+{"kind":"textbox","id":"sh/nq10bm5w","slide":3,"text":"ต้องดู match rate + exception แยกอีกชั้น","textPreview":"ต้องดู match rate + exception แยกอีกชั้น","textChars":40,"textLines":1,"bbox":[860,294,305,68]}
+{"kind":"shape","id":"sh/m58j2hob","slide":3,"bbox":[56,444,1138,150]}
+{"kind":"textbox","id":"sh/9sjidcnm","slide":3,"text":"สิ่งที่ต้องถามทีม","textPreview":"สิ่งที่ต้องถามทีม","textChars":17,"textLines":1,"bbox":[82,468,250,28]}
+{"kind":"textbox","id":"sh/8ra1476h","slide":3,"text":"• จำนวนไฟล์น้อยลงเป็นปกติหรือมีส่งตกหล่น\n• ชื่อ Provider / บัญชี / ทิศทางฝาก–ถอนตรงกันหรือไม่\n• ไฟล์ชี้แจงต้องผูกกับเคสใด ก่อนอนุมัติและปิดเคส","textPreview":"• จำนวนไฟล์น้อยลงเป็นปกติหรือมีส่งตกหล่น | • ชื่อ Provider / บัญชี / ทิศทางฝาก–ถอนตรงกันหรือไม่ | • ไฟล์ชี้แจงต้องผูกกับเคสใด ก่อนอนุมัติ...","textChars":142,"textLines":3,"bbox":[82,510,1030,72]}
+{"kind":"notes","id":"nt/stjz3f","slide":3,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/k4ffkp","slide":4,"title":"COMPANY CHECKLIST","textShapes":54}
+{"kind":"textbox","id":"sh/adkjidw7","slide":4,"text":"COMPANY CHECKLIST","textPreview":"COMPANY CHECKLIST","textChars":17,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/xgbitsvy","slide":4,"text":"เช็กลิสต์ภาพรวม 9 บริษัท","textPreview":"เช็กลิสต์ภาพรวม 9 บริษัท","textChars":24,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/wf21kned","slide":4,"text":"ใช้หน้านี้เป็นรายการโทร/ถามทีมก่อน แล้วเปิดหน้ารายบริษัทเพื่อดูรายละเอียด","textPreview":"ใช้หน้านี้เป็นรายการโทร/ถามทีมก่อน แล้วเปิดหน้ารายบริษัทเพื่อดูรายละเอียด","textChars":73,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/na90nydg","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/m90zedwb","slide":4,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/9crip8vm","slide":4,"bbox":[56,205,1138,440]}
+{"kind":"textbox","id":"sh/8bihg3e1","slide":4,"text":"บริษัท","textPreview":"บริษัท","textChars":6,"textLines":1,"bbox":[64,214,94,20]}
+{"kind":"textbox","id":"sh/76d0z2d0","slide":4,"text":"ไฟล์ 27→28→29","textPreview":"ไฟล์ 27→28→29","textChars":13,"textLines":1,"bbox":[174,214,164,20]}
+{"kind":"textbox","id":"sh/654jqxwf","slide":4,"text":"เฉลี่ยจับคู่","textPreview":"เฉลี่ยจับคู่","textChars":12,"textLines":1,"bbox":[354,214,124,20]}
+{"kind":"textbox","id":"sh/gr61czqt","slide":4,"text":"ระดับ","textPreview":"ระดับ","textChars":5,"textLines":1,"bbox":[494,214,104,20]}
+{"kind":"textbox","id":"sh/hszil47e","slide":4,"text":"คำถามแรกที่ต้องถาม","textPreview":"คำถามแรกที่ต้องถาม","textChars":18,"textLines":1,"bbox":[614,214,572,20]}
+{"kind":"shape","id":"sh/upojap83","slide":4,"bbox":[56,249,1138,0]}
+{"kind":"textbox","id":"sh/vqx0jupo","slide":4,"text":"3XB","textPreview":"3XB","textChars":3,"textLines":1,"bbox":[64,258,94,20]}
+{"kind":"textbox","id":"sh/83618fqx","slide":4,"text":"15 → 13 → 9","textPreview":"15 → 13 → 9","textChars":11,"textLines":1,"bbox":[174,258,164,20]}
+{"kind":"textbox","id":"sh/tofihk7i","slide":4,"text":"50.6%","textPreview":"50.6%","textChars":5,"textLines":1,"bbox":[354,258,124,20]}
+{"kind":"textbox","id":"sh/61oj658r","slide":4,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[494,258,104,20]}
+{"kind":"textbox","id":"sh/72x0fapc","slide":4,"text":"ยืนยันว่า 29 ส.ค. ส่งไฟล์ PM/Provider ครบ แม้จำนวนลดเหลือ 9 ไฟล์","textPreview":"ยืนยันว่า 29 ส.ค. ส่งไฟล์ PM/Provider ครบ แม้จำนวนลดเหลือ 9 ไฟล์","textChars":64,"textLines":1,"bbox":[614,258,572,20]}
+{"kind":"shape","id":"sh/kzm14fq1","slide":4,"bbox":[56,293,1138,0]}
+{"kind":"shape","id":"sh/l0fidk76","slide":4,"bbox":[57,293,1136,44]}
+{"kind":"textbox","id":"sh/1knq1cfy","slide":4,"text":"AT4","textPreview":"AT4","textChars":3,"textLines":1,"bbox":[64,302,94,20]}
+{"kind":"textbox","id":"sh/0jeps7ed","slide":4,"text":"15 → 13 → 10","textPreview":"15 → 13 → 10","textChars":12,"textLines":1,"bbox":[174,302,164,20]}
+{"kind":"textbox","id":"sh/zil8z2xs","slide":4,"text":"36.3%","textPreview":"36.3%","textChars":5,"textLines":1,"bbox":[354,302,124,20]}
+{"kind":"textbox","id":"sh/ehc7qxw7","slide":4,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[494,302,104,20]}
+{"kind":"textbox","id":"sh/dg3qxsf2","slide":4,"text":"ยืนยันชุดไฟล์ฝาก/ถอนของทุก Provider วันที่ 29","textPreview":"ยืนยันชุดไฟล์ฝาก/ถอนของทุก Provider วันที่ 29","textChars":45,"textLines":1,"bbox":[614,302,572,20]}
+{"kind":"shape","id":"sh/cfuponeh","slide":4,"bbox":[56,337,1138,0]}
+{"kind":"textbox","id":"sh/relovixw","slide":4,"text":"FR8","textPreview":"FR8","textChars":3,"textLines":1,"bbox":[64,346,94,20]}
+{"kind":"textbox","id":"sh/qdc7mxwb","slide":4,"text":"14 → 16 → 15","textPreview":"14 → 16 → 15","textChars":12,"textLines":1,"bbox":[174,346,164,20]}
+{"kind":"textbox","id":"sh/xc7qtwf6","slide":4,"text":"25.5%","textPreview":"25.5%","textChars":5,"textLines":1,"bbox":[354,346,124,20]}
+{"kind":"textbox","id":"sh/wbyp0rel","slide":4,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[494,346,104,20]}
+{"kind":"textbox","id":"sh/uh8nutc3","slide":4,"text":"ไฟล์ปริมาณใกล้เคียงเดิม แต่จับคู่ต่ำต่อเนื่อง—ตรวจ mapping บัญชี/Provider","textPreview":"ไฟล์ปริมาณใกล้เคียงเดิม แต่จับคู่ต่ำต่อเนื่อง—ตรวจ mapping บัญชี/Provider","textChars":73,"textLines":1,"bbox":[614,346,572,20]}
+{"kind":"shape","id":"sh/vih4nydo","slide":4,"bbox":[56,381,1138,0]}
+{"kind":"shape","id":"sh/gjq5wju9","slide":4,"bbox":[57,381,1136,44]}
+{"kind":"textbox","id":"sh/hkjmpovu","slide":4,"text":"MC8","textPreview":"MC8","textChars":3,"textLines":1,"bbox":[64,390,94,20]}
+{"kind":"textbox","id":"sh/6t8nq9cr","slide":4,"text":"8 → 10 → 10","textPreview":"8 → 10 → 10","textChars":11,"textLines":1,"bbox":[174,390,164,20]}
+{"kind":"textbox","id":"sh/7uh4jedc","slide":4,"text":"49.6%","textPreview":"49.6%","textChars":5,"textLines":1,"bbox":[354,390,124,20]}
+{"kind":"textbox","id":"sh/8vq5sjux","slide":4,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[494,390,104,20]}
+{"kind":"textbox","id":"sh/tgzmlovi","slide":4,"text":"อัตราจับคู่ลดชัดในวันที่ 29 แม้จำนวนไฟล์ปกติ","textPreview":"อัตราจับคู่ลดชัดในวันที่ 29 แม้จำนวนไฟล์ปกติ","textChars":44,"textLines":1,"bbox":[614,390,572,20]}
+{"kind":"shape","id":"sh/qpsn2dcb","slide":4,"bbox":[56,425,1138,0]}
+{"kind":"textbox","id":"sh/rq1ovidw","slide":4,"text":"MR9","textPreview":"MR9","textChars":3,"textLines":1,"bbox":[64,434,94,20]}
+{"kind":"textbox","id":"sh/bih0rahc","slide":4,"text":"11 → 10 → 10","textPreview":"11 → 10 → 10","textChars":12,"textLines":1,"bbox":[174,434,164,20]}
+{"kind":"textbox","id":"sh/ah8jy5gr","slide":4,"text":"51.4%","textPreview":"51.4%","textChars":5,"textLines":1,"bbox":[354,434,124,20]}
+{"kind":"textbox","id":"sh/x4zitkz2","slide":4,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[494,434,104,20]}
+{"kind":"textbox","id":"sh/c3q10fyh","slide":4,"text":"จำนวนไฟล์หลักคงที่ แต่มีหลักฐานเพิ่ม 6 ไฟล์","textPreview":"จำนวนไฟล์หลักคงที่ แต่มีหลักฐานเพิ่ม 6 ไฟล์","textChars":43,"textLines":1,"bbox":[614,434,572,20]}
+{"kind":"shape","id":"sh/neh0nqh0","slide":4,"bbox":[56,469,1138,0]}
+{"kind":"shape","id":"sh/2doju5gf","slide":4,"bbox":[57,469,1136,44]}
+{"kind":"textbox","id":"sh/pgzip0z6","slide":4,"text":"PS8","textPreview":"PS8","textChars":3,"textLines":1,"bbox":[64,478,94,20]}
+{"kind":"textbox","id":"sh/ofq1wvyl","slide":4,"text":"11 → 11 → 11","textPreview":"11 → 11 → 11","textChars":12,"textLines":1,"bbox":[174,478,164,20]}
+{"kind":"textbox","id":"sh/7a1kzux4","slide":4,"text":"65.9%","textPreview":"65.9%","textChars":5,"textLines":1,"bbox":[354,478,124,20]}
+{"kind":"textbox","id":"sh/m9sj6pgz","slide":4,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[494,478,104,20]}
+{"kind":"textbox","id":"sh/4fmx0reh","slide":4,"text":"จำนวนไฟล์คงที่ 11 ไฟล์ทุกวัน","textPreview":"จำนวนไฟล์คงที่ 11 ไฟล์ทุกวัน","textChars":28,"textLines":1,"bbox":[614,478,572,20]}
+{"kind":"shape","id":"sh/5gvytwfm","slide":4,"bbox":[56,513,1138,0]}
+{"kind":"textbox","id":"sh/idkfyhwb","slide":4,"text":"SK8","textPreview":"SK8","textChars":3,"textLines":1,"bbox":[64,522,94,20]}
+{"kind":"textbox","id":"sh/3edgrmxw","slide":4,"text":"18 → 12 → 10","textPreview":"18 → 12 → 10","textChars":12,"textLines":1,"bbox":[174,522,164,20]}
+{"kind":"textbox","id":"sh/sjmh4red","slide":4,"text":"9.7%","textPreview":"9.7%","textChars":4,"textLines":1,"bbox":[354,522,124,20]}
+{"kind":"textbox","id":"sh/dkvyxwfy","slide":4,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[494,522,104,20]}
+{"kind":"textbox","id":"sh/qh4f21w7","slide":4,"text":"อัตราจับคู่ต่ำมากทั้ง 3 วัน—ตรวจ rule/mapping ก่อนสรุปผล","textPreview":"อัตราจับคู่ต่ำมากทั้ง 3 วัน—ตรวจ rule/mapping ก่อนสรุปผล","textChars":56,"textLines":1,"bbox":[614,522,572,20]}
+{"kind":"shape","id":"sh/ridgv6xs","slide":4,"bbox":[56,557,1138,0]}
+{"kind":"shape","id":"sh/0n6h8be9","slide":4,"bbox":[57,557,1136,44]}
+{"kind":"textbox","id":"sh/1ofy1gvu","slide":4,"text":"UFABET7M","textPreview":"UFABET7M","textChars":8,"textLines":1,"bbox":[64,566,94,20]}
+{"kind":"textbox","id":"sh/psr6pcj2","slide":4,"text":"7 → 7 → 7","textPreview":"7 → 7 → 7","textChars":9,"textLines":1,"bbox":[174,566,164,20]}
+{"kind":"textbox","id":"sh/oripw72h","slide":4,"text":"76.9%","textPreview":"76.9%","textChars":5,"textLines":1,"bbox":[354,566,124,20]}
+{"kind":"textbox","id":"sh/nq9on21w","slide":4,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[494,566,104,20]}
+{"kind":"textbox","id":"sh/2p07uxkb","slide":4,"text":"จำนวนไฟล์คงที่ แต่ match rate ลดลงต่อเนื่อง","textPreview":"จำนวนไฟล์คงที่ แต่ match rate ลดลงต่อเนื่อง","textChars":43,"textLines":1,"bbox":[614,566,572,20]}
+{"kind":"shape","id":"sh/xwb6twjy","slide":4,"bbox":[56,601,1138,0]}
+{"kind":"textbox","id":"sh/cv2p0r2d","slide":4,"text":"UR9","textPreview":"UR9","textChars":3,"textLines":1,"bbox":[64,610,94,20]}
+{"kind":"textbox","id":"sh/bu9orm1s","slide":4,"text":"11 → 11 → 11","textPreview":"11 → 11 → 11","textChars":12,"textLines":1,"bbox":[174,610,164,20]}
+{"kind":"textbox","id":"sh/at07yhk7","slide":4,"text":"46.5%","textPreview":"46.5%","textChars":5,"textLines":1,"bbox":[354,610,124,20]}
+{"kind":"textbox","id":"sh/d076xs3u","slide":4,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[494,610,104,20]}
+{"kind":"textbox","id":"sh/szypon29","slide":4,"text":"จำนวนไฟล์คงที่และแนวโน้มดีขึ้น","textPreview":"จำนวนไฟล์คงที่และแนวโน้มดีขึ้น","textChars":30,"textLines":1,"bbox":[614,610,572,20]}
+{"kind":"notes","id":"nt/k4ffkp","slide":4,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/t04s70","slide":5,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/gvudg7y5","slide":5,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/fulcn2h0","slide":5,"text":"3XB — ผล 3 วันและรายการถามทีม","textPreview":"3XB — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/u9cbex0f","slide":5,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 50.56% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 50.56% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/p0nutcz2","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/ozudk7yh","slide":5,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/3ylcr2hw","slide":5,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/2xcvihgb","slide":5,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/54juhszi","slide":5,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/k3at8nid","slide":5,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/ilc72d43","slide":5,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/jmlovi5o","slide":5,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/knup4nmt","slide":5,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/5o36xsne","slide":5,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/6pc76x4z","slide":5,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/7ql8z25k","slide":5,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/srep87m5","slide":5,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/tsnq1snq","slide":5,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/etw7ax4b","slide":5,"text":"5,110","textPreview":"5,110","textChars":5,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/fu58325g","slide":5,"text":"5,841","textPreview":"5,841","textChars":5,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/by5or21o","slide":5,"text":"1,938","textPreview":"1,938","textChars":5,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/qxwnyxk3","slide":5,"text":"37.93%","textPreview":"37.93%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/dk76tcju","slide":5,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/cjyp0729","slide":5,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/3u5on2ls","slide":5,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/2twnuxk7","slide":5,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/pwn6pcji","slide":5,"text":"5,716","textPreview":"5,716","textChars":5,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/ove5w72d","slide":5,"text":"6,515","textPreview":"6,515","textChars":5,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/fqlojilg","slide":5,"text":"3,052","textPreview":"3,052","textChars":5,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/upcnqdkv","slide":5,"text":"53.39%","textPreview":"53.39%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/kval0jit","slide":5,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/5wjmtoje","slide":5,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/its3yt0n","slide":5,"text":"9","textPreview":"9","textChars":1,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/ju1kre18","slide":5,"text":"5,320","textPreview":"5,320","textChars":5,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/szulo3i5","slide":5,"text":"6,817","textPreview":"6,817","textChars":5,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/t03mx8za","slide":5,"text":"3,211","textPreview":"3,211","textChars":5,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/6xs3mt0z","slide":5,"text":"60.36%","textPreview":"60.36%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/7y14vyhk","slide":5,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/83qlszil","slide":5,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/94z2l4j6","slide":5,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/1wvmh8nm","slide":5,"bbox":[920,321.24,42,22.76]}
+{"kind":"textbox","id":"sh/0bml83mh","slide":5,"text":"37.9%","textPreview":"37.9%","textChars":5,"textLines":1,"bbox":[910,297.24,62,20]}
+{"kind":"textbox","id":"sh/fad4fy5w","slide":5,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/e9k36t4b","slide":5,"bbox":[1008,311.97,42,32.03]}
+{"kind":"textbox","id":"sh/d8bmdonq","slide":5,"text":"53.4%","textPreview":"53.4%","textChars":5,"textLines":1,"bbox":[998,287.97,62,20]}
+{"kind":"textbox","id":"sh/s72l4jm5","slide":5,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/r6t4be5k","slide":5,"bbox":[1096,307.78,42,36.22]}
+{"kind":"textbox","id":"sh/q5k32t4z","slide":5,"text":"60.4%","textPreview":"60.4%","textChars":5,"textLines":1,"bbox":[1086,283.78,62,20]}
+{"kind":"textbox","id":"sh/54bm9one","slide":5,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/432l0jm9","slide":5,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/uxgrulgv","slide":5,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/vypsnqh0","slide":5,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/wzy9wvyl","slide":5,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/h07ap0z6","slide":5,"text":"ยืนยันว่า 29 ส.ค. ส่งไฟล์ PM/Provider ครบ แม้จำนวนลดเหลือ 9 ไฟล์","textPreview":"ยืนยันว่า 29 ส.ค. ส่งไฟล์ PM/Provider ครบ แม้จำนวนลดเหลือ 9 ไฟล์","textChars":64,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/m9wrqlgj","slide":5,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/7a5sj6h4","slide":5,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/8be9sbyp","slide":5,"text":"ตรวจว่ามีไฟล์ BO/PM ส่งตามหลังรอบประมวลผลหรือไม่","textPreview":"ตรวจว่ามีไฟล์ BO/PM ส่งตามหลังรอบประมวลผลหรือไม่","textChars":48,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/9wnalgza","slide":5,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/y5crm1gn","slide":5,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/z65sf6h8","slide":5,"text":"ถ้าครบ ให้ใช้ผลวันที่ 29 ต่อได้","textPreview":"ถ้าครบ ให้ใช้ผลวันที่ 29 ต่อได้","textChars":31,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/t04s70","slide":5,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/gcey5r","slide":6,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/f2lwvip4","slide":6,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/g3uxonqp","slide":6,"text":"AT4 — ผล 3 วันและรายการถามทีม","textPreview":"AT4 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/h43exs7a","slide":6,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 36.29% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 36.29% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/6xsvyd8n","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/7ylwri98","slide":6,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/szud0nqt","slide":6,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/t03ets7y","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/qtwfuh8r","slide":6,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/ru5w32pc","slide":6,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/3ytw3e94","slide":6,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/2xkva98j","slide":6,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/p0be5ora","slide":6,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/oz2xcjqp","slide":6,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/b2dw7y9g","slide":6,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/q14fet8v","slide":6,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/d4ve9orm","slide":6,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/c3mxgjq1","slide":6,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/zqdwby9c","slide":6,"text":"471","textPreview":"471","textChars":3,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/y54f2t8r","slide":6,"text":"470","textPreview":"470","textChars":3,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/uxs7q1wb","slide":6,"text":"113","textPreview":"113","textChars":3,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/vy18jmxw","slide":6,"text":"23.99%","textPreview":"23.99%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/wza9sreh","slide":6,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/h0jqlwf2","slide":6,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/m987mhgf","slide":6,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/7ah8vmx0","slide":6,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/8vqpore5","slide":6,"text":"457","textPreview":"457","textChars":3,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/9wzqxwfq","slide":6,"text":"461","textPreview":"461","textChars":3,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/q5crylwj","slide":6,"text":"194","textPreview":"194","textChars":3,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/r6l8r6x4","slide":6,"text":"42.45%","textPreview":"42.45%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/10naxkz6","slide":6,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/0zetofyl","slide":6,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/fy5svah0","slide":6,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/exwbm5gv","slide":6,"text":"410","textPreview":"410","textChars":3,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/dw3at0za","slide":6,"text":"429","textPreview":"429","textChars":3,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/svutkvyp","slide":6,"text":"174","textPreview":"174","textChars":3,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/rulsrqh4","slide":6,"text":"42.44%","textPreview":"42.44%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/qtcbilgj","slide":6,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/xs7u54ze","slide":6,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/crytwzyt","slide":6,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/kj2t0vud","slide":6,"bbox":[920,329.61,42,14.39]}
+{"kind":"textbox","id":"sh/5kba90vy","slide":6,"text":"24.0%","textPreview":"24.0%","textChars":5,"textLines":1,"bbox":[910,305.61,62,20]}
+{"kind":"textbox","id":"sh/yxkby5c7","slide":6,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/jits7qds","slide":6,"bbox":[1008,318.53,42,25.47]}
+{"kind":"textbox","id":"sh/snmt4fu9","slide":6,"text":"42.5%","textPreview":"42.5%","textChars":5,"textLines":1,"bbox":[998,294.53,62,20]}
+{"kind":"textbox","id":"sh/tovadkvu","slide":6,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/6lkb25cj","slide":6,"bbox":[1096,318.54,42,25.46]}
+{"kind":"textbox","id":"sh/7mdsbad4","slide":6,"text":"42.4%","textPreview":"42.4%","textChars":5,"textLines":1,"bbox":[1086,294.54,62,20]}
+{"kind":"textbox","id":"sh/grmt8ful","slide":6,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/hsvahkv6","slide":6,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/byh4ni1k","slide":6,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/qx8nud0z","slide":6,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/dkjmpsja","slide":6,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/cja5wni5","slide":6,"text":"ยืนยันชุดไฟล์ฝาก/ถอนของทุก Provider วันที่ 29","textPreview":"ยืนยันชุดไฟล์ฝาก/ถอนของทุก Provider วันที่ 29","textChars":45,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/3uh4jy18","slide":6,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/2t83qd0n","slide":6,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/pwzml8je","slide":6,"text":"ตรวจบัญชีและทิศทาง D/W ในชื่อไฟล์","textPreview":"ตรวจบัญชีและทิศทาง D/W ในชื่อไฟล์","textChars":33,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/ovq5s3it","slide":6,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/nql4v21s","slide":6,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/mpsn2x07","slide":6,"text":"สอบถามว่าจำนวนไฟล์ลด 15 → 10 เป็นปกติหรือไม่","textPreview":"สอบถามว่าจำนวนไฟล์ลด 15 → 10 เป็นปกติหรือไม่","textChars":44,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/gcey5r","slide":6,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/cdep5r","slide":7,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/lkby50fe","slide":7,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/yhkfalgn","slide":7,"text":"FR8 — ผล 3 วันและรายการถามทีม","textPreview":"FR8 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/jitg3qx8","slide":7,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 25.50% • วันที่ 29 มีหลักฐาน 5 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 25.50% • วันที่ 29 มีหลักฐาน 5 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/87mhgvy5","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/t8vy90fa","slide":7,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/6l4fe5gz","slide":7,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/7mdg7qxk","slide":7,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/obix4byl","slide":7,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/9cryxgz6","slide":7,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/l0rqp43m","slide":7,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/kzi9gzm1","slide":7,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/zy98nulg","slide":7,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/yx0rep4v","slide":7,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/94bqto3i","slide":7,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/83i9kjmx","slide":7,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/7298relc","slide":7,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/m10ri94r","slide":7,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/hsbqxo3e","slide":7,"text":"4,150","textPreview":"4,150","textChars":5,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/w729ojm9","slide":7,"text":"4,164","textPreview":"4,164","textChars":5,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/gnu1gryh","slide":7,"text":"1,109","textPreview":"1,109","textChars":5,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/1o329wf2","slide":7,"text":"26.72%","textPreview":"26.72%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/elcjehgb","slide":7,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/fmlk7mxw","slide":7,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/obu1kred","slide":7,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/pcn2dwfy","slide":7,"text":"16","textPreview":"16","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/2pcji1wn","slide":7,"text":"4,556","textPreview":"4,556","textChars":5,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/3alkb6x8","slide":7,"text":"4,569","textPreview":"4,569","textChars":5,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/4fa187y9","slide":7,"text":"1,182","textPreview":"1,182","textChars":5,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/5gj21cfu","slide":7,"text":"25.94%","textPreview":"25.94%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/7ap47ahc","slide":7,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/m9gne5gr","slide":7,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/9crm9kzi","slide":7,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/8by5gfyx","slide":7,"text":"4,491","textPreview":"4,491","textChars":5,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/z6p43ahg","slide":7,"text":"4,513","textPreview":"4,513","textChars":5,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/y5gna50v","slide":7,"text":"1,070","textPreview":"1,070","textChars":5,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/l87m50z6","slide":7,"text":"23.83%","textPreview":"23.83%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/k7y5cvil","slide":7,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/bi54zqh4","slide":7,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/qhwn6l0j","slide":7,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/qpgratw3","slide":7,"bbox":[920,327.97,42,16.03]}
+{"kind":"textbox","id":"sh/rq983ydo","slide":7,"text":"26.7%","textPreview":"26.7%","textChars":5,"textLines":1,"bbox":[910,303.97,62,20]}
+{"kind":"textbox","id":"sh/sri9cje9","slide":7,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/dcrq5ovu","slide":7,"bbox":[1008,328.44,42,15.56]}
+{"kind":"textbox","id":"sh/ilgr69w7","slide":7,"text":"25.9%","textPreview":"25.9%","textChars":5,"textLines":1,"bbox":[998,304.44,62,20]}
+{"kind":"textbox","id":"sh/3mp8zeds","slide":7,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/4ny98jed","slide":7,"bbox":[1096,329.7,42,14.3]}
+{"kind":"textbox","id":"sh/5o7q1ovy","slide":7,"text":"23.8%","textPreview":"23.8%","textChars":5,"textLines":1,"bbox":[1086,305.7,62,20]}
+{"kind":"textbox","id":"sh/uhw729wb","slide":7,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/vi58vedg","slide":7,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/xcvuhcfy","slide":7,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/cbmt87yt","slide":7,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/badcf2x8","slide":7,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/a94b6xgn","slide":7,"text":"ไฟล์ปริมาณใกล้เคียงเดิม แต่จับคู่ต่ำต่อเนื่อง—ตรวจ mapping บัญชี/Provider","textPreview":"ไฟล์ปริมาณใกล้เคียงเดิม แต่จับคู่ต่ำต่อเนื่อง—ตรวจ mapping บัญชี/Provider","textChars":73,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/p8budsf2","slide":7,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/o72t4nyh","slide":7,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/n6tsbixw","slide":7,"text":"ยืนยันคอลัมน์เวลาและ timezone ระหว่าง BO กับ STM","textPreview":"ยืนยันคอลัมน์เวลาและ timezone ระหว่าง BO กับ STM","textChars":48,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/2lkb2xgb","slide":7,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/1kba9sf6","slide":7,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/0j2t0nyl","slide":7,"text":"นำไฟล์ชี้แจง 5 ไฟล์มาผูกกับเคสที่ไม่พบคู่","textPreview":"นำไฟล์ชี้แจง 5 ไฟล์มาผูกกับเคสที่ไม่พบคู่","textChars":41,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/cdep5r","slide":7,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/an7r18","slide":8,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/f2t8rmlc","slide":8,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/g3290r2h","slide":8,"text":"MC8 — ผล 3 วันและรายการถามทีม","textPreview":"MC8 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/14bqtw32","slide":8,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 49.62% • วันที่ 29 มีหลักฐาน 1 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 49.62% • วันที่ 29 มีหลักฐาน 1 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/25kr21kn","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/36t8v618","slide":8,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/or294r2t","slide":8,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/psbqxwje","slide":8,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/i9g7qxkj","slide":8,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/jap8j2l4","slide":8,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/zutkvutc","slide":8,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/ytkj2pcr","slide":8,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/lgv2x4b2","slide":8,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/0vm14zux","slide":8,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/bqtkrat0","slide":8,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/qpkjypcf","slide":8,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/dsb2tkb6","slide":8,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/cr210ful","slide":8,"text":"8","textPreview":"8","textChars":1,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/3m9knat4","slide":8,"text":"813","textPreview":"813","textChars":3,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/2l0ju5cj","slide":8,"text":"886","textPreview":"886","textChars":3,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/6x0365wb","slide":8,"text":"449","textPreview":"449","textChars":3,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/ry9kzaxw","slide":8,"text":"55.23%","textPreview":"55.23%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/sjil8feh","slide":8,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/tkr21kf2","slide":8,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/el03a5wn","slide":8,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/fm9k3axs","slide":8,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/gnilcfed","slide":8,"text":"1,040","textPreview":"1,040","textChars":5,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/1obm5kfy","slide":8,"text":"1,114","textPreview":"1,114","textChars":5,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/2pk3epwj","slide":8,"text":"578","textPreview":"578","textChars":3,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/3qt47ud4","slide":8,"text":"55.58%","textPreview":"55.58%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/xwfets3i","slide":8,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/cv6xkn2x","slide":8,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/buxwrilc","slide":8,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/atofidkr","slide":8,"text":"1,099","textPreview":"1,099","textChars":5,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/lkzexs3e","slide":8,"text":"1,373","textPreview":"1,373","textChars":5,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/kz6xon29","slide":8,"text":"418","textPreview":"418","textChars":3,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/jyxwvilo","slide":8,"text":"38.04%","textPreview":"38.04%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/yxofmdk3","slide":8,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/tozy1cjq","slide":8,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/8nqxs725","slide":8,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/4jah0bmd","slide":8,"bbox":[920,310.86,42,33.14]}
+{"kind":"textbox","id":"sh/5k3itwny","slide":8,"text":"55.2%","textPreview":"55.2%","textChars":5,"textLines":1,"bbox":[910,286.86,62,20]}
+{"kind":"textbox","id":"sh/ihszy147","slide":8,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/3i10r65s","slide":8,"bbox":[1008,310.65,42,33.35]}
+{"kind":"textbox","id":"sh/gfahwrmh","slide":8,"text":"55.6%","textPreview":"55.6%","textChars":5,"textLines":1,"bbox":[998,286.65,62,20]}
+{"kind":"textbox","id":"sh/hgjipwnm","slide":8,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/utszuh4b","slide":8,"bbox":[1096,321.18,42,22.82]}
+{"kind":"textbox","id":"sh/ve10nm5w","slide":8,"text":"38.0%","textPreview":"38.0%","textChars":5,"textLines":1,"bbox":[1086,297.18,62,20]}
+{"kind":"textbox","id":"sh/0be18vml","slide":8,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/1cni1036","slide":8,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/b6pkru58","slide":8,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/a5g3ypon","slide":8,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/x872tkne","slide":8,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/c7yl0z6t","slide":8,"text":"อัตราจับคู่ลดชัดในวันที่ 29 แม้จำนวนไฟล์ปกติ","textPreview":"อัตราจับคู่ลดชัดในวันที่ 29 แม้จำนวนไฟล์ปกติ","textChars":44,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/za9kvu54","slide":8,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/y9g32poz","slide":8,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/lcr2x4na","slide":8,"text":"ตรวจคอลัมน์เวลา NaN/undefined และ Provider corepay","textPreview":"ตรวจคอลัมน์เวลา NaN/undefined และ Provider corepay","textChars":50,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/kbil4z6p","slide":8,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/fe5kjap0","slide":8,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/edwjq5of","slide":8,"text":"ใช้ไฟล์ชี้แจง 1 ไฟล์ยืนยันเคสที่ตรงยอดแต่ผิดรูปแบบเวลา","textPreview":"ใช้ไฟล์ชี้แจง 1 ไฟล์ยืนยันเคสที่ตรงยอดแต่ผิดรูปแบบเวลา","textChars":54,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/an7r18","slide":8,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/nyjyzv","slide":9,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/udwve143","slide":9,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/hgnupgnu","slide":9,"text":"MR9 — ผล 3 วันและรายการถามทีม","textPreview":"MR9 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/wfedgbm9","slide":9,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 51.36% • วันที่ 29 มีหลักฐาน 6 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 51.36% • วันที่ 29 มีหลักฐาน 6 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/3i5crq50","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/ihwvil4f","slide":9,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/5k7ut0nq","slide":9,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/4jydkvm5","slide":9,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/r6pcvq5w","slide":9,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/q5gvm54b","slide":9,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/03a94vy9","slide":9,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/l4jad0fu","slide":9,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/yhsr2lgj","slide":9,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/z218bqxo","slide":9,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/87u98fyl","slide":9,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/983ahkf6","slide":9,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/m5sr65gf","slide":9,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/n6lsfax0","slide":9,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/wbu9cfyh","slide":9,"text":"1,062","textPreview":"1,062","textChars":5,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/xc3alkf2","slide":9,"text":"1,129","textPreview":"1,129","textChars":5,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/5sjq5k76","slide":9,"text":"525","textPreview":"525","textChars":3,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/4rq9wfql","slide":9,"text":"49.44%","textPreview":"49.44%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/jqh83ap0","slide":9,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/ip8ru58v","slide":9,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/twja9k7i","slide":9,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/sva90zqx","slide":9,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/ru1s7upc","slide":9,"text":"902","textPreview":"902","textChars":3,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/6tsryp8r","slide":9,"text":"989","textPreview":"989","textChars":3,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/90fqx07y","slide":9,"text":"519","textPreview":"519","textChars":3,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/8z69ovqd","slide":9,"text":"57.54%","textPreview":"57.54%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/y547y1ob","slide":9,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/z6dor65w","slide":9,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/k7mp0b6h","slide":9,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/l8v6twn2","slide":9,"text":"947","textPreview":"947","textChars":3,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/mto721on","slide":9,"text":"1,017","textPreview":"1,017","textChars":5,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/7uxov65s","slide":9,"text":"446","textPreview":"446","textChars":3,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/8v6p4b6d","slide":9,"text":"47.10%","textPreview":"47.10%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/9wf6xgny","slide":9,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/2xknqho3","slide":9,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/nytojm5o","slide":9,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/ji1c7etg","slide":9,"bbox":[920,314.34,42,29.66]}
+{"kind":"textbox","id":"sh/ihsvy9cv","slide":9,"text":"49.4%","textPreview":"49.4%","textChars":5,"textLines":1,"bbox":[910,290.34,62,20]}
+{"kind":"textbox","id":"sh/5k3u9ob6","slide":9,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/4jad0ju1","slide":9,"bbox":[1008,309.48,42,34.52]}
+{"kind":"textbox","id":"sh/rmlwbetc","slide":9,"text":"57.5%","textPreview":"57.5%","textChars":5,"textLines":1,"bbox":[998,285.48,62,20]}
+{"kind":"textbox","id":"sh/6lcv29cr","slide":9,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/to3edobi","slide":9,"bbox":[1096,315.74,42,28.26]}
+{"kind":"textbox","id":"sh/snud4jux","slide":9,"text":"47.1%","textPreview":"47.1%","textChars":5,"textLines":1,"bbox":[1086,291.74,62,20]}
+{"kind":"textbox","id":"sh/falwfyto","slide":9,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/epcv6tc3","slide":9,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/cfetw3a1","slide":9,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/xgnu58rm","slide":9,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/adwbutsv","slide":9,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/be5c3y9g","slide":9,"text":"จำนวนไฟล์หลักคงที่ แต่มีหลักฐานเพิ่ม 6 ไฟล์","textPreview":"จำนวนไฟล์หลักคงที่ แต่มีหลักฐานเพิ่ม 6 ไฟล์","textChars":43,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/orutsja5","slide":9,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/pcnu1orq","slide":9,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/2pcbqtsz","slide":9,"text":"ผูกไฟล์ชี้แจงกับรายการไม่พบคู่ก่อนปิดเคส","textPreview":"ผูกไฟล์ชี้แจงกับรายการไม่พบคู่ก่อนปิดเคส","textChars":40,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/nqlczy9k","slide":9,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/gnutojat","slide":9,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/1o3uxore","slide":9,"text":"ยืนยันว่าชุด Provider ใน BO และ PM ครบทั้งฝาก/ถอน","textPreview":"ยืนยันว่าชุด Provider ใน BO และ PM ครบทั้งฝาก/ถอน","textChars":49,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/nyjyzv","slide":9,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/lzrnnd","slide":10,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/65c3ipwz","slide":10,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/tsnmt4va","slide":10,"text":"PS8 — ผล 3 วันและรายการถามทีม","textPreview":"PS8 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/8rulkzep","slide":10,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 65.92% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 65.92% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/vu54vedg","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/utw3m9wv","slide":10,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/hwnmxovm","slide":10,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/gveloje1","slide":10,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/by14jadw","slide":10,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/axs3a5wr","slide":10,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/sj2t0z2x","slide":10,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/tkbatk3i","slide":10,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/6hkbyp4r","slide":10,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/7itsrulc","slide":10,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/gnmt4z2t","slide":10,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/hovax43e","slide":10,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/ulkb2pkn","slide":10,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/fmdsvul8","slide":10,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/wri9svmp","slide":10,"text":"312","textPreview":"312","textChars":3,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/xsral03a","slide":10,"text":"363","textPreview":"363","textChars":3,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/dojqpwvy","slide":10,"text":"214","textPreview":"214","textChars":3,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/cnapwred","slide":10,"text":"68.59%","textPreview":"68.59%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/bm18nmds","slide":10,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/qls7uhw7","slide":10,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/lc3qtgvu","slide":10,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/kbu90bep","slide":10,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/zal8r6d4","slide":10,"text":"331","textPreview":"331","textChars":3,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/yps7y1wj","slide":10,"text":"371","textPreview":"371","textChars":3,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/9g3qxgv6","slide":10,"text":"229","textPreview":"229","textChars":3,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/8fu94bel","slide":10,"text":"69.18%","textPreview":"69.18%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/6lonydc3","slide":10,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/rmx4rito","slide":10,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/sn650nu9","slide":10,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/tof6tsbu","slide":10,"text":"305","textPreview":"305","textChars":3,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/epon2xcz","slide":10,"text":"366","textPreview":"366","textChars":3,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/fqxovitk","slide":10,"text":"183","textPreview":"183","textChars":3,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/grq54nu5","slide":10,"text":"60.00%","textPreview":"60.00%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/1sz6xsbq","slide":10,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/2t8n6xcb","slide":10,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/3uhoz2tw","slide":10,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/bytw3yho","slide":10,"bbox":[920,302.85,42,41.15]}
+{"kind":"textbox","id":"sh/qxkvut03","slide":10,"text":"68.6%","textPreview":"68.6%","textChars":5,"textLines":1,"bbox":[910,278.85,62,20]}
+{"kind":"textbox","id":"sh/d0ve58zu","slide":10,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/cz2dw3i9","slide":10,"bbox":[1008,302.49,42,41.51]}
+{"kind":"textbox","id":"sh/z2dw7ihk","slide":10,"text":"69.2%","textPreview":"69.2%","textChars":5,"textLines":1,"bbox":[998,278.49,62,20]}
+{"kind":"textbox","id":"sh/y14fyd0f","slide":10,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/l4ve98zq","slide":10,"bbox":[1096,308,42,36]}
+{"kind":"textbox","id":"sh/03mx0ni5","slide":10,"text":"60.0%","textPreview":"60.0%","textChars":5,"textLines":1,"bbox":[1086,284,62,20]}
+{"kind":"textbox","id":"sh/f69wvehg","slide":10,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/e50vm90v","slide":10,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/4bytwfyt","slide":10,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/5c7apkfe","slide":10,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/i9wbu5gn","slide":10,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/japsnax8","slide":10,"text":"จำนวนไฟล์คงที่ 11 ไฟล์ทุกวัน","textPreview":"จำนวนไฟล์คงที่ 11 ไฟล์ทุกวัน","textChars":28,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/w7etsfyx","slide":10,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/h8nalkf2","slide":10,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/u5wbq5gr","slide":10,"text":"ยืนยันความครบถ้วนกับทีม แล้วใช้เป็น baseline เปรียบเทียบบริษัทอื่น","textPreview":"ยืนยันความครบถ้วนกับทีม แล้วใช้เป็น baseline เปรียบเทียบบริษัทอื่น","textChars":66,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/v65sjaxc","slide":10,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/g3it4zy1","slide":10,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/14rux4fm","slide":10,"text":"สุ่มตรวจเคสไม่พบคู่เพื่อยืนยัน tolerance","textPreview":"สุ่มตรวจเคสไม่พบคู่เพื่อยืนยัน tolerance","textChars":40,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/lzrnnd","slide":10,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/0paqbw","slide":11,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/t8fqxcry","slide":11,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/654rmx87","slide":11,"text":"SK8 — ผล 3 วันและรายการถามทีม","textPreview":"SK8 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/r6d8v29s","slide":11,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 9.71% • วันที่ 29 มีหลักฐาน 1 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 9.71% • วันที่ 29 มีหลักฐาน 1 ไฟล์","textChars":71,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/k3m9k7qh","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/54vqtsr2","slide":11,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/i14rix8b","slide":11,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/j2d8r29w","slide":11,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/wfm9gnq5","slide":11,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/xgvqpsrq","slide":11,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/psritsji","slide":11,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/4ri1kn2d","slide":11,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/3q90ri1s","slide":11,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/2p0jidk7","slide":11,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/ho7ip8jm","slide":11,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/gny1g321","slide":11,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/vmp0ny1g","slide":11,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/ulgjedkv","slide":11,"text":"18","textPreview":"18","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/tk7il8ja","slide":11,"text":"572","textPreview":"572","textChars":3,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/8zy1c325","slide":11,"text":"570","textPreview":"570","textChars":3,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/k32183a1","slide":11,"text":"22","textPreview":"22","textChars":2,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/l4bi18r6","slide":11,"text":"3.85%","textPreview":"3.85%","textChars":5,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/y10j6tsv","slide":11,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/z2t0zy9g","slide":11,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/czi14jap","slide":11,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/x0rixora","slide":11,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/ad0j2tsj","slide":11,"text":"504","textPreview":"504","textChars":3,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/be90vy94","slide":11,"text":"505","textPreview":"505","textChars":3,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/wvm10nat","slide":11,"text":"69","textPreview":"69","textChars":2,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/hwv29sre","slide":11,"text":"13.69%","textPreview":"13.69%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/rqx4zmtw","slide":11,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/qpo36hcb","slide":11,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/dsfm1wbm","slide":11,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/sr6l8ru1","slide":11,"text":"535","textPreview":"535","textChars":3,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/fuh436ts","slide":11,"text":"547","textPreview":"547","textChars":3,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/et83a1c7","slide":11,"text":"62","textPreview":"62","textChars":2,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/1wzm5wby","slide":11,"text":"11.59%","textPreview":"11.59%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/0vq5crud","slide":11,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/vyd4r2to","slide":11,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/ux43yxc3","slide":11,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/mh83exkz","slide":11,"bbox":[920,340,42,4]}
+{"kind":"textbox","id":"sh/nih4721k","slide":11,"text":"3.9%","textPreview":"3.9%","textChars":4,"textLines":1,"bbox":[910,316,62,20]}
+{"kind":"textbox","id":"sh/8jqlg72p","slide":11,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/94zm9cja","slide":11,"bbox":[1008,335.79,42,8.21]}
+{"kind":"textbox","id":"sh/a58nihkv","slide":11,"text":"13.7%","textPreview":"13.7%","textChars":5,"textLines":1,"bbox":[998,311.79,62,20]}
+{"kind":"textbox","id":"sh/v6h4bm1g","slide":11,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/w7a5kr21","slide":11,"bbox":[1096,337.05,42,6.95]}
+{"kind":"textbox","id":"sh/h8jmdwjm","slide":11,"text":"11.6%","textPreview":"11.6%","textChars":5,"textLines":1,"bbox":[1086,313.05,62,20]}
+{"kind":"textbox","id":"sh/i9snmhk7","slide":11,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/ja14fm1c","slide":11,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/dgny1k7q","slide":11,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/sfexsfql","slide":11,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/re5gzap0","slide":11,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/qdwfq58f","slide":11,"text":"อัตราจับคู่ต่ำมากทั้ง 3 วัน—ตรวจ rule/mapping ก่อนสรุปผล","textPreview":"อัตราจับคู่ต่ำมากทั้ง 3 วัน—ตรวจ rule/mapping ก่อนสรุปผล","textChars":56,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/1k7y5k72","slide":11,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/0jyxwzqh","slide":11,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/fi5g3upw","slide":11,"text":"ยืนยันไฟล์ทุก Provider และทั้ง D/W โดยเฉพาะวันที่ 29","textPreview":"ยืนยันไฟล์ทุก Provider และทั้ง D/W โดยเฉพาะวันที่ 29","textChars":52,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/ehwfup8b","slide":11,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/p87y947y","slide":11,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/o7yh0zqt","slide":11,"text":"ตรวจชนิดข้อมูลยอด เวลา และรหัสบัญชีว่าตรง BO หรือไม่","textPreview":"ตรวจชนิดข้อมูลยอด เวลา และรหัสบัญชีว่าตรง BO หรือไม่","textChars":52,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/0paqbw","slide":11,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/dnek60","slide":12,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/q5wbm18z","slide":12,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/d8nuhg7a","slide":12,"text":"UFABET7M — ผล 3 วันและรายการถามทีม","textPreview":"UFABET7M — ผล 3 วันและรายการถามทีม","textChars":34,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/c7etobq5","slide":12,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 76.91% • วันที่ 29 มีหลักฐาน 3 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 76.91% • วันที่ 29 มีหลักฐาน 3 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/za5cjqpg","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/e9wbql8v","slide":12,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/1cnul07m","slide":12,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/0betsvq1","slide":12,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/fels7m9c","slide":12,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/udsbeh8r","slide":12,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/8bq90vuh","slide":12,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/9czat0v2","slide":12,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/m9orylcb","slide":12,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/naxsrqdw","slide":12,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/wzq94fut","slide":12,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/x0zaxkvy","slide":12,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/ad8r25cn","slide":12,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/vehsvad8","slide":12,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/c369sbu9","slide":12,"text":"1,981","textPreview":"1,981","textChars":5,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/d4fqlgvu","slide":12,"text":"1,966","textPreview":"1,966","textChars":5,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/t076pcni","slide":12,"text":"1,738","textPreview":"1,738","textChars":5,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/szypw7md","slide":12,"text":"87.73%","textPreview":"87.73%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/ry5on25s","slide":12,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/6xw7ux47","slide":12,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/147qtcnu","slide":12,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/g3yp07m9","slide":12,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/f2p8rm5o","slide":12,"text":"2,274","textPreview":"2,274","textChars":5,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/e1g7yh43","slide":12,"text":"2,163","textPreview":"2,163","textChars":5,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/psrqxwnq","slide":12,"text":"1,857","textPreview":"1,857","textChars":5,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/o7ip4rml","slide":12,"text":"81.66%","textPreview":"81.66%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/mds3itkn","slide":12,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/7e14ryl8","slide":12,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/8fa5kj2t","slide":12,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/9g3mto3e","slide":12,"text":"2,757","textPreview":"2,757","textChars":5,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/uhcnmtkz","slide":12,"text":"2,698","textPreview":"2,698","textChars":5,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/v2l4vylk","slide":12,"text":"1,691","textPreview":"1,691","textChars":5,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/w3u5o325","slide":12,"text":"61.34%","textPreview":"61.34%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/h43mx83a","slide":12,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/i5cnqdkv","slide":12,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/j6l4zilg","slide":12,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/rqhcne9o","slide":12,"bbox":[920,291.36,42,52.64]}
+{"kind":"textbox","id":"sh/6p8vu983","slide":12,"text":"87.7%","textPreview":"87.7%","textChars":5,"textLines":1,"bbox":[910,267.36,62,20]}
+{"kind":"textbox","id":"sh/tczupore","slide":12,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/sbqdwjqt","slide":12,"bbox":[1008,295,42,49]}
+{"kind":"textbox","id":"sh/fehwre9k","slide":12,"text":"81.7%","textPreview":"81.7%","textChars":5,"textLines":1,"bbox":[998,271,62,20]}
+{"kind":"textbox","id":"sh/ed8vy98z","slide":12,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/1gzetorq","slide":12,"bbox":[1096,307.2,42,36.8]}
+{"kind":"textbox","id":"sh/gfqd0jq5","slide":12,"text":"61.3%","textPreview":"61.3%","textChars":5,"textLines":1,"bbox":[1086,283.2,62,20]}
+{"kind":"textbox","id":"sh/vixcfu9g","slide":12,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/uh4vmp8v","slide":12,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/0n29wv6t","slide":12,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/lobap07y","slide":12,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/y1krulon","slide":12,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/zmtsnqp8","slide":12,"text":"จำนวนไฟล์คงที่ แต่ match rate ลดลงต่อเนื่อง","textPreview":"จำนวนไฟล์คงที่ แต่ match rate ลดลงต่อเนื่อง","textChars":43,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/cz29sb6h","slide":12,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/d0balg72","slide":12,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/qx0rqlob","slide":12,"text":"ตรวจ distribution เวลา/ยอดของวันที่ 29 และค่า tolerance","textPreview":"ตรวจ distribution เวลา/ยอดของวันที่ 29 และค่า tolerance","textChars":55,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/by9sj6pw","slide":12,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/wvmt4f6l","slide":12,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/hwvaxk76","slide":12,"text":"นำหลักฐาน 3 ไฟล์มาผูกเคสก่อนอนุมัติ","textPreview":"นำหลักฐาน 3 ไฟล์มาผูกเคสก่อนอนุมัติ","textChars":35,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/dnek60","slide":12,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/r7tslv","slide":13,"title":"COMPANY DETAIL","textShapes":43}
+{"kind":"textbox","id":"sh/6hkbmt0b","slide":13,"text":"COMPANY DETAIL","textPreview":"COMPANY DETAIL","textChars":14,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/tkvuh8z2","slide":13,"text":"UR9 — ผล 3 วันและรายการถามทีม","textPreview":"UR9 — ผล 3 วันและรายการถามทีม","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/sj2to3ih","slide":13,"text":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 46.53% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textPreview":"ไฟล์หลักครบทุก job • ค่าเฉลี่ยจับคู่ 46.53% • วันที่ 29 มีหลักฐาน 0 ไฟล์","textChars":72,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/jetcbeh0","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/itkbit0f","slide":13,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/5gbudoz6","slide":13,"bbox":[1032,70,120,30]}
+{"kind":"textbox","id":"sh/4f2tkjil","slide":13,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[1032,74,120,22]}
+{"kind":"shape","id":"sh/3adcnih4","slide":13,"bbox":[56,205,810,176]}
+{"kind":"textbox","id":"sh/294vudgj","slide":13,"text":"วันที่","textPreview":"วันที่","textChars":6,"textLines":1,"bbox":[64,214,119,20]}
+{"kind":"textbox","id":"sh/sja1sf6d","slide":13,"text":"ไฟล์","textPreview":"ไฟล์","textChars":4,"textLines":1,"bbox":[199,214,79,20]}
+{"kind":"textbox","id":"sh/dkj2l07y","slide":13,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[294,214,129,20]}
+{"kind":"textbox","id":"sh/6hsjq5o7","slide":13,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[439,214,129,20]}
+{"kind":"textbox","id":"sh/ri1kjaps","slide":13,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[584,214,129,20]}
+{"kind":"textbox","id":"sh/4fq1ov61","slide":13,"text":"อัตรา","textPreview":"อัตรา","textChars":5,"textLines":1,"bbox":[729,214,129,20]}
+{"kind":"shape","id":"sh/5gj2h07m","slide":13,"bbox":[56,249,810,0]}
+{"kind":"textbox","id":"sh/id8jmlov","slide":13,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,258,119,20]}
+{"kind":"textbox","id":"sh/jehkfqpg","slide":13,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,258,79,20]}
+{"kind":"textbox","id":"sh/wbq1kb65","slide":13,"text":"496","textPreview":"496","textChars":3,"textLines":1,"bbox":[294,258,129,20]}
+{"kind":"textbox","id":"sh/hcz2dg7q","slide":13,"text":"544","textPreview":"544","textChars":3,"textLines":1,"bbox":[439,258,129,20]}
+{"kind":"textbox","id":"sh/x8rihcze","slide":13,"text":"155","textPreview":"155","textChars":3,"textLines":1,"bbox":[584,258,129,20]}
+{"kind":"textbox","id":"sh/w7iho7it","slide":13,"text":"31.25%","textPreview":"31.25%","textChars":6,"textLines":1,"bbox":[729,258,129,20]}
+{"kind":"shape","id":"sh/b690f2h8","slide":13,"bbox":[56,293,810,0]}
+{"kind":"shape","id":"sh/a50zmx0n","slide":13,"bbox":[57,293,808,44]}
+{"kind":"textbox","id":"sh/947idczi","slide":13,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,302,119,20]}
+{"kind":"textbox","id":"sh/o3yhk7ix","slide":13,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,302,79,20]}
+{"kind":"textbox","id":"sh/n2p0b2hc","slide":13,"text":"609","textPreview":"609","textChars":3,"textLines":1,"bbox":[294,302,129,20]}
+{"kind":"textbox","id":"sh/mhgzix0r","slide":13,"text":"658","textPreview":"658","textChars":3,"textLines":1,"bbox":[439,302,129,20]}
+{"kind":"textbox","id":"sh/t0bipwzm","slide":13,"text":"329","textPreview":"329","textChars":3,"textLines":1,"bbox":[584,302,129,20]}
+{"kind":"textbox","id":"sh/8z21wry1","slide":13,"text":"54.02%","textPreview":"54.02%","textChars":6,"textLines":1,"bbox":[729,302,129,20]}
+{"kind":"shape","id":"sh/q9cnu9c7","slide":13,"bbox":[56,337,810,0]}
+{"kind":"textbox","id":"sh/ralo3uts","slide":13,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,346,119,20]}
+{"kind":"textbox","id":"sh/sbu5wzud","slide":13,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[199,346,79,20]}
+{"kind":"textbox","id":"sh/dc3654by","slide":13,"text":"521","textPreview":"521","textChars":3,"textLines":1,"bbox":[294,346,129,20]}
+{"kind":"textbox","id":"sh/i5snqpcb","slide":13,"text":"563","textPreview":"563","textChars":3,"textLines":1,"bbox":[439,346,129,20]}
+{"kind":"textbox","id":"sh/j61ozutw","slide":13,"text":"283","textPreview":"283","textChars":3,"textLines":1,"bbox":[584,346,129,20]}
+{"kind":"textbox","id":"sh/47a5szu1","slide":13,"text":"54.32%","textPreview":"54.32%","textChars":6,"textLines":1,"bbox":[729,346,129,20]}
+{"kind":"shape","id":"sh/583614bm","slide":13,"bbox":[855,205,339,176]}
+{"kind":"textbox","id":"sh/21w72tsf","slide":13,"text":"แนวโน้ม Match rate","textPreview":"แนวโน้ม Match rate","textChars":18,"textLines":1,"bbox":[878,222,285,26]}
+{"kind":"shape","id":"sh/n25obet0","slide":13,"bbox":[875,344,280,0]}
+{"kind":"shape","id":"sh/nulkrqxg","slide":13,"bbox":[920,325.25,42,18.75]}
+{"kind":"textbox","id":"sh/mtsjylwv","slide":13,"text":"31.3%","textPreview":"31.3%","textChars":5,"textLines":1,"bbox":[910,301.25,62,20]}
+{"kind":"textbox","id":"sh/9w32t0fm","slide":13,"text":"27","textPreview":"27","textChars":2,"textLines":1,"bbox":[920,350,42,18]}
+{"kind":"shape","id":"sh/8vul0ve1","slide":13,"bbox":[1008,311.59,42,32.41]}
+{"kind":"textbox","id":"sh/zq1kn6x4","slide":13,"text":"54.0%","textPreview":"54.0%","textChars":5,"textLines":1,"bbox":[998,287.59,62,20]}
+{"kind":"textbox","id":"sh/ypsju1wj","slide":13,"text":"28","textPreview":"28","textChars":2,"textLines":1,"bbox":[1008,350,42,18]}
+{"kind":"shape","id":"sh/lsj2pgfa","slide":13,"bbox":[1096,311.41,42,32.59]}
+{"kind":"textbox","id":"sh/0ra1wbep","slide":13,"text":"54.3%","textPreview":"54.3%","textChars":5,"textLines":1,"bbox":[1086,287.41,62,20]}
+{"kind":"textbox","id":"sh/jm5kzaxo","slide":13,"text":"29","textPreview":"29","textChars":2,"textLines":1,"bbox":[1096,350,42,18]}
+{"kind":"shape","id":"sh/ilw365w3","slide":13,"bbox":[56,418,1138,206]}
+{"kind":"textbox","id":"sh/g76h07ul","slide":13,"text":"เช็กลิสต์ถามทีม","textPreview":"เช็กลิสต์ถามทีม","textChars":15,"textLines":1,"bbox":[80,440,280,30]}
+{"kind":"shape","id":"sh/18fitcv6","slide":13,"bbox":[82,486,30,30]}
+{"kind":"textbox","id":"sh/e5ozyxwf","slide":13,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,490,30,22]}
+{"kind":"textbox","id":"sh/f6xgr2d0","slide":13,"text":"จำนวนไฟล์คงที่และแนวโน้มดีขึ้น","textPreview":"จำนวนไฟล์คงที่และแนวโน้มดีขึ้น","textChars":30,"textLines":1,"bbox":[126,489,1018,30]}
+{"kind":"shape","id":"sh/ovqh47uh","slide":13,"bbox":[82,528,30,30]}
+{"kind":"textbox","id":"sh/pwzixcv2","slide":13,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,532,30,22]}
+{"kind":"textbox","id":"sh/29oz2hcb","slide":13,"text":"ยืนยัน BO + PM ครบตามอีเมลวันที่ 27–29","textPreview":"ยืนยัน BO + PM ครบตามอีเมลวันที่ 27–29","textChars":38,"textLines":1,"bbox":[126,531,1018,30]}
+{"kind":"shape","id":"sh/3ah0v2dw","slide":13,"bbox":[82,570,30,30]}
+{"kind":"textbox","id":"sh/czqh8rut","slide":13,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,574,30,22]}
+{"kind":"textbox","id":"sh/d0zi1wve","slide":13,"text":"สุ่มตรวจ Provider ที่ยังไม่พบคู่ก่อนปิดรอบ","textPreview":"สุ่มตรวจ Provider ที่ยังไม่พบคู่ก่อนปิดรอบ","textChars":42,"textLines":1,"bbox":[126,573,1018,30]}
+{"kind":"notes","id":"nt/r7tslv","slide":13,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/fsu4ca","slide":14,"title":"ACTION PLAN","textShapes":22}
+{"kind":"textbox","id":"sh/8rq1wnap","slide":14,"text":"ACTION PLAN","textPreview":"ACTION PLAN","textChars":11,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/nqhkni94","slide":14,"text":"ลำดับการติดตามทีม","textPreview":"ลำดับการติดตามทีม","textChars":17,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/mp8judsj","slide":14,"text":"ถามตามความเสี่ยงและความเป็นไปได้ของข้อมูลตกหล่น","textPreview":"ถามตามความเสี่ยงและความเป็นไปได้ของข้อมูลตกหล่น","textChars":47,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/xwz2tsr6","slide":14,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/wvq10nal","slide":14,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/vuhkri90","slide":14,"bbox":[56,204,1138,56]}
+{"kind":"shape","id":"sh/at8jyxsv","slide":14,"bbox":[74,217,108,30]}
+{"kind":"textbox","id":"sh/5kj2xcri","slide":14,"text":"เร่งด่วน","textPreview":"เร่งด่วน","textChars":8,"textLines":1,"bbox":[74,221,108,22]}
+{"kind":"textbox","id":"sh/kjal47ax","slide":14,"text":"SK8","textPreview":"SK8","textChars":3,"textLines":1,"bbox":[205,218,245,28]}
+{"kind":"textbox","id":"sh/ehgfi9o7","slide":14,"text":"Match 3.85–13.69% ต่ำผิดปกติทั้ง 3 วัน","textPreview":"Match 3.85–13.69% ต่ำผิดปกติทั้ง 3 วัน","textChars":38,"textLines":1,"bbox":[470,218,690,28]}
+{"kind":"shape","id":"sh/zipwreps","slide":14,"bbox":[56,274,1138,56]}
+{"kind":"shape","id":"sh/0jyxkj6d","slide":14,"bbox":[74,287,108,30]}
+{"kind":"textbox","id":"sh/1k7yto7y","slide":14,"text":"เร่งด่วน","textPreview":"เร่งด่วน","textChars":8,"textLines":1,"bbox":[74,291,108,22]}
+{"kind":"textbox","id":"sh/mlgfmtoj","slide":14,"text":"FR8","textPreview":"FR8","textChars":3,"textLines":1,"bbox":[205,288,245,28]}
+{"kind":"textbox","id":"sh/nmpgvy54","slide":14,"text":"ไฟล์ครบ แต่ match ลด 26.72% → 23.83%","textPreview":"ไฟล์ครบ แต่ match ลด 26.72% → 23.83%","textChars":36,"textLines":1,"bbox":[470,288,690,28]}
+{"kind":"shape","id":"sh/o7yxoj69","slide":14,"bbox":[56,344,1138,56]}
+{"kind":"shape","id":"sh/98ryxonu","slide":14,"bbox":[74,357,108,30]}
+{"kind":"textbox","id":"sh/2pwfapoz","slide":14,"text":"ตรวจวันนี้","textPreview":"ตรวจวันนี้","textChars":10,"textLines":1,"bbox":[74,361,108,22]}
+{"kind":"textbox","id":"sh/3q5wjupk","slide":14,"text":"MC8","textPreview":"MC8","textChars":3,"textLines":1,"bbox":[205,358,245,28]}
+{"kind":"textbox","id":"sh/7u1crq5c","slide":14,"text":"วันที่ 29 match ลดเหลือ 38.04% และพบปัญหาเวลา","textPreview":"วันที่ 29 match ลดเหลือ 38.04% และพบปัญหาเวลา","textChars":45,"textLines":1,"bbox":[470,358,690,28]}
+{"kind":"shape","id":"sh/6tsbil4r","slide":14,"bbox":[56,414,1138,56]}
+{"kind":"shape","id":"sh/twjut0ni","slide":14,"bbox":[74,427,108,30]}
+{"kind":"textbox","id":"sh/svatkvmx","slide":14,"text":"ยืนยันไฟล์","textPreview":"ยืนยันไฟล์","textChars":10,"textLines":1,"bbox":[74,431,108,22]}
+{"kind":"textbox","id":"sh/jq1cnq5g","slide":14,"text":"3XB / AT4 / SK8","textPreview":"3XB / AT4 / SK8","textChars":15,"textLines":1,"bbox":[205,428,245,28]}
+{"kind":"textbox","id":"sh/ipsbel4v","slide":14,"text":"วันที่ 29 จำนวนไฟล์ลดลงจากวันที่ 27","textPreview":"วันที่ 29 จำนวนไฟล์ลดลงจากวันที่ 27","textChars":35,"textLines":1,"bbox":[470,428,690,28]}
+{"kind":"shape","id":"sh/5sjupgnm","slide":14,"bbox":[56,484,1138,56]}
+{"kind":"shape","id":"sh/kratgbm1","slide":14,"bbox":[74,497,108,30]}
+{"kind":"textbox","id":"sh/3mlcza5k","slide":14,"text":"ผูกหลักฐาน","textPreview":"ผูกหลักฐาน","textChars":10,"textLines":1,"bbox":[74,501,108,22]}
+{"kind":"textbox","id":"sh/2lcvq54z","slide":14,"text":"FR8 / MR9 / UFABET7M","textPreview":"FR8 / MR9 / UFABET7M","textChars":20,"textLines":1,"bbox":[205,498,245,28]}
+{"kind":"textbox","id":"sh/0769k72h","slide":14,"text":"มีไฟล์ชี้แจงรวม 14 ไฟล์ในวันที่ 29","textPreview":"มีไฟล์ชี้แจงรวม 14 ไฟล์ในวันที่ 29","textChars":34,"textLines":1,"bbox":[470,498,690,28]}
+{"kind":"shape","id":"sh/lsfqdc32","slide":14,"bbox":[56,554,1138,56]}
+{"kind":"shape","id":"sh/y54rixkr","slide":14,"bbox":[74,567,108,30]}
+{"kind":"textbox","id":"sh/z6x8b2lw","slide":14,"text":"สุ่มยืนยัน","textPreview":"สุ่มยืนยัน","textChars":10,"textLines":1,"bbox":[74,571,108,22]}
+{"kind":"textbox","id":"sh/8v69or2t","slide":14,"text":"PS8 / UR9","textPreview":"PS8 / UR9","textChars":9,"textLines":1,"bbox":[205,568,245,28]}
+{"kind":"textbox","id":"sh/9wfahc3e","slide":14,"text":"ไฟล์คงที่และแนวโน้มปกติ","textPreview":"ไฟล์คงที่และแนวโน้มปกติ","textChars":23,"textLines":1,"bbox":[470,568,690,28]}
+{"kind":"notes","id":"nt/fsu4ca","slide":14,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/qg4e6s","slide":15,"title":"OPERATING GUIDE","textShapes":40}
+{"kind":"textbox","id":"sh/adwf2x8z","slide":15,"text":"OPERATING GUIDE","textPreview":"OPERATING GUIDE","textChars":15,"textLines":1,"bbox":[56,36,380,24]}
+{"kind":"textbox","id":"sh/xg7yds7q","slide":15,"text":"วิธีดำเนินงานของระบบ — 1 หน้า","textPreview":"วิธีดำเนินงานของระบบ — 1 หน้า","textChars":29,"textLines":1,"bbox":[56,66,890,55]}
+{"kind":"textbox","id":"sh/wfyx4nq5","slide":15,"text":"ผู้ใช้งานทำตามซ้ายไปขวา และหยุดเฉพาะจุดที่ระบบขึ้นสีเหลือง/แดง","textPreview":"ผู้ใช้งานทำตามซ้ายไปขวา และหยุดเฉพาะจุดที่ระบบขึ้นสีเหลือง/แดง","textChars":62,"textLines":1,"bbox":[56,126,1050,34]}
+{"kind":"textbox","id":"sh/jipgf2pg","slide":15,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1180,40,45,24]}
+{"kind":"shape","id":"sh/yhgf6x8v","slide":15,"bbox":[56,174,1168,0]}
+{"kind":"shape","id":"sh/lk7yhc7m","slide":15,"bbox":[56,210,142,184]}
+{"kind":"shape","id":"sh/kjyx87q1","slide":15,"bbox":[72,226,34,30]}
+{"kind":"textbox","id":"sh/fmlw3i9c","slide":15,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[72,230,34,22]}
+{"kind":"textbox","id":"sh/elcfud8r","slide":15,"text":"รับเมล","textPreview":"รับเมล","textChars":6,"textLines":1,"bbox":[72,274,112,28]}
+{"kind":"textbox","id":"sh/832tgjm1","slide":15,"text":"n8n ดึงเมล\nเก็บไฟล์จริง","textPreview":"n8n ดึงเมล | เก็บไฟล์จริง","textChars":23,"textLines":2,"bbox":[72,316,112,58]}
+{"kind":"textbox","id":"sh/t4bu9onm","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[200,286,18,28]}
+{"kind":"shape","id":"sh/610be94b","slide":15,"bbox":[218,210,142,184]}
+{"kind":"shape","id":"sh/729c7e5g","slide":15,"bbox":[234,226,34,30]}
+{"kind":"textbox","id":"sh/g72tk3md","slide":15,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[234,230,34,22]}
+{"kind":"textbox","id":"sh/h8bud8ny","slide":15,"text":"จัดประเภท","textPreview":"จัดประเภท","textChars":9,"textLines":1,"bbox":[234,274,112,28]}
+{"kind":"textbox","id":"sh/u5kbit47","slide":15,"text":"บริษัท • วันที่\nSTM / BO / PM","textPreview":"บริษัท • วันที่ | STM / BO / PM","textChars":29,"textLines":2,"bbox":[234,316,112,58]}
+{"kind":"textbox","id":"sh/v6tcby5s","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[362,286,18,28]}
+{"kind":"shape","id":"sh/wbyt8zmt","slide":15,"bbox":[380,210,142,184]}
+{"kind":"shape","id":"sh/xcra14ne","slide":15,"bbox":[396,226,34,30]}
+{"kind":"textbox","id":"sh/dsja50fi","slide":15,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[396,230,34,22]}
+{"kind":"textbox","id":"sh/c7q9wvyx","slide":15,"text":"ตรวจไฟล์","textPreview":"ตรวจไฟล์","textChars":8,"textLines":1,"bbox":[396,274,112,28]}
+{"kind":"textbox","id":"sh/r6h83qxc","slide":15,"text":"Preview และแก้\nประเภท/บริษัท","textPreview":"Preview และแก้ | ประเภท/บริษัท","textChars":28,"textLines":2,"bbox":[396,316,112,58]}
+{"kind":"textbox","id":"sh/q58rulgr","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[524,286,18,28]}
+{"kind":"shape","id":"sh/lwja90fe","slide":15,"bbox":[542,210,142,184]}
+{"kind":"shape","id":"sh/0va90vyt","slide":15,"bbox":[558,226,34,30]}
+{"kind":"textbox","id":"sh/zu1s7qx8","slide":15,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[558,230,34,22]}
+{"kind":"textbox","id":"sh/etsry5gn","slide":15,"text":"อ่านข้อมูล","textPreview":"อ่านข้อมูล","textChars":10,"textLines":1,"bbox":[558,274,112,28]}
+{"kind":"textbox","id":"sh/903adkfa","slide":15,"text":"Excel / CSV / PDF\nผ่าน quality gate","textPreview":"Excel / CSV / PDF | ผ่าน quality gate","textChars":35,"textLines":2,"bbox":[558,316,112,58]}
+{"kind":"textbox","id":"sh/8zu94fe5","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[686,286,18,28]}
+{"kind":"shape","id":"sh/6547yhwn","slide":15,"bbox":[704,210,142,184]}
+{"kind":"shape","id":"sh/76do7mds","slide":15,"bbox":[720,226,34,30]}
+{"kind":"textbox","id":"sh/s7mp07ed","slide":15,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[720,230,34,22]}
+{"kind":"textbox","id":"sh/t8v69cvy","slide":15,"text":"กระทบยอด","textPreview":"กระทบยอด","textChars":8,"textLines":1,"bbox":[720,274,112,28]}
+{"kind":"textbox","id":"sh/u9o72hwj","slide":15,"text":"ยอด • บัญชี\nเวลาใน tolerance","textPreview":"ยอด • บัญชี | เวลาใน tolerance","textChars":28,"textLines":2,"bbox":[720,316,112,58]}
+{"kind":"textbox","id":"sh/faxobmd4","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[848,286,18,28]}
+{"kind":"shape","id":"sh/gb6p4rep","slide":15,"bbox":[866,210,142,184]}
+{"kind":"shape","id":"sh/hcf6dwva","slide":15,"bbox":[882,226,34,30]}
+{"kind":"textbox","id":"sh/2do761wf","slide":15,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[882,230,34,22]}
+{"kind":"textbox","id":"sh/3yxof6d0","slide":15,"text":"จัดการเคส","textPreview":"จัดการเคส","textChars":9,"textLines":1,"bbox":[882,274,112,28]}
+{"kind":"textbox","id":"sh/ritw3218","slide":15,"text":"ผูกหลักฐาน\nชี้แจง/ความเสียหาย","textPreview":"ผูกหลักฐาน | ชี้แจง/ความเสียหาย","textChars":29,"textLines":2,"bbox":[882,316,112,58]}
+{"kind":"textbox","id":"sh/qh0fax0n","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[1010,286,18,28]}
+{"kind":"shape","id":"sh/dkby5cjy","slide":15,"bbox":[1028,210,142,184]}
+{"kind":"shape","id":"sh/cj2xc7id","slide":15,"bbox":[1044,226,34,30]}
+{"kind":"textbox","id":"sh/zmtg7214","slide":15,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[1044,230,34,22]}
+{"kind":"textbox","id":"sh/elkfex0j","slide":15,"text":"อนุมัติ","textPreview":"อนุมัติ","textChars":7,"textLines":1,"bbox":[1044,274,112,28]}
+{"kind":"textbox","id":"sh/18by9cja","slide":15,"text":"ปิดเคสและ\nExport รายวัน","textPreview":"ปิดเคสและ | Export รายวัน","textChars":23,"textLines":2,"bbox":[1044,316,112,58]}
+{"kind":"shape","id":"sh/072xg7ip","slide":15,"bbox":[56,434,1138,170]}
+{"kind":"textbox","id":"sh/fq9wvi10","slide":15,"text":"ผู้ใช้งานต้องทำอะไรเมื่อพบปัญหา","textPreview":"ผู้ใช้งานต้องทำอะไรเมื่อพบปัญหา","textChars":31,"textLines":1,"bbox":[80,456,420,30]}
+{"kind":"textbox","id":"sh/upgf2dkf","slide":15,"text":"ไฟล์อ่านไม่ได้","textPreview":"ไฟล์อ่านไม่ได้","textChars":14,"textLines":1,"bbox":[80,504,145,24]}
+{"kind":"textbox","id":"sh/kvetcjyd","slide":15,"text":"เปิด Preview → อัปไฟล์ใหม่แทนที่ → บันทึกและรับต่อ","textPreview":"เปิด Preview → อัปไฟล์ใหม่แทนที่ → บันทึกและรับต่อ","textChars":50,"textLines":1,"bbox":[230,504,380,30]}
+{"kind":"textbox","id":"sh/5wnu5ozi","slide":15,"text":"ผิดประเภท/บริษัท","textPreview":"ผิดประเภท/บริษัท","textChars":16,"textLines":1,"bbox":[635,504,145,24]}
+{"kind":"textbox","id":"sh/itwba907","slide":15,"text":"เลือกค่าใหม่ → บันทึกและรับต่อ → ระบบส่งกลับคิวอัตโนมัติ","textPreview":"เลือกค่าใหม่ → บันทึกและรับต่อ → ระบบส่งกลับคิวอัตโนมัติ","textChars":56,"textLines":1,"bbox":[785,504,380,30]}
+{"kind":"textbox","id":"sh/ju5c3ehs","slide":15,"text":"ไม่พบคู่","textPreview":"ไม่พบคู่","textChars":8,"textLines":1,"bbox":[80,550,145,24]}
+{"kind":"textbox","id":"sh/wret8zi1","slide":15,"text":"เปิดเคส → ดูไฟล์ประกอบ → ผูกไฟล์ชี้แจง → อนุมัติหรือส่งถามทีม","textPreview":"เปิดเคส → ดูไฟล์ประกอบ → ผูกไฟล์ชี้แจง → อนุมัติหรือส่งถามทีม","textChars":61,"textLines":1,"bbox":[230,550,380,30]}
+{"kind":"textbox","id":"sh/xsnu14zm","slide":15,"text":"ยอด/เวลาตรง","textPreview":"ยอด/เวลาตรง","textChars":11,"textLines":1,"bbox":[635,550,145,24]}
+{"kind":"textbox","id":"sh/apcb690v","slide":15,"text":"ถ้าอยู่ใน tolerance ให้ปิดอัตโนมัติ; ถ้า format เสียให้คนยืนยันก่อน","textPreview":"ถ้าอยู่ใน tolerance ให้ปิดอัตโนมัติ; ถ้า format เสียให้คนยืนยันก่อน","textChars":67,"textLines":1,"bbox":[785,550,380,30]}
+{"kind":"notes","id":"nt/qg4e6s","slide":15,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files, mail_batches; checked 2026-08-30.\n[/Sources]"}

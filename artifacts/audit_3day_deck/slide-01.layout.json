@@ -1,0 +1,468 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/i04dav",
+    "id": "i04dav",
+    "slide": 1,
+    "layoutId": "cc5ffce7-22e6-4880-b4d2-c74df09d0ec8",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "83ce00be-865f-477d-8524-a2f924c7f568",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#0B2B4B",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Kanit"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "cc5ffce7-22e6-4880-b4d2-c74df09d0ec8",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "83ce00be-865f-477d-8524-a2f924c7f568",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "83ce00be-865f-477d-8524-a2f924c7f568",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0zutonil",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        12,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "#0867D0",
+      "lineColor": "#0867D0",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zylsfi10",
+      "id": "2",
+      "bbox": [
+        64,
+        54,
+        420,
+        26
+      ],
+      "geometry": "rect",
+      "text": "AUDIT RECONCILIATION",
+      "textPreview": "AUDIT RECONCILIATION",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15,
+        "typeface": "Kanit",
+        "color": "#82BFFF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AUDIT RECONCILIATION"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AUDIT RECONCILIATION",
+          "resolvedTextStyle": {
+            "fontSize": 15,
+            "typeface": "Kanit",
+            "color": "#82BFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AUDIT RECONCILIATION",
+              "fontSize": 15,
+              "typeface": "Kanit",
+              "color": "#82BFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/excbmd0f",
+      "id": "3",
+      "bbox": [
+        64,
+        164,
+        760,
+        165
+      ],
+      "geometry": "rect",
+      "text": "สรุปการกระทบยอด\n27–29 สิงหาคม 2026",
+      "textPreview": "สรุปการกระทบยอด | 27–29 สิงหาคม 2026",
+      "resolvedFontSize": 52,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 52,
+        "typeface": "Kanit",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "สรุปการกระทบยอด"
+          },
+          {
+            "index": 2,
+            "text": "27–29 สิงหาคม 2026"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "สรุปการกระทบยอด",
+          "resolvedTextStyle": {
+            "fontSize": 52,
+            "typeface": "Kanit",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "สรุปการกระทบยอด",
+              "fontSize": 52,
+              "typeface": "Kanit",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "27–29 สิงหาคม 2026",
+          "resolvedTextStyle": {
+            "fontSize": 52,
+            "typeface": "Kanit",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "27–29 สิงหาคม 2026",
+              "fontSize": 52,
+              "typeface": "Kanit",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dw3ad8ja",
+      "id": "4",
+      "bbox": [
+        68,
+        354,
+        805,
+        60
+      ],
+      "geometry": "rect",
+      "text": "ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า",
+      "textPreview": "ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 22,
+        "typeface": "Kanit",
+        "color": "#C7DBEE",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "typeface": "Kanit",
+            "color": "#C7DBEE",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ภาพรวม • เช็กลิสต์ 9 บริษัท • ประเด็นถามทีม • วิธีดำเนินงาน 1 หน้า",
+              "fontSize": 22,
+              "typeface": "Kanit",
+              "color": "#C7DBEE",
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cvutk3ip",
+      "id": "5",
+      "bbox": [
+        64,
+        507,
+        1110,
+        120
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#123A60",
+      "lineColor": "#27577F",
+      "lineWidth": 1
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/rulsby14",
+      "id": "6",
+      "bbox": [
+        88,
+        528,
+        180,
+        24
+      ],
+      "geometry": "rect",
+      "text": "ข้อสรุปสำคัญ",
+      "textPreview": "ข้อสรุปสำคัญ",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15,
+        "typeface": "Kanit",
+        "color": "#82BFFF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "ข้อสรุปสำคัญ"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ข้อสรุปสำคัญ",
+          "resolvedTextStyle": {
+            "fontSize": 15,
+            "typeface": "Kanit",
+            "color": "#82BFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ข้อสรุปสำคัญ",
+              "fontSize": 15,
+              "typeface": "Kanit",
+              "color": "#82BFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qtcrit0j",
+      "id": "7",
+      "bbox": [
+        88,
+        561,
+        1010,
+        42
+      ],
+      "geometry": "rect",
+      "text": "ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”",
+      "textPreview": "ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 22,
+        "typeface": "Kanit",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "typeface": "Kanit",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "ทุกบริษัทอ่านไฟล์และรันครบทั้ง 3 วัน แต่คุณภาพการจับคู่ยังต่างกันมาก—ต้องแยก “ครบไฟล์” ออกจาก “จับคู่ครบ”",
+              "fontSize": 22,
+              "typeface": "Kanit",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

@@ -61,7 +61,6 @@ const ROUTES = [
       { id: "clarify", label: "ติดตามและอนุมัติ", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception กำหนดส่ง และเปิดคิวอนุมัติจากจุดเดียว โดยไม่แบ่งกะ", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false, hidden: true },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
-      { id: "pm", label: "PM Monitor", icon: "pm", title: "ข้อมูล PM แยกตาม Provider และบริษัท", desc: "สรุปไฟล์ PM และ Exception จากข้อมูลจริง โดยไม่แสดงเปอร์เซ็นต์ประมาณการ", filters: true },
     ],
   },
   {
@@ -86,7 +85,7 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "pm", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
+  monitor: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
   lead: Object.keys(ROUTE_MAP),
   shift_lead: ["cloud", "dashboard", "daily-summary", "exceptions", "clarify", "approvals", "damage", "talk", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "talk", "notifications"],
@@ -556,6 +555,13 @@ function renderFilters() {
       render();
     });
   });
+  if (state.route === "damage" && state.dataset === "production" && Sb.signedIn()) {
+    const ready = liveDamageState?.ready && liveDamageState.key === damageQueryKey();
+    const rows = ready ? liveDamageState.rows : [];
+    const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · ความเสียหายที่ยืนยันแล้ว <b>${ready ? num(rows.length) : "—"}</b> รายการ · ยอดรวม <b>${ready ? `${money0(total)} บาท` : "กำลังโหลดข้อมูลจริง"}</b>`;
+    return;
+  }
   const scoped = scopedExceptions();
   $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · กำลังดู <b>${num(scoped.length)}</b> exception · เกิน SLA <b>${num(scoped.filter((e) => e.overSla).length)}</b> รายการ · ความเสียหายในช่วงนี้ <b>${money0(DB.damages.filter((d) => inRange(d.date)).reduce((a, c) => a + c.amount, 0))}</b> บาท`;
 }
@@ -622,7 +628,7 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
-  if (state.dataset === "production" && Sb.signedIn() && route.id !== "dashboard") {
+  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage"].includes(route.id)) {
     const liveNotice = liveOverviewState.loading
       ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`
       : liveOverviewState.error
@@ -690,8 +696,13 @@ const LIVE_STATUS = {
 
 // ตารางคิวรุ่นเก่าเคยสร้างแถวรวมตามชื่อระบบ (PM / SYS123 / XXX)
 // แถวเหล่านั้นไม่ใช่บริษัทและต้องไม่ถูกนำไปปนกับสรุป 9 บริษัทจริง
-const LIVE_COMPANY_CODES = new Set(["3XB", "AT4", "FR8", "MC8", "MR9", "PS8", "SK8", "UR9", "UFABET7M", "7M"]);
-const isLiveCompanyRow = (row) => LIVE_COMPANY_CODES.has(String(row?.company || "").trim().toUpperCase());
+const LIVE_COMPANY_CODES = new Set(["3XB", "AT4", "FR8", "MC8", "MR9", "PS8", "SK8", "UR9", "UFABET7M"]);
+const normalizeLiveCompanyCode = (value) => {
+  const code = String(value || "").trim().toUpperCase();
+  if (code === "7M") return "UFABET7M";
+  return LIVE_COMPANY_CODES.has(code) ? code : "";
+};
+const isLiveCompanyRow = (row) => Boolean(normalizeLiveCompanyCode(row?.company));
 
 const CHECKLIST_STATUS = {
   scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
@@ -771,22 +782,28 @@ function mapLiveException(e) {
   };
 }
 
-function hydrateLiveData(quality, operations, exceptions, damages, logs) {
-  DB.exceptions = (exceptions || []).map(mapLiveException);
-  DB.damages = (damages || []).map((d) => ({
+function mapLiveDamage(d) {
+  return {
     id: d.code || d.id,
     dbId: d.id,
     exceptionId: d.exception_id || "-",
     date: d.business_date,
-    company: d.company || "ไม่ระบุ",
+    company: normalizeLiveCompanyCode(d.company) || d.company || "ไม่ระบุ",
     employee: d.employee || "ไม่ระบุ",
+    shift: d.shift || "-",
     amount: Number(d.amount_thb ?? d.amount ?? 0),
     cause: d.cause || "รอตรวจสอบ",
     cycle: d.cycle || "ไม่ระบุรอบ",
     evidence: !!d.has_evidence,
-    hrStatus: d.hr_status || "-",
-    financeStatus: d.finance_status || "-",
-  }));
+    hrStatus: d.hr_status || "รอดำเนินการ",
+    financeStatus: d.finance_status || "รอดำเนินการ",
+    createdAt: d.created_at || null,
+  };
+}
+
+function hydrateLiveData(quality, operations, exceptions, damages, logs) {
+  DB.exceptions = (exceptions || []).map(mapLiveException);
+  DB.damages = (damages || []).map(mapLiveDamage);
   DB.auditLog = (logs || []).map((l) => ({ at: l.at, user: l.actor || "ระบบ", action: l.action, entity: l.entity, target: l.target, detail: l.detail || "" }));
   const lastRun = (quality || []).find((x) => x.run_id && x.run_at);
   DB.currentRun = lastRun
@@ -1418,15 +1435,18 @@ function dailyCompanyData(company) {
 }
 
 function dailyCompanyOptions() {
-  const found = new Set(companyMaster().map((company) => company.code));
-  (dailyCompanyState.quality || []).forEach((row) => row.company && found.add(row.company));
-  (dailyCompanyState.operations || []).forEach((row) => row.company && found.add(row.company));
-  (dailyCompanyState.checklist || []).forEach((row) => row.company && found.add(row.company));
+  const found = new Set(companyMaster().map((company) => normalizeLiveCompanyCode(company.code)).filter(Boolean));
+  const addCompany = (value) => {
+    const company = normalizeLiveCompanyCode(value);
+    if (company) found.add(company);
+  };
+  (dailyCompanyState.quality || []).forEach((row) => addCompany(row.company));
+  (dailyCompanyState.operations || []).forEach((row) => addCompany(row.company));
+  (dailyCompanyState.checklist || []).forEach((row) => addCompany(row.company));
   (dailyCompanyState.batches || []).forEach((batch) => {
-    if (batch.company) found.add(batch.company);
+    addCompany(batch.company);
     (batch.source_files || []).forEach((file) => {
-      const company = intakeCompanyOf(file, batch);
-      if (company) found.add(company);
+      addCompany(intakeCompanyOf(file, batch));
     });
   });
   return [...found].sort((a, b) => String(a).localeCompare(String(b), "th"));
@@ -2364,10 +2384,11 @@ function openException(id, options = {}) {
     openException(id);
     renderNav();
   });
-  $("#btnDamage").addEventListener("click", () => {
+  $("#btnDamage").addEventListener("click", async () => {
     if (!can("close_case")) return deny("บันทึกความเสียหาย");
     if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
     if (e.status !== "damage") {
+      const previousStatus = e.status;
       e.status = "damage";
       const damage = {
         id: "DMG-" + (900 + DB.damages.length),
@@ -2384,33 +2405,44 @@ function openException(id, options = {}) {
         financeStatus: "รอปิดรอบ",
       };
       DB.damages.push(damage);
-      logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(e.riskAmount || Math.abs(e.amountDiff)) + " บาท");
       if (state.dataset === "production" && Sb.signedIn()) {
-        Sb.post("damages", [{
-          code: damage.id,
-          exception_id: e.dbId || null,
-          business_date: damage.date,
-          company: damage.company,
-          employee: damage.employee,
-          shift: e.shift || null,
-          amount: damage.amount,
-          currency: e.currency || "THB",
-          fx_rate: e.fxRate || null,
-          amount_thb: damage.amount,
-          cause: damage.cause,
-          cycle: damage.cycle,
-          has_evidence: damage.evidence,
-          hr_status: damage.hrStatus,
-          finance_status: damage.financeStatus,
-        }]).then((rows) => {
+        try {
+          const rows = await Sb.post("damages", [{
+            code: damage.id,
+            exception_id: e.dbId || null,
+            business_date: damage.date,
+            company: damage.company,
+            employee: damage.employee,
+            shift: e.shift || null,
+            amount: damage.amount,
+            currency: e.currency || "THB",
+            fx_rate: e.fxRate || null,
+            amount_thb: damage.amount,
+            cause: damage.cause,
+            cycle: damage.cycle,
+            has_evidence: damage.evidence,
+            hr_status: damage.hrStatus,
+            finance_status: damage.financeStatus,
+          }]);
           if (rows?.[0]) damage.dbId = rows[0].id;
+          saveOverride(e);
+          logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
+          await loadLiveDamage(true);
           loadLiveOverview(true);
-        }).catch((err) => toast("บันทึก Supabase ไม่สำเร็จ: " + err.message, "warn"));
+          toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
+        } catch (err) {
+          e.status = previousStatus;
+          DB.damages = DB.damages.filter((row) => row !== damage);
+          toast("บันทึก Supabase ไม่สำเร็จ: " + err.message, "warn");
+          openException(id);
+          return;
+        }
       } else {
         Store.data.extraDamages.push(damage);
+        saveOverride(e);
+        logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
+        toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
       }
-      saveOverride(e);
-      toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
     }
     openException(id);
   });
@@ -2671,13 +2703,78 @@ function cycleQuoteLabel() {
   return "";
 }
 
+const liveDamageState = {
+  rows: null,
+  loading: false,
+  ready: false,
+  error: null,
+  key: "",
+  requestId: 0,
+  updatedAt: null,
+};
+
+function damageQueryKey() {
+  return `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+}
+
+async function loadLiveDamage(force = false) {
+  const key = damageQueryKey();
+  if (liveDamageState.loading || (!force && liveDamageState.ready && liveDamageState.key === key)) return;
+  const changedFilter = liveDamageState.key !== key;
+  const requestId = ++liveDamageState.requestId;
+  liveDamageState.key = key;
+  liveDamageState.loading = true;
+  liveDamageState.ready = false;
+  liveDamageState.error = null;
+  if (changedFilter) liveDamageState.rows = null;
+  if (state.route === "damage") render();
+  try {
+    const records = await Sb.damages({
+      from: state.filters.from,
+      to: state.filters.to,
+      company: state.filters.company,
+      limit: 5000,
+    });
+    if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
+    liveDamageState.rows = (records || []).map(mapLiveDamage);
+    liveDamageState.ready = true;
+    liveDamageState.updatedAt = new Date();
+    DB.damages = liveDamageState.rows.slice();
+  } catch (error) {
+    if (requestId !== liveDamageState.requestId) return;
+    liveDamageState.rows = null;
+    liveDamageState.error = error.message || "โหลดทะเบียนความเสียหายไม่สำเร็จ";
+  } finally {
+    if (requestId === liveDamageState.requestId) {
+      liveDamageState.loading = false;
+      if (state.route === "damage") render();
+    }
+  }
+}
+
 function renderLiveDamage(root) {
-  if (!ensureLiveOverview(root)) return;
-  const rows = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
+  const key = damageQueryKey();
+  const stale = liveDamageState.key !== key;
+  if ((stale || !liveDamageState.ready) && !liveDamageState.loading && (!liveDamageState.error || stale)) loadLiveDamage(stale);
+  if (liveDamageState.loading && (stale || !liveDamageState.rows)) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังโหลดทะเบียนความเสียหายจริง</h2><p class="hint">อ่านเฉพาะข้อมูลที่ยืนยันเป็นความเสียหายแล้วจาก Supabase...</p></div></section>`;
+    return;
+  }
+  if (liveDamageState.error && !liveDamageState.rows) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดทะเบียนความเสียหายไม่สำเร็จ</strong><span>${h(liveDamageState.error)}</span><button class="ghost-button sm" id="damageRetry">ลองใหม่</button></div></section>`;
+    $("#damageRetry")?.addEventListener("click", () => loadLiveDamage(true));
+    return;
+  }
+  const rows = (liveDamageState.rows || []).filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
   const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
   const open = rows.filter((row) => !row.financeStatus || !/ปิด|เสร็จ|completed|closed/i.test(row.financeStatus)).length;
+  const loadedAt = liveDamageState.updatedAt ? liveDamageState.updatedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : "-";
   root.innerHTML = `
+    <section class="damage-definition panel">
+      <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">เคสจะแสดงที่นี่เมื่อผู้ตรวจตรวจหลักฐานและเลือก “บันทึกเป็นความเสียหาย” แล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)} น.</p></div>
+      <button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button>
+    </section>
     <section class="status-strip four">
       <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
@@ -2685,14 +2782,17 @@ function renderLiveDamage(root) {
       <article><span>บริษัทที่มีรายการ</span><strong>${num(new Set(rows.map((row) => row.company)).size)}</strong><small>จาก 9 บริษัท</small></article>
     </section>
     <section class="grid-2">
-      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany"></div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany">${rows.length ? "" : '<div class="empty-box">ยังไม่มีข้อมูลสำหรับสร้างกราฟ</div>'}</div></div>
       <div class="panel"><div class="panel-heading"><div><p class="eyebrow">สาเหตุ</p><h2>รายการที่พบ</h2></div></div><div class="exception-summary">${Object.entries(rows.reduce((acc, row) => ((acc[row.cause] = (acc[row.cause] || 0) + 1), acc), {})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([cause,count])=>`<div><span>${h(cause)}</span><b>${num(count)}</b></div>`).join("") || `<p class="empty">ยังไม่มีรายการความเสียหายในช่วงนี้</p>`}</div></div>
     </section>
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนความเสียหายจริง</h2></div><span class="health ok">ข้อมูลจริง</span></div>
       <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
-      <tbody>${rows.map((d)=>`<tr><td>${h(d.date)}</td><td class="mono">${h(d.id)}</td><td><b>${h(d.company)}</b></td><td>${h(d.employee)}</td><td class="right tnum">${money(d.amount)}</td><td>${h(d.cause)}</td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีข้อมูลความเสียหายจริงในช่วงนี้</td></tr>`}</tbody></table></div>
+      <tbody>${rows.map((d)=>`<tr><td>${h(d.date)}</td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td>${h(d.employee)}</td><td class="right tnum">${money(d.amount)}</td><td>${h(d.cause)}</td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`).join("") || `<tr><td colspan="8"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>หากมีรายการผิดปกติ ให้เปิดเคส ตรวจหลักฐาน แล้วเลือก “บันทึกเป็นความเสียหาย” รายการจึงจะเข้าทะเบียน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
     </section>`;
-  Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
+  if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
+  $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
+  $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));
+  root.querySelectorAll("[data-damage-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.damageEx)));
 }
 
 VIEWS.damage = (root) => {
@@ -2821,9 +2921,6 @@ VIEWS.damage = (root) => {
   );
 };
 
-/* =============================================================
-   VIEW: PM Monitor
-   ============================================================= */
 function pmProviderOf(value) {
   const text = String(value || "").toUpperCase();
   if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
@@ -2833,131 +2930,6 @@ function pmProviderOf(value) {
   if (/12PAY/.test(text)) return "12PAY";
   return null;
 }
-
-function renderLivePm(root) {
-  if (!ensureLiveOverview(root)) return;
-  if (!liveIntakeState.batches && !liveIntakeState.loading) loadLiveIntake();
-  if (liveIntakeState.loading && !liveIntakeState.batches) {
-    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังอ่านไฟล์ PM จริง</h2><p class="hint">จัดกลุ่ม Provider และบริษัท...</p></div></section>`;
-    return;
-  }
-  if (liveIntakeState.error && !liveIntakeState.batches) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดไฟล์ PM ไม่สำเร็จ</strong><span>${h(liveIntakeState.error)}</span><button class="ghost-button sm" id="pmRetry">ลองใหม่</button></div></section>`;
-    $("#pmRetry")?.addEventListener("click", () => loadLiveIntake(true));
-    return;
-  }
-
-  const pmFiles = (liveIntakeState.batches || []).flatMap((batch) =>
-    (batch.source_files || []).map((file) => ({ ...file, company: intakeCompanyOf(file, batch), provider: pmProviderOf(`${file.file_name} ${file.kind}`), receivedAt: file.received_at || batch.received_at })),
-  ).filter((file) => file.provider || file.kind === "pm_statement");
-  const pmExceptions = scopedExceptions().map((e) => ({ ...e, provider: pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) })).filter((e) => e.provider);
-  const pmExceptionsAvailable = liveOverviewState.exceptionsReady;
-  const providerNames = [...new Set(pmFiles.map((f) => f.provider).concat(pmExceptions.map((e) => e.provider)).filter(Boolean))].sort();
-  const providers = providerNames.map((provider) => {
-    const files = pmFiles.filter((f) => f.provider === provider);
-    const exceptions = pmExceptions.filter((e) => e.provider === provider);
-    return { provider, files, exceptions, parsed: files.filter((f) => f.parsed).length, errors: files.filter((f) => f.parse_error).length, latest: files.map((f) => String(f.receivedAt || "")).sort().pop() || "" };
-  });
-  const companyRows = companyMaster().map((company) => {
-    const files = pmFiles.filter((f) => f.company === company.code);
-    const exceptions = pmExceptions.filter((e) => e.company === company.code);
-    return { company: company.code, files, exceptions, providers: [...new Set(files.map((f) => f.provider).filter(Boolean))] };
-  }).filter((row) => row.files.length || row.exceptions.length);
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article class="ok"><span>ไฟล์ PM จริง</span><strong>${num(pmFiles.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
-      <article><span>Provider ที่พบ</span><strong>${num(providers.length)}</strong><small>${h(providerNames.join(" / ") || "ยังไม่พบ")}</small></article>
-      <article class="${pmFiles.some((f) => !f.parsed) ? "warn" : "ok"}"><span>อ่านเข้าระบบแล้ว</span><strong>${num(pmFiles.filter((f) => f.parsed).length)}</strong><small>รออ่าน ${num(pmFiles.filter((f) => !f.parsed && !f.parse_error).length)}</small></article>
-      <article class="${pmExceptionsAvailable && pmExceptions.length ? "bad" : pmExceptionsAvailable ? "ok" : ""}"><span>Exception ที่ระบุ Provider ได้</span><strong>${pmExceptionsAvailable ? num(pmExceptions.length) : "—"}</strong><small>${pmExceptionsAvailable ? "คำนวณจากข้อมูลจริง" : "กำลังรอข้อมูล Exception จริง"}</small></article>
-    </section>
-
-    <section class="grid-3">
-      ${providers.map((p) => `<article class="panel pm-card">
-        <p class="eyebrow">ข้อมูลจริง PM</p><h2>${h(p.provider)}</h2>
-        <div class="pm-rate"><strong>${num(p.files.length)}</strong><span>ไฟล์ที่ได้รับ</span></div>
-        <p class="pm-note">อ่านแล้ว ${num(p.parsed)} · อ่านไม่ได้ ${num(p.errors)}${p.latest ? ` · ล่าสุด ${h(p.latest.replace("T", " ").slice(0, 16))}` : ""}</p>
-        <div class="pm-foot"><span>Exception</span><b>${num(p.exceptions.length)}</b></div>
-        <button class="ghost-button sm" data-provider="${h(p.provider)}" ${p.exceptions.length ? "" : "disabled"}>${p.exceptions.length ? `ดู Exception (${num(p.exceptions.length)})` : "ไม่พบ Exception"}</button>
-      </article>`).join("") || `<div class="panel empty-box">ยังไม่พบไฟล์ที่จำแนกเป็น PM ในช่วงนี้</div>`}
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">แยกตามบริษัท</p><h2>PM ของแต่ละบริษัท</h2></div><span class="health ok">ข้อมูลจริง Supabase</span></div>
-      <div class="table-wrap"><table><thead><tr><th>บริษัท</th><th>Provider</th><th class="right">ไฟล์</th><th class="right">อ่านแล้ว</th><th class="right">Exception</th><th>สถานะ</th></tr></thead>
-      <tbody>${companyRows.map((row) => {
-        const parsed = row.files.filter((f) => f.parsed).length;
-        const errors = row.files.filter((f) => f.parse_error).length;
-        const tone = errors ? "red" : parsed < row.files.length ? "amber" : "green";
-        return `<tr><td><b>${h(row.company)}</b></td><td>${h(row.providers.join(" / ") || "-")}</td><td class="right tnum">${num(row.files.length)}</td><td class="right tnum">${num(parsed)}</td><td class="right tnum">${num(row.exceptions.length)}</td><td><span class="badge ${tone}">${errors ? "มีไฟล์อ่านไม่ได้" : parsed < row.files.length ? "รออ่าน" : "พร้อมตรวจ"}</span></td></tr>`;
-      }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีข้อมูล PM ที่ระบุบริษัทได้</td></tr>`}</tbody></table></div>
-      <p class="hint">ระบบไม่แสดงอัตราจับคู่แยก Provider จนกว่าจะมีผลรวม matched/total แยก Provider ในฐานข้อมูล เพื่อป้องกันการนำตัวเลขประมาณการมาใช้เป็นข้อมูลจริง</p>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">หลักฐานต้นฉบับ</p><h2>ไฟล์ PM ที่เปิดตรวจได้</h2><small class="head-sub">กดชื่อไฟล์เพื่อเปิดจาก Supabase Storage</small></div><button class="ghost-button sm" data-goto-cloud>ดูไฟล์ทั้งหมด</button></div>
-      <div class="table-wrap"><table><thead><tr><th>รับเมื่อ</th><th>บริษัท</th><th>Provider</th><th>ชื่อไฟล์</th><th>สถานะ</th><th class="right">หลักฐาน</th></tr></thead>
-      <tbody>${pmFiles.slice(0, 100).map((file) => { const attrs = `data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(String(file.receivedAt || "").slice(0, 10))}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}`; return `<tr><td>${h(String(file.receivedAt || "").replace("T", " ").slice(0, 16))}</td><td><b>${h(file.company || "ไม่ระบุ")}</b></td><td>${h(file.provider || "ยังไม่ระบุ")}</td><td><button class="file-name-link" ${attrs}><span>${h(file.file_name)}</span><small>ดูตัวอย่างไฟล์ ↗</small></button></td><td>${file.parse_error ? `<span class="badge red">อ่านไม่ได้</span>` : file.parsed ? `<span class="badge green">${h(parsedFileLabel(file))}</span>` : `<span class="badge grey">รอตรวจ</span>`}</td><td class="right"><button class="primary-button xs" ${attrs}>ดูตัวอย่าง</button></td></tr>`; }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ PM ในช่วงนี้</td></tr>`}</tbody></table></div>
-    </section>`;
-
-  root.querySelectorAll("[data-provider]").forEach((button) => button.addEventListener("click", () => go("exceptions", { exFilter: { q: button.dataset.provider, type: "ALL", severity: "ALL", status: "ALL", sla: false } })));
-  root.querySelector("[data-goto-cloud]")?.addEventListener("click", () => go("cloud"));
-  bindStoredFileLinks(root);
-}
-
-VIEWS.pm = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLivePm(root);
-    return;
-  }
-  const pmEx = DB.exceptions.filter((e) => e.direction === "PM");
-  root.innerHTML = `
-    <section class="grid-3">
-      ${DB.pmAccounts
-        .map((p) => {
-          const cnt = pmEx.filter((e) => e.company === p.company).length;
-          return `<article class="panel pm-card">
-          <p class="eyebrow">PM Account</p>
-          <h2>${h(p.company)}</h2>
-          <div class="pm-rate"><strong>${p.match}%</strong><span>อัตราจับคู่สำเร็จ</span></div>
-          <p class="pm-note">${h(p.note)}</p>
-          <div class="pm-foot"><span>Exception วันนี้</span><b>${cnt}</b></div>
-          <button class="ghost-button sm" data-pm="${p.company}">ดูรายการ</button>
-        </article>`;
-        })
-        .join("")}
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Match Rate</p><h2>เทียบ 3 บริษัท PM</h2></div></div>
-        <div class="chart" id="chPm"></div>
-        <p class="chart-note">Cyberplus ต่ำที่สุดเพราะยอดถอนต้องรอไฟล์ชี้แจงประจำวัน ควรเร่ง SLA การส่งไฟล์เป็นก่อน 09:00</p>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">กฎเฉพาะ PM</p><h2>สิ่งที่ต้องกรองก่อนจับคู่</h2></div></div>
-        <ul class="tick-list">
-          <li>กรองเฉพาะรายการที่สถานะ <b>สำเร็จ</b> เท่านั้น</li>
-          <li>กรองวันที่ให้ตรงกับวันที่ตรวจ (STM PM มักมีวันอื่นปนมา)</li>
-          <li>AZPAY ฝากและถอนอยู่บัญชีเดียว ต้องแยก direction จาก marker</li>
-          <li>ยอดโอนออกต้องตรวจว่าปลายทางเป็นบัญชีบริษัทหรือไม่</li>
-          <li>รายการ 23:00-23:59 ตรวจร่วมกับไฟล์วันถัดไป</li>
-        </ul>
-      </div>
-    </section>`;
-
-  Charts.draw("#chPm", "bars", {
-    label: "อัตราจับคู่สำเร็จของบัญชี PM",
-    items: DB.pmAccounts.map((p) => ({ label: p.company, value: p.match, hint: p.note })),
-    color: Charts.PALETTE.s3,
-    metric: "อัตราจับคู่",
-    unit: "%",
-    height: 230,
-  });
-  root.querySelectorAll("[data-pm]").forEach((b) =>
-    b.addEventListener("click", () => go("exceptions", { filters: { company: b.dataset.pm, direction: "ALL" }, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } })),
-  );
-};
 
 /* =============================================================
    VIEW: KPI

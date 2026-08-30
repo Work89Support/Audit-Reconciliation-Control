@@ -41,5 +41,12 @@ assert.match(app, /ยอดตรงกัน หรือบันทึกค
 assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
 assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
 assert.match(app, /function safeExceptionDetail\(e\)/, "เคสย้อนหลังที่วันที่เสียต้องไม่แสดง undefined หรือ NaN ต่อผู้ใช้");
+assert.doesNotMatch(app, /id: "pm", label: "PM Monitor"/, "เมนู PM Monitor ที่ซ้ำซ้อนต้องถูกถอดออก");
+assert.doesNotMatch(app, /VIEWS\.pm\s*=/, "route PM Monitor เดิมต้องไม่ค้างอยู่ในแอป");
+assert.doesNotMatch(app, /function renderLivePm/, "ตัว render PM Monitor เดิมต้องไม่ค้างอยู่ใน bundle");
+assert.match(app, /async function loadLiveDamage\(force = false\)/, "ทะเบียนความเสียหายต้องโหลดข้อมูลจริงแยกจาก query ภาพรวม");
+assert.match(app, /ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้/, "ทะเบียนความเสียหายต้องอธิบายสถานะว่างโดยไม่แสดงศูนย์ให้เข้าใจผิด");
+assert.match(app, /await Sb\.post\("damages"[\s\S]+await loadLiveDamage\(true\)/, "บันทึกความเสียหายต้องรอ Supabase สำเร็จและรีเฟรชทะเบียนทันที");
+assert.match(app, /บันทึก Supabase ไม่สำเร็จ:[\s\S]+DB\.damages = DB\.damages\.filter/, "หากบันทึกจริงล้มเหลวต้องย้อนสถานะ optimistic ออก");
 
-console.log("App shell QA follow-up: 30 checks passed");
+console.log("App shell QA follow-up: 37 checks passed");
