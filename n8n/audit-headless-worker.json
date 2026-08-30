@@ -457,7 +457,11 @@
           "id": "wYcR0wVZktx3BmP0",
           "name": "Google Drive account"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -495,7 +499,11 @@
           "id": "wYcR0wVZktx3BmP0",
           "name": "Google Drive account"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {

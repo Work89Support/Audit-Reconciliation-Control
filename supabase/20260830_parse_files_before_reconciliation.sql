@@ -56,7 +56,11 @@ begin
       updated_at=now()
   where not j.is_archived
     and j.business_date between v_from and v_to
-    and j.status in ('waiting_files','needs_review','completed')
+    -- Include queued/error jobs as well: a previous parser/OCR failure may
+    -- already have consumed all retry attempts before this migration ran.
+    -- Unread supported files are safe to retry because parse-result writes
+    -- are idempotent per source file.
+    and j.status in ('waiting_files','needs_review','completed','queued','error')
     and j.error_count=0
     and exists (
       select 1
@@ -155,9 +159,58 @@ begin
 end;
 $$;
 
+-- Keep the existing parser/OCR persistence implementation intact and wrap its
+-- result with the required-file gate.  This also makes older published worker
+-- versions safe while the new workflow version is being rolled out.
+do $$
+begin
+  if to_regprocedure('public.record_source_file_parse_results_raw(uuid,jsonb)') is null then
+    alter function public.record_source_file_parse_results(uuid,jsonb)
+      rename to record_source_file_parse_results_raw;
+  end if;
+end;
+$$;
+
+create or replace function public.record_source_file_parse_results(
+  p_job_id uuid,
+  p_results jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_result jsonb;
+  v_job public.daily_recon_jobs%rowtype;
+begin
+  v_result:=public.record_source_file_parse_results_raw(p_job_id,p_results);
+  select * into v_job from public.daily_recon_jobs where id=p_job_id;
+
+  if coalesce((v_result->>'passed')::boolean,false)
+     and jsonb_array_length(v_job.missing_groups)>0 then
+    update public.daily_recon_jobs
+    set status='waiting_files',
+        claimed_at=null,
+        claimed_by=null,
+        last_error='อ่านไฟล์ที่ได้รับแล้ว · รอไฟล์อีกฝั่งก่อนกระทบยอด',
+        updated_at=now()
+    where id=p_job_id;
+    v_result:=jsonb_set(v_result,'{passed}','false'::jsonb,true);
+    v_result:=v_result||jsonb_build_object('waiting_for_files',true);
+  else
+    v_result:=v_result||jsonb_build_object('waiting_for_files',false);
+  end if;
+
+  return v_result;
+end;
+$$;
+
 revoke all on function public.queue_due_daily_recon_jobs(date,date) from public;
 revoke all on function public.finish_daily_recon_parse_only(uuid) from public;
+revoke all on function public.record_source_file_parse_results(uuid,jsonb) from public;
 grant execute on function public.queue_due_daily_recon_jobs(date,date) to authenticated;
 grant execute on function public.finish_daily_recon_parse_only(uuid) to authenticated;
+grant execute on function public.record_source_file_parse_results(uuid,jsonb) to authenticated;
 
 commit;
