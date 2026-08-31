@@ -206,12 +206,14 @@ const Formats = (() => {
     return { terminal, channel: channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "12PAY", "MYPAY"];
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CPXM", "12PAY", "MYPAY"];
   const canonicalPm = (ch) => {
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
     if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
     if (/AZPAY|^AZ$/.test(s)) return "AZPAY";
+    if (/COREPAY|CPPAY/.test(s)) return "COREPAY";
+    if (/CPXM/.test(s)) return "CPXM";
     if (/MYPAY/.test(s)) return "MYPAY";
     if (/12PAY/.test(s)) return "12PAY";
     return "";
@@ -232,7 +234,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["cyberplus", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "CPXM"], ["cyberplus", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));

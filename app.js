@@ -739,6 +739,7 @@ const isLiveCompanyRow = (row) => Boolean(normalizeLiveCompanyCode(row?.company)
 
 const CHECKLIST_STATUS = {
   scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
+  receiving: { label: "อยู่ในช่วงรับไฟล์", tone: "blue" },
   missing_files: { label: "ยังไม่ได้รับไฟล์", tone: "red" },
   missing_required: { label: "ไฟล์หลักยังไม่ครบ", tone: "red" },
   parse_error: { label: "มีไฟล์อ่านไม่ได้", tone: "red" },
@@ -755,6 +756,10 @@ const CHECKLIST_STATUS = {
 
 const checklistMark = (ok, value, optional = false) =>
   `<span class="check-mark ${ok ? "ok" : optional ? "optional" : "missing"}"><b>${ok ? "✓" : optional ? "–" : "!"}</b>${h(value)}</span>`;
+
+const expectedBoCount = (row) => Number(row?.expected_bo_count || (["AT4", "FR8", "SK8"].includes(normalizeLiveCompanyCode(row?.company)) ? 2 : 1));
+const registeredStmCount = (row) => Number(row?.registered_stm_accounts || 0);
+const registeredPmCount = (row) => Number(row?.registered_pm_files || 0);
 
 function safeExceptionDetail(e) {
   const detail = String(e.detail || "");
@@ -1084,19 +1089,37 @@ function renderLiveDashboard(root) {
       <button class="ghost-button" id="openHistory">ดูประวัติ 1–23 ส.ค.</button>
     </section>
 
+    <section class="panel operating-timeline">
+      <div class="panel-heading"><div><p class="eyebrow">รอบงานประจำวัน</p><h2>${h(checklist[0]?.workflow_phase_label || "ติดตามตามเวลาปฏิบัติงาน")}</h2><small class="head-sub">ระบบจะยังไม่แจ้งว่าขาดไฟล์ก่อนสิ้นสุดช่วงรับไฟล์ 08:00 น.</small></div><span class="badge blue">เวลาไทย</span></div>
+      <div class="operating-timeline-grid">
+        <article><b>05:00–08:00</b><span>รับไฟล์ตรวจจากแอดมิน</span></article>
+        <article><b>08:00–17:00</b><span>อ่านไฟล์และกระทบยอด</span></article>
+        <article><b>17:00</b><span>ส่งเคสให้แอดมินชี้แจง</span></article>
+        <article><b>17:00–19:00</b><span>อัปโหลดไฟล์ที่ออดิทเสร็จ</span></article>
+        <article><b>หลัง 19:00</b><span>ติดตามทีมออดิทหากยังไม่อัปโหลด</span></article>
+      </div>
+    </section>
+
     <section class="panel daily-checklist-panel">
-      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">เครื่องหมาย ! คือสิ่งที่ต้องตาม ส่วน PM แสดงแยกฝาก/ถอนเพื่อเช็คความครบ</small></div><span class="health ${checklist.some((row) => row.checklist_status !== "completed" && row.checklist_status !== "scheduled") ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
-      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท</th><th>เมล / ไฟล์</th><th>STM</th><th>BO</th><th>PM ฝาก</th><th>PM ถอน</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
+      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">BO เป็นไฟล์บังคับรายวัน ส่วน STM/PM ขึ้นกับบัญชีที่ใช้จริงในวันนั้น ตัวเลข “ทะเบียน” คือจำนวนสูงสุดที่รองรับ ไม่ใช่ไฟล์ขาด</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
+      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ที่รับ / ทะเบียน</th><th>BO ที่รับ / ต้องมี</th><th>PM ที่รับ / ทะเบียน</th><th>Provider</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
         ${checklist.map((row) => {
           const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
           const future = row.checklist_status === "scheduled";
           const reconFileCount = Number(row.recon_file_count ?? row.file_count ?? 0);
           const parsedOk = reconFileCount > 0 && Number(row.parsed_count) === reconFileCount && !Number(row.error_count);
+          const boExpected = expectedBoCount(row);
+          const boOk = Number(row.bo_count) >= boExpected;
+          const pmReceived = Number(row.pm_deposit_count || 0) + Number(row.pm_withdraw_count || 0);
+          const providers = Array.isArray(row.pm_providers) ? row.pm_providers.join(", ") : "-";
+          const inactiveProviders = Array.isArray(row.inactive_pm_providers) ? row.inactive_pm_providers.join(", ") : "";
+          const pendingProviders = Array.isArray(row.pending_registry_pm_providers) ? row.pending_registry_pm_providers.join(", ") : "";
+          const providerNotes = `${inactiveProviders ? `<small class="sub">ยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">รอลงทะเบียน: ${h(pendingProviders)}</small>` : ""}`;
           const pending = () => checklistMark(false, "รอวันทำการ", true);
-          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.stm_count)>0, `${num(row.stm_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.bo_count)>0, `${num(row.bo_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(Number(row.pm_deposit_count)>0, `${num(row.pm_deposit_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(Number(row.pm_withdraw_count)>0, `${num(row.pm_withdraw_count)} ไฟล์`, true)}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}</td></tr>`;
+          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(false, `${num(row.stm_count)} รับ · ทะเบียน ${num(registeredStmCount(row))}`, true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(false, `${num(pmReceived)} รับ · ทะเบียน ${num(registeredPmCount(row))}`, true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
       </tbody></table></div>
-      <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน พร้อมรายชื่อไฟล์จริง ผลกระทบยอด และเคสที่ยังไม่ปิด</p>
+      <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
     </section>
 
     <section class="grid-2 live-main-grid">
@@ -1634,6 +1657,9 @@ function renderDailyCompanySummary(root) {
     const boFiles = data.files.filter((file) => file.kind === "bo_main").length;
     const pmFiles = data.files.filter((file) => file.kind === "pm_statement").length;
     const evidenceFiles = data.files.filter((file) => file.kind === "doc_clarify").length;
+    const boExpected = expectedBoCount(data.checklist || { company });
+    const stmRegistered = registeredStmCount(data.checklist);
+    const pmRegistered = registeredPmCount(data.checklist);
     const nextWork = fileErrors
       ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
       : waitingFiles
@@ -1682,17 +1708,17 @@ function renderDailyCompanySummary(root) {
         <div class="checklist-cards">
           ${[
             ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
-            ["STM ฝาก-ถอน", Number(data.checklist?.stm_count || 0) > 0, `${num(data.checklist?.stm_count || 0)} ไฟล์`, false],
-            ["รายงาน BO", Number(data.checklist?.bo_count || 0) > 0, `${num(data.checklist?.bo_count || 0)} ไฟล์`, false],
-            ["PM ฝาก", Number(data.checklist?.pm_deposit_count || 0) > 0, `${num(data.checklist?.pm_deposit_count || 0)} ไฟล์`, true],
-            ["PM ถอน", Number(data.checklist?.pm_withdraw_count || 0) > 0, `${num(data.checklist?.pm_withdraw_count || 0)} ไฟล์`, true],
+            ["STM ของบัญชีที่พบใน BO", false, `${num(data.checklist?.stm_count || 0)} ไฟล์ · ทะเบียนรองรับ ${num(stmRegistered)} บัญชี`, true],
+            ["รายงาน BO บังคับ", Number(data.checklist?.bo_count || 0) >= boExpected, `${num(data.checklist?.bo_count || 0)}/${num(boExpected)} ไฟล์`, false],
+            ["PM D/W ของ Provider ที่พบใน BO", false, `${num(Number(data.checklist?.pm_deposit_count || 0) + Number(data.checklist?.pm_withdraw_count || 0))} ไฟล์ · ทะเบียนรองรับ ${num(pmRegistered)}`, true],
             ["อ่านไฟล์", data.files.length > 0 && parsed === data.files.length, fileErrors ? `อ่านไม่ได้ ${num(fileErrors)}` : `${num(parsed)}/${num(data.files.length)} สำเร็จ`, false],
             ["กระทบยอดและปิดเคส", latestStatus === "completed" && data.stillOpen === 0, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
           ].map(([label, ok, detail, optional]) => scheduled
             ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
             : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
         </div>
-        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist ครบ</strong><span>ไฟล์หลักอ่านสำเร็จ กระทบยอดแล้ว และไม่มีเคสค้าง</span></div>`}
+        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบ</strong><span>BO ครบตามระบบ ไฟล์หลักอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
+        ${data.checklist?.registry_warning ? `<div class="alert warn registry-alert"><strong>ข้อมูลทะเบียนที่ควรยืนยัน</strong><span>${h(data.checklist.registry_warning)}</span></div>` : ""}
       </section>
 
       <section class="grid-2 daily-summary-grid">
@@ -2966,6 +2992,8 @@ function pmProviderOf(value) {
   const text = String(value || "").toUpperCase();
   if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
   if (/AZPAY/.test(text)) return "AZPAY";
+  if (/COREPAY|CP[ _-]?PAY/.test(text)) return "COREPAY";
+  if (/CPXM/.test(text)) return "CPXM";
   if (/CYBERPLUS|CYNERPLUS|\bCBY\b/.test(text)) return "CYBERPLUS";
   if (/MYPAY/.test(text)) return "MYPAY";
   if (/12PAY/.test(text)) return "12PAY";

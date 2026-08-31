@@ -5,10 +5,12 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
+const formats = readFileSync(join(root, "formats.js"), "utf8");
 const html = readFileSync(join(root, "index.html"), "utf8");
 const sb = readFileSync(join(root, "supabase.js"), "utf8");
 const accessSql = readFileSync(join(root, "supabase/20260830_user_roles_company_access.sql"), "utf8");
 const adminSql = readFileSync(join(root, "supabase/20260830_admin_full_access.sql"), "utf8");
+const checklistSql = readFileSync(join(root, "supabase/20260831_registry_driven_daily_checklist.sql"), "utf8");
 const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/index.ts"), "utf8");
 
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
@@ -75,5 +77,21 @@ assert.match(inviteFn, /SUPABASE_SERVICE_ROLE_KEY/, "การเชิญผู
 assert.match(inviteFn, /caller\.role !== "admin"/, "Edge Function ต้องตรวจบทบาทผู้เรียกซ้ำฝั่ง server");
 assert.match(inviteFn, /inviteUserByEmail/, "Edge Function ต้องส่งอีเมลเชิญจริง");
 assert.doesNotMatch(app + sb, /SUPABASE_SERVICE_ROLE_KEY/, "frontend ห้ามอ้าง service role key");
+assert.match(app, /05:00–08:00[\s\S]+รับไฟล์ตรวจจากแอดมิน/, "Dashboard ต้องแสดงช่วงรับไฟล์ประจำวัน");
+assert.match(app, /BO เป็นไฟล์บังคับรายวัน ส่วน STM\/PM ขึ้นกับบัญชีที่ใช้จริง/, "Checklist ต้องแยกไฟล์บังคับออกจากจำนวนทะเบียน");
+assert.match(app, /expectedBoCount\(row\)/, "Checklist ต้องใช้ BO 1 หรือ 2 ไฟล์ตามระบบบริษัท");
+assert.match(app, /ทะเบียน: \$\{h\(row\.registry_warning\)\}/, "คำเตือนทะเบียนต้องแยกจากรายการไฟล์ที่ขาด");
+assert.match(checklistSql, /create table if not exists public\.audit_company_file_rules/, "migration ต้องมี master rule จากทะเบียนบัญชี");
+assert.match(checklistSql, /\('FR8','123',2,6,9/, "บริษัทระบบ 123 ต้องคาดหวัง BO ฝากและถอนแยก 2 ไฟล์");
+assert.match(checklistSql, /\('UFABET7M','7M',1,6,8/, "บริษัท 7M ต้องคาดหวัง BO รวมฝากถอน 1 ไฟล์");
+assert.match(checklistSql, /f\.kind='bo_main'/, "BO ต้องนับจากชนิดไฟล์จริง ไม่ใช่คำ BO ในหัวข้อเมล");
+assert.doesNotMatch(checklistSql, /case when coalesce\(stm_count,0\)=0/, "STM ต้องไม่ถูกแจ้งขาดเพียงเพราะบัญชีไม่ได้ใช้งานวันนั้น");
+assert.doesNotMatch(checklistSql, /case when coalesce\(pm_deposit_count,0\)=0/, "PM ต้องไม่ถูกแจ้งขาดเพียงเพราะ Provider ไม่ได้ใช้งานวันนั้น");
+assert.match(checklistSql, /local_time<time '08:00' then 'receiving'/, "ระบบต้องรอจนจบช่วงรับไฟล์ก่อนแจ้งขาด");
+assert.match(checklistSql, /array\['AUTOPEER','AZPAY','12PAY','MYPAY','COREPAY'\]/, "ทะเบียนระบบ XXX ต้องสะท้อน Provider ที่ยังเปิดใช้งานในชีตล่าสุด");
+assert.match(checklistSql, /array\['AUTOPEER','AZPAY','CYBERPLUS','MYPAY','COREPAY'\]/, "ทะเบียนระบบ 123 ต้องสะท้อน Provider ในชีตล่าสุดและเตือน CPXM แยกต่างหาก");
+assert.match(app + formats, /COREPAY/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก COREPAY หรือ CP PAY");
+assert.match(app + formats, /CPXM/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก CPXM");
+assert.match(app, /หลัง 19:00[\s\S]+ติดตามทีมออดิท/, "หน้าระบบต้องบอกขั้นตอนติดตามทีมออดิทหลังเวลาอัปโหลด");
 
-console.log("App shell QA follow-up: 60 checks passed");
+console.log("App shell QA follow-up: 76 checks passed");

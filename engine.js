@@ -121,7 +121,7 @@ const Engine = (() => {
     }
 
     let company = null;
-    ["AUTOPEER", "AZPAY", "CYBERPLUS", "12PAY", "MYPAY", "SYS123"].forEach((c) => {
+    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "SYS123"].forEach((c) => {
       if (blob.toUpperCase().includes(c)) company = c;
     });
 
