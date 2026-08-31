@@ -12,11 +12,14 @@ const accessSql = readFileSync(join(root, "supabase/20260830_user_roles_company_
 const adminSql = readFileSync(join(root, "supabase/20260830_admin_full_access.sql"), "utf8");
 const checklistSql = readFileSync(join(root, "supabase/20260831_registry_driven_daily_checklist.sql"), "utf8");
 const boFirstSql = readFileSync(join(root, "supabase/20260831_bo_first_daily_coverage.sql"), "utf8");
+const operatingStartSql = readFileSync(join(root, "supabase/20260831_operational_start_20260830.sql"), "utf8");
 const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/index.ts"), "utf8");
 
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
-assert.match(app, /const OPERATING_START_DATE = "2026-08-27"/, "รอบใช้งานจริงต้องเริ่มวันที่ 27 สิงหาคม 2026");
+assert.match(app, /const OPERATING_START_DATE = "2026-08-30"/, "รอบใช้งานจริงต้องเริ่มวันที่ 30 สิงหาคม 2026");
 assert.match(app, /candidate < OPERATING_START_DATE \? OPERATING_START_DATE : candidate/, "ช่วงข้อมูลเริ่มต้นต้องไม่ย้อนก่อนวันเริ่มใช้งานจริง");
+assert.match(operatingStartSql, /operational_start_date[\s\S]+date '2026-08-30'/, "ฐานข้อมูลต้องเริ่มรอบใช้งานจริงวันที่ 30 สิงหาคม 2026");
+assert.match(operatingStartSql, /business_date < date '2026-08-30'[\s\S]+is_archived/, "งานก่อนวันที่ 30 ต้องถูกเก็บเป็นประวัติ");
 assert.match(app, /resultMetric\(exceptionsAvailable, sorted\.length\)[\s\S]+รายการรอตรวจ/, "การ์ดรายการรอตรวจต้องตรงกับรายการที่กรองแล้ว");
 assert.match(app, /ขยายย้อนหลัง 90 วัน/, "หน้าไม่มีข้อมูลต้องแนะนำให้ขยายช่วงวัน");
 assert.match(html, /หน้านี้ใช้ข้อมูลจริงจาก Supabase/, "หน้า login ต้องอธิบายสาเหตุที่ต้องเข้าสู่ระบบ");

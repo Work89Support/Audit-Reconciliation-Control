@@ -100,7 +100,7 @@ const PROD_TODAY = (() => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
-const OPERATING_START_DATE = "2026-08-27";
+const OPERATING_START_DATE = "2026-08-30";
 const DEFAULT_WORK_DATE = PROD_TODAY < OPERATING_START_DATE ? OPERATING_START_DATE : PROD_TODAY;
 /* เปิดมาครั้งแรกให้เห็นย้อนหลังไม่เกิน 30 วัน แต่ไม่ย้อนก่อนวันเริ่มใช้งานจริง */
 const DEFAULT_RANGE_FROM = (() => {

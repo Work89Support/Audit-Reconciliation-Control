@@ -1,0 +1,532 @@
+{"kind":"deck","id":"pr/e3e7m1","name":"Deck"}
+{"kind":"layout","layoutId":"a287dfd6-6b17-4181-b76a-d259e23ce7a7","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"ad0ebe16-d2c6-4d22-a97b-235eb4243c46","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/pqwcom","slide":1,"title":"AUDIT AI · RECONCILIATION CONTROL","textShapes":5}
+{"kind":"shape","id":"sh/dg3yxkbq","slide":1,"bbox":[0,0,14,720]}
+{"kind":"textbox","id":"sh/qdcfm5cf","slide":1,"text":"AUDIT AI · RECONCILIATION CONTROL","textPreview":"AUDIT AI · RECONCILIATION CONTROL","textChars":33,"textLines":1,"bbox":[62,48,600,26]}
+{"kind":"textbox","id":"sh/relgvadk","slide":1,"text":"ระบบตรวจสอบและ\nกระทบยอดอัตโนมัติ","textPreview":"ระบบตรวจสอบและ | กระทบยอดอัตโนมัติ","textChars":32,"textLines":2,"bbox":[62,142,590,126]}
+{"kind":"textbox","id":"sh/4buxkvu9","slide":1,"text":"ภาพรวมผู้บริหาร • ผลจริง 27–29 สิงหาคม 2026\nปัญหาที่พบ • วิธีใช้งาน • การควบคุมสิทธิ์","textPreview":"ภาพรวมผู้บริหาร • ผลจริง 27–29 สิงหาคม 2026 | ปัญหาที่พบ • วิธีใช้งาน • การควบคุมสิทธิ์","textChars":85,"textLines":2,"bbox":[66,300,560,86]}
+{"kind":"shape","id":"sh/pc3yt0vu","slide":1,"bbox":[62,535,555,100]}
+{"kind":"textbox","id":"sh/29sfilc3","slide":1,"text":"ข้อสรุป","textPreview":"ข้อสรุป","textChars":7,"textLines":1,"bbox":[84,555,100,22]}
+{"kind":"textbox","id":"sh/3algrqdo","slide":1,"text":"ระบบทำงานครบวงจรแล้ว แต่ต้องแยก “ไฟล์ครบ” ออกจาก “จับคู่ครบ” และติดตามคุณภาพข้อมูลรายบริษัท","textPreview":"ระบบทำงานครบวงจรแล้ว แต่ต้องแยก “ไฟล์ครบ” ออกจาก “จับคู่ครบ” และติดตามคุณภาพข้อมูลรายบริษัท","textChars":91,"textLines":1,"bbox":[84,582,500,40]}
+{"kind":"image","id":"im/tonqtcvm","slide":1,"name":"","geometry":"roundRect","alt":"ภาพหน้าจอระบบ Audit AI","bbox":[690,70,535,570]}
+{"kind":"notes","id":"nt/pqwcom","slide":1,"text":"[Sources]\n- Internal production results (Supabase), checked 2026-08-30.\n- Repository UI screenshot: manual/13-exceptions.png.\n[/Sources]"}
+{"kind":"slide","id":"sl/okpqhx","slide":2,"title":"OVERVIEW","textShapes":29}
+{"kind":"textbox","id":"sh/pw3u58vm","slide":2,"text":"OVERVIEW","textPreview":"OVERVIEW","textChars":8,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/2tcbutcv","slide":2,"text":"Executive Summary","textPreview":"Executive Summary","textChars":17,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/nulc3ydg","slide":2,"text":"ระบบอ่านไฟล์และรันครบ 27 งาน แต่ผลจับคู่ยังต่างกันมากในแต่ละบริษัท","textPreview":"ระบบอ่านไฟล์และรันครบ 27 งาน แต่ผลจับคู่ยังต่างกันมากในแต่ละบริษัท","textChars":66,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/cjet0nux","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/xknu9svi","slide":2,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/ahcbydcr","slide":2,"bbox":[56,205,215,118]}
+{"kind":"shape","id":"sh/bi5c7idc","slide":2,"bbox":[56,205,6,118]}
+{"kind":"textbox","id":"sh/knet4nu9","slide":2,"text":"ไฟล์หลักอ่านสำเร็จ","textPreview":"ไฟล์หลักอ่านสำเร็จ","textChars":18,"textLines":1,"bbox":[78,220,181,22]}
+{"kind":"textbox","id":"sh/lonudsbu","slide":2,"text":"305","textPreview":"305","textChars":3,"textLines":1,"bbox":[78,247,181,38]}
+{"kind":"textbox","id":"sh/5sjal0ji","slide":2,"text":"ไม่รวมไฟล์ชี้แจง","textPreview":"ไม่รวมไฟล์ชี้แจง","textChars":16,"textLines":1,"bbox":[78,292,181,22]}
+{"kind":"shape","id":"sh/4rqtsvix","slide":2,"bbox":[285,205,215,118]}
+{"kind":"shape","id":"sh/j6hsjq1c","slide":2,"bbox":[285,205,6,118]}
+{"kind":"textbox","id":"sh/i58bq50r","slide":2,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[307,220,181,22]}
+{"kind":"textbox","id":"sh/twjapkje","slide":2,"text":"47,741","textPreview":"47,741","textChars":6,"textLines":1,"bbox":[307,247,181,38]}
+{"kind":"textbox","id":"sh/svatwfit","slide":2,"text":"รายการฝาก–ถอน","textPreview":"รายการฝาก–ถอน","textChars":13,"textLines":1,"bbox":[307,292,181,22]}
+{"kind":"shape","id":"sh/ru1sna18","slide":2,"bbox":[514,205,215,118]}
+{"kind":"shape","id":"sh/6tsbu50n","slide":2,"bbox":[514,205,6,118]}
+{"kind":"textbox","id":"sh/90fadgja","slide":2,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[536,220,181,22]}
+{"kind":"textbox","id":"sh/8z69kbip","slide":2,"text":"51,601","textPreview":"51,601","textChars":6,"textLines":1,"bbox":[536,247,181,38]}
+{"kind":"textbox","id":"sh/0jat0bql","slide":2,"text":"รายการหลังบ้าน","textPreview":"รายการหลังบ้าน","textChars":14,"textLines":1,"bbox":[536,292,181,22]}
+{"kind":"shape","id":"sh/lkja9gr6","slide":2,"bbox":[743,205,215,118]}
+{"kind":"shape","id":"sh/yhsbyl8f","slide":2,"bbox":[743,205,6,118]}
+{"kind":"textbox","id":"sh/zi1s7q90","slide":2,"text":"จับคู่สำเร็จ","textPreview":"จับคู่สำเร็จ","textChars":12,"textLines":1,"bbox":[765,220,181,22]}
+{"kind":"textbox","id":"sh/87ut4vqh","slide":2,"text":"21,810","textPreview":"21,810","textChars":6,"textLines":1,"bbox":[765,247,181,38]}
+{"kind":"textbox","id":"sh/983ad0r2","slide":2,"text":"45.68% ของ STM/PM","textPreview":"45.68% ของ STM/PM","textChars":17,"textLines":1,"bbox":[765,292,181,22]}
+{"kind":"shape","id":"sh/mlsb2l8b","slide":2,"bbox":[972,205,215,118]}
+{"kind":"shape","id":"sh/nmlsbq9w","slide":2,"bbox":[972,205,6,118]}
+{"kind":"textbox","id":"sh/wbut8vqt","slide":2,"text":"ขอบเขต","textPreview":"ขอบเขต","textChars":6,"textLines":1,"bbox":[994,220,181,22]}
+{"kind":"textbox","id":"sh/xc3uh0ry","slide":2,"text":"9 × 3","textPreview":"9 × 3","textChars":5,"textLines":1,"bbox":[994,247,181,38]}
+{"kind":"textbox","id":"sh/rip4nyxc","slide":2,"text":"9 บริษัท × 3 วัน","textPreview":"9 บริษัท × 3 วัน","textChars":16,"textLines":1,"bbox":[994,292,181,22]}
+{"kind":"shape","id":"sh/qhgnutw7","slide":2,"bbox":[56,354,1138,245]}
+{"kind":"textbox","id":"sh/dkrmp8fi","slide":2,"text":"สาระที่ผู้บริหารควรรู้","textPreview":"สาระที่ผู้บริหารควรรู้","textChars":22,"textLines":1,"bbox":[80,378,420,30]}
+{"kind":"shape","id":"sh/sji5w3ex","slide":2,"bbox":[82,427,32,30]}
+{"kind":"textbox","id":"sh/jep4jyxg","slide":2,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[82,430,32,24]}
+{"kind":"textbox","id":"sh/idgnqtwv","slide":2,"text":"สถานะ completed","textPreview":"สถานะ completed","textChars":15,"textLines":1,"bbox":[128,428,190,25]}
+{"kind":"textbox","id":"sh/5g7mlofm","slide":2,"text":"หมายถึงอ่านไฟล์และคำนวณจบ ไม่ได้หมายถึงจับคู่ครบทุกธุรกรรม","textPreview":"หมายถึงอ่านไฟล์และคำนวณจบ ไม่ได้หมายถึงจับคู่ครบทุกธุรกรรม","textChars":58,"textLines":1,"bbox":[320,428,820,32]}
+{"kind":"shape","id":"sh/4fy5sje1","slide":2,"bbox":[82,479,32,30]}
+{"kind":"textbox","id":"sh/natovixk","slide":2,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[82,482,32,24]}
+{"kind":"textbox","id":"sh/290n2dwz","slide":2,"text":"จุดเสี่ยงหลัก","textPreview":"จุดเสี่ยงหลัก","textChars":13,"textLines":1,"bbox":[128,480,190,25]}
+{"kind":"textbox","id":"sh/ax0rqhsj","slide":2,"text":"SK8 และ FR8 จับคู่ต่ำต่อเนื่อง ควรตรวจ mapping / เวลา / Provider","textPreview":"SK8 และ FR8 จับคู่ต่ำต่อเนื่อง ควรตรวจ mapping / เวลา / Provider","textChars":64,"textLines":1,"bbox":[320,480,820,32]}
+{"kind":"shape","id":"sh/by98jmt4","slide":2,"bbox":[82,531,32,30]}
+{"kind":"textbox","id":"sh/wzi9srap","slide":2,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[82,534,32,24]}
+{"kind":"textbox","id":"sh/x0rqlcbu","slide":2,"text":"การควบคุม","textPreview":"การควบคุม","textChars":9,"textLines":1,"bbox":[128,532,190,25]}
+{"kind":"textbox","id":"sh/mtg7mxs7","slide":2,"text":"มีหลักฐานย้อนกลับ สิทธิ์ตามบทบาท และไม่มีบทบาทใดลบรายการ/หลักฐานถาวรได้","textPreview":"มีหลักฐานย้อนกลับ สิทธิ์ตามบทบาท และไม่มีบทบาทใดลบรายการ/หลักฐานถาวรได้","textChars":71,"textLines":1,"bbox":[320,532,820,32]}
+{"kind":"notes","id":"nt/okpqhx","slide":2,"text":"[Sources]\n- Internal production results: 305 core files, 47,741 STM/PM, 51,601 BO, 21,810 matched; checked 2026-08-30.\n- README.md role and deletion controls.\n[/Sources]"}
+{"kind":"slide","id":"sl/8ulgmk","slide":3,"title":"END-TO-END FLOW","textShapes":33}
+{"kind":"textbox","id":"sh/8fa9g76d","slide":3,"text":"END-TO-END FLOW","textPreview":"END-TO-END FLOW","textChars":15,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/7e18725s","slide":3,"text":"ระบบทำงานอย่างไร","textPreview":"ระบบทำงานอย่างไร","textChars":16,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/mdsrexon","slide":3,"text":"จากอีเมลจริงไปสู่รายงานผู้บริหาร พร้อมหลักฐานและร่องรอยการอนุมัติ","textPreview":"จากอีเมลจริงไปสู่รายงานผู้บริหาร พร้อมหลักฐานและร่องรอยการอนุมัติ","textChars":65,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/lcjq5sn2","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/kba9cn6h","slide":3,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/za183i5w","slide":3,"bbox":[42,228,150,180]}
+{"kind":"shape","id":"sh/y9sraxob","slide":3,"bbox":[58,246,34,30]}
+{"kind":"textbox","id":"sh/xozq1snq","slide":3,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[58,249,34,24]}
+{"kind":"textbox","id":"sh/cnqp8n65","slide":3,"text":"Gmail","textPreview":"Gmail","textChars":5,"textLines":1,"bbox":[58,292,118,26]}
+{"kind":"textbox","id":"sh/2lob6p4b","slide":3,"text":"รับเมลและไฟล์แนบ","textPreview":"รับเมลและไฟล์แนบ","textChars":16,"textLines":1,"bbox":[58,330,118,52]}
+{"kind":"textbox","id":"sh/nmxczulw","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[192,299,24,30]}
+{"kind":"shape","id":"sh/o76t8zmh","slide":3,"bbox":[216,228,150,180]}
+{"kind":"shape","id":"sh/p8fu1432","slide":3,"bbox":[232,246,34,30]}
+{"kind":"textbox","id":"sh/ehob2p4f","slide":3,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[232,249,34,24]}
+{"kind":"textbox","id":"sh/fixcvul0","slide":3,"text":"n8n","textPreview":"n8n","textChars":3,"textLines":1,"bbox":[232,292,118,26]}
+{"kind":"textbox","id":"sh/gj6t4fml","slide":3,"text":"จัดคิวและกันซ้ำ","textPreview":"จัดคิวและกันซ้ำ","textChars":15,"textLines":1,"bbox":[232,330,118,52]}
+{"kind":"textbox","id":"sh/1kfuxk36","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[366,299,24,30]}
+{"kind":"shape","id":"sh/6d4by543","slide":3,"bbox":[390,228,150,180]}
+{"kind":"shape","id":"sh/redsralo","slide":3,"bbox":[406,246,34,30]}
+{"kind":"textbox","id":"sh/v690jmxk","slide":3,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[406,249,34,24]}
+{"kind":"textbox","id":"sh/al0zahgz","slide":3,"text":"Supabase","textPreview":"Supabase","textChars":8,"textLines":1,"bbox":[406,292,118,26]}
+{"kind":"textbox","id":"sh/x8rilcfa","slide":3,"text":"เก็บไฟล์ + metadata","textPreview":"เก็บไฟล์ + metadata","textChars":19,"textLines":1,"bbox":[406,330,118,52]}
+{"kind":"textbox","id":"sh/w7ihcryp","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[540,299,24,30]}
+{"kind":"shape","id":"sh/ja90nmxg","slide":3,"bbox":[564,228,150,180]}
+{"kind":"shape","id":"sh/i90zehgv","slide":3,"bbox":[580,246,34,30]}
+{"kind":"textbox","id":"sh/5cbipwfm","slide":3,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[580,249,34,24]}
+{"kind":"textbox","id":"sh/kbihgry1","slide":3,"text":"Parser","textPreview":"Parser","textChars":6,"textLines":1,"bbox":[580,292,118,26]}
+{"kind":"textbox","id":"sh/zepgb2hc","slide":3,"text":"อ่าน Excel/CSV/PDF","textPreview":"อ่าน Excel/CSV/PDF","textChars":18,"textLines":1,"bbox":[580,330,118,52]}
+{"kind":"textbox","id":"sh/ydgz2xgr","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[714,299,24,30]}
+{"kind":"shape","id":"sh/ojuxc3ep","slide":3,"bbox":[738,228,150,180]}
+{"kind":"shape","id":"sh/pk3elovu","slide":3,"bbox":[754,246,34,30]}
+{"kind":"textbox","id":"sh/2hcfatwj","slide":3,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[754,249,34,24]}
+{"kind":"textbox","id":"sh/3ilwjyd4","slide":3,"text":"3-Point Match","textPreview":"3-Point Match","textChars":13,"textLines":1,"bbox":[754,292,118,26]}
+{"kind":"textbox","id":"sh/gvux8jed","slide":3,"text":"เทียบยอด บัญชี เวลา","textPreview":"เทียบยอด บัญชี เวลา","textChars":19,"textLines":1,"bbox":[754,330,118,52]}
+{"kind":"textbox","id":"sh/1g3ehofy","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[888,299,24,30]}
+{"kind":"shape","id":"sh/utsv69w7","slide":3,"bbox":[912,228,150,180]}
+{"kind":"shape","id":"sh/fulwfexs","slide":3,"bbox":[928,246,34,30]}
+{"kind":"textbox","id":"sh/0rexkneh","slide":3,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[928,249,34,24]}
+{"kind":"textbox","id":"sh/lcnet8v2","slide":3,"text":"Case Workflow","textPreview":"Case Workflow","textChars":13,"textLines":1,"bbox":[928,292,118,26]}
+{"kind":"textbox","id":"sh/xwzulkvu","slide":3,"text":"ชี้แจง/หลักฐาน/อนุมัติ","textPreview":"ชี้แจง/หลักฐาน/อนุมัติ","textChars":22,"textLines":1,"bbox":[928,330,118,52]}
+{"kind":"textbox","id":"sh/wvqtcfu9","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[1062,299,24,30]}
+{"kind":"shape","id":"sh/vuxcjado","slide":3,"bbox":[1086,228,150,180]}
+{"kind":"shape","id":"sh/atoba5c3","slide":3,"bbox":[1102,246,34,30]}
+{"kind":"textbox","id":"sh/50zupkbq","slide":3,"text":"7","textPreview":"7","textChars":1,"textLines":1,"bbox":[1102,249,34,24]}
+{"kind":"textbox","id":"sh/kzqtgfu5","slide":3,"text":"Report","textPreview":"Report","textChars":6,"textLines":1,"bbox":[1102,292,118,26]}
+{"kind":"textbox","id":"sh/jyhcnadk","slide":3,"text":"รายวัน + Export","textPreview":"รายวัน + Export","textChars":15,"textLines":1,"bbox":[1102,330,118,52]}
+{"kind":"shape","id":"sh/ix8be5cz","slide":3,"bbox":[56,458,1138,142]}
+{"kind":"textbox","id":"sh/tojut4bm","slide":3,"text":"จุดควบคุมสำคัญ","textPreview":"จุดควบคุมสำคัญ","textChars":14,"textLines":1,"bbox":[80,480,270,27]}
+{"kind":"textbox","id":"sh/snatkzuh","slide":3,"text":"• กันไฟล์ซ้ำด้วย message/file identity     • Quality gate ก่อนกระทบยอด     • tolerance เวลา/ยอดตั้งค่าได้\n• ทุกการเปลี่ยนสถานะมี Audit Log     • ไฟล์ต้นฉบับและไฟล์แทนที่เก็บประวัติ","textPreview":"• กันไฟล์ซ้ำด้วย message/file identity     • Quality gate ก่อนกระทบยอด     • tolerance เวลา/ยอดตั้งค่าได้ | • ทุกการเปลี่ยนสถานะมี Audit ...","textChars":180,"textLines":2,"bbox":[80,520,1060,58]}
+{"kind":"notes","id":"nt/8ulgmk","slide":3,"text":"[Sources]\n- n8n workflow and repository architecture.\n- Supabase schema and RLS migrations in repository.\n[/Sources]"}
+{"kind":"slide","id":"sl/jf909a","slide":4,"title":"MANAGEMENT VISIBILITY","textShapes":19}
+{"kind":"textbox","id":"sh/3ih0bud4","slide":4,"text":"MANAGEMENT VISIBILITY","textPreview":"MANAGEMENT VISIBILITY","textChars":21,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/ojqhkzup","slide":4,"text":"ผู้บริหารเห็นอะไรในระบบ","textPreview":"ผู้บริหารเห็นอะไรในระบบ","textChars":23,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/pkzid4va","slide":4,"text":"มุมมองเดียวติดตามความครบถ้วน คุณภาพการจับคู่ ความเสี่ยง และหลักฐาน","textPreview":"มุมมองเดียวติดตามความครบถ้วน คุณภาพการจับคู่ ความเสี่ยง และหลักฐาน","textChars":66,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/etozepwn","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/fuxg7ud8","slide":4,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/1wzi9kvy","slide":4,"bbox":[794,205,400,420]}
+{"kind":"textbox","id":"sh/ypszq9cr","slide":4,"text":"ข้อมูลที่ใช้ตัดสินใจ","textPreview":"ข้อมูลที่ใช้ตัดสินใจ","textChars":20,"textLines":1,"bbox":[820,230,330,28]}
+{"kind":"shape","id":"sh/zq10jedc","slide":4,"bbox":[822,276,30,30]}
+{"kind":"textbox","id":"sh/3e50jehw","slide":4,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[822,279,30,24]}
+{"kind":"textbox","id":"sh/idwza9gb","slide":4,"text":"ไฟล์ที่ได้รับ / อ่านสำเร็จ / ต้องแก้","textPreview":"ไฟล์ที่ได้รับ / อ่านสำเร็จ / ต้องแก้","textChars":36,"textLines":1,"bbox":[866,278,292,30]}
+{"kind":"shape","id":"sh/5gnil4z2","slide":4,"bbox":[822,325,30,30]}
+{"kind":"textbox","id":"sh/4fehczyh","slide":4,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[822,328,30,24]}
+{"kind":"textbox","id":"sh/ri50nehs","slide":4,"text":"จำนวน STM/PM, BO และอัตราจับคู่","textPreview":"จำนวน STM/PM, BO และอัตราจับคู่","textChars":31,"textLines":1,"bbox":[866,327,292,30]}
+{"kind":"shape","id":"sh/qhwze9g7","slide":4,"bbox":[822,374,30,30]}
+{"kind":"textbox","id":"sh/d47ipozy","slide":4,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[822,377,30,24]}
+{"kind":"textbox","id":"sh/sjehgjyd","slide":4,"text":"Exception ตามบริษัท ประเภท และ SLA","textPreview":"Exception ตามบริษัท ประเภท และ SLA","textChars":34,"textLines":1,"bbox":[866,376,292,30]}
+{"kind":"shape","id":"sh/f6p0ryh4","slide":4,"bbox":[822,423,30,30]}
+{"kind":"textbox","id":"sh/e5gzitgj","slide":4,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[822,426,30,24]}
+{"kind":"textbox","id":"sh/a103ax0r","slide":4,"text":"งานรอชี้แจง / รออนุมัติ / ปิดเคส","textPreview":"งานรอชี้แจง / รออนุมัติ / ปิดเคส","textChars":32,"textLines":1,"bbox":[866,425,292,30]}
+{"kind":"shape","id":"sh/b29kj21c","slide":4,"bbox":[822,472,30,30]}
+{"kind":"textbox","id":"sh/w32lcnix","slide":4,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[822,475,30,24]}
+{"kind":"textbox","id":"sh/x4b2lsj2","slide":4,"text":"ทะเบียนความเสียหายและยอดรวม","textPreview":"ทะเบียนความเสียหายและยอดรวม","textChars":27,"textLines":1,"bbox":[866,474,292,30]}
+{"kind":"shape","id":"sh/md036d0f","slide":4,"bbox":[822,521,30,30]}
+{"kind":"textbox","id":"sh/ny9kfi10","slide":4,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[822,524,30,24]}
+{"kind":"textbox","id":"sh/ozil8nil","slide":4,"text":"Export รายวันและ Audit Log","textPreview":"Export รายวันและ Audit Log","textChars":26,"textLines":1,"bbox":[866,523,292,30]}
+{"kind":"shape","id":"sh/90r2hsj6","slide":4,"bbox":[820,586,100,30]}
+{"kind":"textbox","id":"sh/69k3ih0z","slide":4,"text":"ภาพหน้าจอ","textPreview":"ภาพหน้าจอ","textChars":9,"textLines":1,"bbox":[820,589,100,24]}
+{"kind":"textbox","id":"sh/7utkrm1k","slide":4,"text":"ใช้แสดงโครงสร้างหน้าจอ ตัวเลขผลจริงอยู่ในสไลด์ 2, 5–7","textPreview":"ใช้แสดงโครงสร้างหน้าจอ ตัวเลขผลจริงอยู่ในสไลด์ 2, 5–7","textChars":53,"textLines":1,"bbox":[934,590,230,28]}
+{"kind":"image","id":"im/l4vqlkbe","slide":4,"name":"","geometry":"roundRect","alt":"ภาพหน้าจอระบบ Audit AI","bbox":[56,205,710,420]}
+{"kind":"notes","id":"nt/jf909a","slide":4,"text":"[Sources]\n- Repository UI screenshot: manual/09-dashboard.png (layout illustration).\n- Validated production metrics are reported separately on slides 2, 5–7.\n[/Sources]"}
+{"kind":"slide","id":"sl/ptb927","slide":5,"title":"VALIDATED RESULTS","textShapes":37}
+{"kind":"textbox","id":"sh/ojed8zah","slide":5,"text":"VALIDATED RESULTS","textPreview":"VALIDATED RESULTS","textChars":17,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/3ilcfu9w","slide":5,"text":"ผลจริง 3 วันแรก","textPreview":"ผลจริง 3 วันแรก","textChars":15,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/2hcb69sb","slide":5,"text":"ปริมาณรายการเพิ่มขึ้น แต่ Match rate อยู่ในช่วง 41.85–48.87%","textPreview":"ปริมาณรายการเพิ่มขึ้น แต่ Match rate อยู่ในช่วง 41.85–48.87%","textChars":60,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/1g3ud4rq","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/gfut4za5","slide":5,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/felcbu90","slide":5,"bbox":[56,210,1110,216]}
+{"kind":"textbox","id":"sh/edcb2psf","slide":5,"text":"วัน","textPreview":"วัน","textChars":3,"textLines":1,"bbox":[64,218,164,22]}
+{"kind":"textbox","id":"sh/ts3u9kru","slide":5,"text":"ไฟล์หลัก","textPreview":"ไฟล์หลัก","textChars":8,"textLines":1,"bbox":[244,218,124,22]}
+{"kind":"textbox","id":"sh/srut0fa9","slide":5,"text":"STM / PM","textPreview":"STM / PM","textChars":8,"textLines":1,"bbox":[384,218,174,22]}
+{"kind":"textbox","id":"sh/25obalkf","slide":5,"text":"BO","textPreview":"BO","textChars":2,"textLines":1,"bbox":[574,218,174,22]}
+{"kind":"textbox","id":"sh/36xc3ql0","slide":5,"text":"จับคู่","textPreview":"จับคู่","textChars":6,"textLines":1,"bbox":[764,218,174,22]}
+{"kind":"textbox","id":"sh/476tcv2l","slide":5,"text":"อัตราจับคู่","textPreview":"อัตราจับคู่","textChars":11,"textLines":1,"bbox":[954,218,204,22]}
+{"kind":"shape","id":"sh/p8fu5036","slide":5,"bbox":[56,264,1110,0]}
+{"kind":"textbox","id":"sh/u14b6lkj","slide":5,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[64,272,164,22]}
+{"kind":"textbox","id":"sh/f2dczql4","slide":5,"text":"110","textPreview":"110","textChars":3,"textLines":1,"bbox":[244,272,124,22]}
+{"kind":"textbox","id":"sh/g3mt8b2p","slide":5,"text":"14,967","textPreview":"14,967","textChars":6,"textLines":1,"bbox":[384,272,174,22]}
+{"kind":"textbox","id":"sh/h4fu1g3a","slide":5,"text":"15,933","textPreview":"15,933","textChars":6,"textLines":1,"bbox":[574,272,174,22]}
+{"kind":"textbox","id":"sh/6d4b21kn","slide":5,"text":"6,263","textPreview":"6,263","textChars":5,"textLines":1,"bbox":[764,272,174,22]}
+{"kind":"textbox","id":"sh/7edcv6ls","slide":5,"text":"41.85%","textPreview":"41.85%","textChars":6,"textLines":1,"bbox":[954,272,204,22]}
+{"kind":"shape","id":"sh/vi98321k","slide":5,"bbox":[56,318,1110,0]}
+{"kind":"shape","id":"sh/ah0rax0f","slide":5,"bbox":[57,318,1108,54]}
+{"kind":"textbox","id":"sh/xkrq5cjq","slide":5,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[64,326,164,22]}
+{"kind":"textbox","id":"sh/wji9c7i5","slide":5,"text":"103","textPreview":"103","textChars":3,"textLines":1,"bbox":[244,326,124,22]}
+{"kind":"textbox","id":"sh/j6t87m1w","slide":5,"text":"16,389","textPreview":"16,389","textChars":6,"textLines":1,"bbox":[384,326,174,22]}
+{"kind":"textbox","id":"sh/i5kreh0b","slide":5,"text":"17,345","textPreview":"17,345","textChars":6,"textLines":1,"bbox":[574,326,174,22]}
+{"kind":"textbox","id":"sh/58bq9cj2","slide":5,"text":"8,009","textPreview":"8,009","textChars":5,"textLines":1,"bbox":[764,326,174,22]}
+{"kind":"textbox","id":"sh/k729grih","slide":5,"text":"48.87%","textPreview":"48.87%","textChars":6,"textLines":1,"bbox":[954,326,204,22]}
+{"kind":"shape","id":"sh/zap8vi1s","slide":5,"bbox":[56,372,1110,0]}
+{"kind":"textbox","id":"sh/y9g72d07","slide":5,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[64,380,164,22]}
+{"kind":"textbox","id":"sh/ofe5wjyp","slide":5,"text":"92","textPreview":"92","textChars":2,"textLines":1,"bbox":[244,380,124,22]}
+{"kind":"textbox","id":"sh/pgn65oza","slide":5,"text":"16,385","textPreview":"16,385","textChars":6,"textLines":1,"bbox":[384,380,174,22]}
+{"kind":"textbox","id":"sh/2tcnu9gz","slide":5,"text":"18,323","textPreview":"18,323","textChars":6,"textLines":1,"bbox":[574,380,174,22]}
+{"kind":"textbox","id":"sh/3u5o3ehk","slide":5,"text":"7,538","textPreview":"7,538","textChars":5,"textLines":1,"bbox":[764,380,174,22]}
+{"kind":"textbox","id":"sh/gru5sjyt","slide":5,"text":"46.01%","textPreview":"46.01%","textChars":6,"textLines":1,"bbox":[954,380,204,22]}
+{"kind":"textbox","id":"sh/hs3614ze","slide":5,"text":"อัตราจับคู่รายวัน","textPreview":"อัตราจับคู่รายวัน","textChars":17,"textLines":1,"bbox":[56,430,260,26]}
+{"kind":"shape","id":"sh/upcnq9gn","slide":5,"bbox":[120,537.22,190,62.78]}
+{"kind":"textbox","id":"sh/fqlozeh8","slide":5,"text":"41.85%","textPreview":"41.85%","textChars":6,"textLines":1,"bbox":[120,502.22,190,28]}
+{"kind":"textbox","id":"sh/0nyp43yx","slide":5,"text":"27 ส.ค.","textPreview":"27 ส.ค.","textChars":7,"textLines":1,"bbox":[120,610,190,24]}
+{"kind":"shape","id":"sh/lo76d8zi","slide":5,"bbox":[460,526.7,190,73.3]}
+{"kind":"textbox","id":"sh/xgfu9wby","slide":5,"text":"48.87%","textPreview":"48.87%","textChars":6,"textLines":1,"bbox":[460,491.7,190,28]}
+{"kind":"textbox","id":"sh/wf6tgbad","slide":5,"text":"28 ส.ค.","textPreview":"28 ส.ค.","textChars":7,"textLines":1,"bbox":[460,610,190,24]}
+{"kind":"shape","id":"sh/bexc76ts","slide":5,"bbox":[800,530.98,190,69.02]}
+{"kind":"textbox","id":"sh/atobe1s7","slide":5,"text":"46.01%","textPreview":"46.01%","textChars":6,"textLines":1,"bbox":[800,495.98,190,28]}
+{"kind":"textbox","id":"sh/lkzudgbu","slide":5,"text":"29 ส.ค.","textPreview":"29 ส.ค.","textChars":7,"textLines":1,"bbox":[800,610,190,24]}
+{"kind":"shape","id":"sh/kjqtkba9","slide":5,"bbox":[900,443,90,30]}
+{"kind":"textbox","id":"sh/jihcb6to","slide":5,"text":"หมายเหตุ","textPreview":"หมายเหตุ","textChars":8,"textLines":1,"bbox":[900,446,90,24]}
+{"kind":"textbox","id":"sh/yhobi1s3","slide":5,"text":"วันที่ 29 มีหลักฐาน 17 ไฟล์ แยกจาก 92 ไฟล์ธุรกรรม","textPreview":"วันที่ 29 มีหลักฐาน 17 ไฟล์ แยกจาก 92 ไฟล์ธุรกรรม","textChars":49,"textLines":1,"bbox":[1004,447,190,50]}
+{"kind":"notes","id":"nt/ptb927","slide":5,"text":"[Sources]\n- Internal Supabase production data: daily_recon_jobs, recon_runs, source_files; checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/sfws6j","slide":6,"title":"COMPANY VIEW","textShapes":54}
+{"kind":"textbox","id":"sh/zi94fadw","slide":6,"text":"COMPANY VIEW","textPreview":"COMPANY VIEW","textChars":12,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/0ji58feh","slide":6,"text":"ภาพรวมรายบริษัท","textPreview":"ภาพรวมรายบริษัท","textChars":15,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/lkrmhkv2","slide":6,"text":"สถานะไฟล์ครบไม่เท่ากับคุณภาพการจับคู่—จึงต้องอ่านสองมิติพร้อมกัน","textPreview":"สถานะไฟล์ครบไม่เท่ากับคุณภาพการจับคู่—จึงต้องอ่านสองมิติพร้อมกัน","textChars":64,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/qtg325wf","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/bu94bad0","slide":6,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/cvil4fe5","slide":6,"bbox":[56,200,1138,430]}
+{"kind":"textbox","id":"sh/dwrmd0vq","slide":6,"text":"บริษัท","textPreview":"บริษัท","textChars":6,"textLines":1,"bbox":[64,208,94,22]}
+{"kind":"textbox","id":"sh/2pg3ylw3","slide":6,"text":"ไฟล์ 27 / 28 / 29","textPreview":"ไฟล์ 27 / 28 / 29","textChars":17,"textLines":1,"bbox":[174,208,184,22]}
+{"kind":"textbox","id":"sh/3qp47qxo","slide":6,"text":"เฉลี่ยจับคู่","textPreview":"เฉลี่ยจับคู่","textChars":12,"textLines":1,"bbox":[374,208,134,22]}
+{"kind":"textbox","id":"sh/vup0rup0","slide":6,"text":"สถานะ","textPreview":"สถานะ","textChars":5,"textLines":1,"bbox":[524,208,104,22]}
+{"kind":"textbox","id":"sh/atgzipov","slide":6,"text":"ประเด็นติดตาม","textPreview":"ประเด็นติดตาม","textChars":13,"textLines":1,"bbox":[644,208,542,22]}
+{"kind":"shape","id":"sh/xwrit476","slide":6,"bbox":[56,243,1138,0]}
+{"kind":"textbox","id":"sh/wvy1kz6l","slide":6,"text":"3XB","textPreview":"3XB","textChars":3,"textLines":1,"bbox":[64,251,94,22]}
+{"kind":"textbox","id":"sh/jy90vupc","slide":6,"text":"15 / 13 / 9","textPreview":"15 / 13 / 9","textChars":11,"textLines":1,"bbox":[174,251,184,22]}
+{"kind":"textbox","id":"sh/ix0jm9or","slide":6,"text":"50.56%","textPreview":"50.56%","textChars":6,"textLines":1,"bbox":[374,251,134,22]}
+{"kind":"textbox","id":"sh/50rix47i","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[524,251,104,22]}
+{"kind":"textbox","id":"sh/kzi1oz6x","slide":6,"text":"จำนวนไฟล์วันที่ 29 ลดลง","textPreview":"จำนวนไฟล์วันที่ 29 ลดลง","textChars":23,"textLines":1,"bbox":[644,251,542,22]}
+{"kind":"shape","id":"sh/z250jap8","slide":6,"bbox":[56,286,1138,0]}
+{"kind":"shape","id":"sh/y1wza58n","slide":6,"bbox":[57,286,1136,43]}
+{"kind":"textbox","id":"sh/2h43yd8v","slide":6,"text":"AT4","textPreview":"AT4","textChars":3,"textLines":1,"bbox":[64,294,94,22]}
+{"kind":"textbox","id":"sh/3id4ri9g","slide":6,"text":"15 / 13 / 10","textPreview":"15 / 13 / 10","textChars":12,"textLines":1,"bbox":[174,294,184,22]}
+{"kind":"textbox","id":"sh/ojml0nq1","slide":6,"text":"36.29%","textPreview":"36.29%","textChars":6,"textLines":1,"bbox":[374,294,134,22]}
+{"kind":"textbox","id":"sh/pkvmtsrm","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[524,294,104,22]}
+{"kind":"textbox","id":"sh/etk3ut8z","slide":6,"text":"ยืนยันชุดฝาก/ถอนทุก Provider","textPreview":"ยืนยันชุดฝาก/ถอนทุก Provider","textChars":28,"textLines":1,"bbox":[644,294,542,22]}
+{"kind":"shape","id":"sh/futkny9k","slide":6,"bbox":[56,329,1138,0]}
+{"kind":"textbox","id":"sh/gvmlw3q5","slide":6,"text":"FR8","textPreview":"FR8","textChars":3,"textLines":1,"bbox":[64,337,94,22]}
+{"kind":"textbox","id":"sh/1wv2p8rq","slide":6,"text":"14 / 16 / 15","textPreview":"14 / 16 / 15","textChars":12,"textLines":1,"bbox":[174,337,184,22]}
+{"kind":"textbox","id":"sh/6pk3qt83","slide":6,"text":"25.50%","textPreview":"25.50%","textChars":6,"textLines":1,"bbox":[374,337,134,22]}
+{"kind":"textbox","id":"sh/rqtkjy98","slide":6,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[524,337,104,22]}
+{"kind":"textbox","id":"sh/9kz6pwb6","slide":6,"text":"ไฟล์ครบ แต่จับคู่ต่ำต่อเนื่อง","textPreview":"ไฟล์ครบ แต่จับคู่ต่ำต่อเนื่อง","textChars":29,"textLines":1,"bbox":[644,337,542,22]}
+{"kind":"shape","id":"sh/8jq5wral","slide":6,"bbox":[56,372,1138,0]}
+{"kind":"shape","id":"sh/nihonmt0","slide":6,"bbox":[57,372,1136,43]}
+{"kind":"textbox","id":"sh/mh8nuhsf","slide":6,"text":"MC8","textPreview":"MC8","textChars":3,"textLines":1,"bbox":[64,380,94,22]}
+{"kind":"textbox","id":"sh/lgz6lcbu","slide":6,"text":"8 / 10 / 10","textPreview":"8 / 10 / 10","textChars":11,"textLines":1,"bbox":[174,380,184,22]}
+{"kind":"textbox","id":"sh/0fq5sra9","slide":6,"text":"49.62%","textPreview":"49.62%","textChars":6,"textLines":1,"bbox":[374,380,134,22]}
+{"kind":"textbox","id":"sh/zexojmto","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[524,380,104,22]}
+{"kind":"textbox","id":"sh/ydonqhs3","slide":6,"text":"วันที่ 29 ลดเหลือ 38.04%","textPreview":"วันที่ 29 ลดเหลือ 38.04%","textChars":24,"textLines":1,"bbox":[644,380,542,22]}
+{"kind":"shape","id":"sh/dcf6hcby","slide":6,"bbox":[56,415,1138,0]}
+{"kind":"textbox","id":"sh/cb65o7ad","slide":6,"text":"MR9","textPreview":"MR9","textChars":3,"textLines":1,"bbox":[64,423,94,22]}
+{"kind":"textbox","id":"sh/cfyxoba9","slide":6,"text":"11 / 10 / 10","textPreview":"11 / 10 / 10","textChars":12,"textLines":1,"bbox":[174,423,184,22]}
+{"kind":"textbox","id":"sh/dg7exgbu","slide":6,"text":"51.36%","textPreview":"51.36%","textChars":6,"textLines":1,"bbox":[374,423,134,22]}
+{"kind":"textbox","id":"sh/qtgfm1s3","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[524,423,104,22]}
+{"kind":"textbox","id":"sh/rupwv6to","slide":6,"text":"ผูกหลักฐานกับเคสที่ไม่พบคู่","textPreview":"ผูกหลักฐานกับเคสที่ไม่พบคู่","textChars":27,"textLines":1,"bbox":[644,423,542,22]}
+{"kind":"shape","id":"sh/0jixsval","slide":6,"bbox":[56,458,1138,0]}
+{"kind":"shape","id":"sh/1kre10bq","slide":6,"bbox":[57,458,1136,43]}
+{"kind":"textbox","id":"sh/ehgfqlsf","slide":6,"text":"PS8","textPreview":"PS8","textChars":3,"textLines":1,"bbox":[64,466,94,22]}
+{"kind":"textbox","id":"sh/zi9wzqt0","slide":6,"text":"11 / 11 / 11","textPreview":"11 / 11 / 11","textChars":12,"textLines":1,"bbox":[174,466,184,22]}
+{"kind":"textbox","id":"sh/gnedgra1","slide":6,"text":"65.92%","textPreview":"65.92%","textChars":6,"textLines":1,"bbox":[374,466,134,22]}
+{"kind":"textbox","id":"sh/honepwbm","slide":6,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[524,466,104,22]}
+{"kind":"textbox","id":"sh/jid0vud4","slide":6,"text":"ใช้เป็น baseline","textPreview":"ใช้เป็น baseline","textChars":16,"textLines":1,"bbox":[644,466,542,22]}
+{"kind":"shape","id":"sh/yh4zmpcj","slide":6,"bbox":[56,501,1138,0]}
+{"kind":"textbox","id":"sh/l4vix4va","slide":6,"text":"SK8","textPreview":"SK8","textChars":3,"textLines":1,"bbox":[64,509,94,22]}
+{"kind":"textbox","id":"sh/kjmhozup","slide":6,"text":"18 / 12 / 10","textPreview":"18 / 12 / 10","textChars":12,"textLines":1,"bbox":[174,509,184,22]}
+{"kind":"textbox","id":"sh/bet0rud8","slide":6,"text":"9.71%","textPreview":"9.71%","textChars":5,"textLines":1,"bbox":[374,509,134,22]}
+{"kind":"textbox","id":"sh/adkzipcn","slide":6,"text":"เร่งตรวจ","textPreview":"เร่งตรวจ","textChars":8,"textLines":1,"bbox":[524,509,104,22]}
+{"kind":"textbox","id":"sh/xgbit4vy","slide":6,"text":"ตรวจ mapping/rule ก่อนสรุป","textPreview":"ตรวจ mapping/rule ก่อนสรุป","textChars":26,"textLines":1,"bbox":[644,509,542,22]}
+{"kind":"shape","id":"sh/wf2hkzut","slide":6,"bbox":[56,544,1138,0]}
+{"kind":"shape","id":"sh/natgnadw","slide":6,"bbox":[57,544,1136,43]}
+{"kind":"textbox","id":"sh/m90ze5cb","slide":6,"text":"UFABET7M","textPreview":"UFABET7M","textChars":8,"textLines":1,"bbox":[64,552,94,22]}
+{"kind":"textbox","id":"sh/ql0j65gj","slide":6,"text":"7 / 7 / 7","textPreview":"7 / 7 / 7","textChars":9,"textLines":1,"bbox":[174,552,184,22]}
+{"kind":"textbox","id":"sh/rm90zaxo","slide":6,"text":"76.91%","textPreview":"76.91%","textChars":6,"textLines":1,"bbox":[374,552,134,22]}
+{"kind":"textbox","id":"sh/c7i18fy9","slide":6,"text":"ติดตาม","textPreview":"ติดตาม","textChars":6,"textLines":1,"bbox":[524,552,104,22]}
+{"kind":"textbox","id":"sh/d8ri1kfu","slide":6,"text":"ไฟล์คงที่ แต่อัตราจับคู่ลด","textPreview":"ไฟล์คงที่ แต่อัตราจับคู่ลด","textChars":26,"textLines":1,"bbox":[644,552,542,22]}
+{"kind":"shape","id":"sh/e90japgf","slide":6,"bbox":[56,587,1138,0]}
+{"kind":"textbox","id":"sh/zat03ux0","slide":6,"text":"UR9","textPreview":"UR9","textChars":3,"textLines":1,"bbox":[64,595,94,22]}
+{"kind":"textbox","id":"sh/0b21cfel","slide":6,"text":"11 / 11 / 11","textPreview":"11 / 11 / 11","textChars":12,"textLines":1,"bbox":[174,595,184,22]}
+{"kind":"textbox","id":"sh/1cbi5kf6","slide":6,"text":"46.53%","textPreview":"46.53%","textChars":6,"textLines":1,"bbox":[374,595,134,22]}
+{"kind":"textbox","id":"sh/mdkjepwb","slide":6,"text":"ปกติ","textPreview":"ปกติ","textChars":4,"textLines":1,"bbox":[524,595,104,22]}
+{"kind":"textbox","id":"sh/net07uxw","slide":6,"text":"ไฟล์คงที่ แนวโน้มดีขึ้น","textPreview":"ไฟล์คงที่ แนวโน้มดีขึ้น","textChars":23,"textLines":1,"bbox":[644,595,542,22]}
+{"kind":"notes","id":"nt/sfws6j","slide":6,"text":"[Sources]\n- Internal Supabase production data for 9 companies, 2026-08-27 through 2026-08-29.\n[/Sources]"}
+{"kind":"slide","id":"sl/y9unjf","slide":7,"title":"RISK FOCUS","textShapes":18}
+{"kind":"textbox","id":"sh/xwn6xwna","slide":7,"text":"RISK FOCUS","textPreview":"RISK FOCUS","textChars":10,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/atcnmhoj","slide":7,"text":"จุดที่ต้องเร่งติดตาม","textPreview":"จุดที่ต้องเร่งติดตาม","textChars":20,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/bulovm54","slide":7,"text":"จัดลำดับจากความเสี่ยงของข้อมูล ไม่ใช่จากจำนวนไฟล์เพียงอย่างเดียว","textPreview":"จัดลำดับจากความเสี่ยงของข้อมูล ไม่ใช่จากจำนวนไฟล์เพียงอย่างเดียว","textChars":64,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/o7u5k76d","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/p836tcny","slide":7,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/25cnihon","slide":7,"bbox":[56,205,535,126]}
+{"kind":"shape","id":"sh/n6lormps","slide":7,"bbox":[74,221,38,30]}
+{"kind":"textbox","id":"sh/03a5g76h","slide":7,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[74,224,38,24]}
+{"kind":"textbox","id":"sh/1436pc72","slide":7,"text":"SK8 · เร่งตรวจ","textPreview":"SK8 · เร่งตรวจ","textChars":14,"textLines":1,"bbox":[126,222,445,30]}
+{"kind":"textbox","id":"sh/l4ri903m","slide":7,"text":"เฉลี่ยจับคู่ 9.71% — ตรวจ rule, mapping, ประเภทข้อมูลและทิศทาง D/W","textPreview":"เฉลี่ยจับคู่ 9.71% — ตรวจ rule, mapping, ประเภทข้อมูลและทิศทาง D/W","textChars":66,"textLines":1,"bbox":[76,263,495,54]}
+{"kind":"shape","id":"sh/k3i10vm1","slide":7,"bbox":[659,205,535,126]}
+{"kind":"shape","id":"sh/z2907alg","slide":7,"bbox":[677,221,38,30]}
+{"kind":"textbox","id":"sh/y10jy54v","slide":7,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[677,224,38,24]}
+{"kind":"textbox","id":"sh/x0ri503q","slide":7,"text":"FR8 · เร่งตรวจ","textPreview":"FR8 · เร่งตรวจ","textChars":14,"textLines":1,"bbox":[729,222,445,30]}
+{"kind":"textbox","id":"sh/czi1wvm5","slide":7,"text":"เฉลี่ยจับคู่ 25.50% — ไฟล์ครบแต่จับคู่ต่ำ ต้องตรวจเวลาและ Provider","textPreview":"เฉลี่ยจับคู่ 25.50% — ไฟล์ครบแต่จับคู่ต่ำ ต้องตรวจเวลาและ Provider","textChars":66,"textLines":1,"bbox":[679,263,495,54]}
+{"kind":"shape","id":"sh/by903qlk","slide":7,"bbox":[56,355,535,126]}
+{"kind":"shape","id":"sh/qxgzul4z","slide":7,"bbox":[74,371,38,30]}
+{"kind":"textbox","id":"sh/pw7i1g3e","slide":7,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[74,374,38,24]}
+{"kind":"textbox","id":"sh/ovyhsbmt","slide":7,"text":"MC8 · ติดตาม","textPreview":"MC8 · ติดตาม","textChars":12,"textLines":1,"bbox":[126,372,445,30]}
+{"kind":"textbox","id":"sh/gf218vup","slide":7,"text":"วันที่ 29 ลดเหลือ 38.04% และเคยพบรูปแบบเวลา NaN/undefined","textPreview":"วันที่ 29 ลดเหลือ 38.04% และเคยพบรูปแบบเวลา NaN/undefined","textChars":57,"textLines":1,"bbox":[76,413,495,54]}
+{"kind":"shape","id":"sh/hgbih0ba","slide":7,"bbox":[659,355,535,126]}
+{"kind":"shape","id":"sh/udkj6lcj","slide":7,"bbox":[677,371,38,30]}
+{"kind":"textbox","id":"sh/fet0fqt4","slide":7,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[677,374,38,24]}
+{"kind":"textbox","id":"sh/sbi14but","slide":7,"text":"UFABET7M · ติดตาม","textPreview":"UFABET7M · ติดตาม","textChars":17,"textLines":1,"bbox":[729,372,445,30]}
+{"kind":"textbox","id":"sh/tcbidgbe","slide":7,"text":"จำนวนไฟล์คงที่ แต่อัตราจับคู่ลด 87.73% → 61.34%","textPreview":"จำนวนไฟล์คงที่ แต่อัตราจับคู่ลด 87.73% → 61.34%","textChars":47,"textLines":1,"bbox":[679,413,495,54]}
+{"kind":"shape","id":"sh/6p0z21cn","slide":7,"bbox":[56,522,1138,98]}
+{"kind":"textbox","id":"sh/7a90b6d8","slide":7,"text":"หลักตัดสินใจ","textPreview":"หลักตัดสินใจ","textChars":12,"textLines":1,"bbox":[80,542,180,25]}
+{"kind":"textbox","id":"sh/c7m1gfux","slide":7,"text":"ถ้าไฟล์ครบแต่ Match rate ต่ำ → ตรวจ rule/mapping  |  ถ้าไฟล์ลดลง → เช็ค Gmail/Supabase  |  ถ้ามีหลักฐาน → ผูกกับเคสก่อนปิด","textPreview":"ถ้าไฟล์ครบแต่ Match rate ต่ำ → ตรวจ rule/mapping  |  ถ้าไฟล์ลดลง → เช็ค Gmail/Supabase  |  ถ้ามีหลักฐาน → ผูกกับเคสก่อนปิด","textChars":122,"textLines":1,"bbox":[270,542,880,50]}
+{"kind":"notes","id":"nt/y9unjf","slide":7,"text":"[Sources]\n- Company-level results summarized from production data, checked 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/sa8mtz","slide":8,"title":"ISSUES & CONTROLS","textShapes":30}
+{"kind":"textbox","id":"sh/9w3u9436","slide":8,"text":"ISSUES & CONTROLS","textPreview":"ISSUES & CONTROLS","textChars":17,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/mtsbep4v","slide":8,"text":"ปัญหาที่พบและการควบคุม","textPreview":"ปัญหาที่พบและการควบคุม","textChars":22,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/7uls7u5g","slide":8,"text":"แยกเหตุการณ์ในช่วงทดสอบออกจากความเสี่ยงที่ต้องเฝ้าระวังต่อเนื่อง","textPreview":"แยกเหตุการณ์ในช่วงทดสอบออกจากความเสี่ยงที่ต้องเฝ้าระวังต่อเนื่อง","textChars":64,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/kratczmp","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/lsja54na","slide":8,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/ypsbap4j","slide":8,"bbox":[56,205,1138,372]}
+{"kind":"textbox","id":"sh/zq1s3u54","slide":8,"text":"ปัญหาที่พบ","textPreview":"ปัญหาที่พบ","textChars":10,"textLines":1,"bbox":[64,213,229,22]}
+{"kind":"textbox","id":"sh/c3at8fmt","slide":8,"text":"ผลกระทบ","textPreview":"ผลกระทบ","textChars":7,"textLines":1,"bbox":[309,213,229,22]}
+{"kind":"textbox","id":"sh/xoja1kne","slide":8,"text":"สิ่งที่ทำ/ควบคุมแล้ว","textPreview":"สิ่งที่ทำ/ควบคุมแล้ว","textChars":20,"textLines":1,"bbox":[554,213,459,22]}
+{"kind":"textbox","id":"sh/18jih0rm","slide":8,"text":"สถานะ","textPreview":"สถานะ","textChars":5,"textLines":1,"bbox":[1029,213,157,22]}
+{"kind":"shape","id":"sh/g7ah8fa1","slide":8,"bbox":[56,267,1138,0]}
+{"kind":"textbox","id":"sh/f610fa9w","slide":8,"text":"n8n quota เต็ม","textPreview":"n8n quota เต็ม","textChars":14,"textLines":1,"bbox":[64,275,229,22]}
+{"kind":"textbox","id":"sh/e5sz65sb","slide":8,"text":"Gmail/Worker หยุด และ Telegram เงียบ","textPreview":"Gmail/Worker หยุด และ Telegram เงียบ","textChars":36,"textLines":1,"bbox":[309,275,229,22]}
+{"kind":"textbox","id":"sh/t4jid0rq","slide":8,"text":"ลดรอบซ้ำ รวมแจ้งเตือนในรอบเดียว เฝ้าดู usage","textPreview":"ลดรอบซ้ำ รวมแจ้งเตือนในรอบเดียว เฝ้าดู usage","textChars":44,"textLines":1,"bbox":[554,275,459,22]}
+{"kind":"textbox","id":"sh/s3qh4va5","slide":8,"text":"เฝ้าระวัง","textPreview":"เฝ้าระวัง","textChars":9,"textLines":1,"bbox":[1029,275,157,22]}
+{"kind":"shape","id":"sh/rih0bq9k","slide":8,"bbox":[56,329,1138,0]}
+{"kind":"shape","id":"sh/6h8z2lsz","slide":8,"bbox":[57,329,1136,62]}
+{"kind":"textbox","id":"sh/5gzi9gre","slide":8,"text":"โหลดส่วนกลาง timeout","textPreview":"โหลดส่วนกลาง timeout","textChars":20,"textLines":1,"bbox":[64,337,229,22]}
+{"kind":"textbox","id":"sh/4fqhgvat","slide":8,"text":"หน้าเคยแสดง 0 ทั้งที่มีข้อมูล","textPreview":"หน้าเคยแสดง 0 ทั้งที่มีข้อมูล","textChars":29,"textLines":1,"bbox":[309,337,229,22]}
+{"kind":"textbox","id":"sh/wjuhwvip","slide":8,"text":"โหลดแบบแยกส่วน + retry + ไม่แทน missing ด้วย 0","textPreview":"โหลดแบบแยกส่วน + retry + ไม่แทน missing ด้วย 0","textChars":46,"textLines":1,"bbox":[554,337,459,22]}
+{"kind":"textbox","id":"sh/xk3ip0za","slide":8,"text":"ปรับแล้ว","textPreview":"ปรับแล้ว","textChars":8,"textLines":1,"bbox":[1029,337,157,22]}
+{"kind":"shape","id":"sh/axczul0z","slide":8,"bbox":[56,391,1138,0]}
+{"kind":"textbox","id":"sh/bil0nqhk","slide":8,"text":"ตัวกรอง/Cache ค้าง","textPreview":"ตัวกรอง/Cache ค้าง","textChars":18,"textLines":1,"bbox":[64,399,229,22]}
+{"kind":"textbox","id":"sh/ovahsbit","slide":8,"text":"เลือกบริษัทแต่ KPI ยังเป็นยอดรวม","textPreview":"เลือกบริษัทแต่ KPI ยังเป็นยอดรวม","textChars":32,"textLines":1,"bbox":[309,399,229,22]}
+{"kind":"textbox","id":"sh/9wjilgze","slide":8,"text":"ผูก cache key กับวัน/บริษัท/ประเภท","textPreview":"ผูก cache key กับวัน/บริษัท/ประเภท","textChars":34,"textLines":1,"bbox":[554,399,459,22]}
+{"kind":"textbox","id":"sh/mtszq10n","slide":8,"text":"ปรับแล้ว","textPreview":"ปรับแล้ว","textChars":8,"textLines":1,"bbox":[1029,399,157,22]}
+{"kind":"shape","id":"sh/nu10j6h8","slide":8,"bbox":[56,453,1138,0]}
+{"kind":"shape","id":"sh/sre14fix","slide":8,"bbox":[57,453,1136,62]}
+{"kind":"textbox","id":"sh/tsnixkzi","slide":8,"text":"Preview ไฟล์ไม่ได้","textPreview":"Preview ไฟล์ไม่ได้","textChars":18,"textLines":1,"bbox":[64,461,229,22]}
+{"kind":"textbox","id":"sh/3mpkne1k","slide":8,"text":"ยืนยันหลักฐานและประเภทไฟล์ยาก","textPreview":"ยืนยันหลักฐานและประเภทไฟล์ยาก","textChars":29,"textLines":1,"bbox":[309,461,229,22]}
+{"kind":"textbox","id":"sh/2lg3u9kf","slide":8,"text":"signed URL fallback + ดาวน์โหลด + replace/requeue","textPreview":"signed URL fallback + ดาวน์โหลด + replace/requeue","textChars":49,"textLines":1,"bbox":[554,461,459,22]}
+{"kind":"textbox","id":"sh/p8r2pojq","slide":8,"text":"ปรับแล้ว","textPreview":"ปรับแล้ว","textChars":8,"textLines":1,"bbox":[1029,461,157,22]}
+{"kind":"shape","id":"sh/4nylwj25","slide":8,"bbox":[56,515,1138,0]}
+{"kind":"textbox","id":"sh/ra9kre1w","slide":8,"text":"หัวตาราง/เวลาไม่มาตรฐาน","textPreview":"หัวตาราง/เวลาไม่มาตรฐาน","textChars":23,"textLines":1,"bbox":[64,523,229,22]}
+{"kind":"textbox","id":"sh/q903y9kb","slide":8,"text":"อ่านไฟล์ไม่ครบหรือจับคู่ผิด","textPreview":"อ่านไฟล์ไม่ครบหรือจับคู่ผิด","textChars":27,"textLines":1,"bbox":[309,523,229,22]}
+{"kind":"textbox","id":"sh/dcrmtoj2","slide":8,"text":"mapping ต่อ Provider + quality gate + manual override","textPreview":"mapping ต่อ Provider + quality gate + manual override","textChars":53,"textLines":1,"bbox":[554,523,459,22]}
+{"kind":"textbox","id":"sh/cbil0j2h","slide":8,"text":"ต่อเนื่อง","textPreview":"ต่อเนื่อง","textChars":9,"textLines":1,"bbox":[1029,523,157,22]}
+{"kind":"shape","id":"sh/7e5kfu1s","slide":8,"bbox":[56,603,110,30]}
+{"kind":"textbox","id":"sh/6dwjmpk7","slide":8,"text":"ข้อควรระวัง","textPreview":"ข้อควรระวัง","textChars":11,"textLines":1,"bbox":[56,606,110,24]}
+{"kind":"textbox","id":"sh/yx032ps3","slide":8,"text":"ตัวเลขศูนย์ต้องหมายถึง “โหลดสำเร็จและเป็นศูนย์” เท่านั้น หากข้อมูลไม่พร้อมต้องแสดง — หรือข้อความเตือน","textPreview":"ตัวเลขศูนย์ต้องหมายถึง “โหลดสำเร็จและเป็นศูนย์” เท่านั้น หากข้อมูลไม่พร้อมต้องแสดง — หรือข้อความเตือน","textChars":101,"textLines":1,"bbox":[180,607,1000,25]}
+{"kind":"notes","id":"nt/sa8mtz","slide":8,"text":"[Sources]\n- QA-REPORT-2026-08-29.md and test-report screenshots.\n- Current repository fixes and automated tests reviewed 2026-08-30.\n[/Sources]"}
+{"kind":"slide","id":"sl/q649k7","slide":9,"title":"DAILY OPERATING FLOW","textShapes":20}
+{"kind":"textbox","id":"sh/0za5wnqd","slide":9,"text":"DAILY OPERATING FLOW","textPreview":"DAILY OPERATING FLOW","textChars":20,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/zyho3i9s","slide":9,"text":"วิธีใช้งานประจำวัน","textPreview":"วิธีใช้งานประจำวัน","textChars":18,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/ex8nud87","slide":9,"text":"ผู้ใช้เดินตาม 5 ขั้น และกดไปต่อจากหน้าที่กำลังทำได้","textPreview":"ผู้ใช้เดินตาม 5 ขั้น และกดไปต่อจากหน้าที่กำลังทำได้","textChars":51,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/dwz618rm","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/cbq5s3q1","slide":9,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/q98nqt8v","slide":9,"bbox":[774,205,420,420]}
+{"kind":"textbox","id":"sh/p8z6x8rq","slide":9,"text":"ขั้นตอนการทำงาน","textPreview":"ขั้นตอนการทำงาน","textChars":15,"textLines":1,"bbox":[800,228,340,28]}
+{"kind":"shape","id":"sh/47q5o3q5","slide":9,"bbox":[800,272,32,30]}
+{"kind":"textbox","id":"sh/6h8fu10z","slide":9,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[800,275,32,24]}
+{"kind":"textbox","id":"sh/rihg36hk","slide":9,"text":"ตรวจไฟล์","textPreview":"ตรวจไฟล์","textChars":8,"textLines":1,"bbox":[846,270,150,24]}
+{"kind":"textbox","id":"sh/sjqxwbip","slide":9,"text":"ดูไฟล์ครบ/อ่านได้/ประเภทถูก","textPreview":"ดูไฟล์ครบ/อ่านได้/ประเภทถูก","textChars":27,"textLines":1,"bbox":[846,295,310,28]}
+{"kind":"shape","id":"sh/dkzy5gza","slide":9,"bbox":[800,335,32,30]}
+{"kind":"textbox","id":"sh/itofq10n","slide":9,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[800,338,32,24]}
+{"kind":"textbox","id":"sh/juxgz6h8","slide":9,"text":"ดูภาพรวม","textPreview":"ดูภาพรวม","textChars":8,"textLines":1,"bbox":[846,333,150,24]}
+{"kind":"textbox","id":"sh/4v6xsrit","slide":9,"text":"เลือก 1 บริษัท + 1 วัน","textPreview":"เลือก 1 บริษัท + 1 วัน","textChars":22,"textLines":1,"bbox":[846,358,310,28]}
+{"kind":"shape","id":"sh/5wzy1wze","slide":9,"bbox":[800,398,32,30]}
+{"kind":"textbox","id":"sh/upofmh0r","slide":9,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[800,401,32,24]}
+{"kind":"textbox","id":"sh/vqxgvmhc","slide":9,"text":"ตรวจข้อผิดปกติ","textPreview":"ตรวจข้อผิดปกติ","textChars":14,"textLines":1,"bbox":[846,396,150,24]}
+{"kind":"textbox","id":"sh/zutcnix4","slide":9,"text":"กรองยอด เวลา Provider และ SLA","textPreview":"กรองยอด เวลา Provider และ SLA","textChars":29,"textLines":1,"bbox":[846,421,310,28]}
+{"kind":"shape","id":"sh/ytkvudgj","slide":9,"bbox":[800,461,32,30]}
+{"kind":"textbox","id":"sh/lwbupsfu","slide":9,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[800,464,32,24]}
+{"kind":"textbox","id":"sh/kv2dwnyp","slide":9,"text":"ติดตาม/อนุมัติ","textPreview":"ติดตาม/อนุมัติ","textChars":14,"textLines":1,"bbox":[846,459,150,24]}
+{"kind":"textbox","id":"sh/7ydcr2x0","slide":9,"text":"ส่งชี้แจง ผูกหลักฐาน ปิดเคส","textPreview":"ส่งชี้แจง ผูกหลักฐาน ปิดเคส","textChars":27,"textLines":1,"bbox":[846,484,310,28]}
+{"kind":"shape","id":"sh/mx4vyxgf","slide":9,"bbox":[800,524,32,30]}
+{"kind":"textbox","id":"sh/90vutsf6","slide":9,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[800,527,32,24]}
+{"kind":"textbox","id":"sh/8zmd07yl","slide":9,"text":"ออกรายงาน","textPreview":"ออกรายงาน","textChars":9,"textLines":1,"bbox":[846,522,150,24]}
+{"kind":"textbox","id":"sh/n29cfyxw","slide":9,"text":"Export รายวันและเก็บ Audit Log","textPreview":"Export รายวันและเก็บ Audit Log","textChars":30,"textLines":1,"bbox":[846,547,310,28]}
+{"kind":"image","id":"im/ulwbm9g7","slide":9,"name":"","geometry":"roundRect","alt":"ภาพหน้าจอระบบ Audit AI","bbox":[56,205,690,420]}
+{"kind":"notes","id":"nt/q649k7","slide":9,"text":"[Sources]\n- Repository UI screenshot: manual/13-exceptions.png (layout illustration).\n- README.md operational workflow.\n[/Sources]"}
+{"kind":"slide","id":"sl/2sn8ke","slide":10,"title":"FILE REMEDIATION","textShapes":40}
+{"kind":"textbox","id":"sh/tsbql0ry","slide":10,"text":"FILE REMEDIATION","textPreview":"FILE REMEDIATION","textChars":16,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/65k7a587","slide":10,"text":"เมื่อไฟล์ผิดประเภทหรืออ่านไม่ได้","textPreview":"เมื่อไฟล์ผิดประเภทหรืออ่านไม่ได้","textChars":32,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/r6t8ja9s","slide":10,"text":"แก้ที่ไฟล์ต้นทางโดยไม่ทำลายประวัติ และส่งกลับเข้าคิวอัตโนมัติ","textPreview":"แก้ที่ไฟล์ต้นทางโดยไม่ทำลายประวัติ และส่งกลับเข้าคิวอัตโนมัติ","textChars":61,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/432p8vq1","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/54b6h0rm","slide":10,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/i1076l8b","slide":10,"bbox":[56,205,260,126]}
+{"kind":"shape","id":"sh/j2tofq9g","slide":10,"bbox":[74,221,38,30]}
+{"kind":"textbox","id":"sh/ozmpkfql","slide":10,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[74,224,38,24]}
+{"kind":"textbox","id":"sh/p0vqtk76","slide":10,"text":"เปิด Preview","textPreview":"เปิด Preview","textChars":12,"textLines":1,"bbox":[126,222,170,30]}
+{"kind":"textbox","id":"sh/d03qdwr6","slide":10,"text":"ดูชื่อไฟล์ เนื้อหา บริษัท วันที่","textPreview":"ดูชื่อไฟล์ เนื้อหา บริษัท วันที่","textChars":32,"textLines":1,"bbox":[76,263,220,54]}
+{"kind":"textbox","id":"sh/czup4ral","slide":10,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[316,248,25,30]}
+{"kind":"shape","id":"sh/bel8bm90","slide":10,"bbox":[341,205,260,126]}
+{"kind":"shape","id":"sh/qdc721sf","slide":10,"bbox":[359,221,38,30]}
+{"kind":"textbox","id":"sh/pcj69wra","slide":10,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[359,224,38,24]}
+{"kind":"textbox","id":"sh/obap0rap","slide":10,"text":"แก้ Metadata","textPreview":"แก้ Metadata","textChars":12,"textLines":1,"bbox":[411,222,170,30]}
+{"kind":"textbox","id":"sh/3a1o7m94","slide":10,"text":"เลือกบริษัทและประเภทไฟล์ที่ถูก","textPreview":"เลือกบริษัทและประเภทไฟล์ที่ถูก","textChars":30,"textLines":1,"bbox":[361,263,220,54]}
+{"kind":"textbox","id":"sh/29s7yhsj","slide":10,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[601,248,25,30]}
+{"kind":"shape","id":"sh/98nq5gre","slide":10,"bbox":[626,205,260,126]}
+{"kind":"shape","id":"sh/87epcbat","slide":10,"bbox":[644,221,38,30]}
+{"kind":"textbox","id":"sh/sbm98zi5","slide":10,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[644,224,38,24]}
+{"kind":"textbox","id":"sh/tcvahkzq","slide":10,"text":"แทนที่ไฟล์","textPreview":"แทนที่ไฟล์","textChars":10,"textLines":1,"bbox":[696,222,170,30]}
+{"kind":"textbox","id":"sh/694r6p0z","slide":10,"text":"อัปโหลดฉบับแก้ หากต้นฉบับเสีย","textPreview":"อัปโหลดฉบับแก้ หากต้นฉบับเสีย","textChars":29,"textLines":1,"bbox":[646,263,220,54]}
+{"kind":"textbox","id":"sh/7adsfuhk","slide":10,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[886,248,25,30]}
+{"kind":"shape","id":"sh/k7294fit","slide":10,"bbox":[911,205,260,126]}
+{"kind":"shape","id":"sh/58badkze","slide":10,"bbox":[929,221,38,30]}
+{"kind":"textbox","id":"sh/ilkr2503","slide":10,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[929,224,38,24]}
+{"kind":"textbox","id":"sh/j6tsbah8","slide":10,"text":"บันทึกและรันต่อ","textPreview":"บันทึกและรันต่อ","textChars":15,"textLines":1,"bbox":[981,222,170,30]}
+{"kind":"textbox","id":"sh/wj290fix","slide":10,"text":"ระบบเก็บเวอร์ชันเดิมและ requeue","textPreview":"ระบบเก็บเวอร์ชันเดิมและ requeue","textChars":31,"textLines":1,"bbox":[931,263,220,54]}
+{"kind":"shape","id":"sh/xkba90zi","slide":10,"bbox":[56,367,1138,240]}
+{"kind":"textbox","id":"sh/ze9sja14","slide":10,"text":"ประเภทไฟล์ที่ผู้ใช้เลือกได้","textPreview":"ประเภทไฟล์ที่ผู้ใช้เลือกได้","textChars":27,"textLines":1,"bbox":[80,390,380,26]}
+{"kind":"shape","id":"sh/ed0ba5kj","slide":10,"bbox":[82,435,24,30]}
+{"kind":"textbox","id":"sh/1gral0ja","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[82,438,24,24]}
+{"kind":"textbox","id":"sh/0fitcv2p","slide":10,"text":"STM ฝาก-ถอน","textPreview":"STM ฝาก-ถอน","textChars":11,"textLines":1,"bbox":[116,435,460,25]}
+{"kind":"shape","id":"sh/nitsna1g","slide":10,"bbox":[622,435,24,30]}
+{"kind":"textbox","id":"sh/mhkbe5kv","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[622,438,24,24]}
+{"kind":"textbox","id":"sh/94bapkj6","slide":10,"text":"BO รายงานหลังบ้าน","textPreview":"BO รายงานหลังบ้าน","textChars":17,"textLines":1,"bbox":[656,435,460,25]}
+{"kind":"shape","id":"sh/oj2tgf2l","slide":10,"bbox":[82,466,24,30]}
+{"kind":"textbox","id":"sh/b6tsru1c","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[82,469,24,24]}
+{"kind":"textbox","id":"sh/a5kbipkr","slide":10,"text":"PM ฝาก/ถอน","textPreview":"PM ฝาก/ถอน","textChars":10,"textLines":1,"bbox":[116,466,460,25]}
+{"kind":"shape","id":"sh/u1c3adwf","slide":10,"bbox":[622,466,24,30]}
+{"kind":"textbox","id":"sh/fml43idk","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[622,469,24,24]}
+{"kind":"textbox","id":"sh/gnulcne5","slide":10,"text":"ฝากมือ - เครดิต","textPreview":"ฝากมือ - เครดิต","textChars":15,"textLines":1,"bbox":[656,466,460,25]}
+{"kind":"shape","id":"sh/ho3m5svq","slide":10,"bbox":[82,497,24,30]}
+{"kind":"textbox","id":"sh/2pc3exwb","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[82,500,24,24]}
+{"kind":"textbox","id":"sh/3q5472dw","slide":10,"text":"ฝากมือ - Payment","textPreview":"ฝากมือ - Payment","textChars":16,"textLines":1,"bbox":[116,497,460,25]}
+{"kind":"shape","id":"sh/4re5g7eh","slide":10,"bbox":[622,497,24,30]}
+{"kind":"textbox","id":"sh/psnm9cv2","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[622,500,24,24]}
+{"kind":"textbox","id":"sh/its32tw7","slide":10,"text":"ฝากมือ - โบนัส","textPreview":"ฝากมือ - โบนัส","textChars":14,"textLines":1,"bbox":[656,497,460,25]}
+{"kind":"shape","id":"sh/ju14vyds","slide":10,"bbox":[82,528,24,30]}
+{"kind":"textbox","id":"sh/1o761gfa","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[82,531,24,24]}
+{"kind":"textbox","id":"sh/0nyp8byp","slide":10,"text":"ถอนค่าคอมมิชชั่น","textPreview":"ถอนค่าคอมมิชชั่น","textChars":16,"textLines":1,"bbox":[116,528,460,25]}
+{"kind":"shape","id":"sh/zmpoz6x4","slide":10,"bbox":[622,528,24,30]}
+{"kind":"textbox","id":"sh/elg761gj","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[622,531,24,24]}
+{"kind":"textbox","id":"sh/9cr65gf6","slide":10,"text":"ถอนเครดิต","textPreview":"ถอนเครดิต","textChars":9,"textLines":1,"bbox":[656,528,460,25]}
+{"kind":"shape","id":"sh/oripcbyl","slide":10,"bbox":[82,559,24,30]}
+{"kind":"textbox","id":"sh/nq9o36x0","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[82,562,24,24]}
+{"kind":"textbox","id":"sh/mp07a1gv","slide":10,"text":"ไฟล์ชี้แจง/หลักฐาน","textPreview":"ไฟล์ชี้แจง/หลักฐาน","textChars":18,"textLines":1,"bbox":[116,559,460,25]}
+{"kind":"shape","id":"sh/pgn69wf2","slide":10,"bbox":[622,559,24,30]}
+{"kind":"textbox","id":"sh/4ve50ryh","slide":10,"text":"•","textPreview":"•","textChars":1,"textLines":1,"bbox":[622,562,24,24]}
+{"kind":"textbox","id":"sh/gzipgr6d","slide":10,"text":"ยังไม่ทราบประเภท","textPreview":"ยังไม่ทราบประเภท","textChars":16,"textLines":1,"bbox":[656,559,460,25]}
+{"kind":"notes","id":"nt/2sn8ke","slide":10,"text":"[Sources]\n- README.md file correction and replacement workflow.\n- Application file-type definitions in data.js/app.js.\n[/Sources]"}
+{"kind":"slide","id":"sl/fsra7p","slide":11,"title":"EXCEPTION WORKFLOW","textShapes":20}
+{"kind":"textbox","id":"sh/lcbyx8bu","slide":11,"text":"EXCEPTION WORKFLOW","textPreview":"EXCEPTION WORKFLOW","textChars":18,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/y9kfmdcj","slide":11,"text":"วิธีตัดสินใจและปิดเคส","textPreview":"วิธีตัดสินใจและปิดเคส","textChars":21,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/zatwvit4","slide":11,"text":"ระบบช่วยจับคู่ก่อน คนตรวจเฉพาะเรื่องที่เกินเกณฑ์หรือไม่มีหลักฐาน","textPreview":"ระบบช่วยจับคู่ก่อน คนตรวจเฉพาะเรื่องที่เกินเกณฑ์หรือไม่มีหลักฐาน","textChars":64,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/c72xk3ud","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/x8bet8by","slide":11,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/b6twryts","slide":11,"bbox":[496,205,698,430]}
+{"kind":"textbox","id":"sh/o3ixgjuh","slide":11,"text":"Decision path","textPreview":"Decision path","textChars":13,"textLines":1,"bbox":[522,228,220,26]}
+{"kind":"shape","id":"sh/p4repobm","slide":11,"bbox":[522,276,640,50]}
+{"kind":"shape","id":"sh/d4bihofi","slide":11,"bbox":[536,286,28,30]}
+{"kind":"textbox","id":"sh/c3218jed","slide":11,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[536,289,28,24]}
+{"kind":"textbox","id":"sh/b2t0fexs","slide":11,"text":"ยอด + บัญชี + เวลาอยู่ใน tolerance","textPreview":"ยอด + บัญชี + เวลาอยู่ใน tolerance","textChars":34,"textLines":1,"bbox":[580,284,290,24]}
+{"kind":"textbox","id":"sh/q10j69w7","slide":11,"text":"ปิดอัตโนมัติ / ไม่สร้างเคส","textPreview":"ปิดอัตโนมัติ / ไม่สร้างเคส","textChars":26,"textLines":1,"bbox":[875,284,270,34]}
+{"kind":"shape","id":"sh/p0ridofm","slide":11,"bbox":[522,338,640,50]}
+{"kind":"shape","id":"sh/ozih4je1","slide":11,"bbox":[536,348,28,30]}
+{"kind":"textbox","id":"sh/3y90bexg","slide":11,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[536,351,28,24]}
+{"kind":"textbox","id":"sh/2x0z29wv","slide":11,"text":"ยอดตรง แต่เวลาคลาดเล็กน้อย","textPreview":"ยอดตรง แต่เวลาคลาดเล็กน้อย","textChars":26,"textLines":1,"bbox":[580,346,290,24]}
+{"kind":"textbox","id":"sh/1cri94fa","slide":11,"text":"Low — ตรวจตาม tolerance","textPreview":"Low — ตรวจตาม tolerance","textChars":23,"textLines":1,"bbox":[875,346,270,34]}
+{"kind":"shape","id":"sh/gbih0ze5","slide":11,"bbox":[522,400,640,50]}
+{"kind":"shape","id":"sh/sf21gz61","slide":11,"bbox":[536,410,28,30]}
+{"kind":"textbox","id":"sh/tgvip4n6","slide":11,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[536,413,28,24]}
+{"kind":"textbox","id":"sh/6dkje9ov","slide":11,"text":"ไม่พบอีกฝั่ง / บัญชีหรือยอดไม่ตรง","textPreview":"ไม่พบอีกฝั่ง / บัญชีหรือยอดไม่ตรง","textChars":33,"textLines":1,"bbox":[580,408,290,24]}
+{"kind":"textbox","id":"sh/7et0nu5g","slide":11,"text":"สร้าง Exception และส่งชี้แจง","textPreview":"สร้าง Exception และส่งชี้แจง","textChars":28,"textLines":1,"bbox":[875,408,270,34]}
+{"kind":"shape","id":"sh/kr21sz6p","slide":11,"bbox":[522,462,640,50]}
+{"kind":"shape","id":"sh/5sbil4na","slide":11,"bbox":[536,472,28,30]}
+{"kind":"textbox","id":"sh/ipkzqpoj","slide":11,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[536,475,28,24]}
+{"kind":"textbox","id":"sh/jqt0ju54","slide":11,"text":"มีไฟล์ชี้แจง/หลักฐาน","textPreview":"มีไฟล์ชี้แจง/หลักฐาน","textChars":20,"textLines":1,"bbox":[580,470,290,24]}
+{"kind":"textbox","id":"sh/4n61ojmt","slide":11,"text":"Preview → ผูกเคส → Audit Lead อนุมัติ","textPreview":"Preview → ผูกเคส → Audit Lead อนุมัติ","textChars":37,"textLines":1,"bbox":[875,470,270,34]}
+{"kind":"shape","id":"sh/pofixone","slide":11,"bbox":[522,524,640,50]}
+{"kind":"shape","id":"sh/ze1c3mts","slide":11,"bbox":[536,534,28,30]}
+{"kind":"textbox","id":"sh/ytsvahs7","slide":11,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[536,537,28,24]}
+{"kind":"textbox","id":"sh/lgju5wby","slide":11,"text":"ยืนยันความเสียหาย","textPreview":"ยืนยันความเสียหาย","textChars":17,"textLines":1,"bbox":[580,532,290,24]}
+{"kind":"textbox","id":"sh/0fadcrad","slide":11,"text":"บันทึกทะเบียนความเสียหายและปิดรอบ","textPreview":"บันทึกทะเบียนความเสียหายและปิดรอบ","textChars":33,"textLines":1,"bbox":[875,532,270,34]}
+{"kind":"image","id":"im/fqtsnilw","slide":11,"name":"","geometry":"roundRect","alt":"ภาพหน้าจอระบบ Audit AI","bbox":[56,205,410,430]}
+{"kind":"notes","id":"nt/fsra7p","slide":11,"text":"[Sources]\n- Repository UI screenshot: manual/14-drawer.png (case workflow illustration).\n- Reconciliation rules and exception workflow in README.md.\n[/Sources]"}
+{"kind":"slide","id":"sl/udcoiw","slide":12,"title":"GOVERNANCE","textShapes":30}
+{"kind":"textbox","id":"sh/bytsv65g","slide":12,"text":"GOVERNANCE","textPreview":"GOVERNANCE","textChars":10,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/czmtobm1","slide":12,"text":"บทบาทและสิทธิ์ใช้งาน","textPreview":"บทบาทและสิทธิ์ใช้งาน","textChars":20,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/d0vaxwnm","slide":12,"text":"เห็นข้อมูลตามหน้าที่ ลดการแก้ไขผิดคน และเก็บผู้ดำเนินการทุกขั้น","textPreview":"เห็นข้อมูลตามหน้าที่ ลดการแก้ไขผิดคน และเก็บผู้ดำเนินการทุกขั้น","textChars":63,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/2tkbih4z","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/3utsrm54","slide":12,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/ov2tkrmp","slide":12,"bbox":[56,205,1138,372]}
+{"kind":"textbox","id":"sh/pwbatwna","slide":12,"text":"บทบาท","textPreview":"บทบาท","textChars":5,"textLines":1,"bbox":[64,213,174,22]}
+{"kind":"textbox","id":"sh/e50beh4n","slide":12,"text":"เห็นข้อมูล","textPreview":"เห็นข้อมูล","textChars":10,"textLines":1,"bbox":[254,213,229,22]}
+{"kind":"textbox","id":"sh/f69snm58","slide":12,"text":"ทำรายการได้","textPreview":"ทำรายการได้","textChars":11,"textLines":1,"bbox":[499,213,404,22]}
+{"kind":"textbox","id":"sh/nipgbed4","slide":12,"text":"ข้อจำกัด","textPreview":"ข้อจำกัด","textChars":8,"textLines":1,"bbox":[919,213,267,22]}
+{"kind":"shape","id":"sh/2hwz29cj","slide":12,"bbox":[56,267,1138,0]}
+{"kind":"textbox","id":"sh/pk7yd4va","slide":12,"text":"เจ้าหน้าที่ Audit","textPreview":"เจ้าหน้าที่ Audit","textChars":17,"textLines":1,"bbox":[64,275,174,22]}
+{"kind":"textbox","id":"sh/ojyh4zup","slide":12,"text":"บริษัทที่รับผิดชอบ","textPreview":"บริษัทที่รับผิดชอบ","textChars":18,"textLines":1,"bbox":[254,275,229,22]}
+{"kind":"textbox","id":"sh/bmp0fed0","slide":12,"text":"ตรวจไฟล์ ใส่ note ส่งชี้แจง","textPreview":"ตรวจไฟล์ ใส่ note ส่งชี้แจง","textChars":27,"textLines":1,"bbox":[499,275,404,22]}
+{"kind":"textbox","id":"sh/algz69cv","slide":12,"text":"อนุมัติ/ตั้งค่าไม่ได้","textPreview":"อนุมัติ/ตั้งค่าไม่ได้","textChars":21,"textLines":1,"bbox":[919,275,267,22]}
+{"kind":"shape","id":"sh/xo7ihov6","slide":12,"bbox":[56,329,1138,0]}
+{"kind":"shape","id":"sh/cnyh8jul","slide":12,"bbox":[57,329,1136,62]}
+{"kind":"textbox","id":"sh/rqlg3udw","slide":12,"text":"Audit Lead","textPreview":"Audit Lead","textChars":10,"textLines":1,"bbox":[64,337,174,22]}
+{"kind":"textbox","id":"sh/6pczupcb","slide":12,"text":"ทุกบริษัทในขอบเขต","textPreview":"ทุกบริษัทในขอบเขต","textChars":17,"textLines":1,"bbox":[254,337,229,22]}
+{"kind":"textbox","id":"sh/ulkj2xwz","slide":12,"text":"อนุมัติ ปิดเคส ปิดรอบความเสียหาย","textPreview":"อนุมัติ ปิดเคส ปิดรอบความเสียหาย","textChars":32,"textLines":1,"bbox":[499,337,404,22]}
+{"kind":"textbox","id":"sh/v6tkb2xk","slide":12,"text":"ลบหลักฐานถาวรไม่ได้","textPreview":"ลบหลักฐานถาวรไม่ได้","textChars":19,"textLines":1,"bbox":[919,337,267,22]}
+{"kind":"shape","id":"sh/w7214ne5","slide":12,"bbox":[56,391,1138,0]}
+{"kind":"textbox","id":"sh/h8b2dsfq","slide":12,"text":"ผู้ชี้แจงบริษัท","textPreview":"ผู้ชี้แจงบริษัท","textChars":15,"textLines":1,"bbox":[64,399,174,22]}
+{"kind":"textbox","id":"sh/mhkjydw3","slide":12,"text":"เฉพาะบริษัทตนเอง","textPreview":"เฉพาะบริษัทตนเอง","textChars":16,"textLines":1,"bbox":[254,399,229,22]}
+{"kind":"textbox","id":"sh/7itk7ix8","slide":12,"text":"ตอบชี้แจงและแนบหลักฐาน","textPreview":"ตอบชี้แจงและแนบหลักฐาน","textChars":22,"textLines":1,"bbox":[499,399,404,22]}
+{"kind":"textbox","id":"sh/8j210net","slide":12,"text":"ไม่เห็นข้อมูลบริษัทอื่น","textPreview":"ไม่เห็นข้อมูลบริษัทอื่น","textChars":23,"textLines":1,"bbox":[919,399,267,22]}
+{"kind":"shape","id":"sh/9kb29sfe","slide":12,"bbox":[56,453,1138,0]}
+{"kind":"shape","id":"sh/yd0judwr","slide":12,"bbox":[57,453,1136,62]}
+{"kind":"textbox","id":"sh/ze9k3ixc","slide":12,"text":"ผู้บริหาร / การเงิน","textPreview":"ผู้บริหาร / การเงิน","textChars":19,"textLines":1,"bbox":[64,461,174,22]}
+{"kind":"textbox","id":"sh/1kzep036","slide":12,"text":"ภาพรวมและรายงาน","textPreview":"ภาพรวมและรายงาน","textChars":15,"textLines":1,"bbox":[254,461,229,22]}
+{"kind":"textbox","id":"sh/0jqdwv2l","slide":12,"text":"ดูและ Export","textPreview":"ดูและ Export","textChars":12,"textLines":1,"bbox":[499,461,404,22]}
+{"kind":"textbox","id":"sh/fihwnal0","slide":12,"text":"ไม่แก้ข้อมูลปฏิบัติการ","textPreview":"ไม่แก้ข้อมูลปฏิบัติการ","textChars":22,"textLines":1,"bbox":[919,461,267,22]}
+{"kind":"shape","id":"sh/eh8vu5kf","slide":12,"bbox":[56,515,1138,0]}
+{"kind":"textbox","id":"sh/dgzel03u","slide":12,"text":"ผู้ดูแลระบบ","textPreview":"ผู้ดูแลระบบ","textChars":11,"textLines":1,"bbox":[64,523,174,22]}
+{"kind":"textbox","id":"sh/sfqdsv2p","slide":12,"text":"ทุกหน้า ทุกบริษัท","textPreview":"ทุกหน้า ทุกบริษัท","textChars":17,"textLines":1,"bbox":[254,523,229,22]}
+{"kind":"textbox","id":"sh/rehwjql4","slide":12,"text":"เพิ่มผู้ใช้ กำหนดสิทธิ์ ช่วยทุก workflow","textPreview":"เพิ่มผู้ใช้ กำหนดสิทธิ์ ช่วยทุก workflow","textChars":40,"textLines":1,"bbox":[499,523,404,22]}
+{"kind":"textbox","id":"sh/qdovqlkj","slide":12,"text":"ลบ transaction/หลักฐานถาวรไม่ได้","textPreview":"ลบ transaction/หลักฐานถาวรไม่ได้","textChars":32,"textLines":1,"bbox":[919,523,267,22]}
+{"kind":"shape","id":"sh/5cfehg3y","slide":12,"bbox":[56,548,1138,72]}
+{"kind":"textbox","id":"sh/4r6dob2d","slide":12,"text":"การเพิ่มผู้ใช้","textPreview":"การเพิ่มผู้ใช้","textChars":14,"textLines":1,"bbox":[80,570,140,24]}
+{"kind":"textbox","id":"sh/kjed8vyd","slide":12,"text":"ระบบ → ผู้ใช้และสิทธิ์ → + เพิ่มผู้ใช้ → กรอกอีเมล/ชื่อ/บทบาท/บริษัท → ส่งคำเชิญ","textPreview":"ระบบ → ผู้ใช้และสิทธิ์ → + เพิ่มผู้ใช้ → กรอกอีเมล/ชื่อ/บทบาท/บริษัท → ส่งคำเชิญ","textChars":80,"textLines":1,"bbox":[220,569,920,30]}
+{"kind":"notes","id":"nt/udcoiw","slide":12,"text":"[Sources]\n- README.md role matrix and user invitation flow.\n- Supabase RLS migration for role/company access.\n[/Sources]"}
+{"kind":"slide","id":"sl/xluk37","slide":13,"title":"NEXT 30 DAYS","textShapes":18}
+{"kind":"textbox","id":"sh/0jy5o3yt","slide":13,"text":"NEXT 30 DAYS","textPreview":"NEXT 30 DAYS","textChars":12,"textLines":1,"bbox":[56,30,450,24]}
+{"kind":"textbox","id":"sh/zypovyh8","slide":13,"text":"ข้อเสนอเพื่ออนุมัติและทำต่อ","textPreview":"ข้อเสนอเพื่ออนุมัติและทำต่อ","textChars":27,"textLines":1,"bbox":[56,58,965,52]}
+{"kind":"textbox","id":"sh/exgnmd0n","slide":13,"text":"ทำให้ระบบเป็นแหล่งรายงานอย่างเป็นทางการโดยควบคุมข้อมูลตั้งแต่ต้นทาง","textPreview":"ทำให้ระบบเป็นแหล่งรายงานอย่างเป็นทางการโดยควบคุมข้อมูลตั้งแต่ต้นทาง","textChars":67,"textLines":1,"bbox":[56,115,1080,40]}
+{"kind":"textbox","id":"sh/dw76t8z2","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1180,34,44,22]}
+{"kind":"shape","id":"sh/svy503ix","slide":13,"bbox":[56,170,1168,0]}
+{"kind":"shape","id":"sh/ruporyhc","slide":13,"bbox":[56,205,535,126]}
+{"kind":"shape","id":"sh/qtwnyt0r","slide":13,"bbox":[74,221,38,30]}
+{"kind":"textbox","id":"sh/5sn6poz6","slide":13,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[74,224,38,24]}
+{"kind":"textbox","id":"sh/4re5wjil","slide":13,"text":"มาตรฐานไฟล์","textPreview":"มาตรฐานไฟล์","textChars":11,"textLines":1,"bbox":[126,222,445,30]}
+{"kind":"textbox","id":"sh/6psnedwj","slide":13,"text":"บังคับ template ชื่อไฟล์ + column mapping ต่อ Provider และตรวจก่อนส่ง","textPreview":"บังคับ template ชื่อไฟล์ + column mapping ต่อ Provider และตรวจก่อนส่ง","textChars":69,"textLines":1,"bbox":[76,263,495,54]}
+{"kind":"shape","id":"sh/7q1onix4","slide":13,"bbox":[659,205,535,126]}
+{"kind":"shape","id":"sh/sru5gnep","slide":13,"bbox":[677,221,38,30]}
+{"kind":"textbox","id":"sh/ts36psfa","slide":13,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[677,224,38,24]}
+{"kind":"textbox","id":"sh/i1snadwn","slide":13,"text":"Daily sign-off","textPreview":"Daily sign-off","textChars":14,"textLines":1,"bbox":[729,222,445,30]}
+{"kind":"textbox","id":"sh/jm1ojixs","slide":13,"text":"ทุกวันเลือก 1 บริษัท/วัน ตรวจครบไฟล์ → exception → หลักฐาน → export","textPreview":"ทุกวันเลือก 1 บริษัท/วัน ตรวจครบไฟล์ → exception → หลักฐาน → export","textChars":67,"textLines":1,"bbox":[679,263,495,54]}
+{"kind":"shape","id":"sh/kna5c3ed","slide":13,"bbox":[56,355,535,126]}
+{"kind":"shape","id":"sh/5oj6l8fy","slide":13,"bbox":[74,371,38,30]}
+{"kind":"textbox","id":"sh/ax8n6twb","slide":13,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[74,374,38,24]}
+{"kind":"textbox","id":"sh/vyhofyxw","slide":13,"text":"SLA และความเสี่ยง","textPreview":"SLA และความเสี่ยง","textChars":17,"textLines":1,"bbox":[126,372,445,30]}
+{"kind":"textbox","id":"sh/z2xk7udo","slide":13,"text":"เร่ง SK8/FR8 และตั้งเจ้าของเคสตามบริษัท พร้อม Telegram สรุปรายวัน","textPreview":"เร่ง SK8/FR8 และตั้งเจ้าของเคสตามบริษัท พร้อม Telegram สรุปรายวัน","textChars":65,"textLines":1,"bbox":[76,413,495,54]}
+{"kind":"shape","id":"sh/y1o3epc3","slide":13,"bbox":[659,355,535,126]}
+{"kind":"shape","id":"sh/l4f294vu","slide":13,"bbox":[677,371,38,30]}
+{"kind":"textbox","id":"sh/036lgzu9","slide":13,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[677,374,38,24]}
+{"kind":"textbox","id":"sh/n6xkbedk","slide":13,"text":"Capacity control","textPreview":"Capacity control","textChars":16,"textLines":1,"bbox":[729,372,445,30]}
+{"kind":"textbox","id":"sh/m5o3i9cf","slide":13,"text":"ติดตาม n8n execution, Supabase storage/database และแจ้งเตือนก่อนเต็ม","textPreview":"ติดตาม n8n execution, Supabase storage/database และแจ้งเตือนก่อนเต็ม","textChars":68,"textLines":1,"bbox":[679,413,495,54]}
+{"kind":"shape","id":"sh/9szmd4vq","slide":13,"bbox":[56,520,1138,102]}
+{"kind":"textbox","id":"sh/876lkzu5","slide":13,"text":"มติที่ต้องการ","textPreview":"มติที่ต้องการ","textChars":13,"textLines":1,"bbox":[80,540,180,24]}
+{"kind":"textbox","id":"sh/3adkzadg","slide":13,"text":"อนุมัติให้ใช้ผลตั้งแต่ 27 ส.ค. เป็น baseline จริง พร้อมกำหนดเจ้าของข้อมูล 9 บริษัทและตรวจ Daily sign-off ทุกวัน","textPreview":"อนุมัติให้ใช้ผลตั้งแต่ 27 ส.ค. เป็น baseline จริง พร้อมกำหนดเจ้าของข้อมูล 9 บริษัทและตรวจ Daily sign-off ทุกวัน","textChars":111,"textLines":1,"bbox":[80,570,1060,36]}
+{"kind":"notes","id":"nt/xluk37","slide":13,"text":"[Sources]\n- Management recommendations based on validated 3-day results and QA findings.\n[/Sources]"}
