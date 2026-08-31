@@ -682,7 +682,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 const exceptionSupportCache = new Map();
 
@@ -883,6 +883,7 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.operations = null;
     liveOverviewState.quality = null;
     liveOverviewState.checklist = null;
+    liveOverviewState.boFirst = null;
     liveOverviewState.damages = null;
     liveOverviewState.logs = null;
     liveOverviewState.clarifications = null;
@@ -900,16 +901,18 @@ async function loadLiveOverview(force = false) {
       Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
+      Sb.boFirstCoverage({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
-    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "การตั้งค่าระบบ"];
+    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ"];
     const coreValue = (index, fallback) => core[index].status === "fulfilled" ? (core[index].value ?? fallback) : fallback;
     let daily = coreValue(0, liveOverviewState.daily);
     let operations = coreValue(1, liveOverviewState.operations);
     let quality = coreValue(2, liveOverviewState.quality);
     let checklistRows = coreValue(3, liveOverviewState.checklist);
-    const settings = coreValue(4, liveOverviewState.settings ? [liveOverviewState.settings] : null);
+    let boFirstRows = coreValue(4, liveOverviewState.boFirst);
+    const settings = coreValue(5, liveOverviewState.settings ? [liveOverviewState.settings] : null);
     liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []);
     const qualityReady = core[2].status === "fulfilled";
     const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
@@ -934,11 +937,13 @@ async function loadLiveOverview(force = false) {
           Sb.operations({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.quality({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
           Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
+          Sb.boFirstCoverage({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
         ]);
         daily = latest[0].status === "fulfilled" ? latest[0].value : daily;
         operations = latest[1].status === "fulfilled" ? (latest[1].value || []).filter(isLiveCompanyRow) : operations;
         quality = latest[2].status === "fulfilled" ? (latest[2].value || []).filter(isLiveCompanyRow) : quality;
         checklistRows = latest[3].status === "fulfilled" ? latest[3].value : checklistRows;
+        boFirstRows = latest[4].status === "fulfilled" ? latest[4].value : boFirstRows;
         liveOverviewState.coreErrors.push(...latest.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []));
         liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
       }
@@ -948,6 +953,7 @@ async function loadLiveOverview(force = false) {
     if (operations !== null) liveOverviewState.operations = (operations || []).filter(isLiveCompanyRow);
     if (quality !== null) liveOverviewState.quality = (quality || []).filter(isLiveCompanyRow);
     if (checklistRows !== null) liveOverviewState.checklist = checklistRows || [];
+    if (boFirstRows !== null) liveOverviewState.boFirst = boFirstRows || [];
     if (settings !== null) liveOverviewState.settings = Array.isArray(settings) ? (settings[0] || null) : settings;
     liveOverviewState.error = liveOverviewState.coreErrors.length
       ? `ข้อมูลบางส่วนยังไม่พร้อม: ${[...new Set(liveOverviewState.coreErrors)].join(", ")} — ตัวเลขส่วนนี้จะแสดง “—” แทนศูนย์`
@@ -1061,6 +1067,11 @@ function renderLiveDashboard(root) {
   const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
   const checklistDate = checklistDates.includes(state.filters.date) ? state.filters.date : (checklistDates[0] || state.filters.date);
   const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
+  const boFirstByCompanyDate = new Map();
+  (liveOverviewState.boFirst || []).forEach((row) => {
+    const key = `${row.business_date}|${String(row.company || "").toUpperCase()}`;
+    if (!boFirstByCompanyDate.has(key)) boFirstByCompanyDate.set(key, row);
+  });
   const loadNotice = liveOverviewState.loading
     ? `<section class="alert"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>เปิดดูเมนูและรายงานได้ทันที ระบบจะเติมตัวเลขบนหน้านี้เมื่อข้อมูลมาถึง</span></section>`
     : liveOverviewState.error
@@ -1101,8 +1112,8 @@ function renderLiveDashboard(root) {
     </section>
 
     <section class="panel daily-checklist-panel">
-      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">BO เป็นไฟล์บังคับรายวัน ส่วน STM/PM ขึ้นกับบัญชีที่ใช้จริงในวันนั้น ตัวเลข “ทะเบียน” คือจำนวนสูงสุดที่รองรับ ไม่ใช่ไฟล์ขาด</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
-      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ที่รับ / ทะเบียน</th><th>BO ที่รับ / ต้องมี</th><th>PM ที่รับ / ทะเบียน</th><th>Provider</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
+      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง โดย Google Sheet ใช้ยืนยันชื่อมาตรฐานเท่านั้น</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
+      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ตาม BO</th><th>BO ที่รับ / ต้องมี</th><th>PM ตาม BO</th><th>บัญชี/Provider ที่ BO ระบุ</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
         ${checklist.map((row) => {
           const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
           const future = row.checklist_status === "scheduled";
@@ -1111,12 +1122,24 @@ function renderLiveDashboard(root) {
           const boExpected = expectedBoCount(row);
           const boOk = Number(row.bo_count) >= boExpected;
           const pmReceived = Number(row.pm_deposit_count || 0) + Number(row.pm_withdraw_count || 0);
-          const providers = Array.isArray(row.pm_providers) ? row.pm_providers.join(", ") : "-";
+          const coverage = boFirstByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+          const requiredCoverage = Array.isArray(coverage?.required) ? coverage.required : [];
+          const missingCoverage = Array.isArray(coverage?.missing) ? coverage.missing : [];
+          const coverageCount = (kind) => {
+            const required = requiredCoverage.filter((item) => item.kind === kind);
+            const missing = missingCoverage.filter((item) => item.kind === kind);
+            return { required, missing, received: Math.max(0, required.length - missing.length) };
+          };
+          const stmCoverage = coverageCount("STM");
+          const pmCoverage = coverageCount("PM");
+          const boIdentities = requiredCoverage.map((item) => `${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
+          const providers = coverage ? (boIdentities.join(", ") || "BO ไม่พบรายการใช้งาน") : "รออ่าน BO";
           const inactiveProviders = Array.isArray(row.inactive_pm_providers) ? row.inactive_pm_providers.join(", ") : "";
           const pendingProviders = Array.isArray(row.pending_registry_pm_providers) ? row.pending_registry_pm_providers.join(", ") : "";
-          const providerNotes = `${inactiveProviders ? `<small class="sub">ยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">รอลงทะเบียน: ${h(pendingProviders)}</small>` : ""}`;
+          const providerNotes = `${!coverage && inactiveProviders ? `<small class="sub">ทะเบียนยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">ชื่อรอยืนยันในชีต: ${h(pendingProviders)}</small>` : ""}`;
+          const boFirstMissing = missingCoverage.map((item) => `ขาด ${item.kind} ${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
           const pending = () => checklistMark(false, "รอวันทำการ", true);
-          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(false, `${num(row.stm_count)} รับ · ทะเบียน ${num(registeredStmCount(row))}`, true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : checklistMark(false, `${num(pmReceived)} รับ · ทะเบียน ${num(registeredPmCount(row))}`, true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
+          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
       </tbody></table></div>
       <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
@@ -4728,6 +4751,47 @@ function runBusinessRules() {
   return Rules.run(parsed, DB.settings);
 }
 
+/* BO-first coverage: BO คือหลักฐานว่าบัญชี/Provider ใดถูกใช้จริงในวันนั้น
+   Google Sheet เป็นทะเบียนยืนยันชื่อมาตรฐาน ส่วนชื่อเมลและชื่อไฟล์เป็นเพียง hint */
+function buildBoFirstCoverage(stmRecords, boRecords) {
+  const clean = (value) => String(value || "").trim().toUpperCase();
+  const direction = (record) => record?.direction === "withdraw" ? "withdraw" : record?.direction === "deposit" ? "deposit" : "unknown";
+  const identity = (record) => {
+    const raw = record?.channel || record?.account || record?.bank || "";
+    const pm = typeof Formats !== "undefined" && Formats.canonicalPm ? Formats.canonicalPm(raw) : "";
+    if (pm || record?.isPmChannel) return { kind: "PM", id: pm || clean(raw), label: pm || clean(raw) };
+    const account = String(record?.account || "").replace(/\D/g, "");
+    const bank = clean(record?.bank || record?.channel);
+    return { kind: "STM", id: account || bank, label: [bank, account ? `••${account.slice(-4)}` : ""].filter(Boolean).join(" ") };
+  };
+  const collect = (records) => {
+    const map = new Map();
+    (records || []).forEach((record) => {
+      const id = identity(record);
+      if (!id.id || id.id === "UNKNOWN") return;
+      const dir = direction(record);
+      const key = `${id.kind}|${id.id}|${dir}`;
+      const item = map.get(key) || { key, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0 };
+      item.rows += 1;
+      item.amount = Math.round((item.amount + Number(record?.amount || 0)) * 100) / 100;
+      map.set(key, item);
+    });
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  };
+  const required = collect(boRecords);
+  const received = collect(stmRecords);
+  const receivedKeys = new Set(received.map((item) => item.key));
+  const missing = required.filter((item) => !receivedKeys.has(item.key));
+  return {
+    method: "BO_FIRST",
+    registry_source: "https://docs.google.com/spreadsheets/d/1PlxeE2CIH9uh93xFJ0LHmo-9TI931chDJxdckBzfaME",
+    required,
+    received,
+    missing,
+    complete: required.length > 0 && missing.length === 0,
+  };
+}
+
 function updateAutoStatus() {
   const el = $("#autoStatus");
   if (!el) return;
@@ -4813,6 +4877,7 @@ async function runReconcileFromImport(opts = {}) {
   result.exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
   result.ruleExceptions = biz.exceptions.length;
   result.auxCounts = biz.counts;
+  result.boFirst = buildBoFirstCoverage(stm, bo);
 
   hideProgress();
   ImportState.running = false;
@@ -4820,10 +4885,21 @@ async function runReconcileFromImport(opts = {}) {
   if (opts.job) {
     try {
       result.businessDate = opts.job.business_date;
+      if (result.rulesOnly) {
+        await Sb.finishParseOnly(opts.job.id);
+        cloudState.activeJob = null;
+        cloudState.operations = null;
+        ImportState.lastRun.reason = opts.reason || "อ่าน BO เพื่อรอ STM";
+        updateAutoStatus();
+        toast(`อ่าน BO แล้ว · พบบัญชี/Provider ที่ใช้จริง ${num(result.boFirst.required.length)} กลุ่ม · ยังไม่สร้างผลกระทบยอดจนกว่า STM จะมา`);
+        if (state.route === "import" || opts.goDashboard) go("dashboard");
+        else render();
+        return;
+      }
       const runId = await Sb.saveRun(result, result.exceptions, {
         company: opts.job.company,
         fileIds: ImportState.files.map((f) => f.cloudFileId).filter(Boolean),
-        summary: { reason: opts.reason || "คิวรายวัน", job_id: opts.job.id, late_file: !!opts.job.late_file },
+        summary: { reason: opts.reason || "คิวรายวัน", job_id: opts.job.id, late_file: !!opts.job.late_file, bo_first: result.boFirst },
       });
       await Sb.finishJob(opts.job.id, runId);
       cloudState.activeJob = null;

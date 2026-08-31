@@ -281,6 +281,14 @@ const Sb = (() => {
     return json(`/rest/v1/v_daily_company_checklist?${filters.join("&")}`);
   }
 
+  async function boFirstCoverage({ from, to, company, limit = 5000 } = {}) {
+    const filters = ["select=*", "order=business_date.desc,created_at.desc", `limit=${limit}`];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    return json(`/rest/v1/v_bo_first_daily_coverage?${filters.join("&")}`);
+  }
+
   const runtimeSettings = () => json("/rest/v1/audit_runtime_settings?select=*&id=eq.true&limit=1");
 
   async function damages({ from, to, company, limit = 5000 } = {}) {
@@ -432,6 +440,7 @@ const Sb = (() => {
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
   const finishJob = (jobId, runId) => rpc("finish_daily_recon_job", { p_job_id: jobId, p_run_id: runId });
+  const finishParseOnly = (jobId) => rpc("finish_daily_recon_parse_only", { p_job_id: jobId });
   const failJob = (jobId, error) => rpc("fail_daily_recon_job", { p_job_id: jobId, p_error: String(error || "Unknown error") });
   const reclassifySourceFile = (fileId, company, kind) => rpc("reclassify_source_file", {
     p_file_id: fileId,
@@ -665,6 +674,7 @@ const Sb = (() => {
     operations,
     quality,
     dailyChecklist,
+    boFirstCoverage,
     runtimeSettings,
     damages,
     auditLogs,
@@ -678,6 +688,7 @@ const Sb = (() => {
     queueDueJobs,
     claimJob,
     finishJob,
+    finishParseOnly,
     failJob,
     myAccess,
     adminUserAccess,

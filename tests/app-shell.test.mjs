@@ -11,6 +11,7 @@ const sb = readFileSync(join(root, "supabase.js"), "utf8");
 const accessSql = readFileSync(join(root, "supabase/20260830_user_roles_company_access.sql"), "utf8");
 const adminSql = readFileSync(join(root, "supabase/20260830_admin_full_access.sql"), "utf8");
 const checklistSql = readFileSync(join(root, "supabase/20260831_registry_driven_daily_checklist.sql"), "utf8");
+const boFirstSql = readFileSync(join(root, "supabase/20260831_bo_first_daily_coverage.sql"), "utf8");
 const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/index.ts"), "utf8");
 
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
@@ -78,7 +79,10 @@ assert.match(inviteFn, /caller\.role !== "admin"/, "Edge Function ต้อง�
 assert.match(inviteFn, /inviteUserByEmail/, "Edge Function ต้องส่งอีเมลเชิญจริง");
 assert.doesNotMatch(app + sb, /SUPABASE_SERVICE_ROLE_KEY/, "frontend ห้ามอ้าง service role key");
 assert.match(app, /05:00–08:00[\s\S]+รับไฟล์ตรวจจากแอดมิน/, "Dashboard ต้องแสดงช่วงรับไฟล์ประจำวัน");
-assert.match(app, /BO เป็นไฟล์บังคับรายวัน ส่วน STM\/PM ขึ้นกับบัญชีที่ใช้จริง/, "Checklist ต้องแยกไฟล์บังคับออกจากจำนวนทะเบียน");
+assert.match(app, /ระบบอ่าน BO ก่อนเพื่อรู้บัญชี\/Provider ที่ใช้จริง แล้วจึงตรวจ STM\/PM ที่ต้องส่ง/, "Checklist ต้องอธิบายลำดับ BO-first");
+assert.match(app, /Sb\.boFirstCoverage/, "Dashboard ต้องโหลดผล BO-first จากฐานข้อมูล");
+assert.match(app, /STM ตาม BO/, "Checklist ต้องแสดง STM ตามบัญชีที่ BO ระบุ");
+assert.match(boFirstSql, /summary->'bo_first'->'required'/, "view ต้องเปิดรายการที่ BO กำหนดให้หน้าเว็บใช้");
 assert.match(app, /expectedBoCount\(row\)/, "Checklist ต้องใช้ BO 1 หรือ 2 ไฟล์ตามระบบบริษัท");
 assert.match(app, /ทะเบียน: \$\{h\(row\.registry_warning\)\}/, "คำเตือนทะเบียนต้องแยกจากรายการไฟล์ที่ขาด");
 assert.match(checklistSql, /create table if not exists public\.audit_company_file_rules/, "migration ต้องมี master rule จากทะเบียนบัญชี");

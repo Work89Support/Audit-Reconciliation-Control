@@ -119,6 +119,14 @@ for(const f of files){
 if(bo.some(r=>r.formatCode)){const merged=Formats.merge(bo);bo.length=0;merged.sort((a,b)=>(a.sec||0)-(b.sec||0)).forEach(r=>bo.push(r));}
 const parsed=files.filter(f=>f.format&&(f.format.source==='bo'||f.format.source==='aux')).map(f=>({records:f.format.source==='bo'?(f.records||[]):[],aux:f.aux||[]}));
 const biz=Rules.run(parsed,${settings});
+const boFirstCoverage=(()=>{
+  const clean=v=>String(v||'').trim().toUpperCase();
+  const dir=r=>r&&r.direction==='withdraw'?'withdraw':r&&r.direction==='deposit'?'deposit':'unknown';
+  const ident=r=>{const raw=r&&(r.channel||r.account||r.bank)||'';const pm=Formats.canonicalPm?Formats.canonicalPm(raw):'';if(pm||(r&&r.isPmChannel))return{kind:'PM',id:pm||clean(raw),label:pm||clean(raw)};const account=String(r&&r.account||'').replace(/\D/g,'');const bank=clean(r&&(r.bank||r.channel));return{kind:'STM',id:account||bank,label:[bank,account?'••'+account.slice(-4):''].filter(Boolean).join(' ')}};
+  const collect=records=>{const map=new Map();for(const r of records||[]){const x=ident(r);if(!x.id||x.id==='UNKNOWN')continue;const d=dir(r),key=x.kind+'|'+x.id+'|'+d,item=map.get(key)||{key,kind:x.kind,identity:x.id,label:x.label,direction:d,rows:0,amount:0};item.rows++;item.amount=Math.round((item.amount+Number(r.amount||0))*100)/100;map.set(key,item)}return[...map.values()].sort((a,b)=>a.key.localeCompare(b.key))};
+  const required=collect(bo),received=collect(stm),have=new Set(received.map(x=>x.key)),missing=required.filter(x=>!have.has(x.key));
+  return{method:'BO_FIRST',registry_source:'https://docs.google.com/spreadsheets/d/1PlxeE2CIH9uh93xFJ0LHmo-9TI931chDJxdckBzfaME',required,received,missing,complete:required.length>0&&missing.length===0};
+})();
 let result;
 const started=Date.now();
 if(!stm.length){
@@ -143,7 +151,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.2.3',exact_unique_tolerance_sec:600,pm_master_account_guard:true}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.3.0',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });

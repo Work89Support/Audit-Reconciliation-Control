@@ -28,8 +28,9 @@ insert into public.audit_company_file_rules
    registry_warning,registry_source,updated_at)
 values
   -- Counts and provider status below are from the live "ทะเบียนบัญชี" tab on 2026-08-31.
-  -- They describe registered capacity only. Daily missing STM/PM is derived from
-  -- the providers/accounts actually present in BO, never from these static counts.
+  -- They describe registered capacity only. The Worker stores daily BO-derived
+  -- requirements in recon_runs.summary.bo_first; these counts are never used to
+  -- declare a daily STM/PM file missing.
   ('3XB','XXX',1,10,10,array['AUTOPEER','AZPAY','12PAY','MYPAY','COREPAY'],array[]::text[],array[]::text[],
     '12PAY ยังเป็นใช้งานในทะเบียน แม้ทีมแจ้งว่าไม่พบการใช้งานในปัจจุบัน','https://docs.google.com/spreadsheets/d/1PlxeE2CIH9uh93xFJ0LHmo-9TI931chDJxdckBzfaME',now()),
   ('FR8','123',2,6,9,array['AUTOPEER','AZPAY','CYBERPLUS','MYPAY','COREPAY'],array[]::text[],array['CPXM'],
