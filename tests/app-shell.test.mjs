@@ -92,6 +92,8 @@ assert.match(app, /มีไฟล์แล้ว · ไม่พบเลขบ
 assert.match(app, /ไฟล์ STM\/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้/, "หน้าจอต้องแจกแจงไฟล์ที่รับแล้วแต่จับ BO ไม่ได้");
 assert.match(app, /data-bo-follow=/, "แต่ละกลุ่ม BO-first ต้องเปิดรายละเอียดติดตามได้");
 assert.match(app, /ข้อความพร้อมส่งให้ทีม/, "รายละเอียดติดตามต้องมีข้อความที่คัดลอกส่งทีมได้");
+assert.match(app, /1\. ข้อมูลอ้างอิง/, "ข้อความติดตามต้องแยกส่วนข้อมูลอ้างอิงให้เห็นชัด");
+assert.match(app, /4\. สิ่งที่ขอให้ทีมตรวจ/, "ข้อความติดตามต้องแยกสิ่งที่ทีมต้องดำเนินการให้เห็นชัด");
 assert.match(app, /data-bo-preview/, "ไฟล์ที่เกี่ยวข้องต้องเปิด Preview จริงจากรายละเอียดได้");
 assert.match(app, /เปิดหน้าติดตามเคส/, "ผู้ตรวจต้องดำเนินการต่อจากรายละเอียด BO-first ได้");
 assert.match(app, /บัญชี\/Provider ที่ BO ระบุ/, "สรุป BO ต้องแสดงบัญชีหรือ Provider ที่พบจาก BO");
@@ -112,4 +114,4 @@ assert.match(app + formats, /COREPAY/, "ตัวอ่านชื่อไฟ�
 assert.match(app + formats, /CPXM/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก CPXM");
 assert.match(app, /หลัง 19:00[\s\S]+ติดตามทีมออดิท/, "หน้าระบบต้องบอกขั้นตอนติดตามทีมออดิทหลังเวลาอัปโหลด");
 
-console.log("App shell QA follow-up: 80 checks passed");
+console.log("App shell QA follow-up: 82 checks passed");
