@@ -140,7 +140,8 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.3\.0'/, "worker version must identify the BO-first coverage release");
+assert.match(workerText, /worker_version:'1\.4\.0'/, "worker version must identify the system-company scoped BO-first release");
+assert.match(workerText, /key=system\+'\|'\+company\+'\|'\+x\.kind/, "BO-first keys must include system and company before provider/account");
 assert.match(workerText, /method:'BO_FIRST'/, "worker must derive daily requirements from BO records");
 assert.match(workerText, /bo_first:boFirstCoverage/, "worker must persist BO-first coverage in the run summary");
 assert.doesNotMatch(workerText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "headless worker must not embed a JWT/service key");

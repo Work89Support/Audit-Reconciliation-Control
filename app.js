@@ -732,8 +732,16 @@ const LIVE_STATUS = {
 const LIVE_COMPANY_CODES = new Set(["3XB", "AT4", "FR8", "MC8", "MR9", "PS8", "SK8", "UR9", "UFABET7M"]);
 const normalizeLiveCompanyCode = (value) => {
   const code = String(value || "").trim().toUpperCase();
+  if (code === "3X") return "3XB";
   if (code === "7M") return "UFABET7M";
   return LIVE_COMPANY_CODES.has(code) ? code : "";
+};
+const businessSystemOfCompany = (value) => {
+  const company = normalizeLiveCompanyCode(value);
+  if (["3XB", "MR9", "MC8", "UR9", "PS8"].includes(company)) return "XXX";
+  if (["FR8", "AT4", "SK8"].includes(company)) return "123";
+  if (company === "UFABET7M") return "7M";
+  return "ไม่ระบุระบบ";
 };
 const isLiveCompanyRow = (row) => Boolean(normalizeLiveCompanyCode(row?.company));
 
@@ -1712,11 +1720,12 @@ function renderDailyCompanySummary(root) {
     const boRequired = Array.isArray(data.boFirst?.required) ? data.boFirst.required : [];
     const boReceived = Array.isArray(data.boFirst?.received) ? data.boFirst.received : [];
     const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
+    const businessSystem = data.checklist?.business_system || data.quality[0]?.business_system || data.operations[0]?.business_system || businessSystemOfCompany(company);
     const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
     const boRequirementRows = boRequired.map((item) => {
       const received = boReceived.find((candidate) => candidate.key === item.key);
       const missingItem = boMissing.some((candidate) => candidate.key === item.key);
-      return `<tr><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${missingItem ? `<span class="badge red">ยังไม่พบ STM/PM</span>` : `<span class="badge green">พบแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ</small>`}</td></tr>`;
+      return `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${missingItem ? `<span class="badge red">ยังไม่พบ STM/PM</span>` : `<span class="badge green">พบแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ</small>`}</td></tr>`;
     }).join("");
     const boFileCards = boSourceFiles.map((file) => {
       const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
@@ -1770,9 +1779,9 @@ function renderDailyCompanySummary(root) {
       <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${reconciliationReady ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์กระทบยอด<small>${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.resolvedTotal)} · กดติดตาม</small></span></button></section>
 
       <section class="panel bo-document-summary">
-        <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วระบบจึงตามหา STM/PM ฝั่งตรงข้าม</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">ระบบ ${h(businessSystem)} · บริษัท ${h(company)} · BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วจึงตามหา STM/PM ของบริษัทเดียวกัน</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
         <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังขาด STM/PM คู่กัน</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
-        <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>บัญชี / Provider</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="5" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
+        <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="7" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
         <div class="alert ${data.boFirst?.complete ? "ok" : "warn"}"><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>
       </section>
 
@@ -4816,6 +4825,7 @@ function runBusinessRules() {
    Google Sheet เป็นทะเบียนยืนยันชื่อมาตรฐาน ส่วนชื่อเมลและชื่อไฟล์เป็นเพียง hint */
 function buildBoFirstCoverage(stmRecords, boRecords) {
   const clean = (value) => String(value || "").trim().toUpperCase();
+  const companyOf = (record) => normalizeLiveCompanyCode(record?.subco || record?.company) || clean(record?.subco || record?.company) || "ไม่ระบุบริษัท";
   const direction = (record) => record?.direction === "withdraw" ? "withdraw" : record?.direction === "deposit" ? "deposit" : "unknown";
   const identity = (record) => {
     const raw = record?.channel || record?.account || record?.bank || "";
@@ -4830,9 +4840,11 @@ function buildBoFirstCoverage(stmRecords, boRecords) {
     (records || []).forEach((record) => {
       const id = identity(record);
       if (!id.id || id.id === "UNKNOWN") return;
+      const company = companyOf(record);
+      const system = businessSystemOfCompany(company);
       const dir = direction(record);
-      const key = `${id.kind}|${id.id}|${dir}`;
-      const item = map.get(key) || { key, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0 };
+      const key = `${system}|${company}|${id.kind}|${id.id}|${dir}`;
+      const item = map.get(key) || { key, system, company, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0 };
       item.rows += 1;
       item.amount = Math.round((item.amount + Number(record?.amount || 0)) * 100) / 100;
       map.set(key, item);

@@ -85,6 +85,8 @@ assert.match(app, /05:00–08:00[\s\S]+รับไฟล์ตรวจจา�
 assert.match(app, /ระบบอ่าน BO ก่อนเพื่อรู้บัญชี\/Provider ที่ใช้จริง แล้วจึงตรวจ STM\/PM ที่ต้องส่ง/, "Checklist ต้องอธิบายลำดับ BO-first");
 assert.match(app, /Sb\.boFirstCoverage/, "Dashboard ต้องโหลดผล BO-first จากฐานข้อมูล");
 assert.match(app, /สรุปเอกสาร BO ที่ตรวจ/, "สรุปรายวันต้องมีส่วนสรุปเอกสาร BO ที่ตรวจ");
+assert.match(app, /<th>ระบบ<\/th><th>บริษัท<\/th><th>บัญชี \/ Provider<\/th>/, "สรุป BO-first ต้องแสดงระบบและบริษัทก่อนบัญชี Provider");
+assert.match(app, /businessSystemOfCompany/, "BO-first ต้องแยกระบบตามบริษัทเพื่อไม่จับคู่ข้ามระบบ");
 assert.match(app, /บัญชี\/Provider ที่ BO ระบุ/, "สรุป BO ต้องแสดงบัญชีหรือ Provider ที่พบจาก BO");
 assert.match(app, /STM ตาม BO/, "Checklist ต้องแสดง STM ตามบัญชีที่ BO ระบุ");
 assert.match(boFirstSql, /summary->'bo_first'->'required'/, "view ต้องเปิดรายการที่ BO กำหนดให้หน้าเว็บใช้");
