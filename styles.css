@@ -1990,6 +1990,15 @@ tr.on { background: #f0f7ff; }
 .bo-follow-summary > div { min-width: 0; flex: 1; }
 .bo-follow-summary button { flex: 0 0 auto; }
 .bo-follow-detail { display: grid; gap: 14px; }
+.bo-follow-missing-summary { padding: 13px 15px; border: 1px solid #fecaca; border-left: 5px solid var(--critical); border-radius: 10px; background: #fff5f5; }
+.bo-follow-missing-summary.amber { border-color: #f6d89c; border-left-color: var(--medium); background: #fffaf0; }
+.bo-follow-missing-summary.green { border-color: #bfe5ca; border-left-color: var(--low); background: #f3fbf6; }
+.bo-follow-missing-summary span,.bo-follow-missing-summary strong,.bo-follow-missing-summary small { display: block; }
+.bo-follow-missing-summary span { color: var(--critical); font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+.bo-follow-missing-summary strong { margin-top: 3px; color: #991b1b; font-size: 15px; line-height: 1.4; }
+.bo-follow-missing-summary small { margin-top: 5px; color: #765050; font-size: 10.5px; line-height: 1.45; }
+.bo-follow-missing-summary.amber span,.bo-follow-missing-summary.amber strong { color: #8a5a00; }
+.bo-follow-missing-summary.green span,.bo-follow-missing-summary.green strong { color: #166534; }
 .bo-follow-status { padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 9px; background: #f7faff; }
 .bo-follow-status.red { border-left-color: var(--critical); background: #fff5f5; }
 .bo-follow-status.amber { border-left-color: var(--medium); background: #fffaf0; }
