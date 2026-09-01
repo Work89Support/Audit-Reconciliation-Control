@@ -6,15 +6,28 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 1,
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8,
+              "triggerAtMinute": 15
+            },
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 17,
               "triggerAtMinute": 5
+            },
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 19,
+              "triggerAtMinute": 15
             }
           ]
         }
       },
       "id": "hourly-schedule",
-      "name": "ทุกชั่วโมง นาทีที่ 05",
+      "name": "รอบงาน 08:15 · 17:05 · 19:15",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [-760, -180]
@@ -31,7 +44,7 @@
         }
       },
       "id": "hourly-mail-query",
-      "name": "Supabase: เมลใหม่ชั่วโมงก่อน",
+      "name": "Supabase: สถานะรอบงาน",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [-500, -180],
@@ -48,7 +61,7 @@
         "jsCode": "const all=$input.all().map(x=>x.json).filter(x=>x.id); const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok'}); const month=today.slice(0,7); const jobs=all.filter(x=>String(x.business_date||'').startsWith(month)); const n=v=>Number(v||0).toLocaleString('en-US'); const count=s=>jobs.filter(x=>x.status===s).length; const fmtDate=v=>{const p=String(v||'').slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:(v||'-');}; const groupsOf=j=>Array.isArray(j.missing_groups)?j.missing_groups:[]; const hasMissing=j=>groupsOf(j).length>0; const parseJobs=jobs.filter(j=>Number(j.error_count||0)>0||j.status==='error'); const missingJobs=jobs.filter(j=>(j.status==='waiting_files'||j.status==='needs_review')&&hasMissing(j)); const manualJobs=jobs.filter(j=>j.status==='needs_review'&&!hasMissing(j)&&Number(j.error_count||0)===0); const waiting=count('queued')+count('running'); const totalFiles=Number((all[0]||{}).actual_file_total||0); const totalMails=Number((all[0]||{}).actual_mail_total||0); const state=$getWorkflowStaticData('global'); const prevFiles=Number(state.hourlyFileTotal??totalFiles); const prevMails=Number(state.hourlyMailTotal??totalMails); const fileDelta=Math.max(0,totalFiles-prevFiles); const mailDelta=Math.max(0,totalMails-prevMails); state.hourlyFileTotal=totalFiles; state.hourlyMailTotal=totalMails; const labelGroup=g=>{const a=Array.isArray(g)?g:[]; const out=[]; if(a.some(x=>x==='stm_pdf'||x==='pm_statement')) out.push('รายการเดินบัญชีหรือ Payment'); if(a.some(x=>['bo_main','manual_credit','manual_payment','manual_bonus'].includes(x))) out.push('รายงานหลังบ้าน (BO)'); return out.join(' และ ')||'ไฟล์ที่ระบบยังจำแนกไม่ได้';}; const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); const lines=['📋 สรุประบบตรวจไฟล์และกระทบยอด',`⏰ ตรวจล่าสุด ${now}`,'','📨 ข้อมูลที่เข้ามาในรอบนี้',`• อีเมลใหม่ ${n(mailDelta)} ฉบับ`,`• ไฟล์ใหม่ ${n(fileDelta)} ไฟล์`,'','📊 สถานะงานเดือนนี้',`✅ กระทบยอดเสร็จแล้ว ${n(count('completed'))} งาน`,`⏳ รอระบบประมวลผล ${n(waiting)} งาน`,`📌 ต้องตามไฟล์เพิ่ม ${n(missingJobs.length)} งาน`,`⚠️ อ่านไฟล์ไม่ได้ ${n(parseJobs.length)} งาน`,`👤 รอผู้ตรวจสอบ ${n(manualJobs.length)} งาน`]; const actions=[]; for(const j of parseJobs.sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date)))) actions.push(`• ${fmtDate(j.business_date)} ${j.company||'ไม่ระบุบริษัท'} — อ่านไฟล์ไม่ได้ ${n(j.error_count||1)} ไฟล์`); for(const j of missingJobs.sort((a,b)=>String(b.business_date).localeCompare(String(a.business_date)))) actions.push(`• ${fmtDate(j.business_date)} ${j.company||'ไม่ระบุบริษัท'} — ขาด ${groupsOf(j).map(labelGroup).join(' และ ')}`); if(actions.length) lines.push('','🔔 รายการที่ต้องดำเนินการ',...actions.slice(0,8),actions.length>8?`• และอีก ${n(actions.length-8)} งาน — ดูรายละเอียดในหน้า Audit`:null); else lines.push('','✅ รอบนี้ไม่มีรายการใหม่ที่ต้องตาม'); lines.push('','ระบบตรวจสถานะจากฐานข้อมูลล่าสุดก่อนส่งข้อความนี้'); return [{json:{telegram_text:lines.filter(Boolean).join('\\n'),file_delta:fileDelta,mail_delta:mailDelta,missing_count:missingJobs.length,parse_error_count:parseJobs.length}}];"
       },
       "id": "hourly-format",
-      "name": "สร้างข้อความเมลใหม่",
+      "name": "สร้างข้อความสรุปรอบงาน",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [-240, -180]
@@ -64,7 +77,7 @@
         }
       },
       "id": "hourly-telegram",
-      "name": "Telegram: แจ้งเมลใหม่",
+      "name": "Telegram: สรุปตามรอบงาน",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [20, -180],
@@ -92,7 +105,8 @@
       "name": "ทุกวัน 23:30",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-760, 100]
+      "position": [-760, 100],
+      "disabled": true
     },
     {
       "parameters": {
@@ -184,7 +198,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); return [{json:{telegram_text:`✅ เชื่อมต่อ Audit กับ Telegram สำเร็จ\\nทดสอบเมื่อ: ${now}\\nต่อไปจะแจ้งเมลใหม่ทุกชั่วโมงและสรุปผลเวลา 23:30 น.`}}];"
+        "jsCode": "const now=new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'}); return [{json:{telegram_text:`✅ เชื่อมต่อ Audit กับ Telegram สำเร็จ\\nทดสอบเมื่อ: ${now}\\nระบบจะสรุปตามรอบงาน 08:15, 17:05 และ 19:15 น.\\nยกเลิกการส่งรายชั่วโมงและสรุป 23:30 เดิมแล้ว`}}];"
       },
       "id": "test-format",
       "name": "สร้างข้อความทดสอบ",
@@ -216,14 +230,14 @@
     }
   ],
   "connections": {
-    "ทุกชั่วโมง นาทีที่ 05": {
-      "main": [[{"node": "Supabase: เมลใหม่ชั่วโมงก่อน", "type": "main", "index": 0}]]
+    "รอบงาน 08:15 · 17:05 · 19:15": {
+      "main": [[{"node": "Supabase: สถานะรอบงาน", "type": "main", "index": 0}]]
     },
-    "Supabase: เมลใหม่ชั่วโมงก่อน": {
-      "main": [[{"node": "สร้างข้อความเมลใหม่", "type": "main", "index": 0}]]
+    "Supabase: สถานะรอบงาน": {
+      "main": [[{"node": "สร้างข้อความสรุปรอบงาน", "type": "main", "index": 0}]]
     },
-    "สร้างข้อความเมลใหม่": {
-      "main": [[{"node": "Telegram: แจ้งเมลใหม่", "type": "main", "index": 0}]]
+    "สร้างข้อความสรุปรอบงาน": {
+      "main": [[{"node": "Telegram: สรุปตามรอบงาน", "type": "main", "index": 0}]]
     },
     "ทุกวัน 23:30": {
       "main": [[{"node": "Supabase: เมลวันนี้", "type": "main", "index": 0}]]

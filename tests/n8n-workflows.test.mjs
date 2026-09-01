@@ -229,14 +229,22 @@ assert.match(appSource, /f\.kind !== "unknown" && !f\.parse_error/, "the automat
 assert.match(appSource, /isEmptyPmFile/, "the UI must distinguish a valid empty PM export from a failed file");
 assert.match(appSource, /ไม่มีรายการ \(0\)/, "valid empty PM exports must have a clear status");
 
-const telegramHourly = telegram.nodes.find((node) => node.name === "สร้างข้อความเมลใหม่");
+const telegramRound = telegram.nodes.find((node) => node.name === "สร้างข้อความสรุปรอบงาน");
 const telegramDaily = telegram.nodes.find((node) => node.name === "สร้างสรุปรอบวัน");
-assert.doesNotThrow(() => new Function(telegramHourly.parameters.jsCode));
+const telegramRoundSchedule = telegram.nodes.find((node) => node.name === "รอบงาน 08:15 · 17:05 · 19:15");
+const telegramLegacyDaily = telegram.nodes.find((node) => node.name === "ทุกวัน 23:30");
+assert.doesNotThrow(() => new Function(telegramRound.parameters.jsCode));
 assert.doesNotThrow(() => new Function(telegramDaily.parameters.jsCode));
-assert.match(telegramHourly.parameters.jsCode, /รายการที่ต้องดำเนินการ/, "hourly alert must lead with an actionable summary");
-assert.match(telegramHourly.parameters.jsCode, /อ่านไฟล์ไม่ได้/, "parse failures must be explained in plain Thai");
-assert.match(telegramHourly.parameters.jsCode, /ต้องตามไฟล์เพิ่ม/, "missing evidence must be separate from parse failures");
-assert.match(telegramHourly.parameters.jsCode, /ฐานข้อมูลล่าสุดก่อนส่งข้อความนี้/, "message must state that counts were checked before sending");
+assert.deepEqual(
+  telegramRoundSchedule.parameters.rule.interval.map((rule) => [rule.triggerAtHour, rule.triggerAtMinute]),
+  [[8, 15], [17, 5], [19, 15]],
+  "Telegram must only summarize at the three operating rounds",
+);
+assert.equal(telegramLegacyDaily.disabled, true, "legacy 23:30 summary must stay disabled");
+assert.match(telegramRound.parameters.jsCode, /รายการที่ต้องดำเนินการ/, "round alert must lead with an actionable summary");
+assert.match(telegramRound.parameters.jsCode, /อ่านไฟล์ไม่ได้/, "parse failures must be explained in plain Thai");
+assert.match(telegramRound.parameters.jsCode, /ต้องตามไฟล์เพิ่ม/, "missing evidence must be separate from parse failures");
+assert.match(telegramRound.parameters.jsCode, /ฐานข้อมูลล่าสุดก่อนส่งข้อความนี้/, "message must state that counts were checked before sending");
 assert.match(telegramDaily.parameters.jsCode, /ผลตรวจเดือนนี้/, "daily alert must scope reconciliation counts to the current month");
 assert.match(JSON.stringify(telegram), /is_archived=eq\.false/, "Telegram must exclude archived operating periods");
 
