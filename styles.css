@@ -1960,6 +1960,25 @@ tr.on { background: #f0f7ff; }
 .daily-source-summary span,.daily-source-summary b { display: block; }
 .daily-source-summary span { color: var(--muted); font-size: 10.5px; }
 .daily-source-summary b { margin-top: 4px; color: var(--text); font-size: 14px; }
+.bo-document-summary { margin-bottom: 14px; }
+.bo-document-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-bottom: 12px; }
+.bo-document-metrics article { padding: 11px 12px; border: 1px solid var(--line); border-top: 3px solid var(--blue); border-radius: 9px; background: #fff; }
+.bo-document-metrics article.ok { border-top-color: var(--low); background: #f5fbf7; }
+.bo-document-metrics article.warn { border-top-color: var(--medium); background: #fffaf0; }
+.bo-document-metrics article.bad { border-top-color: var(--critical); background: #fff5f5; }
+.bo-document-metrics span,.bo-document-metrics b { display: block; }
+.bo-document-metrics span { color: var(--muted); font-size: 10.5px; }
+.bo-document-metrics b { margin-top: 4px; font-size: 18px; }
+.bo-document-layout { display: grid; grid-template-columns: minmax(280px,.8fr) minmax(0,1.8fr); gap: 12px; margin-bottom: 12px; }
+.bo-document-layout h3 { margin: 0 0 7px; font-size: 13px; }
+.bo-file-list { display: grid; gap: 7px; }
+.bo-file-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; background: #f8fbff; color: var(--text); font-family: inherit; text-align: left; cursor: pointer; }
+.bo-file-card:hover { border-color: var(--blue); background: #f1f7ff; }
+.bo-file-card span { min-width: 0; }
+.bo-file-card b,.bo-file-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-file-card b { color: var(--blue-dark); font-size: 11.5px; }
+.bo-file-card small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.bo-file-card em { flex: 0 0 auto; font-style: normal; }
 .daily-audit-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2101,6 +2120,8 @@ tr.on { background: #f0f7ff; }
   .daily-summary-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .daily-reconcile-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .daily-source-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bo-document-layout { grid-template-columns: 1fr; }
+  .bo-document-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .checklist-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .operating-timeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -2112,6 +2133,7 @@ tr.on { background: #f0f7ff; }
   .daily-summary-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daily-reconcile-tiles,.daily-difference-strip { grid-template-columns: 1fr; }
   .daily-source-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bo-document-metrics { grid-template-columns: 1fr; }
   .daily-audit-flow { grid-template-columns: 1fr; }
   .checklist-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .period-banner { align-items: flex-start; flex-direction: column; }

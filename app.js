@@ -1412,7 +1412,7 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
-const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, exceptions: null, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
+const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
 
 async function loadDailyCompanySummary(force = false) {
   const date = state.dailySummary.date || PROD_TODAY;
@@ -1425,6 +1425,7 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.quality = null;
     dailyCompanyState.operations = null;
     dailyCompanyState.checklist = null;
+    dailyCompanyState.boFirst = null;
     dailyCompanyState.exceptions = null;
     dailyCompanyState.damages = null;
   }
@@ -1442,6 +1443,7 @@ async function loadDailyCompanySummary(force = false) {
       Sb.quality({ from: date, to: date, company, limit: 50 }),
       Sb.operations({ from: date, to: date, company, limit: 50 }),
       Sb.dailyChecklist({ from: date, to: date, company, limit: 20 }),
+      Sb.boFirstCoverage({ from: date, to: date, company, limit: 20 }),
     ]);
     if (requestId !== dailyCompanyState.requestId) return;
     const fulfilled = core.filter((item) => item.status === "fulfilled").length;
@@ -1468,7 +1470,8 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.quality = selectedQuality;
     dailyCompanyState.operations = valueAt(2).filter((row) => row.business_date === date);
     dailyCompanyState.checklist = valueAt(3);
-    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist"].filter((_, index) => core[index].status === "rejected");
+    dailyCompanyState.boFirst = valueAt(4).filter((row) => row.business_date === date);
+    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist", "บัญชีที่พบจาก BO"].filter((_, index) => core[index].status === "rejected");
     dailyCompanyState.coreError = failedCore.length ? `${failedCore.join(" / ")} ตอบกลับช้า จึงแสดงส่วนที่โหลดสำเร็จก่อน` : null;
     dailyCompanyState.exceptions = [];
     dailyCompanyState.damages = [];
@@ -1513,6 +1516,7 @@ function dailyCompanyData(company) {
   const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
   const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
   const checklist = (dailyCompanyState.checklist || []).find((row) => row.company === company) || null;
+  const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
   const exceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
   const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
   const confirmedDamage = exceptions.filter((row) => row.status === "damage");
@@ -1522,7 +1526,7 @@ function dailyCompanyData(company) {
   const stillOpen = checklistCoversRun ? reportedOpen : Math.max(0, exceptionTotal - resolvedTotal);
   const reconciliationFiles = files.filter((file) => file.kind !== "doc_clarify");
   const evidenceFiles = files.filter((file) => file.kind === "doc_clarify");
-  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
+  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
 }
 
 function dailyCompanyOptions() {
@@ -1693,6 +1697,7 @@ function renderDailyCompanySummary(root) {
     const stmFiles = data.files.filter((file) => file.kind === "stm_pdf").length;
     const boFiles = data.files.filter((file) => file.kind === "bo_main").length;
     const pmFiles = data.files.filter((file) => file.kind === "pm_statement").length;
+    const boSourceFiles = data.files.filter((file) => file.kind === "bo_main");
     const evidenceFiles = data.evidenceFiles.length;
     const boExpected = expectedBoCount(data.checklist || { company });
     const stmRegistered = registeredStmCount(data.checklist);
@@ -1704,6 +1709,21 @@ function renderDailyCompanySummary(root) {
       ? pmFiles
       : Number(data.checklist.pm_deposit_count || 0) + Number(data.checklist.pm_withdraw_count || 0);
     const reconciliationReady = data.reconciliationFiles.length > 0 && parsed === data.reconciliationFiles.length && fileErrors === 0;
+    const boRequired = Array.isArray(data.boFirst?.required) ? data.boFirst.required : [];
+    const boReceived = Array.isArray(data.boFirst?.received) ? data.boFirst.received : [];
+    const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
+    const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
+    const boRequirementRows = boRequired.map((item) => {
+      const received = boReceived.find((candidate) => candidate.key === item.key);
+      const missingItem = boMissing.some((candidate) => candidate.key === item.key);
+      return `<tr><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${missingItem ? `<span class="badge red">ยังไม่พบ STM/PM</span>` : `<span class="badge green">พบแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ</small>`}</td></tr>`;
+    }).join("");
+    const boFileCards = boSourceFiles.map((file) => {
+      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
+      const statusLabel = file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
+      const tone = file.parse_error ? "red" : file.parsed ? "green" : "amber";
+      return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
+    }).join("");
     const nextWork = fileErrors
       ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
       : waitingFiles
@@ -1748,6 +1768,13 @@ function renderDailyCompanySummary(root) {
       <section class="daily-source-summary" aria-label="ไฟล์ที่ได้รับ"><article><span>อีเมล / ไฟล์ทั้งหมด</span><b>${num(data.batches.length)} / ${num(data.files.length)}</b></article><article><span>STM ธนาคาร</span><b>${num(stmFiles)} ไฟล์</b></article><article><span>BO หลังบ้าน</span><b>${num(boFiles)} ไฟล์</b></article><article><span>PM ฝาก/ถอน</span><b>${num(pmFiles)} ไฟล์</b></article><article><span>หลักฐานชี้แจง</span><b>${num(evidenceFiles)} ไฟล์</b></article><article class="${fileErrors ? "bad" : reconciliationReady ? "ok" : "warn"}"><span>ไฟล์กระทบยอดที่อ่านสำเร็จ</span><b>${num(parsed)}/${num(data.reconciliationFiles.length)}</b></article>
       </section>
       <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${reconciliationReady ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์กระทบยอด<small>${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.resolvedTotal)} · กดติดตาม</small></span></button></section>
+
+      <section class="panel bo-document-summary">
+        <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วระบบจึงตามหา STM/PM ฝั่งตรงข้าม</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
+        <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังขาด STM/PM คู่กัน</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
+        <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>บัญชี / Provider</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="5" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
+        <div class="alert ${data.boFirst?.complete ? "ok" : "warn"}"><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>
+      </section>
 
       <section class="panel company-day-checklist">
         <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${!checklistReady || missing.length || data.stillOpen ? "attention" : "ok"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : "ครบและปิดงาน"}</span></div>
@@ -6512,6 +6539,7 @@ async function enterProductionApp() {
   dailyCompanyState.quality = null;
   dailyCompanyState.operations = null;
   dailyCompanyState.checklist = null;
+  dailyCompanyState.boFirst = null;
   dailyCompanyState.exceptions = null;
   dailyCompanyState.damages = null;
   dailyCompanyState.coreError = null;
