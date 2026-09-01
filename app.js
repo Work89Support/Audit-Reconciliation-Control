@@ -1822,12 +1822,21 @@ function renderDailyCompanySummary(root) {
             : info.code === "waiting"
               ? `ยังสรุปว่าขาดไม่ได้ · รอระบบอ่าน ${requiredFile}`
               : info.code === "wrong_direction"
-                ? `ขาดไฟล์ ${requiredFile} · พบไฟล์ของบัญชีนี้แต่เป็นอีกฝั่ง`
-                : `ขาดไฟล์ที่จับคู่ได้: ${requiredFile}`;
-      const receivedSummary = `มี BO ${num(boFileNames.length)} ไฟล์ · มี STM/PM รวม ${num(stmFileNames.length)} ไฟล์ · แต่${info.detail}`;
+                ? `มีไฟล์แล้ว แต่เป็นคนละทิศทางกับ ${requiredFile}`
+                : `มีไฟล์ครบแล้ว แต่ระบบจับคู่ ${requiredFile} ไม่สำเร็จ`;
+      const summaryLabel = ["identity_not_found", "wrong_direction"].includes(info.code) ? "สรุปผลตรวจ" : "สรุปสิ่งที่ขาด";
+      const nextStepSummary = info.code === "identity_not_found"
+        ? "ไม่ต้องตามไฟล์ใหม่ · กด “ประมวลผลจับคู่ใหม่” ก่อน หากยังไม่สำเร็จให้ตรวจทะเบียนชื่อและเลขบัญชี"
+        : info.code === "wrong_direction"
+          ? "กดประมวลผลจับคู่ใหม่ก่อน · หากผลเดิมให้ตรวจว่าไฟล์ฝาก/ถอนถูกตั้งประเภทถูกต้องหรือไม่"
+          : info.code === "matched"
+            ? "ไม่ต้องดำเนินการเพิ่ม"
+            : `ติดตามหรือแก้ไข ${requiredFile} แล้วกด “ประมวลผลจับคู่ใหม่”`;
+      const receivedSummary = `ระบบได้รับ BO ${num(boFileNames.length)} ไฟล์ และ STM/PM ${num(stmFileNames.length)} ไฟล์ · ${info.detail}`;
       const copyText = [
         "[ติดตามเอกสารกระทบยอด BO-first]",
-        `สรุปสิ่งที่ขาด: ${missingSummary}`,
+        `${summaryLabel}: ${missingSummary}`,
+        `ต้องทำต่อ: ${nextStepSummary}`,
         `ไฟล์ที่ได้รับ: ${receivedSummary}`,
         "",
         "=== 1) ข้อมูลรายการที่อ่านจาก BO ===",
@@ -1863,10 +1872,38 @@ function renderDailyCompanySummary(root) {
           : `<div class="empty-box">ยังไม่มีไฟล์ STM/PM สำหรับรายการนี้</div>`;
       openModal(
         `ติดตาม ${h(identity)} · ${h(directionLabel(item.direction))}`,
-        `<div class="bo-follow-detail"><div class="bo-follow-missing-summary ${h(info.tone)}"><span>สรุปสิ่งที่ขาด</span><strong>${h(missingSummary)}</strong><small>${h(receivedSummary)}</small></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><div class="bo-follow-copy"><div class="bo-follow-copy-head"><div><span>ข้อความพร้อมส่งให้ทีม</span><small>สรุปสิ่งที่ขาดไว้บรรทัดแรก แล้วค่อยแสดงรายละเอียดประกอบ</small></div></div><div class="bo-follow-message"><section><div class="bo-follow-section-head"><div><h3>1. ข้อมูลรายการที่อ่านจาก BO</h3><small>ข้อมูลส่วนนี้มาจากไฟล์ BO ต้นฉบับ ${num(boFileNames.length)} ไฟล์ ไม่ใช่รายการไฟล์ที่ขาด</small></div></div><dl><div><dt>วันที่</dt><dd>${h(state.dailySummary.date)}</dd></div><div><dt>ระบบ / บริษัท</dt><dd>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(identity)}</dd></div><div><dt>ชื่อเต็มจาก BO</dt><dd>${labels.length ? labels.map(h).join("<br>") : "-"}</dd></div><div><dt>ประเภท</dt><dd>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</dd></div></dl></section><section><h3>2. ผลตรวจจาก BO</h3><dl><div><dt>สรุปสิ่งที่ขาด</dt><dd class="danger">${h(missingSummary)}</dd></div><div><dt>ไฟล์ที่ได้รับ</dt><dd>${h(receivedSummary)}</dd></div><div><dt>สถานะเดิม</dt><dd>${h(info.title)}</dd></div></dl></section><section><div class="bo-follow-section-head"><h3>3. ไฟล์ที่ระบบได้รับและใช้ตรวจ</h3><b class="bo-follow-count">รวม ${num(totalRelatedFiles)} ไฟล์</b></div><div class="bo-follow-file-group"><h4>ไฟล์ BO ต้นฉบับ <span>${num(boFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ")}</div><div class="bo-follow-file-group"><h4>ไฟล์ STM/PM ที่ได้รับ <span>${num(stmFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้")}</div><p class="bo-follow-file-state"><b>สถานะ Preview:</b> ${h(previewStatus)}</p></section><section class="action"><h3>4. สิ่งที่ขอให้ทีมตรวจ</h3><ol><li>ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่</li><li>ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา</li><li>หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง</li></ol></section></div><details class="bo-follow-raw"><summary>ดูข้อความแบบข้อความล้วน</summary><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></details></div></div>`,
-        `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button><button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
+        `<div class="bo-follow-detail"><div class="bo-follow-missing-summary ${h(info.tone)}"><span>${h(summaryLabel)}</span><strong>${h(missingSummary)}</strong><small>${h(receivedSummary)}</small><em>${h(nextStepSummary)}</em></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><div class="bo-follow-copy"><div class="bo-follow-copy-head"><div><span>ข้อความพร้อมส่งให้ทีม</span><small>อ่านผลตรวจและสิ่งที่ต้องทำต่อก่อน แล้วค่อยดูรายละเอียดไฟล์ประกอบ</small></div></div><div class="bo-follow-message"><section><div class="bo-follow-section-head"><div><h3>1. ข้อมูลรายการที่อ่านจาก BO</h3><small>ข้อมูลส่วนนี้มาจากไฟล์ BO ต้นฉบับ ${num(boFileNames.length)} ไฟล์ ไม่ใช่รายการไฟล์ที่ขาด</small></div></div><dl><div><dt>วันที่</dt><dd>${h(state.dailySummary.date)}</dd></div><div><dt>ระบบ / บริษัท</dt><dd>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(identity)}</dd></div><div><dt>ชื่อเต็มจาก BO</dt><dd>${labels.length ? labels.map(h).join("<br>") : "-"}</dd></div><div><dt>ประเภท</dt><dd>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</dd></div></dl></section><section><h3>2. ผลตรวจจาก BO</h3><dl><div><dt>${h(summaryLabel)}</dt><dd class="danger">${h(missingSummary)}</dd></div><div><dt>ต้องทำต่อ</dt><dd>${h(nextStepSummary)}</dd></div><div><dt>ไฟล์ที่ได้รับ</dt><dd>${h(receivedSummary)}</dd></div><div><dt>สถานะเดิม</dt><dd>${h(info.title)}</dd></div></dl></section><section><div class="bo-follow-section-head"><h3>3. ไฟล์ที่ระบบได้รับและใช้ตรวจ</h3><b class="bo-follow-count">รวม ${num(totalRelatedFiles)} ไฟล์</b></div><div class="bo-follow-file-group"><h4>ไฟล์ BO ต้นฉบับ <span>${num(boFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ")}</div><div class="bo-follow-file-group"><h4>ไฟล์ STM/PM ที่ได้รับ <span>${num(stmFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้")}</div><p class="bo-follow-file-state"><b>สถานะ Preview:</b> ${h(previewStatus)}</p></section><section class="action"><h3>4. สิ่งที่ขอให้ทีมตรวจ</h3><ol><li>ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่</li><li>ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา</li><li>หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง</li></ol></section></div><details class="bo-follow-raw"><summary>ดูข้อความแบบข้อความล้วน</summary><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></details></div></div>`,
+        `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button>${info.code !== "matched" ? `<button class="primary-button" id="boFollowRetry">ประมวลผลจับคู่ใหม่</button>` : ""}<button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
       );
       $("#boFollowClose").addEventListener("click", closeModal);
+      const retryButton = $("#boFollowRetry");
+      if (retryButton) retryButton.addEventListener("click", async () => {
+        const jobId = data.checklist?.job_id;
+        if (!jobId) {
+          toast("ยังไม่พบรหัสงานรายวัน กรุณาเปิดคลังไฟล์และกดรีเฟรชก่อน", "warn");
+          return;
+        }
+        retryButton.disabled = true;
+        retryButton.textContent = "กำลังประมวลผลใหม่…";
+        try {
+          await Sb.retryJob(jobId);
+          toast(`เข้าคิวจับคู่ใหม่แล้ว · ${state.dailySummary.date} · ${company}`);
+          closeModal();
+          await cloudWorkerTick();
+          liveOverviewState.key = "";
+          dailyCompanyState.batches = null;
+          dailyCompanyState.quality = null;
+          dailyCompanyState.operations = null;
+          dailyCompanyState.checklist = null;
+          dailyCompanyState.boFirst = null;
+          await loadDailyCompanySummary(true);
+          render();
+        } catch (error) {
+          retryButton.disabled = false;
+          retryButton.textContent = "ประมวลผลจับคู่ใหม่";
+          toast(`ประมวลผลใหม่ไม่สำเร็จ: ${error.message}`, "warn");
+        }
+      });
       $("#boFollowCopy").addEventListener("click", async (event) => {
         await copyPlainText(copyText);
         event.currentTarget.textContent = "คัดลอกแล้ว ✓";

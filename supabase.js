@@ -439,6 +439,7 @@ const Sb = (() => {
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
+  const retryJob = (jobId) => rpc("retry_daily_recon_job", { p_job_id: jobId });
   const finishJob = (jobId, runId) => rpc("finish_daily_recon_job", { p_job_id: jobId, p_run_id: runId });
   const finishParseOnly = (jobId) => rpc("finish_daily_recon_parse_only", { p_job_id: jobId });
   const failJob = (jobId, error) => rpc("fail_daily_recon_job", { p_job_id: jobId, p_error: String(error || "Unknown error") });
@@ -687,6 +688,7 @@ const Sb = (() => {
     exceptionFiles,
     queueDueJobs,
     claimJob,
+    retryJob,
     finishJob,
     finishParseOnly,
     failJob,
