@@ -2016,8 +2016,36 @@ tr.on { background: #f0f7ff; }
 .bo-follow-file-names b,.bo-follow-file-names span,.bo-follow-file-names small { display: block; }
 .bo-follow-file-names span { margin-top: 4px; overflow-wrap: anywhere; font-size: 11px; }
 .bo-follow-file-names small { margin-top: 5px; color: var(--muted); }
-.bo-follow-copy span { display: block; margin-bottom: 5px; font-size: 11px; font-weight: 700; }
-.bo-follow-copy textarea { width: 100%; min-height: 190px; resize: vertical; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; color: var(--text); font: 11px/1.55 inherit; }
+.bo-follow-copy { display: grid; gap: 9px; }
+.bo-follow-copy-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.bo-follow-copy-head span,.bo-follow-copy-head small { display: block; }
+.bo-follow-copy-head span { font-size: 13px; font-weight: 800; color: var(--text); }
+.bo-follow-copy-head small { margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+.bo-follow-message { display: grid; gap: 9px; }
+.bo-follow-message section { padding: 12px 13px; border: 1px solid #d7e6f8; border-left: 4px solid var(--blue); border-radius: 9px; background: #f7faff; }
+.bo-follow-message section:nth-child(2) { border-color: #f0d8ad; border-left-color: var(--medium); background: #fffaf1; }
+.bo-follow-message section:nth-child(3) { border-color: #d9e2ec; border-left-color: #64748b; background: #f8fafc; }
+.bo-follow-message section.action { border-color: #cce8d5; border-left-color: var(--low); background: #f3fbf6; }
+.bo-follow-message h3 { margin: 0 0 9px; font-size: 12px; color: var(--blue-dark); }
+.bo-follow-message section:nth-child(2) h3 { color: #8a5a00; }
+.bo-follow-message section:nth-child(3) h3 { color: #475569; }
+.bo-follow-message section.action h3 { color: #166534; }
+.bo-follow-message dl { display: grid; gap: 0; margin: 0; }
+.bo-follow-message dl > div { display: grid; grid-template-columns: minmax(105px,.42fr) minmax(0,1fr); gap: 10px; padding: 7px 0; border-top: 1px dashed rgba(106,139,177,.25); }
+.bo-follow-message dl > div:first-child { padding-top: 0; border-top: 0; }
+.bo-follow-message dl > div:last-child { padding-bottom: 0; }
+.bo-follow-message dt { color: var(--muted); font-size: 10.5px; }
+.bo-follow-message dd { margin: 0; overflow-wrap: anywhere; color: var(--text); font-size: 11.5px; font-weight: 700; }
+.bo-follow-message dd.danger { color: var(--critical); }
+.bo-follow-message p { margin: 6px 0 0; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.bo-follow-message p:first-of-type { margin-top: 0; }
+.bo-follow-message ol { margin: 0; padding-left: 20px; }
+.bo-follow-message li { margin-top: 5px; padding-left: 3px; font-size: 11px; line-height: 1.5; }
+.bo-follow-message li:first-child { margin-top: 0; }
+.bo-follow-raw { border: 1px dashed var(--line); border-radius: 8px; background: #fff; }
+.bo-follow-raw summary { padding: 9px 11px; color: var(--blue-dark); font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.bo-follow-raw[open] summary { border-bottom: 1px dashed var(--line); }
+.bo-follow-raw textarea { width: calc(100% - 20px); min-height: 230px; margin: 10px; resize: vertical; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; color: var(--text); font: 11px/1.6 inherit; }
 .daily-audit-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2188,4 +2216,7 @@ tr.on { background: #f0f7ff; }
   .daily-focus-title,.daily-next-work { align-items: flex-start; flex-direction: column; }
   .daily-next-work em { white-space: normal; }
   .checklist-cards { grid-template-columns: 1fr; }
+  .bo-follow-grid { grid-template-columns: 1fr; }
+  .bo-follow-grid > div.wide { grid-column: auto; }
+  .bo-follow-message dl > div { grid-template-columns: 1fr; gap: 2px; }
 }

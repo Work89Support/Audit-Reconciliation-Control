@@ -1798,19 +1798,29 @@ function renderDailyCompanySummary(root) {
       const identity = item.label || item.identity || "-";
       const copyText = [
         "[ติดตามเอกสารกระทบยอด BO-first]",
+        "",
+        "=== 1) ข้อมูลอ้างอิง ===",
         `วันที่: ${state.dailySummary.date}`,
         `ระบบ: ${item.system || businessSystem}`,
         `บริษัท: ${normalizeLiveCompanyCode(item.company) || company}`,
         `บัญชี/Provider: ${identity}`,
         `ชื่อเต็มจาก BO: ${labels.join(" | ") || "-"}`,
         `ประเภท: ${item.kind || "STM"} ${directionLabel(item.direction)}`,
+        "",
+        "=== 2) ผลตรวจจาก BO ===",
         `รายการใน BO: ${num(item.rows || 0)} รายการ`,
         `ยอดรวม BO: ${money0(item.amount || 0)} บาท`,
         `สถานะ: ${info.title}`,
         `รายละเอียด: ${info.detail}`,
+        "",
+        "=== 3) ไฟล์ที่เกี่ยวข้อง ===",
         `ไฟล์ BO: ${boSourceFiles.map((file) => file.file_name).filter(Boolean).join(" | ") || "-"}`,
         `ไฟล์ STM/PM ที่พบ: ${info.sourceNames.join(" | ") || "-"}`,
-        "สิ่งที่ขอให้ตรวจ: ยืนยันเลขบัญชี/Provider และทิศทางฝาก-ถอนให้ตรงกับ BO พร้อมแนบหลักฐานที่เกี่ยวข้อง",
+        "",
+        "=== 4) สิ่งที่ขอให้ทีมตรวจ ===",
+        "1. ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่",
+        "2. ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา",
+        "3. หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง",
       ].join("\n");
       const sourceFileHtml = sourceFiles.length
         ? sourceFiles.map((file) => boPreviewButton(file, "ไฟล์ STM/PM ที่ระบบพบ")).join("")
@@ -1819,7 +1829,7 @@ function renderDailyCompanySummary(root) {
           : `<div class="empty-box">ยังไม่มีไฟล์ STM/PM สำหรับรายการนี้</div>`;
       openModal(
         `ติดตาม ${h(identity)} · ${h(directionLabel(item.direction))}`,
-        `<div class="bo-follow-detail"><div class="bo-follow-status ${h(info.tone)}"><span>${h(info.title)}</span><small>${h(info.detail)}</small></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><label class="bo-follow-copy"><span>ข้อความพร้อมส่งให้ทีม</span><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></label></div>`,
+        `<div class="bo-follow-detail"><div class="bo-follow-status ${h(info.tone)}"><span>${h(info.title)}</span><small>${h(info.detail)}</small></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><div class="bo-follow-copy"><div class="bo-follow-copy-head"><div><span>ข้อความพร้อมส่งให้ทีม</span><small>แบ่งหัวข้อไว้แล้ว อ่านง่ายและคัดลอกส่งได้ทันที</small></div></div><div class="bo-follow-message"><section><h3>1. ข้อมูลอ้างอิง</h3><dl><div><dt>วันที่</dt><dd>${h(state.dailySummary.date)}</dd></div><div><dt>ระบบ / บริษัท</dt><dd>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(identity)}</dd></div><div><dt>ชื่อเต็มจาก BO</dt><dd>${labels.length ? labels.map(h).join("<br>") : "-"}</dd></div><div><dt>ประเภท</dt><dd>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</dd></div></dl></section><section><h3>2. ผลตรวจจาก BO</h3><dl><div><dt>รายการ / ยอดรวม</dt><dd>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</dd></div><div><dt>สถานะ</dt><dd class="danger">${h(info.title)}</dd></div><div><dt>รายละเอียด</dt><dd>${h(info.detail)}</dd></div></dl></section><section><h3>3. ไฟล์ที่เกี่ยวข้อง</h3><p><b>BO:</b> ${h(boSourceFiles.map((file) => file.file_name).filter(Boolean).join(" | ") || "-")}</p><p><b>STM/PM:</b> ${h(info.sourceNames.join(" | ") || "-")}</p></section><section class="action"><h3>4. สิ่งที่ขอให้ทีมตรวจ</h3><ol><li>ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่</li><li>ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา</li><li>หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง</li></ol></section></div><details class="bo-follow-raw"><summary>ดูข้อความแบบข้อความล้วน</summary><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></details></div></div>`,
         `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button><button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
       );
       $("#boFollowClose").addEventListener("click", closeModal);
