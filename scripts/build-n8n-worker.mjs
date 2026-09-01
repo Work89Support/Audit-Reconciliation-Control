@@ -88,7 +88,11 @@ const acceptedEmptyBo=file.kind==='bo_main'&&nonEmptyRows>0;
 // transaction rows for the day.  Accept it as zero activity only when OCR/native
 // extraction returned enough statement-like evidence; blank/corrupt PDFs still fail.
 const pdfEvidence=extractedText.replace(/\s+/g,' ').trim();
-const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.length>=40&&/(statement|รายการเดินบัญชี|บัญชี|account|ยอดคงเหลือ|balance|ธนาคาร|bank)/i.test(pdfEvidence);
+const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.length>=40&&(
+  /(statement|รายการเดินบัญชี|บัญชี|account|ยอดคงเหลือ|balance|ธนาคาร|bank)/i.test(pdfEvidence)||
+  /\b\d{9,15}\b/.test(pdfEvidence)||
+  /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(pdfEvidence)
+);
 // Some parsers reject a valid header-only workbook before the generic quality
 // checks below run.  A BO/statement with clear evidence but zero transactions is
 // still a valid daily control file, so clear semantic "no usable rows" errors.
@@ -172,7 +176,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.4.3',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.4.4',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
