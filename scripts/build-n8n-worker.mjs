@@ -80,17 +80,35 @@ norm.format=norm.format||{source:'unknown',realCode:null};
 const detectedSource=norm.format.source||'unknown';
 const usableRows=(norm.records||[]).length+(norm.aux||[]).length;
 const nonEmptyRows=rawRows.filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')).length;
-if(!parseError&&ext==='pdf'&&!extractedText.trim()) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
+// BO is the daily source of truth for which accounts were actually used.
+// A header-only BO workbook is therefore valid evidence for a zero-activity day,
+// not a parser failure.  Keep rejecting a truly empty/corrupt workbook.
+const acceptedEmptyBo=file.kind==='bo_main'&&nonEmptyRows>0;
+// A bank statement can legitimately contain its account/header details but no
+// transaction rows for the day.  Accept it as zero activity only when OCR/native
+// extraction returned enough statement-like evidence; blank/corrupt PDFs still fail.
+const pdfEvidence=extractedText.replace(/\s+/g,' ').trim();
+const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.length>=40&&/(statement|รายการเดินบัญชี|บัญชี|account|ยอดคงเหลือ|balance|ธนาคาร|bank)/i.test(pdfEvidence);
+// Some parsers reject a valid header-only workbook before the generic quality
+// checks below run.  A BO/statement with clear evidence but zero transactions is
+// still a valid daily control file, so clear semantic "no usable rows" errors.
+// Never clear transport, download, or corrupt-file errors.
+const fatalReadError=/^อ่านไฟล์ไม่สำเร็จ|^ไม่พบข้อความใน PDF|^ไฟล์ตารางว่าง/.test(String(parseError||''));
+if(acceptedEmptyBo&&!fatalReadError) parseError=null;
+if(acceptedEmptyStmPdf&&!fatalReadError) parseError=null;
+if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
-if(!parseError&&ext!=='pdf'&&detectedSource==='unknown') parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
 const fallbackBank=(tag&&tag.bank)||'';
 const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'bo',manual_payment:'bo',manual_bonus:'aux',comm_req:'aux',credit_out:'aux'};
 if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
+if(acceptedEmptyBo) norm.warnings=[...(norm.warnings||[]),'BO ไม่มีรายการธุรกรรมที่ใช้จับคู่ (0 รายการ)'];
+if(acceptedEmptyStmPdf) norm.warnings=[...(norm.warnings||[]),'Statement ไม่มีรายการธุรกรรม (0 รายการ)'];
 for(const r of (norm.records||[])){
   const pmKey=Formats.canonicalPm(r.channel||r.account||'');
   if(pmKey){r.account=pmKey;r.channel=pmKey;}
@@ -227,17 +245,17 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({ business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:x.exceptions.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary:{...x.result.summary,worker:'n8n-cloud',job_id:x.job.id} });})() }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').first().json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const exception_rows=source.exceptions.map(e=>({...e,run_id:runId})); return [{json:{...source,run_id:runId,exception_rows},pairedItem:{item:0}}];" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 20] },
+  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').first().json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const rows=source.exceptions.map(e=>({...e,run_id:runId})); const size=200; if(!rows.length) return [{json:{...source,run_id:runId,exception_rows:[]},pairedItem:{item:0}}]; const out=[]; for(let i=0;i<rows.length;i+=size) out.push({json:{...source,exceptions:[],run_id:runId,exception_rows:rows.slice(i,i+size),batch_no:Math.floor(i/size)+1,batch_total:Math.ceil(rows.length/size)},pairedItem:{item:0}}); return out;" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 20] },
   { ...http("insert-exceptions", "Supabase: บันทึก Exception", [2080, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
-  http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
+  { ...http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('เตรียมบันทึก Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_run_id:x.run_id});})() }}", options: { response: { response: {} } },
-  }),
+  }), executeOnce: true },
   http("quality-stop", "บันทึกว่าอ่านแล้วและรอไฟล์", [1640, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_parse_only", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
