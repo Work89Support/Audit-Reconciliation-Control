@@ -18,6 +18,24 @@ const nowStamp = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 
+async function copyPlainText(text) {
+  const value = String(text || "");
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (_) {
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+  return value;
+}
+
 /* ---------------- routes ---------------- */
 const ICONS = {
   dashboard: "M3 13h8V3H3v10Zm10 8h8V11h-8v10ZM3 21h8v-6H3v6ZM13 9h8V3h-8v6Z",
@@ -1665,6 +1683,7 @@ function exportDailyCompanySummary(data) {
 }
 
 function renderDailyCompanySummary(root) {
+  let openBoFollowUp = () => {};
   if (!Sb.signedIn()) {
     root.innerHTML = `<section class="panel"><div class="alert bad"><strong>ยังไม่ได้เข้าสู่ระบบ</strong><span>เข้าสู่ระบบก่อนเพื่ออ่านไฟล์และผลกระทบยอดจริงจาก Supabase</span></div></section>`;
     return;
@@ -1723,30 +1742,39 @@ function renderDailyCompanySummary(root) {
     const businessSystem = data.checklist?.business_system || data.quality[0]?.business_system || data.operations[0]?.business_system || businessSystemOfCompany(company);
     const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
     const sourceFilesFor = (kind) => data.files.filter((file) => kind === "PM" ? file.kind === "pm_statement" : file.kind === "stm_pdf");
-    const pairStatus = (item, received, missingItem) => {
-      if (!missingItem) {
-        const names = Array.isArray(received?.source_files) ? received.source_files : [];
-        return `<span class="badge green">จับคู่แหล่งข้อมูลแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ${names.length ? ` · ${h(names.join(" · "))}` : ""}</small>`;
-      }
+    const pairInfo = (item, received, missingItem) => {
+      if (!missingItem) return {
+        code: "matched", tone: "green", title: "จับคู่แหล่งข้อมูลแล้ว",
+        detail: `${num(received?.rows || 0)} รายการ`,
+        sourceNames: Array.isArray(received?.source_files) ? received.source_files.filter(Boolean) : [],
+      };
       const files = sourceFilesFor(item.kind);
       const errors = files.filter((file) => file.parse_error);
       const parsedFiles = files.filter((file) => file.parsed);
       const sameIdentity = boReceived.find((candidate) => candidate.kind === item.kind && candidate.identity === item.identity);
-      if (!files.length) return `<span class="badge red">ยังไม่ได้รับไฟล์ ${h(item.kind || "STM")}</span>`;
-      if (errors.length) return `<span class="badge red">ได้รับไฟล์แล้ว แต่อ่านไม่ได้</span><small class="sub">${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}</small>`;
-      if (parsedFiles.length < files.length) return `<span class="badge amber">ได้รับไฟล์แล้ว · รออ่าน</span><small class="sub">อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์</small>`;
-      if (sameIdentity) return `<span class="badge red">พบบัญชีแล้ว แต่ทิศทางไม่ตรง</span><small class="sub">BO ${h(directionLabel(item.direction))} · ไฟล์ ${h(directionLabel(sameIdentity.direction))}</small>`;
-      return `<span class="badge red">มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่</span><small class="sub">ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์</small>`;
+      const sameNames = Array.isArray(sameIdentity?.source_files) ? sameIdentity.source_files.filter(Boolean) : [];
+      const allNames = files.map((file) => file.file_name).filter(Boolean);
+      if (!files.length) return { code: "missing_file", tone: "red", title: `ยังไม่ได้รับไฟล์ ${item.kind || "STM"}`, detail: "ไม่พบไฟล์ต้นทางของบริษัท/วันที่นี้", sourceNames: [] };
+      if (errors.length) return { code: "read_error", tone: "red", title: "ได้รับไฟล์แล้ว แต่อ่านไม่ได้", detail: `${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}`, sourceNames: allNames };
+      if (parsedFiles.length < files.length) return { code: "waiting", tone: "amber", title: "ได้รับไฟล์แล้ว · รออ่าน", detail: `อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์`, sourceNames: allNames };
+      if (sameIdentity) return { code: "wrong_direction", tone: "red", title: "พบบัญชีแล้ว แต่ทิศทางไม่ตรง", detail: `BO ${directionLabel(item.direction)} · ไฟล์ ${directionLabel(sameIdentity.direction)}`, sourceNames: sameNames.length ? sameNames : allNames };
+      return { code: "identity_not_found", tone: "red", title: "มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่", detail: `ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์`, sourceNames: allNames };
     };
+    const pairStatus = (info, followIndex) => `<span class="badge ${h(info.tone)}">${h(info.title)}</span><small class="sub">${h(info.detail)}${info.sourceNames.length && info.code === "matched" ? ` · ${h(info.sourceNames.join(" · "))}` : ""}</small><button type="button" class="bo-follow-button" data-bo-follow="${followIndex}">ดูรายละเอียด / ดำเนินการ</button>`;
     const fullBoIdentity = (item) => {
       const labels = Array.isArray(item?.source_labels) ? item.source_labels.filter(Boolean) : [];
       if (!labels.length) return `<span class="muted">–</span><small class="sub">รันใหม่เพื่อเก็บชื่อเต็ม</small>`;
       return `<div class="bo-full-identities">${labels.map((label) => `<span title="${h(label)}">${h(label)}</span>`).join("")}</div>`;
     };
+    const boFollowUps = [];
     const boRequirementRows = boRequired.map((item) => {
       const received = boReceived.find((candidate) => candidate.key === item.key);
       const missingItem = boMissing.some((candidate) => candidate.key === item.key);
-      return `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${fullBoIdentity(item)}</td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${pairStatus(item, received, missingItem)}</td></tr>`;
+      const info = pairInfo(item, received, missingItem);
+      const sourceNameSet = new Set(info.sourceNames.map((name) => String(name).trim().toLowerCase()));
+      const sourceFiles = data.files.filter((file) => sourceNameSet.has(String(file.file_name || "").trim().toLowerCase()));
+      const followIndex = boFollowUps.push({ item, received, info, sourceFiles }) - 1;
+      return `<tr class="${missingItem ? "bo-requirement-attention" : ""}"><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${fullBoIdentity(item)}</td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${pairStatus(info, followIndex)}</td></tr>`;
     }).join("");
     const requiredKeys = new Set(boRequired.map((item) => item.key));
     const unmatchedReceived = boReceived.filter((item) => !requiredKeys.has(item.key));
@@ -1757,6 +1785,59 @@ function renderDailyCompanySummary(root) {
       const tone = file.parse_error ? "red" : file.parsed ? "green" : "amber";
       return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
     }).join("");
+    const boPreviewButton = (file, sourceLabel) => {
+      if (!file) return "";
+      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
+      return `<button type="button" class="bo-follow-file" data-bo-preview data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><small>${h(sourceLabel)}</small><b>${h(file.file_name || "ไฟล์ต้นทาง")}</b></span><em>Preview →</em></button>`;
+    };
+    openBoFollowUp = (followIndex) => {
+      const follow = boFollowUps[Number(followIndex)];
+      if (!follow) return;
+      const { item, info, sourceFiles } = follow;
+      const labels = Array.isArray(item.source_labels) ? item.source_labels.filter(Boolean) : [];
+      const identity = item.label || item.identity || "-";
+      const copyText = [
+        "[ติดตามเอกสารกระทบยอด BO-first]",
+        `วันที่: ${state.dailySummary.date}`,
+        `ระบบ: ${item.system || businessSystem}`,
+        `บริษัท: ${normalizeLiveCompanyCode(item.company) || company}`,
+        `บัญชี/Provider: ${identity}`,
+        `ชื่อเต็มจาก BO: ${labels.join(" | ") || "-"}`,
+        `ประเภท: ${item.kind || "STM"} ${directionLabel(item.direction)}`,
+        `รายการใน BO: ${num(item.rows || 0)} รายการ`,
+        `ยอดรวม BO: ${money0(item.amount || 0)} บาท`,
+        `สถานะ: ${info.title}`,
+        `รายละเอียด: ${info.detail}`,
+        `ไฟล์ BO: ${boSourceFiles.map((file) => file.file_name).filter(Boolean).join(" | ") || "-"}`,
+        `ไฟล์ STM/PM ที่พบ: ${info.sourceNames.join(" | ") || "-"}`,
+        "สิ่งที่ขอให้ตรวจ: ยืนยันเลขบัญชี/Provider และทิศทางฝาก-ถอนให้ตรงกับ BO พร้อมแนบหลักฐานที่เกี่ยวข้อง",
+      ].join("\n");
+      const sourceFileHtml = sourceFiles.length
+        ? sourceFiles.map((file) => boPreviewButton(file, "ไฟล์ STM/PM ที่ระบบพบ")).join("")
+        : info.sourceNames.length
+          ? `<div class="bo-follow-file-names"><b>ชื่อไฟล์ที่ผลรันระบุ</b><span>${info.sourceNames.map(h).join("<br>")}</span><small>ไม่พบ metadata สำหรับเปิด Preview ในผลโหลดชุดนี้ ให้เปิดคลังไฟล์เพื่อตรวจต่อ</small></div>`
+          : `<div class="empty-box">ยังไม่มีไฟล์ STM/PM สำหรับรายการนี้</div>`;
+      openModal(
+        `ติดตาม ${h(identity)} · ${h(directionLabel(item.direction))}`,
+        `<div class="bo-follow-detail"><div class="bo-follow-status ${h(info.tone)}"><span>${h(info.title)}</span><small>${h(info.detail)}</small></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><label class="bo-follow-copy"><span>ข้อความพร้อมส่งให้ทีม</span><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></label></div>`,
+        `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button><button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
+      );
+      $("#boFollowClose").addEventListener("click", closeModal);
+      $("#boFollowCopy").addEventListener("click", async (event) => {
+        await copyPlainText(copyText);
+        event.currentTarget.textContent = "คัดลอกแล้ว ✓";
+        toast("คัดลอกข้อความติดตามแล้ว", "ok");
+      });
+      $("#boFollowCloud").addEventListener("click", () => {
+        closeModal();
+        go("cloud", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
+      });
+      $("#boFollowCases").addEventListener("click", () => {
+        closeModal();
+        go("clarify", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
+      });
+      bindStoredFileLinks($("#modal"), "[data-bo-preview]");
+    };
     const nextWork = fileErrors
       ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
       : waitingFiles
@@ -1807,7 +1888,7 @@ function renderDailyCompanySummary(root) {
         <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังจับคู่ STM/PM ไม่ได้</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
         <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider</th><th>ชื่อเต็มจาก BO</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="8" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
         ${unmatchedReceived.length ? `<div class="bo-unmatched-received"><h3>ไฟล์ STM/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider ที่อ่านได้</th><th>ประเภท</th><th class="right">รายการ</th><th>ไฟล์ต้นทาง</th></tr></thead><tbody>${unmatchedReceivedRows}</tbody></table></div></div>` : ""}
-        <div class="alert ${data.boFirst?.complete ? "ok" : "warn"}"><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>
+        <div class="alert ${data.boFirst?.complete ? "ok" : "warn"} bo-follow-summary"><div><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>${boMissing.length ? `<button type="button" class="primary-button sm" id="boOpenFirstFollow">เปิดรายละเอียดกลุ่มแรก</button>` : ""}</div>
       </section>
 
       <section class="panel company-day-checklist">
@@ -1900,6 +1981,11 @@ function renderDailyCompanySummary(root) {
   root.querySelectorAll("[data-scroll-daily]").forEach((item) => item.addEventListener("click", () => {
     document.getElementById(item.dataset.scrollDaily)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
+  root.querySelectorAll("[data-bo-follow]").forEach((button) => button.addEventListener("click", () => openBoFollowUp(button.dataset.boFollow)));
+  $("#boOpenFirstFollow")?.addEventListener("click", () => {
+    const first = root.querySelector(".bo-requirement-attention [data-bo-follow]");
+    if (first) openBoFollowUp(first.dataset.boFollow);
+  });
   bindStoredFileLinks(root);
   root.querySelectorAll("[data-daily-ex]").forEach((row) => row.addEventListener("click", () => {
     const item = (dailyCompanyState.exceptions || []).find((exception) => exception.id === row.dataset.dailyEx);
