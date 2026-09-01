@@ -1979,6 +1979,8 @@ tr.on { background: #f0f7ff; }
 .bo-file-card b { color: var(--blue-dark); font-size: 11.5px; }
 .bo-file-card small { margin-top: 2px; color: var(--muted); font-size: 10px; }
 .bo-file-card em { flex: 0 0 auto; font-style: normal; }
+.bo-unmatched-received { margin: 12px 0; padding-top: 12px; border-top: 1px dashed var(--line); }
+.bo-unmatched-received h3 { margin: 0 0 8px; font-size: 13px; color: var(--critical); }
 .daily-audit-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

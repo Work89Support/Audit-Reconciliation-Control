@@ -1722,11 +1722,30 @@ function renderDailyCompanySummary(root) {
     const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
     const businessSystem = data.checklist?.business_system || data.quality[0]?.business_system || data.operations[0]?.business_system || businessSystemOfCompany(company);
     const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
+    const sourceFilesFor = (kind) => data.files.filter((file) => kind === "PM" ? file.kind === "pm_statement" : file.kind === "stm_pdf");
+    const pairStatus = (item, received, missingItem) => {
+      if (!missingItem) {
+        const names = Array.isArray(received?.source_files) ? received.source_files : [];
+        return `<span class="badge green">จับคู่แหล่งข้อมูลแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ${names.length ? ` · ${h(names.join(" · "))}` : ""}</small>`;
+      }
+      const files = sourceFilesFor(item.kind);
+      const errors = files.filter((file) => file.parse_error);
+      const parsedFiles = files.filter((file) => file.parsed);
+      const sameIdentity = boReceived.find((candidate) => candidate.kind === item.kind && candidate.identity === item.identity);
+      if (!files.length) return `<span class="badge red">ยังไม่ได้รับไฟล์ ${h(item.kind || "STM")}</span>`;
+      if (errors.length) return `<span class="badge red">ได้รับไฟล์แล้ว แต่อ่านไม่ได้</span><small class="sub">${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}</small>`;
+      if (parsedFiles.length < files.length) return `<span class="badge amber">ได้รับไฟล์แล้ว · รออ่าน</span><small class="sub">อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์</small>`;
+      if (sameIdentity) return `<span class="badge red">พบบัญชีแล้ว แต่ทิศทางไม่ตรง</span><small class="sub">BO ${h(directionLabel(item.direction))} · ไฟล์ ${h(directionLabel(sameIdentity.direction))}</small>`;
+      return `<span class="badge red">มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่</span><small class="sub">ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์</small>`;
+    };
     const boRequirementRows = boRequired.map((item) => {
       const received = boReceived.find((candidate) => candidate.key === item.key);
       const missingItem = boMissing.some((candidate) => candidate.key === item.key);
-      return `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${missingItem ? `<span class="badge red">ยังไม่พบ STM/PM</span>` : `<span class="badge green">พบแล้ว</span><small class="sub">${num(received?.rows || 0)} รายการ</small>`}</td></tr>`;
+      return `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${pairStatus(item, received, missingItem)}</td></tr>`;
     }).join("");
+    const requiredKeys = new Set(boRequired.map((item) => item.key));
+    const unmatchedReceived = boReceived.filter((item) => !requiredKeys.has(item.key));
+    const unmatchedReceivedRows = unmatchedReceived.map((item) => `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td>${Array.isArray(item.source_files) && item.source_files.length ? h(item.source_files.join(" · ")) : "ไฟล์ถูกอ่านแล้ว แต่ผลรันเดิมยังไม่ได้เก็บชื่อไฟล์"}</td></tr>`).join("");
     const boFileCards = boSourceFiles.map((file) => {
       const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
       const statusLabel = file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
@@ -1780,8 +1799,9 @@ function renderDailyCompanySummary(root) {
 
       <section class="panel bo-document-summary">
         <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">ระบบ ${h(businessSystem)} · บริษัท ${h(company)} · BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วจึงตามหา STM/PM ของบริษัทเดียวกัน</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
-        <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังขาด STM/PM คู่กัน</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
+        <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังจับคู่ STM/PM ไม่ได้</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
         <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="7" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
+        ${unmatchedReceived.length ? `<div class="bo-unmatched-received"><h3>ไฟล์ STM/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider ที่อ่านได้</th><th>ประเภท</th><th class="right">รายการ</th><th>ไฟล์ต้นทาง</th></tr></thead><tbody>${unmatchedReceivedRows}</tbody></table></div></div>` : ""}
         <div class="alert ${data.boFirst?.complete ? "ok" : "warn"}"><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>
       </section>
 
@@ -4844,9 +4864,11 @@ function buildBoFirstCoverage(stmRecords, boRecords) {
       const system = businessSystemOfCompany(company);
       const dir = direction(record);
       const key = `${system}|${company}|${id.kind}|${id.id}|${dir}`;
-      const item = map.get(key) || { key, system, company, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0 };
+      const item = map.get(key) || { key, system, company, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0, source_files: [] };
       item.rows += 1;
       item.amount = Math.round((item.amount + Number(record?.amount || 0)) * 100) / 100;
+      const sourceFile = String(record?.source_file || record?.fileName || "").trim();
+      if (sourceFile && !item.source_files.includes(sourceFile)) item.source_files.push(sourceFile);
       map.set(key, item);
     });
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
