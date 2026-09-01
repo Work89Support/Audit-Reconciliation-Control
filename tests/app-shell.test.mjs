@@ -90,6 +90,10 @@ assert.match(app, /<th>ชื่อเต็มจาก BO<\/th>/, "สรุ�
 assert.match(app, /businessSystemOfCompany/, "BO-first ต้องแยกระบบตามบริษัทเพื่อไม่จับคู่ข้ามระบบ");
 assert.match(app, /มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่/, "เมื่อมี STM แล้ว หน้าจอต้องไม่สรุปผิดว่าไม่มีไฟล์");
 assert.match(app, /ไฟล์ STM\/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้/, "หน้าจอต้องแจกแจงไฟล์ที่รับแล้วแต่จับ BO ไม่ได้");
+assert.match(app, /data-bo-follow=/, "แต่ละกลุ่ม BO-first ต้องเปิดรายละเอียดติดตามได้");
+assert.match(app, /ข้อความพร้อมส่งให้ทีม/, "รายละเอียดติดตามต้องมีข้อความที่คัดลอกส่งทีมได้");
+assert.match(app, /data-bo-preview/, "ไฟล์ที่เกี่ยวข้องต้องเปิด Preview จริงจากรายละเอียดได้");
+assert.match(app, /เปิดหน้าติดตามเคส/, "ผู้ตรวจต้องดำเนินการต่อจากรายละเอียด BO-first ได้");
 assert.match(app, /บัญชี\/Provider ที่ BO ระบุ/, "สรุป BO ต้องแสดงบัญชีหรือ Provider ที่พบจาก BO");
 assert.match(app, /STM ตาม BO/, "Checklist ต้องแสดง STM ตามบัญชีที่ BO ระบุ");
 assert.match(boFirstSql, /summary->'bo_first'->'required'/, "view ต้องเปิดรายการที่ BO กำหนดให้หน้าเว็บใช้");
@@ -108,4 +112,4 @@ assert.match(app + formats, /COREPAY/, "ตัวอ่านชื่อไฟ�
 assert.match(app + formats, /CPXM/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก CPXM");
 assert.match(app, /หลัง 19:00[\s\S]+ติดตามทีมออดิท/, "หน้าระบบต้องบอกขั้นตอนติดตามทีมออดิทหลังเวลาอัปโหลด");
 
-console.log("App shell QA follow-up: 76 checks passed");
+console.log("App shell QA follow-up: 80 checks passed");
