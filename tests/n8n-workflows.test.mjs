@@ -140,7 +140,8 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.4\.1'/, "worker version must identify BO-first file diagnostics release");
+assert.match(workerText, /worker_version:'1\.4\.3'/, "worker version must identify full BO identity release");
+assert.match(workerText, /source_labels:\[\]/, "BO-first summary must retain full source labels for rechecking");
 assert.match(workerText, /key=system\+'\|'\+company\+'\|'\+x\.kind/, "BO-first keys must include system and company before provider/account");
 assert.match(workerText, /source_file:f\.file\.file_name/, "worker must retain the source filename for each BO-first group");
 assert.match(workerText, /method:'BO_FIRST'/, "worker must derive daily requirements from BO records");

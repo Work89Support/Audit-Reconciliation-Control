@@ -1981,6 +1981,8 @@ tr.on { background: #f0f7ff; }
 .bo-file-card em { flex: 0 0 auto; font-style: normal; }
 .bo-unmatched-received { margin: 12px 0; padding-top: 12px; border-top: 1px dashed var(--line); }
 .bo-unmatched-received h3 { margin: 0 0 8px; font-size: 13px; color: var(--critical); }
+.bo-full-identities { display: grid; gap: 3px; min-width: 190px; max-width: 360px; }
+.bo-full-identities span { display: block; padding: 4px 6px; border: 1px solid #dbe8f7; border-radius: 5px; background: #f7faff; color: #334b67; font-size: 10.5px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
 .daily-audit-flow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

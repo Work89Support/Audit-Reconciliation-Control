@@ -86,6 +86,7 @@ assert.match(app, /ระบบอ่าน BO ก่อนเพื่อรู
 assert.match(app, /Sb\.boFirstCoverage/, "Dashboard ต้องโหลดผล BO-first จากฐานข้อมูล");
 assert.match(app, /สรุปเอกสาร BO ที่ตรวจ/, "สรุปรายวันต้องมีส่วนสรุปเอกสาร BO ที่ตรวจ");
 assert.match(app, /<th>ระบบ<\/th><th>บริษัท<\/th><th>บัญชี \/ Provider<\/th>/, "สรุป BO-first ต้องแสดงระบบและบริษัทก่อนบัญชี Provider");
+assert.match(app, /<th>ชื่อเต็มจาก BO<\/th>/, "สรุป BO-first ต้องแสดงชื่อเต็มต้นฉบับเพื่อรีเช็ก");
 assert.match(app, /businessSystemOfCompany/, "BO-first ต้องแยกระบบตามบริษัทเพื่อไม่จับคู่ข้ามระบบ");
 assert.match(app, /มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่/, "เมื่อมี STM แล้ว หน้าจอต้องไม่สรุปผิดว่าไม่มีไฟล์");
 assert.match(app, /ไฟล์ STM\/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้/, "หน้าจอต้องแจกแจงไฟล์ที่รับแล้วแต่จับ BO ไม่ได้");

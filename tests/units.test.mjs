@@ -73,6 +73,21 @@ eq("BO แบบย่อ: provider ATP เป็น AUTOPEER", compactBo.record
 eq("BO แบบย่อ: ทิศทางถอน", compactBo.records[0].direction, "withdraw");
 eq("BO แบบย่อ: อ่าน ref จากโน้ต", compactBo.records[0].ref, "P2C-20260827-234211-EUBLWK");
 
+const transactionBoRows = [
+  ["รหัส", "เวลา", "ประเภท", "ประเภทดำเนินการ", "ยูสเซอร์", "ธนาคาร", "จำนวน", "จำนวนที่ได้รับ", "ค่าธรรมเนียม", "เวลาทำรายการ", "หมายเหตุ", "ผู้ดำเนินการ"],
+  ["10383583", "2026-08-31 00:11", "ถอน", "ถอน", "3fx33323", "KBANK 1968766313 (นราธิป บุญอาจ)(kob-deposit)", "650", "0", "0", "2026-08-30 22:56", "", "ไกด์ x5"],
+  ["10383834", "2026-08-31 00:01", "ฝาก", "ออโต้", "3fx55889", "SCB 6242596342 (แววดาว ประกายทรัพย์)(kob-deposit)", "500", "500", "13", "2026-08-31 00:02", "", "Admin"],
+  ["10383528", "2026-08-31 01:03", "ถอน", "ออโต้", "3fx366079", "พร้อมเพย์-CP(corepay)(QR)", "41350", "0", "10", "2026-08-30 22:43", "", "cake x5"],
+];
+const transactionBo = Formats.parse("3X_BO_2026-08-31.xlsx", transactionBoRows, "2026-08-31");
+eq("BO ธุรกรรม: ตรวจรูปแบบ 12 คอลัมน์", transactionBo.code, "bo_transaction_export");
+eq("BO ธุรกรรม: ดึงเลข KBANK จากคอลัมน์ธนาคาร", transactionBo.records[0].account, "1968766313");
+eq("BO ธุรกรรม: ไม่รวมเลขจากข้อความวงเล็บ", transactionBo.records[1].account, "6242596342");
+eq("BO ธุรกรรม: ระบุธนาคาร", transactionBo.records[0].bank, "KBANK");
+eq("BO ธุรกรรม: เก็บชื่อเต็มจาก BO ไว้รีเช็ก", transactionBo.records[0].boIdentityRaw, "KBANK 1968766313 (นราธิป บุญอาจ)(kob-deposit)");
+eq("BO ธุรกรรม: PM ใช้ provider เป็นตัวตน", transactionBo.records[2].account, "COREPAY");
+eq("BO ธุรกรรม: PM ไม่ใช้เลขใน P2P/QR", transactionBo.records[2].isPmChannel, true);
+
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
 const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
 const dupCount = (records) => Rules.run([{ records, aux: [] }], { businessRules: { dupWindowSec: 300, largeThreshold: 0 } }).exceptions.filter((e) => e.type === "duplicate").length;

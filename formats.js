@@ -18,6 +18,7 @@ const Formats = (() => {
       .toLowerCase();
 
   const HEADER_ALIASES = {
+    "รหัส": ["รหัส", "transactionid", "id"],
     "เวลา": ["เวลา"],
     "ประเภท": ["ประเภท"],
     "ยูสเซอร์": ["ยูสเซอร์", "username", "user"],
@@ -41,6 +42,12 @@ const Formats = (() => {
 
   /* ---------------- นิยามรูปแบบ ---------------- */
   const SPECS = [
+    {
+      code: "bo_transaction_export",
+      label: "รายงานธุรกรรม BO",
+      side: "bo",
+      need: ["รหัส", "เวลา", "ประเภท", "ยูสเซอร์", "ชื่อธนาคาร", "จำนวน", "ผู้ดำเนินการ"],
+    },
     {
       code: "bo_compact",
       label: "รายงานบัญชีฝาก-ถอน (BO แบบย่อ)",
@@ -220,6 +227,29 @@ const Formats = (() => {
   };
   const isPm = (ch) => !!canonicalPm(ch);
 
+  /* คอลัมน์ "ธนาคาร" ของ BO จริงเก็บทั้งธนาคาร เลขบัญชี ชื่อบัญชี และช่องทางไว้ในช่องเดียว เช่น
+     "KBANK 1968766313 (นราธิป บุญอาจ)(kob-deposit)" หรือ "พร้อมเพย์-CP(corepay)(QR)".
+     เลือกเฉพาะเลข 9-15 หลักที่อยู่หลังชื่อธนาคาร เพื่อไม่ให้เลขจากชื่อ/suffix ถูกนำมารวมเป็นเลขบัญชีเท็จ */
+  function boAccountOf(value) {
+    const raw = String(value || "").trim();
+    const pm = canonicalPm(raw);
+    if (pm) return { account: pm, channel: pm, bank: "", isPmChannel: true };
+    const banks = [
+      ["KBANK", /\bKBANK\b|กสิกร/i],
+      ["SCB", /\bSCB\b|ไทยพาณิชย์/i],
+      ["BBL", /\bBBL\b|กรุงเทพ/i],
+      ["KTB", /\bKTB\b|กรุงไทย/i],
+      ["BAY", /\bBAY\b|กรุงศรี/i],
+      ["TTB", /\bTTB\b|ทหารไทย|ธนชาต/i],
+      ["GSB", /\bGSB\b|ออมสิน/i],
+      ["BAAC", /\bBAAC\b|ธกส/i],
+    ];
+    const bank = (banks.find(([, re]) => re.test(raw)) || [""])[0];
+    const accountMatch = raw.match(/(?:^|\s)(\d{9,15})(?=\s|\(|$)/);
+    const account = accountMatch ? accountMatch[1] : "UNKNOWN";
+    return { account, channel: bank, bank, isPmChannel: false };
+  }
+
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
   function companyOf(fileName) {
     const m = String(fileName || "").match(/\b([A-Z]{2,4}\d{0,2})\b/);
@@ -300,6 +330,41 @@ const Formats = (() => {
   }
 
   const ROW = {
+    bo_transaction_export(f, r, i, company, drop) {
+      const boT = stamp(val(f, r, "เวลา"));
+      const bankT = stamp(val(f, r, "เวลาทำรายการ")) || boT;
+      if (!boT) return drop("ไม่มีเวลาที่อ่านได้"), null;
+      const amount = num(val(f, r, "จำนวน"));
+      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
+      const type = val(f, r, "ประเภท");
+      const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
+      const identity = boAccountOf(boIdentityRaw);
+      return {
+        rowNo: i + 1,
+        source: "bo",
+        formatCode: "bo_transaction_export",
+        date: bankT.date || boT.date,
+        sec: bankT.sec,
+        boDate: boT.date,
+        boSec: boT.sec,
+        amount: Math.round(amount * 100) / 100,
+        direction: /ถอน|withdraw|payout/i.test(type) ? "withdraw" : "deposit",
+        account: identity.account,
+        channel: identity.channel,
+        isPmChannel: identity.isPmChannel,
+        bank: identity.bank,
+        boIdentityRaw,
+        company,
+        memberCode: val(f, r, "ยูสเซอร์"),
+        ref: val(f, r, "รหัส"),
+        username: val(f, r, "ผู้ดำเนินการ"),
+        note: val(f, r, "หมายเหตุ"),
+        crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
+        lateNight: bankT.sec >= 82800,
+        minutePrecision: !bankT.secPrecision,
+        raw: r.join(" | "),
+      };
+    },
     bo_compact(f, r, i, company, drop) {
       const t = stamp(val(f, r, "เวลา"));
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
