@@ -69,6 +69,7 @@ assert.match(app, /Sb\.adminInviteUser\(/, "ผู้ใช้ใหม่ต้
 assert.match(app, /async function applyAuthenticatedRole\(\)[\s\S]+await Sb\.myAccess\(\)/, "บทบาทต้องอ่านจาก Supabase ไม่ใช่ metadata ฝั่ง browser");
 assert.doesNotMatch(app, /user\.user_metadata\?\.role/, "ห้ามเชื่อ role จาก user_metadata");
 assert.match(app, /function enterProductionApp|async function enterProductionApp/, "ต้องมีทางเข้าระบบหลังตรวจสิทธิ์");
+assert.match(app, /async function enterProductionApp\(\)[\s\S]+startCloudWorker\(\)[\s\S]+loadLiveOverview/, "เมื่อกู้ session หรือกลับจาก Google ระบบต้องเริ่ม worker อัตโนมัติ");
 assert.match(app, /canAccessCompany\(e\.company\)/, "รายการ Exception ต้องกรองตามบริษัทที่รับผิดชอบ");
 assert.match(sb, /const myAccess = \(\) => rpc\("get_my_access"\)/, "client ต้องอ่านสิทธิ์จริงผ่าน RPC");
 assert.match(sb, /\/functions\/v1\/admin-invite-user/, "client ต้องเรียก Edge Function สำหรับเชิญผู้ใช้");

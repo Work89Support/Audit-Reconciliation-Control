@@ -6752,6 +6752,10 @@ async function enterProductionApp() {
   dailyCompanyState.error = null;
   updateBell();
   render();
+  // A restored Google/Supabase session bypasses the legacy sign-in handler.
+  // Start the reconciliation worker for every authenticated app entry so
+  // queued jobs continue after a refresh, browser restart, or OAuth return.
+  startCloudWorker();
   loadLiveOverview().catch(() => {});
   return true;
 }
