@@ -11,6 +11,7 @@ const sb = readFileSync(join(root, "supabase.js"), "utf8");
 const accessSql = readFileSync(join(root, "supabase/20260830_user_roles_company_access.sql"), "utf8");
 const adminSql = readFileSync(join(root, "supabase/20260830_admin_full_access.sql"), "utf8");
 const checklistSql = readFileSync(join(root, "supabase/20260831_registry_driven_daily_checklist.sql"), "utf8");
+const evidenceCleanupSql = readFileSync(join(root, "supabase/20260904_evidence_filename_and_orphan_cleanup.sql"), "utf8");
 const boFirstSql = readFileSync(join(root, "supabase/20260831_bo_first_daily_coverage.sql"), "utf8");
 const operatingStartSql = readFileSync(join(root, "supabase/20260831_operational_start_20260830.sql"), "utf8");
 const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/index.ts"), "utf8");
@@ -28,6 +29,11 @@ assert.equal(existsSync(join(root, "gmail.js")), false, "ต้องลบ gmai
 assert.equal(existsSync(join(root, "fx.js")), false, "ต้องลบ fx.js placeholder ที่ไม่ได้ใช้แล้ว");
 assert.match(app, /const core = await Promise\.allSettled/, "ตัวโหลดภาพรวมต้องยอมให้ข้อมูลบางส่วนสำเร็จได้");
 assert.match(app, /ตัวเลขส่วนนี้จะแสดง “—” แทนศูนย์/, "หน้าเว็บต้องไม่แสดงศูนย์ปลอมเมื่อข้อมูลจริง timeout");
+assert.match(app, /function scopedWorkflowMetrics\(\)/, "ยอดเคสบนเมนูต้องคำนวณจากผลรันรวม ไม่ใช่รายละเอียดหน้าแรกเท่านั้น");
+assert.match(app, /workflow\.openAvailable \? num\(workflow\.open\) : "—"/, "เมนู Exception ต้องไม่แสดงศูนย์ปลอมระหว่างรอข้อมูล");
+assert.match(app, /run\.run_id && runStatus === "completed"/, "งานที่กระทบยอดสำเร็จต้องไม่แสดงไฟล์อ่านสำเร็จเป็น 0");
+assert.match(app, /เอกสารแนบทั้งหมด \$\{num\(data\.files\.length\)\} ไฟล์/, "จำนวนเมลและจำนวนเอกสารแนบต้องแยกคำอธิบายชัดเจน");
+assert.match(app, /ยอดที่ตรวจพบใน \$\{num\(data\.exceptions\.length\)\} เคสแรก อย่างน้อย/, "ยอดเสี่ยงจากรายละเอียดบางส่วนต้องไม่ถูกแสดงเป็นยอดรวม");
 assert.match(app, /const cloudQueryKey = \(\) =>/, "คลังไฟล์ต้องสร้าง cache key ตามตัวกรอง");
 assert.match(app, /requestId !== cloudState\.requestId \|\| key !== cloudQueryKey\(\)/, "ผลค้นหาเก่าต้องเขียนทับตัวกรองใหม่ไม่ได้");
 assert.match(app, /retryTransientFileRequest\(action, attempts = 3\)/, "Preview ต้องลองใหม่เมื่อ Storage หรือฐานข้อมูล timeout");
@@ -56,6 +62,8 @@ assert.doesNotMatch(app, /VIEWS\.pm\s*=/, "route PM Monitor เดิมต้�
 assert.doesNotMatch(app, /function renderLivePm/, "ตัว render PM Monitor เดิมต้องไม่ค้างอยู่ใน bundle");
 assert.match(app, /async function loadLiveDamage\(force = false\)/, "ทะเบียนความเสียหายต้องโหลดข้อมูลจริงแยกจาก query ภาพรวม");
 assert.match(app, /ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้/, "ทะเบียนความเสียหายต้องอธิบายสถานะว่างโดยไม่แสดงศูนย์ให้เข้าใจผิด");
+assert.match(sb, /async function evidenceFiles/, "ทะเบียนความเสียหายต้องโหลดไฟล์หลักฐานจริงแยกจากรายการที่ยืนยันแล้ว");
+assert.match(app, /หลักฐานที่ได้รับและรอผู้ตรวจยืนยัน/, "ทะเบียนต้องแสดงไฟล์ Evidence ที่ได้รับโดยไม่สรุปเป็นความเสียหายอัตโนมัติ");
 assert.match(app, /await Sb\.post\("damages"[\s\S]+await loadLiveDamage\(true\)/, "บันทึกความเสียหายต้องรอ Supabase สำเร็จและรีเฟรชทะเบียนทันที");
 assert.match(app, /บันทึก Supabase ไม่สำเร็จ:[\s\S]+DB\.damages = DB\.damages\.filter/, "หากบันทึกจริงล้มเหลวต้องย้อนสถานะ optimistic ออก");
 assert.match(app, /เคสใหม่ ยังไม่ได้ส่งชี้แจง/, "หน้าชี้แจงต้องแยกเคสใหม่ออกจากเคสที่ส่งให้ทีมแล้ว");
@@ -117,6 +125,8 @@ assert.match(checklistSql, /f\.kind='bo_main'/, "BO ต้องนับจา�
 assert.doesNotMatch(checklistSql, /case when coalesce\(stm_count,0\)=0/, "STM ต้องไม่ถูกแจ้งขาดเพียงเพราะบัญชีไม่ได้ใช้งานวันนั้น");
 assert.doesNotMatch(checklistSql, /case when coalesce\(pm_deposit_count,0\)=0/, "PM ต้องไม่ถูกแจ้งขาดเพียงเพราะ Provider ไม่ได้ใช้งานวันนั้น");
 assert.match(checklistSql, /local_time<time '08:00' then 'receiving'/, "ระบบต้องรอจนจบช่วงรับไฟล์ก่อนแจ้งขาด");
+assert.match(evidenceCleanupSql, /EVIDENCE\(_\|\\\(\|\[\[:space:\]\]\|\$\)/, "ชื่อไฟล์ EVIDENCE ที่ตามด้วยวงเล็บต้องถูกจัดเป็นหลักฐาน");
+assert.match(evidenceCleanupSql, /'SYS123','XXX','PM','BO','STM','DW'/, "งานชื่อระบบหรือทิศทางเก่าต้องถูก archive โดยไม่ลบประวัติ");
 assert.match(checklistSql, /array\['AUTOPEER','AZPAY','12PAY','MYPAY','COREPAY'\]/, "ทะเบียนระบบ XXX ต้องสะท้อน Provider ที่ยังเปิดใช้งานในชีตล่าสุด");
 assert.match(checklistSql, /array\['AUTOPEER','AZPAY','CYBERPLUS','MYPAY','COREPAY'\]/, "ทะเบียนระบบ 123 ต้องสะท้อน Provider ในชีตล่าสุดและเตือน CPXM แยกต่างหาก");
 assert.match(app + formats, /COREPAY/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก COREPAY หรือ CP PAY");

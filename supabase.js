@@ -299,6 +299,26 @@ const Sb = (() => {
     return json(`/rest/v1/damages?${filters.join("&")}`);
   }
 
+  async function evidenceFiles({ from, to, limit = 2000 } = {}) {
+    const filters = [
+      "select=*,mail_batches!inner(business_date,company,subject,sender,received_at)",
+      "kind=eq.doc_clarify",
+      "order=created_at.desc",
+      `limit=${limit}`,
+    ];
+    if (from) filters.push(`mail_batches.business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`mail_batches.business_date=lte.${encodeURIComponent(to)}`);
+    const rows = await json(`/rest/v1/source_files?${filters.join("&")}`);
+    return (rows || []).map((row) => ({
+      ...row,
+      business_date: row.mail_batches?.business_date || null,
+      batch_company: row.mail_batches?.company || null,
+      subject: row.mail_batches?.subject || "",
+      sender: row.mail_batches?.sender || "",
+      received_at: row.created_at || row.mail_batches?.received_at || null,
+    }));
+  }
+
   async function auditLogs({ from, to, limit = 2000 } = {}) {
     const filters = ["select=*", "order=at.desc", `limit=${limit}`];
     if (from) filters.push(`at=gte.${encodeURIComponent(from + "T00:00:00+07:00")}`);
@@ -678,6 +698,7 @@ const Sb = (() => {
     boFirstCoverage,
     runtimeSettings,
     damages,
+    evidenceFiles,
     auditLogs,
     notifications,
     clarificationMatches,
