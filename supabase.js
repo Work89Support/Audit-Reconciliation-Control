@@ -592,6 +592,18 @@ const Sb = (() => {
       body: JSON.stringify(body),
     });
 
+  async function closeException(id, previousStatus, body) {
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ ...body, status: "closed" }),
+    });
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].status !== "closed") {
+      throw new Error("สถานะเคสเปลี่ยนหรือไม่มีสิทธิ์บันทึก กรุณารีเฟรชแล้วตรวจใหม่");
+    }
+    return rows[0];
+  }
+
   async function markParsed(fileId, rowCount, error) {
     return patch("source_files", `id=eq.${fileId}`, {
       parsed: !error,
@@ -730,6 +742,7 @@ const Sb = (() => {
     ping,
     post,
     patch,
+    closeException,
   };
 })();
 

@@ -384,21 +384,66 @@ function isQuickCloseEligible(e) {
     && !["closed", "approved", "damage"].includes(e.status)
     && e.bankAmount !== null && e.bankAmount !== undefined
     && e.systemAmount !== null && e.systemAmount !== undefined
+    && e.bankAmount !== "" && e.systemAmount !== ""
+    && Number.isFinite(Number(e.bankAmount)) && Number.isFinite(Number(e.systemAmount))
+    && !!e._detailLoaded
+    && !!e.stmRaw && e.stmRaw !== "—"
+    && !!e.boRaw && e.boRaw !== "—"
     && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
 }
 
-function completeQuickClose(e) {
+// Completion is a positive assertion: absent/failed queries must never count as passed checks.
+function dailyCompletionBlockers(data) {
+  const blockers = [];
+  if (!data.files.length) blockers.push("ยังไม่ได้รับไฟล์");
+  if (!data.checklist) blockers.push("Checklist ยังโหลดไม่ครบ");
+  if (!data.reconciliationFiles.length || data.reconciliationFiles.some((f) => !f.parsed || f.parse_error)) blockers.push("ยังอ่านไฟล์กระทบยอดไม่ครบ");
+  if (!data.quality.length || data.quality.some((r) => !r.run_id || r.status !== "completed")) blockers.push("ยังไม่มีผลกระทบยอดสำเร็จครบ");
+  if (!data.boFirst || data.boFirst.complete !== true || (data.boFirst.missing || []).length) blockers.push("ยังตรวจคู่ STM/PM ตาม BO ไม่ครบ");
+  if ((data.checklist?.missing_items || []).length) blockers.push("มีเอกสารที่ต้องติดตาม");
+  if (data.stillOpen > 0) blockers.push(`ยังมี ${data.stillOpen} เคสค้าง`);
+  return blockers;
+}
+
+async function persistCaseClosure(e, note) {
+  if (e._closing) return false;
+  e._closing = true;
+  try {
+    const stamp = new Date().toISOString();
+    const actor = (typeof Sb !== "undefined" && Sb.currentEmail()) || currentUser().username;
+    if (state.dataset === "production") {
+      if (typeof Sb === "undefined" || !Sb.signedIn() || !e.dbId) throw new Error("ยังยืนยันบัญชีผู้ใช้หรือเคสต้นทางไม่ได้");
+      await Sb.closeException(e.dbId, e.status, {
+        resolution_note: note, resolved_at: stamp, resolved_by: actor,
+        approved_by: Sb.authUser()?.id, approved_at: stamp, updated_at: stamp,
+      });
+    }
+    Object.assign(e, { status: "closed", resolutionNote: note, resolvedAt: stamp, resolvedBy: actor });
+    if (state.dataset !== "production") saveOverride(e);
+    else {
+      delete Store.data.exOverrides[e.id];
+      Store.persist();
+    }
+    return true;
+  } catch (err) {
+    toast("ยังไม่ยืนยันการปิดเคส: " + err.message + " — รีเฟรชเพื่อตรวจสถานะจริง", "warn");
+    return false;
+  } finally {
+    e._closing = false;
+  }
+}
+
+async function completeQuickClose(e) {
   if (!can("approve")) return deny("ปิดเคส");
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
   const note = "Audit ยืนยันรายการครบทั้ง STM และ BO/ระบบ และยอดตรงกัน";
-  e.status = "closed";
+  if (!await persistCaseClosure(e, note)) return;
   e.resolutionNote = note;
   e.resolvedAt = new Date().toISOString();
   e.resolvedBy = (typeof Sb !== "undefined" && Sb.signedIn() ? Sb.currentEmail() : "") || currentUser().username;
   e.notes = e.notes || [];
   e.notes.push({ by: currentUser().username, at: nowStamp(), text: note });
   logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · ต่างเวลา ${num(e.timeDiffSec || 0)} วินาที`);
-  saveOverride(e);
   closeModal();
   closeDrawer();
   toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
@@ -1780,6 +1825,9 @@ function renderDailyCompanySummary(root) {
     const boRequired = Array.isArray(data.boFirst?.required) ? data.boFirst.required : [];
     const boReceived = Array.isArray(data.boFirst?.received) ? data.boFirst.received : [];
     const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
+    const completionBlockers = dailyCompletionBlockers(data);
+    const dayComplete = completionBlockers.length === 0;
+    const coverageComplete = reconciliationReady && checklistReady && Boolean(data.boFirst?.complete) && boMissing.length === 0 && missing.length === 0 && boFiles >= boExpected;
     const boRequiredByKind = (kind) => boRequired.filter((item) => item.kind === kind);
     const boMissingByKind = (kind) => boMissing.filter((item) => item.kind === kind);
     const stmRequiredByBo = boRequiredByKind("STM");
@@ -1983,6 +2031,8 @@ function renderDailyCompanySummary(root) {
           ? { route: "cloud", tone: "warn", title: `ตามไฟล์ที่ยังขาด ${num(missing.length)} ประเภท`, detail: missing.join(" · "), button: "ดูสิ่งที่ขาด" }
           : data.stillOpen
             ? { route: "exceptions", tone: "warn", title: `ตรวจรายการค้าง ${num(data.stillOpen)} เคส`, detail: "เปิดหลักฐานและติดตามผลการชี้แจง", button: "ตรวจเคส" }
+            : !dayComplete
+              ? { route: "cloud", tone: "warn", title: "ยังยืนยันปิดงานไม่ได้", detail: completionBlockers.join(" · "), button: "ตรวจสิ่งที่ค้าง" }
             : { route: "reports", tone: "ok", title: "ตรวจครบแล้ว พร้อมออกรายงาน", detail: "ตรวจยอดสรุปอีกครั้งแล้ว Export เก็บเป็นหลักฐาน", button: "ดูรายงาน" };
     const sheetRows = dailyAuditSheetRows(state.dailySummary.date);
     const auditSheetHtml = `
@@ -2029,7 +2079,7 @@ function renderDailyCompanySummary(root) {
       </section>
 
       <section class="panel company-day-checklist">
-        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${!checklistReady || missing.length || data.stillOpen ? "attention" : "ok"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : "ครบและปิดงาน"}</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${dayComplete ? "ok" : "attention"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : dayComplete ? "ครบและปิดงาน" : "ยังตรวจไม่ครบ"}</span></div>
         <div class="checklist-cards">
           ${[
             ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
@@ -2037,17 +2087,17 @@ function renderDailyCompanySummary(root) {
             ["รายงาน BO บังคับ", checklistBoCount >= boExpected, `${num(checklistBoCount)}/${num(boExpected)} ไฟล์`, false],
             ["PM D/W ของ Provider ที่พบใน BO", Boolean(data.boFirst) && pmRequiredByBo.length > 0 && pmMissingByBo.length === 0, data.boFirst ? `${num(pmRequiredByBo.length - pmMissingByBo.length)}/${num(pmRequiredByBo.length)} กลุ่มตาม BO · รับ ${num(checklistPmCount)} ไฟล์` : `${num(checklistPmCount)} ไฟล์ · รออ่าน BO`, !data.boFirst || !pmRequiredByBo.length],
             ["อ่านไฟล์สำหรับกระทบยอด", reconciliationReady, fileErrors ? `อ่านไม่ได้ ${num(fileErrors)}` : `${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์ไม่ต้องแปลงรายการ`, false],
-            ["กระทบยอดและปิดเคส", latestStatus === "completed" && data.stillOpen === 0, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
+            ["กระทบยอดและปิดเคส", dayComplete, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
           ].map(([label, ok, detail, optional]) => scheduled
             ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
             : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
         </div>
-        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบและปิดงานแล้ว</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
+        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : !dayComplete ? `<div class="alert warn"><strong>ยังยืนยันปิดงานไม่ได้</strong><span>${h(completionBlockers.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบและปิดงานแล้ว</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
         ${data.checklist?.registry_warning ? `<div class="alert warn registry-alert"><strong>ข้อมูลทะเบียนที่ควรยืนยัน</strong><span>${h(data.checklist.registry_warning)}</span></div>` : ""}
       </section>
 
       <section class="grid-2 daily-summary-grid">
-        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${missing.length ? "attention" : "ok"}">${missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ครบตามกฎ"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
+        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${coverageComplete ? "ok" : "attention"}">${coverageComplete ? "ครบตาม BO และกฎ" : boMissing.length ? `ยังจับคู่ไม่ได้ ${num(boMissing.length)} กลุ่ม` : missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ยังยืนยันความครบถ้วนไม่ได้"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
         <div class="panel" id="dailyReconcileResult"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception รวมจากทั้งสองฝั่ง</span><b>${num(data.exceptionTotal)}</b><small class="sub">รวมรายการไม่พบคู่ ยอดต่าง เวลาต่าง และรายการซ้ำ จึงไม่เท่ากับ STM ลบรายการจับคู่เสมอ</small></li><li><span>ความเสียหายที่ผู้ตรวจยืนยันแล้ว</span><b>${h(damageDisplay)}</b></li></ul></div>
       </section>
 
@@ -2626,6 +2676,11 @@ async function loadExceptionSupport(e, options = {}) {
       const bo = $("#caseRawBo");
       if (stm) stm.textContent = e.stmRaw || "— ไม่พบรายการฝั่ง STM —";
       if (bo) bo.textContent = e.boRaw || "— ไม่พบรายการฝั่ง BO —";
+      // Recompute the closure checklist after loading actual transaction evidence.
+      if (state.selected === e.id && document.body.contains(host)) {
+        openException(e.id, options);
+        return;
+      }
     }
     if (!document.body.contains(host)) return;
     host.innerHTML = exceptionFilesMarkup(files, e);
@@ -2647,8 +2702,8 @@ function openException(id, options = {}) {
   const overlay = $("#drawerOverlay");
   const checklist = [
     { key: "raw", label: "โหลดข้อมูลรายการ STM / BO แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
-    { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause },
-    { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee },
+    { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
+    { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
     { key: "evidence", label: "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence },
     { key: "note", label: "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote },
     { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
@@ -2870,13 +2925,12 @@ function openException(id, options = {}) {
     }
     openException(id);
   });
-  $("#btnApprove").addEventListener("click", () => {
+  $("#btnApprove").addEventListener("click", async () => {
     if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
     if (quickCloseEligible) return confirmQuickClose(e);
     if (!ready) return toast("เช็คลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
-    e.status = "closed";
+    if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
     logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
-    saveOverride(e);
     toast("อนุมัติและปิดเคส " + e.id + " แล้ว");
     closeDrawer();
     render();
@@ -3050,11 +3104,12 @@ VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
   const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status));
   root.innerHTML = `
+    <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
       <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status === "answered").length)}</strong><small>Audit Lead ต้องตรวจทาน</small></article>
       <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
-      <article class="ok"><span>ปิดเคสแล้ววันนี้</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
+      <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
     </section>
 
     <section class="panel">
@@ -3083,7 +3138,7 @@ VIEWS.approvals = (root) => {
               </td>
             </tr>`,
                 )
-                .join("") || `<tr><td colspan="7" class="empty">ไม่มีรายการรออนุมัติ</td></tr>`
+                .join("") || `<tr><td colspan="7" class="empty">ไม่พบรายการรออนุมัติในข้อมูลที่โหลด — ยังไม่ใช่การยืนยันว่าไม่มีเคสค้างทั้งหมด</td></tr>`
             }
           </tbody>
         </table>
@@ -3094,13 +3149,8 @@ VIEWS.approvals = (root) => {
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("อนุมัติ");
-      const e = DB.exceptions.find((x) => x.id === b.dataset.approve);
-      if (!e.hasEvidence && DB.settings.rules.requireEvidence) return toast("กฎบังคับแนบหลักฐานก่อนปิดเคส — ยังอนุมัติไม่ได้", "warn");
-      e.status = "closed";
-      logAction("approve", "exception", e.id, "อนุมัติจากหน้า approval queue");
-      saveOverride(e);
-      toast("อนุมัติ " + e.id + " แล้ว");
-      render();
+      // Use the same evidence/amount checklist as the case drawer; no queue bypass.
+      openException(b.dataset.approve);
     }),
   );
   root.querySelectorAll("[data-reject]").forEach((b) =>

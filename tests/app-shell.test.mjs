@@ -5,6 +5,42 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
+const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
+const completionBlockers = extractFunction("dailyCompletionBlockers");
+const completeDay = {
+  files: [{}], reconciliationFiles: [{ parsed: true }], checklist: { missing_items: [] },
+  quality: [{ run_id: "run", status: "completed" }], boFirst: { complete: true, missing: [] }, stillOpen: 0,
+};
+assert.deepEqual(completionBlockers(completeDay), []);
+for (const changes of [
+  { files: [] }, { checklist: null }, { reconciliationFiles: [] },
+  { reconciliationFiles: [{ parsed: true, parse_error: "failed" }] },
+  { quality: [] }, { quality: [{ status: "completed" }] },
+  { boFirst: null }, { boFirst: { complete: true, missing: [{}] } }, { stillOpen: 1 },
+]) assert.ok(completionBlockers({ ...completeDay, ...changes }).length, JSON.stringify(changes));
+const quickClose = extractFunction("isQuickCloseEligible");
+const eligible = { status: "open", bankAmount: 200, systemAmount: 200, _detailLoaded: true, stmRaw: "STM source", boRaw: "BO source" };
+assert.equal(quickClose(eligible), true);
+for (const changes of [{ _detailLoaded: false }, { stmRaw: "—" }, { boRaw: "" }, { bankAmount: "", systemAmount: 0 }, { bankAmount: Infinity }, { systemAmount: 201 }, { status: "closed" }]) {
+  assert.ok(!quickClose({ ...eligible, ...changes }), JSON.stringify(changes));
+}
+assert.match(app, /await Sb\.closeException/);
+assert.match(app, /openException\(b\.dataset\.approve\)/, "approval queue must use the case evidence checklist");
+const closureSource = app.match(/async function persistCaseClosure\([^]*?\n}/)[0];
+for (const succeeds of [false, true]) {
+  const record = { id: "EX-test", dbId: "test", status: "open" };
+  const messages = [];
+  const close = new Function("state", "Sb", "Store", "currentUser", "saveOverride", "toast", `${closureSource}; return persistCaseClosure;`)(
+    { dataset: "production" },
+    { currentEmail: () => "tester", signedIn: () => true, authUser: () => ({ id: "test" }), closeException: async () => { if (!succeeds) throw new Error("network failed"); } },
+    { data: { exOverrides: {} }, persist() {} }, () => ({ username: "tester" }),
+    () => { throw new Error("production must not save a local closure override"); }, (message) => messages.push(message),
+  );
+  assert.equal(await close(record, "verified"), succeeds);
+  assert.equal(record.status, succeeds ? "closed" : "open");
+  assert.equal(record._closing, false);
+  assert.equal(messages.length, succeeds ? 0 : 1);
+}
 const formats = readFileSync(join(root, "formats.js"), "utf8");
 const html = readFileSync(join(root, "index.html"), "utf8");
 const sb = readFileSync(join(root, "supabase.js"), "utf8");
