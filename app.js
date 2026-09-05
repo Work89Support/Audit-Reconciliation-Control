@@ -1498,9 +1498,11 @@ async function loadDailyCompanySummary(force = false) {
   try {
     const core = await Promise.allSettled([
       Sb.batches({ from: date, to: date }),
-      Sb.quality({ from: date, to: date, company, limit: 50 }),
-      Sb.operations({ from: date, to: date, company, limit: 50 }),
-      Sb.dailyChecklist({ from: date, to: date, company, limit: 20 }),
+      // ดึงทุกบริษัทของวันที่เดียวกัน เพื่อให้ Audit Sheet ภาพรวมและรายงาน
+      // บริษัทที่เลือกอ้างอิง snapshot เดียวกัน ไม่ขึ้น 0 บริษัททั้งที่มีผลจริง
+      Sb.quality({ from: date, to: date, limit: 500 }),
+      Sb.operations({ from: date, to: date, limit: 500 }),
+      Sb.dailyChecklist({ from: date, to: date, limit: 100 }),
       Sb.boFirstCoverage({ from: date, to: date, company, limit: 20 }),
     ]);
     if (requestId !== dailyCompanyState.requestId) return;
@@ -1510,7 +1512,7 @@ async function loadDailyCompanySummary(force = false) {
     const selectedQuality = valueAt(1).filter((row) => row.business_date === date);
     /* หน้าเปิดครั้งแรกยึดวันที่วันนี้ แต่ผลรันอาจเพิ่งเสร็จถึงวันก่อนหน้า
        ถ้าวันนี้ยังไม่มีผล ให้พาไปวันที่ล่าสุดที่บริษัทนี้มีผลจริงทันที */
-    if (date === PROD_TODAY && !selectedQuality.some((row) => row.run_id)) {
+    if (date === PROD_TODAY && !selectedQuality.some((row) => row.company === company && row.run_id)) {
       const latestRows = await Sb.quality({ company, limit: 100 });
       if (requestId !== dailyCompanyState.requestId) return;
       const latestDate = (latestRows || [])
@@ -1611,8 +1613,8 @@ function dailyMissingKinds(rows) {
 }
 
 function dailyAuditSheetRows(date) {
-  const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
-  const quality = (liveOverviewState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const checklist = (dailyCompanyState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const quality = (dailyCompanyState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
   const checklistByCompany = new Map(checklist.map((row) => [row.company, row]));
   const qualityByCompany = new Map(quality.map((row) => [row.company, row]));
   const companies = [...new Set([...checklistByCompany.keys(), ...qualityByCompany.keys()])];
@@ -1969,8 +1971,12 @@ function renderDailyCompanySummary(root) {
       });
       bindStoredFileLinks($("#modal"), "[data-bo-preview]");
     };
-    const nextWork = fileErrors
-      ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
+    const nextWork = !data.files.length
+      ? { route: "cloud", tone: "warn", title: "ยังไม่ได้รับไฟล์ของวันนี้", detail: `รออีเมล/ไฟล์ของ ${company} ก่อน จึงจะตรวจความครบถ้วนและกระทบยอดได้`, button: "ตรวจไฟล์เข้า" }
+      : !boFiles
+        ? { route: "cloud", tone: "bad", title: "ยังขาดรายงาน BO", detail: "BO เป็นไฟล์หลักสำหรับระบุบัญชีและ Provider ที่ใช้งานจริงของวันนี้", button: "ตรวจไฟล์ BO" }
+        : fileErrors
+          ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
       : waitingFiles
         ? { route: "cloud", tone: "warn", title: `รอระบบอ่าน ${num(waitingFiles)} ไฟล์`, detail: "ตรวจสถานะไฟล์ก่อนเริ่มกระทบยอด", button: "ดูไฟล์" }
         : missing.length
@@ -2059,6 +2065,22 @@ function renderDailyCompanySummary(root) {
       }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
 
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Exception resolution</p><h2>ผลการตรวจและแก้ไขทั้งหมด</h2><small class="head-sub">แก้ไขแล้ว ${num(data.resolvedTotal)} · ยังไม่ปิด ${num(data.stillOpen)} · แสดงรายละเอียดชุดแรก ${num(data.exceptions.length)}/${num(data.exceptionTotal)}</small></div><button class="ghost-button sm" id="dailyGoExceptions">เปิดหน้าติดตามเคส</button></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>เคส / เวลา</th><th>ประเภท</th><th>บัญชี</th><th class="right">ยอด BO</th><th class="right">ยอด STM</th><th class="right">ผลต่าง</th><th>ระดับ</th><th>สถานะการแก้ไข</th><th>ผู้เกี่ยวข้อง / สาเหตุ</th></tr></thead><tbody>${data.exceptions.map((row) => `<tr class="clickable" data-daily-ex="${h(row.id)}"><td><b>${h(row.id)}</b><small class="sub">${h(row.time || "-")}</small></td><td>${h(row.typeName)}</td><td>${h(row.account)}<small class="sub">${h(row.bank)} · ${h(row.direction)}</small></td><td class="right tnum">${row.systemAmount == null ? "-" : money(row.systemAmount)}</td><td class="right tnum">${row.bankAmount == null ? "-" : money(row.bankAmount)}</td><td class="right tnum danger">${money(row.amountDiff || row.riskAmount)}</td><td><span class="badge ${h(row.severity)}">${h(sevMeta(row.severity).name)}</span></td><td><span class="badge ${h(statusMeta(row.status).tone)}">${h(statusMeta(row.status).name)}</span></td><td>${h(row.employee)}<small class="sub">${h(row.cause)}</small></td></tr>`).join("") || `<tr><td colspan="9" class="empty">${data.exceptionTotal ? `ผลรันระบุ ${num(data.exceptionTotal)} Exception แต่ยังไม่มีรายละเอียดเคสที่เปิดดูได้` : "ไม่พบ Exception ของบริษัทนี้ในวันที่เลือก"}</td></tr>`}</tbody></table></div></section>`;
+
+    // แถบสถานะส่วนหัวต้องยึดข้อมูล live ของบริษัท/วันที่ที่ผู้ใช้กำลังดู
+    // ไม่ใช่ ImportState ในเครื่อง ซึ่งอาจเป็นผลจากวันก่อนและทำให้วันว่างขึ้นว่าเสร็จแล้ว
+    const liveHeader = !data.files.length
+      ? { text: "รอไฟล์", tone: "idle", why: `ยังไม่ได้รับไฟล์ของ ${company} วันที่ ${state.dailySummary.date}` }
+      : !boFiles
+        ? { text: "รอ BO", tone: "wait", why: "ยังไม่มีรายงาน BO สำหรับระบุบัญชีและ Provider ที่ใช้งานจริง" }
+        : !data.quality.length
+          ? { text: "รอผลกระทบยอด", tone: "wait", why: "ได้รับไฟล์แล้ว แต่ยังไม่มีผลกระทบยอดของวันและบริษัทนี้" }
+          : { text: status.label, tone: status.tone === "green" ? "ok" : status.tone === "red" ? "wait" : status.tone, why: `สถานะจริงจาก Supabase: ${status.label}` };
+    const liveAutoStatus = $("#autoStatus");
+    if (liveAutoStatus) {
+      liveAutoStatus.className = `auto-status ${liveHeader.tone}`;
+      liveAutoStatus.title = liveHeader.why;
+      $("#autoStatusText").textContent = liveHeader.text;
+    }
   }
 
   $("#dailySummaryDate")?.addEventListener("change", (event) => {

@@ -44,8 +44,13 @@ assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษั
 assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");
 assert.match(app, /ภาพรวมการกระทบยอด 3 จุด/, "หน้ารายวันต้องสรุป STM\/PM เทียบ BO ในจุดเดียว");
 assert.match(app, /ขั้นถัดไปที่แนะนำ/, "หน้ารายวันต้องบอกงานถัดไปที่ผู้ตรวจควรทำ");
+assert.match(app, /const nextWork = !data\.files\.length[\s\S]+ยังไม่ได้รับไฟล์ของวันนี้/, "วันที่ยังไม่มีไฟล์ต้องไม่แนะนำให้ออกรายงาน");
+assert.match(app, /const liveHeader = !data\.files\.length[\s\S]+text: "รอไฟล์"/, "แถบสถานะหน้ารายวันต้องยึดไฟล์จริงของวันที่เลือก");
+assert.match(app, /!boFiles[\s\S]+title: "ยังขาดรายงาน BO"/, "เมื่อไม่มี BO ต้องระบุไฟล์หลักที่ขาดก่อนกระทบยอด");
 assert.match(app, /date === PROD_TODAY && !selectedQuality\.some/, "หน้ารายวันต้องเลื่อนไปวันที่ล่าสุดที่มีผลจริงเมื่อวันนี้ยังไม่มีผลรัน");
 assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/, "หน้ารายวันต้องมีตารางภาพรวมแบบสเปรดชีต");
+assert.match(app, /function dailyAuditSheetRows\(date\)[\s\S]+dailyCompanyState\.checklist[\s\S]+dailyCompanyState\.quality/, "ตารางทุกบริษัทต้องใช้ snapshot วันที่เดียวกับรายละเอียดรายบริษัท");
+assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "หน้ารายวันต้องโหลดผลทุกบริษัทเพื่อสร้างตารางภาพรวมจริง");
 assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
 assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");
 assert.match(app, /data-case-files=/, "ตาราง Exception ต้องมีปุ่มเปิดไฟล์ประกอบโดยตรง");

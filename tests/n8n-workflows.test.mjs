@@ -140,7 +140,20 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.4\.4'/, "worker version must identify full BO identity and OCR zero-activity release");
+assert.match(workerText, /worker_version:'1\.4\.5'/, "worker version must identify strict zero-activity validation");
+const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
+const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
+const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
+  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf};');
+const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
+  {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
+const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
+assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');
+assert.equal(checkEmpty([['valid header']], 'bo', boHeaderFixture).parseError, null, 'recognized header-only BO is valid');
+assert.ok(checkEmpty([['valid header'],['unreadable transaction']], 'bo', boHeaderFixture).parseError, 'dropped BO rows must not become zero activity');
+assert.ok(checkEmpty([], 'stm', null, 'Bank statement account 1234567890 balance 100.00', 'stm_pdf','pdf').parseError, 'statement heading does not prove no transactions');
+assert.equal(checkEmpty([], 'stm', null, 'Bank statement account 1234567890 no transactions for this period', 'stm_pdf','pdf').parseError, null);
+assert.ok(checkEmpty([], 'stm', null, 'Bank statement no transactions 31/08/2026 12:00 unreadable row', 'stm_pdf','pdf').parseError, 'transaction-like content requires review even with an empty marker');
 assert.match(workerText, /source_labels:\[\]/, "BO-first summary must retain full source labels for rechecking");
 assert.match(workerText, /acceptedEmptyStmPdf/, "zero-activity STM PDFs must be handled explicitly");
 assert.match(workerText, /key=system\+'\|'\+company\+'\|'\+x\.kind/, "BO-first keys must include system and company before provider/account");
@@ -197,7 +210,7 @@ assert.match(supabaseSource, /function rangedView/, "summary views must support 
 assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
 assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");
 assert.match(supabaseSource, /rest\/v1\/exceptions\?\$\{filters\.join\("&"\)\}/, "exception summary must read current-run rows directly from the indexed table");
-assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, company, limit: 50 \}\)/, "daily summary must load only the selected company and day");
+assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "daily summary must load the selected day for every company in the audit sheet");
 assert.match(appSource, /const core = await Promise\.allSettled/, "a slow daily-summary section must not blank the whole report");
 assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 250 \}\)/, "daily summary must load only a fast first page for the selected company");
 assert.match(appSource, /limit: 5000[\s\S]+exportDailyCompanySummary/, "full exception details must be loaded only when the auditor exports");
