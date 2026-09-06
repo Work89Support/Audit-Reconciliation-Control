@@ -535,11 +535,12 @@ function setSidebarCollapsed(collapsed) {
 
 function renderAuditFlow() {
   const files = (cloudState.batches || []).flatMap((batch) => batch.source_files || []);
-  const fileIssues = files.filter((file) => file.parse_error || file.kind === "unknown").length;
+  const fileIssues = files.filter((file) => (file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown").length;
+  const fileReview = files.filter(statementNeedsBoReview).length;
   const fileWaiting = files.filter((file) => !file.parsed && !file.parse_error && !["unknown", "doc_clarify"].includes(file.kind)).length;
   const workflow = scopedWorkflowMetrics();
   const steps = [
-    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ปัญหา ${num(fileIssues)}` : ""}${fileWaiting ? ` · รอระบบ ${num(fileWaiting)}` : fileIssues ? "" : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues ? "warn" : files.length ? "ok" : "" },
+    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ปัญหา ${num(fileIssues)}` : ""}${fileReview ? ` · รอเทียบ BO ${num(fileReview)}` : ""}${fileWaiting ? ` · รอระบบ ${num(fileWaiting)}` : fileIssues || fileReview ? "" : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues || fileReview ? "warn" : files.length ? "ok" : "" },
     { route: "dashboard", no: 2, label: "ดูภาพรวม", meta: "แยกตามบริษัท", tone: "" },
     { route: "exceptions", no: 3, label: "ตรวจข้อผิดปกติ", meta: workflow.openAvailable ? `${num(workflow.open)} เคสเปิด` : "กำลังโหลดยอดเคส", tone: !workflow.openAvailable ? "" : workflow.open ? "warn" : "ok" },
     { route: "clarify", no: 4, label: "ติดตาม/อนุมัติ", meta: workflow.approvalsAvailable ? `${num(workflow.followUps)} งาน` : "กำลังโหลดงานติดตาม", tone: !workflow.approvalsAvailable ? "" : workflow.followUps ? "warn" : "ok" },
@@ -559,10 +560,12 @@ let pendingCloudInbox = false;
 
 function nextActionForState() {
   const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, batchCompany: batch.company, business_date: batch.business_date })));
-  const unread = files.filter((file) => file.parse_error || file.kind === "unknown");
+  const unread = files.filter((file) => (file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown");
+  const needsBoReview = files.filter(statementNeedsBoReview);
   const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
   const workflow = scopedWorkflowMetrics();
   if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดดูรายชื่อไฟล์ปัญหาทั้งหมดและสาเหตุก่อน แล้วค่อยเปิดตรวจทีละรายการ", tone: "bad" };
+  if (needsBoReview.length) return { route: "cloud", label: `เทียบ BO สำหรับไฟล์ที่อ่านแล้ว ${num(needsBoReview.length)} ไฟล์`, detail: "ไม่พบรายการในวันตรวจ ไม่ใช่ไฟล์เสีย — ตรวจบัญชีและวันกับ BO ก่อนสรุป ไม่ต้องรันไฟล์เดิมซ้ำ", tone: "warn" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (workflow.followUps) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
   if (workflow.openAvailable && workflow.open) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(workflow.open)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
@@ -5166,6 +5169,7 @@ async function ingestRaw(name, text, size, meta = {}) {
   if (/\.pdf$/i.test(name)) {
     /* statement ธนาคารเป็น PDF — ใช้ตัวอ่านเฉพาะ */
     norm = await PdfStm.parse(name, text, businessDate);
+    if (norm.quality && !norm.quality.complete) throw new Error(`PDF อ่านได้บางส่วน: ${norm.quality.unreadRows.length} บรรทัดยังอ่านไม่ได้ / ${norm.quality.invalidRows.length} รายการต้องยืนยัน — ส่งอ่านผ่าน OCR หรือตรวจต้นฉบับก่อนกระทบยอด`);
     registerAccountFromStatement(norm);
   } else {
     if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
@@ -5900,8 +5904,6 @@ VIEWS.notifications = (root) => {
 
 let scheduleTimer = null;
 let cloudWorkerTimer = null;
-let cloudWorkerBusy = false;
-let cloudWorkerGeneration = 0;
 
 function bangkokDate(offsetDays = 0) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -5912,41 +5914,14 @@ function bangkokDate(offsetDays = 0) {
 }
 
 async function cloudWorkerTick() {
-  if (cloudWorkerBusy || !Sb.configured() || !Sb.signedIn()) return;
-  cloudWorkerBusy = true;
-  let job = null;
-  try {
-    await Sb.queueDueJobs(bangkokDate(-14), bangkokDate(1));
-    job = await Sb.claimJob(Sb.currentEmail() || "web-worker");
-    if (!job || !job.id) return;
-    state.filters.date = job.business_date;
-    state.filters.from = job.business_date;
-    state.filters.to = job.business_date;
-    const batches = await Sb.batches({ from: job.business_date, to: job.business_date });
-    const files = batches
-      .flatMap((b) => (b.source_files || []).filter((f) => String(f.company || b.company || "").toUpperCase() === String(job.company || "").toUpperCase()))
-      .filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify" && f.kind !== "unknown" && !f.parse_error);
-    if (!files.length) throw new Error("ไม่พบไฟล์ที่ตัวอ่านรองรับในคิวนี้");
-    Store.notify("ok", "เริ่มคิวกระทบยอดรายวัน", `${job.business_date} · ${job.company} · ${files.length} ไฟล์`, "cloud");
-    await cloudImport(files, { clear: true, job });
-  } catch (e) {
-    if (job && job.id) await Sb.failJob(job.id, e.message).catch(() => {});
-    console.warn("daily reconciliation worker", e);
-  } finally {
-    cloudWorkerBusy = false;
-  }
+  // Cloud owns automatic jobs. Browsers must never claim the same queue:
+  // user-scoped RLS and stale tabs can otherwise fail a job before n8n sees it.
+  if (Sb.configured() && Sb.signedIn()) await Sb.queueDueJobs(bangkokDate(-14), bangkokDate(1));
 }
 
 function startCloudWorker() {
-  const generation = ++cloudWorkerGeneration;
   clearTimeout(cloudWorkerTimer);
-  if (!Sb.configured() || !Sb.signedIn()) return;
-  const runNext = async () => {
-    await cloudWorkerTick();
-    if (generation !== cloudWorkerGeneration || !Sb.configured() || !Sb.signedIn()) return;
-    cloudWorkerTimer = setTimeout(runNext, 15000);
-  };
-  runNext();
+  // The published n8n schedule runs without an open browser.
 }
 
 function startScheduler() {

@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const flow = app.slice(app.indexOf('function renderAuditFlow()'), app.indexOf('let pendingCloudInbox'));
+const next = app.slice(app.indexOf('function nextActionForState()'), app.indexOf('function nextActionForState()') + 2600);
+assert.match(flow, /file\.parse_error && !statementNeedsBoReview\(file\)/);
+assert.match(flow, /รอเทียบ BO/);
+assert.match(next, /file\.parse_error && !statementNeedsBoReview\(file\)/);
+assert.match(next, /ไม่ต้องรันไฟล์เดิมซ้ำ/);
+const worker = app.slice(app.indexOf('async function cloudWorkerTick()'), app.indexOf('function startScheduler()'));
+assert.doesNotMatch(worker, /claimJob|cloudImport|failJob|setTimeout\(/, 'browser must not claim or run automatic jobs');
+assert.match(worker, /queueDueJobs/, 'explicit queue action remains available');
+console.log('Round UI safety: review counts and no browser queue-claim loop passed');
