@@ -627,22 +627,22 @@ function renderFilters() {
   const directionLabel = f.direction === "ALL" ? "ทุกประเภท" : f.direction;
   box.innerHTML = `
     <div class="filter-bar-head">
-      <div><strong>ตัวกรอง</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span><small>แสดงเฉพาะกันยายน 2569 · ข้อมูลสิงหาคมเก็บไว้หลังบ้าน ไม่ได้ลบ</small></div>
+      <div><strong>1. เลือกข้อมูลที่จะตรวจ</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span></div>
       <button class="ghost-button xs" id="filterToggle" type="button" aria-expanded="${state.filtersOpen}">${state.filtersOpen ? "ย่อ" : "ปรับตัวกรอง"}</button>
     </div>
     <div class="filter-fields" ${state.filtersOpen ? "" : "hidden"}>
-      <label>วันที่อ้างอิง
+      <label>วันที่ตั้งต้นของช่วง
         <input type="date" id="fDate" value="${f.date}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" />
       </label>
-      <label>ช่วงข้อมูล
+      <label>เลือกช่วงวันที่
         <select id="fPreset">
           ${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}
         </select>
       </label>
-      <label>ตั้งแต่
+      <label>วันเริ่มต้น
         <input type="date" id="fFrom" value="${f.from}" min="${VISIBLE_DATE_FROM}" max="${f.to}" />
       </label>
-      <label>ถึง
+      <label>วันสิ้นสุด
         <input type="date" id="fTo" value="${f.to}" min="${f.from}" max="${VISIBLE_DATE_TO}" />
       </label>
       <label>บริษัท
@@ -651,10 +651,10 @@ function renderFilters() {
           ${companyMaster().map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
         </select>
       </label>
-      <label>ประเภท
+      <label>ธุรกรรม / ช่องทาง
         <select id="fDirection">
-          <option value="ALL">ทุกประเภท</option>
-          <option value="PM" ${f.direction === "PM" ? "selected" : ""}>PM</option>
+          <option value="ALL">ฝากและถอน · ทุกช่องทาง</option>
+          <option value="PM" ${f.direction === "PM" ? "selected" : ""}>เฉพาะ Payment (PM)</option>
           <option value="ฝาก" ${f.direction === "ฝาก" ? "selected" : ""}>ฝาก</option>
           <option value="ถอน" ${f.direction === "ถอน" ? "selected" : ""}>ถอน</option>
         </select>
@@ -2604,23 +2604,39 @@ VIEWS.exceptions = (root) => {
       </div>
     </section>
     <section class="panel">
-      <div class="toolbar">
-        <input type="search" id="exSearch" placeholder="ค้นหาเคส บัญชี บริษัท สมาชิก หรือ Provider เช่น 12PAY..." value="${h(x.q)}" />
+      <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>กรองต่อจากวันที่และบริษัทด้านบน · เลือกแล้วรายการเปลี่ยนทันที</p></div>
+      <div class="case-filter-fields">
+        <label class="case-filter-search" for="exSearch">ค้นหาเคสหรือบัญชี
+        <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / สมาชิก / Provider" value="${h(x.q)}" /></label>
+        <label for="exStatus">สถานะงาน
+        <select id="exStatus">
+          <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>ยังต้องดำเนินการ (ไม่รวมปิดแล้ว)</option>
+          <option value="ALL" ${x.status === "ALL" ? "selected" : ""}>ทุกสถานะ · รวมปิดแล้ว</option>
+          ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
+        </select></label>
+        <label for="exType">ประเภทปัญหาที่พบ
         <select id="exType">
-          <option value="ALL">ทุกประเภท</option>
+          <option value="ALL">ทุกปัญหา</option>
           ${allExceptionTypes().map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
-        </select>
+        </select></label>
+        <label for="exSeverity">ระดับความรุนแรง
         <select id="exSeverity">
           <option value="ALL">ทุกระดับ</option>
           ${DB.severities.map((s) => `<option value="${s.code}" ${x.severity === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
-        </select>
-        <select id="exStatus">
-          <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>เฉพาะเรื่องที่ยังต้องดู</option>
-          <option value="ALL">ทุกสถานะ</option>
-          ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
-        </select>
-        <label class="chk"><input type="checkbox" id="exSla" ${x.sla ? "checked" : ""} /> เฉพาะที่เลย SLA</label>
-        <button class="ghost-button sm" id="exReset">ล้างตัวกรอง</button>
+        </select></label>
+      </div>
+      <div class="case-filter-actions">
+        <label class="chk"><input type="checkbox" id="exSla" ${x.sla ? "checked" : ""} /> เฉพาะเคสเกินกำหนดตอบ (SLA)</label>
+        <button class="ghost-button sm" id="exReset">คืนค่าตัวกรองเคสเริ่มต้น</button>
+        <small>ไม่เปลี่ยนวันที่และบริษัท · กลับไปดูเคสที่ยังต้องดำเนินการ</small>
+      </div>
+      <div class="case-filter-current" role="status" aria-live="polite"><b>กำลังแสดง</b>
+        <span>${h(rangeLabel())} · ${h(state.filters.company === "ALL" ? "ทุกบริษัทตามสิทธิ์" : state.filters.company)}</span>
+        <span>${h(state.filters.direction === "ALL" ? "ทุกธุรกรรม" : state.filters.direction)}</span>
+        <span>${h(x.status === "ACTION" ? "ยังต้องดำเนินการ" : x.status === "ALL" ? "ทุกสถานะ รวมปิดแล้ว" : statusMeta(x.status).name)}</span>
+        <span>${h(x.type === "ALL" ? "ทุกปัญหา" : allExceptionTypes().find((t) => t.code === x.type)?.name || x.type)}</span>
+        <span>${h(x.severity === "ALL" ? "ทุกระดับ" : DB.severities.find((s) => s.code === x.severity)?.name || x.severity)}</span>
+        ${x.sla ? '<span>เกินกำหนดตอบเท่านั้น</span>' : ""}${query ? `<span>ค้นหา: ${h(query)}</span>` : ""}
       </div>
 
       <div class="review-workbench" aria-label="โต๊ะตรวจเคส">

@@ -364,6 +364,21 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   line-height: 1.35;
 }
 .filter-summary b { color: var(--text); }
+.filter-bar-head > div { flex-wrap: wrap; }
+.filter-bar-head small { flex-basis: 100%; color: var(--muted); }
+.case-filter-heading strong { font-size: 16px; }
+.case-filter-heading p { margin: 4px 0 16px; color: var(--muted); font-size: 13px; }
+.case-filter-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.case-filter-fields label { display: grid; gap: 7px; font-size: 14px; font-weight: 600; min-width: 0; }
+.case-filter-fields input, .case-filter-fields select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px; font: inherit; font-weight: 400; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+.case-filter-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.case-filter-actions small { color: var(--muted); }
+.case-filter-current { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
+.case-filter-current span { padding: 4px 9px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .case-filter-fields { grid-template-columns: 1fr; }
+  .case-filter-actions { align-items: flex-start; flex-direction: column; }
+}
 
 .view-root { outline: none; display: grid; gap: 16px; }
 .next-action-bar {
