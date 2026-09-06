@@ -54,15 +54,16 @@ with settings as (
     and (p_company is null or p_company='ALL' or upper(coalesce(nullif(f.company,''),nullif(b.company,'')))=p_company)
   group by b.business_date,upper(coalesce(nullif(f.company,''),nullif(b.company,'')))
 ), ex as (
-  select j.id job_id,
-         count(e.id)::integer exception_count,
-         count(e.id) filter(where e.status in ('closed','approved'))::integer resolved_count,
-         count(e.id) filter(where e.status not in ('closed','approved'))::integer open_count
+  select j.id job_id,e.exception_count,e.resolved_count,e.open_count
   from public.daily_recon_jobs j
-  left join public.exceptions e on e.run_id=j.last_run_id
+  cross join lateral (
+    select count(*)::integer exception_count,
+           count(*) filter(where status in ('closed','approved'))::integer resolved_count,
+           count(*) filter(where status not in ('closed','approved'))::integer open_count
+    from public.exceptions where run_id=j.last_run_id
+  ) e
   where j.business_date between p_from and p_to and not j.is_archived
     and (p_company is null or p_company='ALL' or upper(j.company)=p_company)
-  group by j.id
 ), base as (
   select g.*,c.local_date,c.local_time,
          rule.business_system,rule.expected_bo_files,

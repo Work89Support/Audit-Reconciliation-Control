@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql = fs.readFileSync(new URL('../supabase/20260906_scoped_daily_checklist.sql', import.meta.url), 'utf8');
+const ex = sql.slice(sql.indexOf('), ex as ('), sql.indexOf('), base as ('));
+assert.match(ex, /cross join lateral/);
+assert.match(ex, /from public\.exceptions where run_id=j\.last_run_id/);
+assert.match(ex, /j\.business_date between p_from and p_to and not j\.is_archived/);
+assert.match(ex, /upper\(j\.company\)=p_company/);
+assert.match(sql, /security invoker/);
+assert.doesNotMatch(sql, /security definer|disable row level security/i);
+console.log('Checklist run-scoped aggregate and RLS preservation checks passed');
