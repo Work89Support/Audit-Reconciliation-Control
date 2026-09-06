@@ -11,6 +11,17 @@ assert.match(app, /มี Note ที่ยังไม่บันทึก/);
 assert.match(app, /การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส/);
 assert.match(app, /data-review-status="answered"/);
 const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
+const groupReviewCases = extractFunction("groupReviewCases");
+const baseCase = { id: "a", company: "A", date: "2026-09-06", account: "123", direction: "ฝาก", type: "time_diff", status: "open" };
+assert.equal(groupReviewCases([baseCase, {...baseCase, id: "b"}]).length, 1);
+for (const field of ["company", "date", "account", "direction", "type", "status"]) {
+  assert.equal(groupReviewCases([baseCase, {...baseCase, id: "b", [field]: "other"}]).length, 2);
+}
+assert.equal(groupReviewCases([{...baseCase, account: "-"}, {...baseCase, id: "b", account: "-"}]).length, 2);
+assert.equal(groupReviewCases([{...baseCase, overSla: true}])[0].overdue, 1);
+const sideTimestamp = extractFunction("exceptionSideTimestamp");
+assert.match(sideTimestamp({time: "12:00:00", date: "2026-09-06"}, "bo"), /ยังไม่มีเวลาต้นฉบับ/);
+assert.equal(sideTimestamp({boTime: "12:01:00", boDate: "2026-09-05"}, "bo"), "2026-09-05 12:01:00");
 const completionBlockers = extractFunction("dailyCompletionBlockers");
 const statementNeedsBoReview = extractFunction("statementNeedsBoReview");
 const statementReviewLabel = new Function('statementNeedsBoReview', `${app.match(/function statementReviewLabel\([^]*?\n}/)[0]}; return statementReviewLabel;`)(statementNeedsBoReview);

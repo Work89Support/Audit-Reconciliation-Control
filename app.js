@@ -883,7 +883,10 @@ function mapLiveException(e) {
     runId: e.run_id,
     date: e.business_date,
     time: String(e.occurred_at || "").slice(0, 8),
-    boTime: String(e.bo_time || e.occurred_at || "").slice(0, 8),
+    boTime: String(e.bo_time || "").slice(0, 8),
+    stmTime: String(e.stm_time || "").slice(0, 8),
+    boDate: e.bo_date || "",
+    stmDate: e.stm_date || "",
     company: e.company || "ไม่ระบุ",
     bank: e.bank || "-",
     account: e.account || "-",
@@ -2416,6 +2419,26 @@ VIEWS.intake = (root) => {
 /* =============================================================
    VIEW: Exceptions
    ============================================================= */
+function exceptionSideTimestamp(e, side) {
+  const time = e[`${side}Time`];
+  const date = e[`${side}Date`];
+  return time && time !== "-" && date ? `${date} ${time}` : "ยังไม่มีเวลาต้นฉบับ — เปิดหลักฐานตรวจ";
+}
+
+function groupReviewCases(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    // Unknown accounts must not be combined as if they were the same account.
+    const account = row.account && row.account !== "-" ? row.account : row.id;
+    const key = JSON.stringify([row.company, row.date, account, row.direction, row.type, row.status]);
+    if (!groups.has(key)) groups.set(key, { first: row, ids: [], overdue: 0 });
+    const group = groups.get(key);
+    group.ids.push(row.id);
+    if (row.overSla) group.overdue++;
+  }
+  return [...groups.values()];
+}
+
 let reviewQueueIds = [];
 VIEWS.exceptions = (root) => {
   if (!ensureLiveOverview(root)) return;
@@ -2438,6 +2461,7 @@ VIEWS.exceptions = (root) => {
   });
   const pages = Math.max(1, Math.ceil(sorted.length / state.perPage));
   reviewQueueIds = sorted.map((row) => row.id);
+  const reviewGroups = groupReviewCases(sorted);
   state.page = Math.min(state.page, pages);
   const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
   const x = state.exFilter;
@@ -2488,10 +2512,10 @@ VIEWS.exceptions = (root) => {
     return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
       <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(e.id)}</small></td>
       <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${h(e.account)}</td>
-      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(e.date)} ${h(e.time)}</b><small>${h(e.bank)}</small>` : ""}</td>
-      <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
-      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(e.date)} ${h(e.boTime || e.time)}</b><small>${h(e.employee)}</small>` : ""}</td>
+      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>` : ""}</td>
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
+      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>` : ""}</td>
+      <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
       <td class="right tnum">${hasStm && hasBo ? `${num(e.timeDiffSec)} วิ` : ""}</td>
       <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
       <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
@@ -2576,9 +2600,14 @@ VIEWS.exceptions = (root) => {
 
       ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
 
+      <details class="review-groups">
+        <summary>ตรวจเป็นกลุ่ม · ${num(reviewGroups.length)} กลุ่ม / ${num(sorted.length)} เคสที่โหลด</summary>
+        <p>แยกบริษัท วัน บัญชี ฝาก/ถอน ประเภทปัญหา และสถานะเดียวกัน ไม่ใช่การยืนยันว่าเป็นสาเหตุเดียวกัน และไม่ปิดเคสรวม</p>
+        <div class="review-group-list">${reviewGroups.map((group, index) => `<article class="review-group"><div><b>${h(group.first.company)} · ${h(group.first.date)}</b><p>${h(group.first.account)} · ${h(group.first.direction)}</p><p>${h(group.first.typeName)} · ${h(statusMeta(group.first.status).name)}</p><small>${num(group.ids.length)} เคส · เกิน SLA ${num(group.overdue)} เคส</small></div><button class="primary-button sm" data-review-group="${index}">ตรวจกลุ่มนี้ →</button></article>`).join("") || "ไม่พบเคสตามตัวกรอง"}</div>
+      </details>
       <div class="table-wrap ${state.exceptionView === "sheet" ? "reconciliation-sheet-wrap" : ""}">
         ${state.exceptionView === "sheet" ? `<table class="rows reconciliation-sheet">
-          <thead><tr><th rowspan="2">สถานะ</th><th rowspan="2">วันที่</th><th rowspan="2">บริษัท</th><th rowspan="2">บัญชี / Provider</th><th colspan="2" class="sheet-group stm">ฝั่ง STM / ธนาคาร</th><th colspan="2" class="sheet-group bo">ฝั่ง BO / ระบบ</th><th rowspan="2" class="right">ต่างเวลา</th><th rowspan="2" class="right">ต่างยอด</th><th rowspan="2">ผลการจับคู่</th><th rowspan="2">คำชี้แจง / หมายเหตุ</th><th rowspan="2">ทำรายการ</th></tr><tr><th>วันที่ / เวลา</th><th class="right">ยอด</th><th>วันที่ / เวลา</th><th class="right">ยอด</th></tr></thead><tbody>${auditSheetRows}</tbody>
+          <thead><tr><th rowspan="2">สถานะ</th><th rowspan="2">วันที่</th><th rowspan="2">บริษัท</th><th rowspan="2">บัญชี / Provider</th><th colspan="2" class="sheet-group bo">ฝั่ง BO / ระบบ (ตั้งต้น)</th><th colspan="2" class="sheet-group stm">ฝั่ง STM / ธนาคาร</th><th rowspan="2" class="right">ต่างเวลา</th><th rowspan="2" class="right">ต่างยอด</th><th rowspan="2">ผลการจับคู่</th><th rowspan="2">คำชี้แจง / หมายเหตุ</th><th rowspan="2">ทำรายการ</th></tr><tr><th>วันที่ / เวลา</th><th class="right">ยอด</th><th>วันที่ / เวลา</th><th class="right">ยอด</th></tr></thead><tbody>${auditSheetRows}</tbody>
         </table>` : `<table class="rows"><thead><tr>${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}<th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th></tr></thead><tbody>${caseQueueRows}</tbody></table>`}
       </div>
 
@@ -2599,7 +2628,16 @@ VIEWS.exceptions = (root) => {
     state.exFilter.status = button.dataset.reviewStatus;
     rerender();
   }));
-  $('#reviewStart')?.addEventListener('click', () => openException(reviewQueueIds[0]));
+  $('#reviewStart')?.addEventListener('click', () => {
+    reviewQueueIds = sorted.map((row) => row.id);
+    openException(reviewQueueIds[0]);
+  });
+  root.querySelectorAll('[data-review-group]').forEach((button) => button.addEventListener('click', () => {
+    const group = reviewGroups[Number(button.dataset.reviewGroup)];
+    if (!group) return;
+    reviewQueueIds = [...group.ids];
+    openException(reviewQueueIds[0]);
+  }));
   $("#openDailyResult")?.addEventListener("click", () => {
     state.dailySummary.date = state.filters.date || state.filters.to || DEFAULT_WORK_DATE;
     if (state.filters.company !== "ALL") state.dailySummary.company = state.filters.company;
@@ -3070,7 +3108,7 @@ VIEWS.matching = (root) => {
         <div class="compare-col">
           <h3>ฝั่งระบบหลังบ้าน (BO)</h3>
           <code>${h(e.boRaw)}</code>
-          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : h(e.boTime || e.time || "-")}</b></div>
+          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : h(exceptionSideTimestamp(e, "bo"))}</b></div>
           <div class="kv-line"><span>ยอด</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
           <div class="kv-line"><span>ผู้ทำรายการ</span><b>${h(e.employee)}</b></div>
         </div>
@@ -6491,7 +6529,7 @@ const SHEET_BUILDERS = {
       return {
         name: "กระทบยอด",
         title: "ตารางกระทบยอด — ช่องว่างหมายถึงไม่พบคู่และรอชี้แจง",
-        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA"],
+        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA"],
         widths: [14, 11, 12, 12, 9, 18, 21, 15, 13, 21, 18, 13, 13, 13, 24, 42, 10, 14, 10],
         rows: rows.map((e) => {
           const hasStm = e.bankAmount !== null;
@@ -6502,8 +6540,8 @@ const SHEET_BUILDERS = {
             : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
           return [
             statusMeta(e.status).name, e.id, e.date, e.company, e.direction, e.account,
-            hasStm ? `${e.date} ${e.time}` : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
-            hasBo ? `${e.date} ${e.boTime || e.time}` : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
+            hasBo ? exceptionSideTimestamp(e, "bo") : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
+            hasStm ? exceptionSideTimestamp(e, "stm") : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
             hasStm && hasBo ? e.timeDiffSec : "", hasStm && hasBo ? e.amountDiff : "", result,
             explanation || "เว้นไว้รอชี้แจง", sevMeta(e.severity).name, dueOf(e).short, e.overSla ? "เกิน" : "ปกติ",
           ];

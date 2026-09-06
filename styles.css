@@ -2249,3 +2249,11 @@ tr.on { background: #f0f7ff; }
 .review-case-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 0; border-bottom:1px solid #dbe5f0; margin-bottom:16px; }
 .review-case-nav span { text-align:center; }
 @media(max-width:600px) { .review-case-nav { flex-wrap:wrap; } .review-case-nav span { order:-1; width:100%; } }
+/* Review groups preserve individual decisions while reducing navigation. */
+.review-groups { margin: 16px 0; padding: 18px; border: 1px solid #bdd5ee; border-radius: 12px; background: #f6faff; }
+.review-groups summary { cursor: pointer; font-weight: 700; color: #075bb4; }
+.review-groups > p { color: #53667c; line-height: 1.6; }
+.review-group-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; max-height: 540px; overflow: auto; }
+.review-group { background: white; border: 1px solid #d7e3f0; border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 12px; justify-content: space-between; overflow-wrap: anywhere; }
+.review-group p { margin: 6px 0; }
+.review-group button { flex-shrink: 0; }
