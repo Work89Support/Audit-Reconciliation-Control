@@ -4703,9 +4703,10 @@ VIEWS.cloud = (root) => {
 
   const batches = cloudState.batches || [];
   const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: f.company || b.company, subject: b.subject })));
-  const isProblemFile = (file) => Boolean(file.parse_error || file.kind === "unknown");
-  const isReadyFile = (file) => !isProblemFile(file) && Boolean(file.parsed || file.kind === "doc_clarify");
-  const isWaitingFile = (file) => !isProblemFile(file) && !isReadyFile(file);
+  const isProblemFile = (file) => Boolean((file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown");
+  const isReadyFile = (file) => !statementNeedsBoReview(file) && !isProblemFile(file) && Boolean(file.parsed || file.kind === "doc_clarify");
+  const isWaitingFile = (file) => !statementNeedsBoReview(file) && !isProblemFile(file) && !isReadyFile(file);
+  const reviewFiles = allFiles.filter(statementNeedsBoReview);
   const problemFiles = allFiles
     .filter(isProblemFile)
     .sort((a, b) => String(b.business_date || "").localeCompare(String(a.business_date || "")) || String(a.company || "").localeCompare(String(b.company || ""), "th") || String(a.file_name || "").localeCompare(String(b.file_name || ""), "th"));
@@ -4714,7 +4715,9 @@ VIEWS.cloud = (root) => {
   const waitingFiles = allFiles.filter(isWaitingFile);
   const queueableFiles = readable.filter((f) => !f.parsed && !f.parse_error && f.kind !== "unknown");
   const pickedFiles = queueableFiles.filter((f) => cloudState.picked[f.id]);
-  const visibleFile = (file) => cloudState.fileView === "problem"
+  const visibleFile = (file) => cloudState.fileView === "review"
+    ? statementNeedsBoReview(file)
+    : cloudState.fileView === "problem"
     ? isProblemFile(file)
     : cloudState.fileView === "ready"
       ? isReadyFile(file)
@@ -4733,6 +4736,7 @@ VIEWS.cloud = (root) => {
       <article data-cloud-view="all"><span>ไฟล์ทั้งหมด</span><strong>${num(allFiles.length)}</strong><small>กดดูทุกสถานะ</small></article>
       <article class="${readyFiles.length ? "ok" : ""}" data-cloud-view="ready"><span>พร้อมใช้งาน</span><strong>${num(readyFiles.length)}</strong><small>อ่านสำเร็จ · กดดูรายการ</small></article>
       <article data-cloud-view="waiting"><span>รอประมวลผล</span><strong>${num(waitingFiles.length)}</strong><small>ไม่ใช่ไฟล์เสีย · รอระบบอ่าน</small></article>
+      <article data-cloud-view="review"><span>อ่านแล้ว · รอเทียบ BO</span><strong>${num(reviewFiles.length)}</strong><small>ไม่พบรายการในวันตรวจ · ไม่ต้องรันไฟล์เดิมซ้ำ</small></article>
       <article class="${problemFiles.length ? "danger" : ""}" data-cloud-view="problem"><span>มีปัญหาต้องแก้</span><strong>${num(problemFiles.length)}</strong><small>${problemFiles.length ? "ไม่ส่งไปรันจนกว่าจะแก้" : "ไม่มีปัญหา"}</small></article>
     </section>
 
@@ -4793,7 +4797,7 @@ VIEWS.cloud = (root) => {
         </div>
       </div>
       <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
-        ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
+        ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["review", "อ่านแล้ว · รอเทียบ BO", reviewFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>
       ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : cloudState.partialError ? `<p class="hint warn">${h(cloudState.partialError)} · ส่วนที่โหลดสำเร็จยังเปิดดูได้</p>` : ""}
       ${
@@ -4822,7 +4826,7 @@ VIEWS.cloud = (root) => {
                 .map((f) => {
                   const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
                   const canQueue = canRead && !f.parsed && !f.parse_error && f.kind !== "unknown";
-                  return `<tr class="${f.parse_error ? "bad" : ""}">
+                  return `<tr class="${f.parse_error && !statementNeedsBoReview(f) ? "bad" : ""}">
                   <td>${canQueue ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
                   <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดดูตัวอย่าง ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
                   <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
@@ -7023,9 +7027,14 @@ async function boot() {
   retagTracks();
 }
 document.addEventListener("DOMContentLoaded", boot);
-function statementReviewLabel(file) {
+function statementNeedsBoReview(file) {
   const reason = String(file.parse_error || "");
-  return /อ่านรายการได้ \d+ รายการ แต่ไม่มีรายการวันที่/.test(reason)
+  return /อ่านรายการได้ [1-9]\d* รายการ แต่ไม่มีรายการวันที่/.test(reason)
+    && !/อ่านได้บางส่วน|อ่านไฟล์ไม่สำเร็จ|อ่านไม่ได้|ไฟล์เสีย/.test(reason);
+}
+
+function statementReviewLabel(file) {
+  return statementNeedsBoReview(file)
     ? "ได้รับไฟล์แล้ว — ไม่พบรายการในวันตรวจ รอเทียบ BO"
     : "อ่านไฟล์ไม่สำเร็จ";
 }

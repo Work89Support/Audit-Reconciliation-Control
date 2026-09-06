@@ -7,7 +7,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
 const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
 const completionBlockers = extractFunction("dailyCompletionBlockers");
-const statementReviewLabel = extractFunction("statementReviewLabel");
+const statementNeedsBoReview = extractFunction("statementNeedsBoReview");
+const statementReviewLabel = new Function('statementNeedsBoReview', `${app.match(/function statementReviewLabel\([^]*?\n}/)[0]}; return statementReviewLabel;`)(statementNeedsBoReview);
+assert.equal(statementNeedsBoReview({parse_error: 'อ่านรายการได้ 23 รายการ แต่ไม่มีรายการวันที่ 2026-09-02'}), true);
+assert.equal(statementNeedsBoReview({parse_error: 'อ่านได้บางส่วน อ่านรายการได้ 23 รายการ แต่ไม่มีรายการวันที่ 2026-09-02'}), false);
+assert.equal(statementNeedsBoReview({parse_error: 'อ่านรายการได้ 0 รายการ แต่ไม่มีรายการวันที่ 2026-09-02'}), false);
 assert.match(statementReviewLabel({parse_error: "อ่านรายการได้ 23 รายการ แต่ไม่มีรายการวันที่ 2026-09-02"}), /ได้รับไฟล์แล้ว/);
 assert.equal(statementReviewLabel({parse_error: "PDF อ่านได้บางส่วน"}), "อ่านไฟล์ไม่สำเร็จ");
 const completeDay = {
