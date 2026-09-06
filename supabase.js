@@ -356,7 +356,7 @@ const Sb = (() => {
 
   /* Dashboard ใช้เฉพาะคอลัมน์สรุป ไม่ดึง stm_raw/bo_raw หลายพันแถว
      หลักฐานดิบยังโหลดได้จากหน้ารายการผิดปกติเมื่อผู้ใช้ต้องตรวจเคส */
-  async function currentExceptionsSummary({ from, to, company, limit = 5000 } = {}) {
+  async function currentExceptionsSummary({ from, to, company, limit = 5000, offset: startOffset = 0 } = {}) {
     const pageSize = 1000;
     const columns = [
       "id", "run_id", "code", "business_date", "occurred_at", "company", "bank", "account", "direction",
@@ -378,7 +378,7 @@ const Sb = (() => {
     if (!runIds.length) return [];
     const runFilter = `run_id=in.(${runIds.join(",")})`;
     const fetchPage = async (offset) => {
-      const filters = [`select=${columns}`, runFilter, "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      const filters = [`select=${columns}`, runFilter, "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);

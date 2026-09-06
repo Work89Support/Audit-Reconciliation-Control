@@ -20,6 +20,9 @@ for (const field of ["company", "date", "account", "direction", "type", "status"
 assert.equal(groupReviewCases([{...baseCase, account: "-"}, {...baseCase, id: "b", account: "-"}]).length, 2);
 assert.equal(groupReviewCases([{...baseCase, overSla: true}])[0].overdue, 1);
 const sideTimestamp = extractFunction("exceptionSideTimestamp");
+assert.match(app, /id="loadMoreCases"/);
+assert.match(app, /offset: moreCaseState.offset/);
+assert.match(app, /generation !== liveOverviewState.requestId/);
 assert.match(sideTimestamp({time: "12:00:00", date: "2026-09-06"}, "bo"), /ยังไม่มีเวลาต้นฉบับ/);
 assert.equal(sideTimestamp({boTime: "12:01:00", boDate: "2026-09-05"}, "bo"), "2026-09-05 12:01:00");
 const completionBlockers = extractFunction("dailyCompletionBlockers");
@@ -44,6 +47,10 @@ for (const changes of [
 const quickClose = extractFunction("isQuickCloseEligible");
 const eligible = { status: "open", bankAmount: 200, systemAmount: 200, _detailLoaded: true, stmRaw: "STM source", boRaw: "BO source" };
 assert.equal(quickClose(eligible), true);
+for (const raw of ["— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —", "ไม่พบรายการฝั่ง STM", "   —  ", "รอข้อมูล"]) {
+  assert.equal(quickClose({...eligible, stmRaw: raw}), false);
+  assert.equal(quickClose({...eligible, boRaw: raw}), false);
+}
 for (const changes of [{ _detailLoaded: false }, { stmRaw: "—" }, { boRaw: "" }, { bankAmount: "", systemAmount: 0 }, { bankAmount: Infinity }, { systemAmount: 201 }, { status: "closed" }]) {
   assert.ok(!quickClose({ ...eligible, ...changes }), JSON.stringify(changes));
 }

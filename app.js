@@ -380,6 +380,10 @@ const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรา�
 
 /* ปิดด่วนได้เมื่อมีรายการครบทั้งสองฝั่งและยอดเท่ากัน ผู้ตรวจยังต้องกดยืนยันเอง */
 function isQuickCloseEligible(e) {
+  const realEvidence = (raw) => {
+    const value = String(raw || "").trim();
+    return value.length > 1 && !/^[—–-]|ไม่พบรายการ|ไม่ต้องใช้\s*statement|ตรวจจากรายงานหลังบ้าน|รอข้อมูล|ไม่มีข้อมูล/i.test(value);
+  };
   return e
     && !["closed", "approved", "damage"].includes(e.status)
     && e.bankAmount !== null && e.bankAmount !== undefined
@@ -387,8 +391,8 @@ function isQuickCloseEligible(e) {
     && e.bankAmount !== "" && e.systemAmount !== ""
     && Number.isFinite(Number(e.bankAmount)) && Number.isFinite(Number(e.systemAmount))
     && !!e._detailLoaded
-    && !!e.stmRaw && e.stmRaw !== "—"
-    && !!e.boRaw && e.boRaw !== "—"
+    && realEvidence(e.stmRaw)
+    && realEvidence(e.boRaw)
     && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
 }
 
@@ -780,6 +784,30 @@ function render() {
 const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 const exceptionSupportCache = new Map();
+const moreCaseState = { offset: 0, hasMore: true, loading: false, error: "" };
+
+async function loadMoreCases() {
+  if (moreCaseState.loading || liveOverviewState.loading || liveOverviewState.auxiliaryLoading) return;
+  const key = liveOverviewState.key;
+  const generation = liveOverviewState.requestId;
+  moreCaseState.loading = true;
+  moreCaseState.error = "";
+  render();
+  try {
+    const rows = await Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 250, offset: moreCaseState.offset });
+    if (key !== liveOverviewState.key || generation !== liveOverviewState.requestId) return;
+    moreCaseState.offset += rows.length;
+    moreCaseState.hasMore = rows.length === 250;
+    const existing = new Map(DB.exceptions.map((row) => [row.dbId || row.id, row]));
+    for (const raw of rows) if (!existing.has(raw.id)) existing.set(raw.id, mapLiveException(raw));
+    DB.exceptions = [...existing.values()];
+  } catch (error) {
+    if (key === liveOverviewState.key) moreCaseState.error = "โหลดเคสเพิ่มเติมไม่สำเร็จ: " + error.message;
+  } finally {
+    moreCaseState.loading = false;
+    if (state.route === "exceptions") render();
+  }
+}
 
 async function loadLiveExceptionSearch(term) {
   const key = `${term}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
@@ -1085,6 +1113,11 @@ async function loadLiveOverview(force = false) {
     const damageRows = value(1, liveOverviewState.damages || []);
     const logRows = value(2, liveOverviewState.logs || []);
     liveOverviewState.exceptionsReady = aux[0].status === "fulfilled";
+    if (liveOverviewState.exceptionsReady) {
+      moreCaseState.offset = exceptionRows.length;
+      moreCaseState.hasMore = exceptionRows.length === 250;
+      moreCaseState.error = "";
+    }
     liveOverviewState.damagesReady = aux[1].status === "fulfilled";
     liveOverviewState.logsReady = aux[2].status === "fulfilled";
     if (aux[1].status === "fulfilled") liveOverviewState.damages = damageRows;
@@ -2612,6 +2645,7 @@ VIEWS.exceptions = (root) => {
       </div>
 
       <div class="pager">
+        ${state.dataset === "production" ? `<button class="ghost-button sm" id="loadMoreCases" ${moreCaseState.loading || liveOverviewState.auxiliaryLoading || !liveOverviewState.exceptionsReady || !moreCaseState.hasMore ? "disabled" : ""}>${moreCaseState.loading ? "กำลังโหลด…" : moreCaseState.hasMore ? "โหลดเคสถัดไปอีก 250" : "โหลดครบในขอบเขตนี้แล้ว"}</button><span role="status">${h(moreCaseState.error)}</span>` : ""}
         <button class="ghost-button sm" id="pgPrev" ${state.page === 1 ? "disabled" : ""}>ก่อนหน้า</button>
         <span>หน้า ${state.page} / ${pages}</span>
         <button class="ghost-button sm" id="pgNext" ${state.page === pages ? "disabled" : ""}>ถัดไป</button>
@@ -2624,6 +2658,7 @@ VIEWS.exceptions = (root) => {
     state.page = 1;
     render();
   };
+  $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
   root.querySelectorAll('[data-review-status]').forEach((button) => button.addEventListener('click', () => {
     state.exFilter.status = button.dataset.reviewStatus;
     rerender();
@@ -2829,7 +2864,7 @@ function openException(id, options = {}) {
                     `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.url ? `<a class="link-btn" href="${f.url}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
-            : '<p class="muted small-note">ยังไม่มีไฟล์แนบ — ต้องแนบก่อนจึงจะปิดเคสได้</p>'
+            : `<p class="muted small-note">${quickCloseEligible ? "ไม่มีไฟล์ชี้แจงเพิ่มเติม — มีข้อมูลต้นฉบับสองฝั่งแล้ว ผู้ตรวจยังต้องตรวจหลักฐานและยืนยันก่อนปิด" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
           <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.csv,.xlsx,.txt" />
