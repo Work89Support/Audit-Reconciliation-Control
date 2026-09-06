@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const scope = app.slice(app.indexOf('const VISIBLE_DATE_FROM'), app.indexOf('const DEFAULT_WORK_DATE'));
+const clamp = vm.runInNewContext(`${scope}; visibleDate`);
+assert.equal(clamp('2026-08-31'), '2026-09-01');
+assert.equal(clamp('2026-09-15'), '2026-09-15');
+assert.equal(clamp('2026-10-01'), '2026-09-30');
+assert.equal(clamp(''), '2026-09-01');
+assert.match(app, /state.dailySummary.date = visibleDate/);
+assert.match(app, /from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company/);
+assert.match(app, /const OPERATING_START_DATE = "2026-08-30"/);
+console.log('September display scope passed; original operating start preserved');

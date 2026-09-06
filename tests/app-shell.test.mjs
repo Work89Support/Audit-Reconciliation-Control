@@ -84,7 +84,7 @@ const inviteFn = readFileSync(join(root, "supabase/functions/admin-invite-user/i
 
 assert.match(app, /const DEFAULT_RANGE_FROM[\s\S]+d - 30/, "ค่าเริ่มต้นต้องครอบคลุมย้อนหลัง 30 วัน");
 assert.match(app, /const OPERATING_START_DATE = "2026-08-30"/, "รอบใช้งานจริงต้องเริ่มวันที่ 30 สิงหาคม 2026");
-assert.match(app, /candidate < OPERATING_START_DATE \? OPERATING_START_DATE : candidate/, "ช่วงข้อมูลเริ่มต้นต้องไม่ย้อนก่อนวันเริ่มใช้งานจริง");
+assert.match(app, /return visibleDate\(candidate\)/, "ช่วงข้อมูลเริ่มต้นต้องอยู่ในเดือนที่เปิดแสดง");
 assert.match(operatingStartSql, /operational_start_date[\s\S]+date '2026-08-30'/, "ฐานข้อมูลต้องเริ่มรอบใช้งานจริงวันที่ 30 สิงหาคม 2026");
 assert.match(operatingStartSql, /business_date < date '2026-08-30'[\s\S]+is_archived/, "งานก่อนวันที่ 30 ต้องถูกเก็บเป็นประวัติ");
 assert.match(app, /resultMetric\(exceptionsAvailable, sorted\.length\)[\s\S]+รายการรอตรวจ/, "การ์ดรายการรอตรวจต้องตรงกับรายการที่กรองแล้ว");

@@ -119,13 +119,19 @@ const PROD_TODAY = (() => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
 const OPERATING_START_DATE = "2026-08-30";
-const DEFAULT_WORK_DATE = PROD_TODAY < OPERATING_START_DATE ? OPERATING_START_DATE : PROD_TODAY;
+// Display scope only: August stays in the backend; do not change ingestion/history settings.
+const VISIBLE_DATE_FROM = "2026-09-01";
+const VISIBLE_DATE_TO = "2026-09-30";
+function visibleDate(value) {
+  return !value || value < VISIBLE_DATE_FROM ? VISIBLE_DATE_FROM : value > VISIBLE_DATE_TO ? VISIBLE_DATE_TO : value;
+}
+const DEFAULT_WORK_DATE = visibleDate(PROD_TODAY);
 /* เปิดมาครั้งแรกให้เห็นย้อนหลังไม่เกิน 30 วัน แต่ไม่ย้อนก่อนวันเริ่มใช้งานจริง */
 const DEFAULT_RANGE_FROM = (() => {
   const [y, m, d] = DEFAULT_WORK_DATE.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d - 30));
   const candidate = date.toISOString().slice(0, 10);
-  return candidate < OPERATING_START_DATE ? OPERATING_START_DATE : candidate;
+  return visibleDate(candidate);
 })();
 const state = {
   route: "cloud",
@@ -343,11 +349,14 @@ function applyPreset(preset) {
     const y = base.split("-")[0];
     [f.from, f.to] = [`${y}-01-01`, `${y}-12-31`];
   }
+  f.date = visibleDate(f.date);
+  f.from = visibleDate(f.from);
+  f.to = visibleDate(f.to);
 }
 const inRange = (d) => {
   if (!d || d === "-") return true;
   const day = String(d).slice(0, 10);
-  return day >= state.filters.from && day <= state.filters.to;
+  return day >= VISIBLE_DATE_FROM && day <= VISIBLE_DATE_TO && day >= state.filters.from && day <= state.filters.to;
 };
 const rangeLabel = () =>
   state.filters.from === state.filters.to ? state.filters.from : `${state.filters.from} ถึง ${state.filters.to}`;
@@ -618,12 +627,12 @@ function renderFilters() {
   const directionLabel = f.direction === "ALL" ? "ทุกประเภท" : f.direction;
   box.innerHTML = `
     <div class="filter-bar-head">
-      <div><strong>ตัวกรอง</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span></div>
+      <div><strong>ตัวกรอง</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span><small>แสดงเฉพาะกันยายน 2569 · ข้อมูลสิงหาคมเก็บไว้หลังบ้าน ไม่ได้ลบ</small></div>
       <button class="ghost-button xs" id="filterToggle" type="button" aria-expanded="${state.filtersOpen}">${state.filtersOpen ? "ย่อ" : "ปรับตัวกรอง"}</button>
     </div>
     <div class="filter-fields" ${state.filtersOpen ? "" : "hidden"}>
       <label>วันที่อ้างอิง
-        <input type="date" id="fDate" value="${f.date}" />
+        <input type="date" id="fDate" value="${f.date}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" />
       </label>
       <label>ช่วงข้อมูล
         <select id="fPreset">
@@ -631,10 +640,10 @@ function renderFilters() {
         </select>
       </label>
       <label>ตั้งแต่
-        <input type="date" id="fFrom" value="${f.from}" max="${f.to}" />
+        <input type="date" id="fFrom" value="${f.from}" min="${VISIBLE_DATE_FROM}" max="${f.to}" />
       </label>
       <label>ถึง
-        <input type="date" id="fTo" value="${f.to}" min="${f.from}" />
+        <input type="date" id="fTo" value="${f.to}" min="${f.from}" max="${VISIBLE_DATE_TO}" />
       </label>
       <label>บริษัท
         <select id="fCompany">
@@ -751,6 +760,11 @@ function showPasswordResetGate() {
 }
 
 function render() {
+  state.filters.date = visibleDate(state.filters.date);
+  state.filters.from = visibleDate(state.filters.from);
+  state.filters.to = visibleDate(state.filters.to);
+  if (state.filters.from > state.filters.to) state.filters.to = state.filters.from;
+  state.dailySummary.date = visibleDate(state.dailySummary.date);
   const route = ROUTE_MAP[state.route];
   Charts.reset();
   $("#crumb").textContent = ROUTES.find((g) => g.items.some((i) => i.id === route.id)).group;
@@ -1058,7 +1072,7 @@ async function loadLiveOverview(force = false) {
       && qualityReady
       && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
     if (defaultEmptyRange) {
-      const latestLookup = await Promise.allSettled([Sb.quality({ company: state.filters.company, limit: 1 })]);
+      const latestLookup = await Promise.allSettled([Sb.quality({ from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company: state.filters.company, limit: 1 })]);
       const latestQuality = latestLookup[0].status === "fulfilled" ? latestLookup[0].value : [];
       if (latestLookup[0].status === "rejected") liveOverviewState.coreErrors.push("ค้นหาวันล่าสุด");
       const latestOperationalDate = (latestQuality || [])
@@ -1557,7 +1571,7 @@ VIEWS.dashboard = (root) => {
 const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
 
 async function loadDailyCompanySummary(force = false) {
-  const date = state.dailySummary.date || PROD_TODAY;
+  const date = state.dailySummary.date = visibleDate(state.dailySummary.date || PROD_TODAY);
   const company = state.dailySummary.company || companyMaster()[0]?.code || "3XB";
   const sameSelection = dailyCompanyState.date === date && dailyCompanyState.company === company;
   if ((dailyCompanyState.loading && sameSelection) || (!force && sameSelection && dailyCompanyState.batches)) return;
@@ -1597,7 +1611,7 @@ async function loadDailyCompanySummary(force = false) {
     /* หน้าเปิดครั้งแรกยึดวันที่วันนี้ แต่ผลรันอาจเพิ่งเสร็จถึงวันก่อนหน้า
        ถ้าวันนี้ยังไม่มีผล ให้พาไปวันที่ล่าสุดที่บริษัทนี้มีผลจริงทันที */
     if (date === PROD_TODAY && !selectedQuality.some((row) => row.company === company && row.run_id)) {
-      const latestRows = await Sb.quality({ company, limit: 100 });
+      const latestRows = await Sb.quality({ from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company, limit: 100 });
       if (requestId !== dailyCompanyState.requestId) return;
       const latestDate = (latestRows || [])
         .filter((row) => row.run_id && row.business_date && !row.is_archived)
@@ -4426,7 +4440,7 @@ async function openStoredFilePreview(meta) {
     const localRows = DB.exceptions.filter((row) => String(row.company).toUpperCase() === String(meta.company || "").toUpperCase());
     clarificationCandidates = localRows;
     renderClarificationCandidates();
-    Sb.currentExceptionsSummary({ from: OPERATING_START_DATE, to: DEFAULT_WORK_DATE, company: meta.company, limit: 5000 })
+    Sb.currentExceptionsSummary({ from: VISIBLE_DATE_FROM, to: DEFAULT_WORK_DATE, company: meta.company, limit: 5000 })
       .then((rows) => {
         const merged = new Map(localRows.map((row) => [row.dbId, row]));
         (rows || []).map(mapLiveException).forEach((row) => merged.set(row.dbId, row));
@@ -6758,12 +6772,12 @@ async function openExportDialog() {
     refresh();
   });
   $("#expFrom").addEventListener("change", (e) => {
-    state.filters.from = e.target.value;
+    state.filters.from = visibleDate(e.target.value);
     state.filters.preset = "custom";
     refresh();
   });
   $("#expTo").addEventListener("change", (e) => {
-    state.filters.to = e.target.value;
+    state.filters.to = visibleDate(e.target.value);
     state.filters.preset = "custom";
     refresh();
   });
