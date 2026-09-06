@@ -2652,7 +2652,7 @@ function exceptionFilesMarkup(files, e) {
   if (!files.length) return `<div class="case-files-empty"><b>ยังไม่พบไฟล์ที่ผูกกับผลรันนี้</b><span>ใช้ปุ่ม “ดูไฟล์และสถานะทั้งหมด” เพื่อตรวจไฟล์ของบริษัทและวันที่เดียวกัน</span><button class="ghost-button sm" id="caseGoAllFiles">ดูไฟล์และสถานะทั้งหมด</button></div>`;
   return `<div class="case-file-list">${files.map((file) => {
     const extension = String(file.file_name || "FILE").split(".").pop().toUpperCase().slice(0, 4);
-    const status = file.parsed ? "อ่านสำเร็จ" : file.parse_error ? "อ่านไม่ได้" : "รอประมวลผล";
+    const status = file.parsed ? "อ่านสำเร็จ" : file.parse_error ? statementReviewLabel(file) : "รอประมวลผล";
     const tone = file.parsed ? "ok" : file.parse_error ? "bad" : "wait";
     return `<button type="button" class="case-file-row" ${exceptionFileAttrs(file, e)} ${file.storage_path ? "" : "disabled"}><span class="case-file-icon">${h(extension)}</span><span class="case-file-main"><b title="${h(file.file_name)}">${h(file.file_name)}</b><small>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</small></span><span class="case-file-state ${tone}">${status}</span><span class="case-file-open">ดูไฟล์ →</span></button>`;
   }).join("")}</div>`;
@@ -4753,7 +4753,7 @@ VIEWS.cloud = (root) => {
           <td class="tnum">${num(index + 1)}</td><td><b>${h(file.business_date || "-")}</b></td><td>${h(file.company || "ไม่ระบุ")}</td>
           <td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>${h(file.subject || "กดเพื่อดูตัวอย่าง")}</small></button></td>
           <td>${h(KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</td>
-          <td><span class="badge red">${file.parse_error ? "อ่านไฟล์ไม่สำเร็จ" : "ยังไม่ทราบประเภท"}</span><small class="sub danger">${h(file.parse_error || "ต้องเปิด Preview แล้วเลือกประเภทไฟล์")}</small></td>
+          <td><span class="badge red">${file.parse_error ? h(statementReviewLabel(file)) : "ยังไม่ทราบประเภท"}</span><small class="sub danger">${h(file.parse_error || "ต้องเปิด Preview แล้วเลือกประเภทไฟล์")}</small></td>
           <td class="right"><button class="primary-button xs" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}>เปิดตรวจ</button></td>
         </tr>`).join("")}</tbody>
       </table></div>
@@ -4829,7 +4829,7 @@ VIEWS.cloud = (root) => {
                   <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
                   <td>${
                     f.parse_error
-                      ? `<span class="file-state bad" title="${h(f.parse_error)}"><i>!</i><span><b>อ่านไม่ได้</b><small>กดดูสาเหตุ</small></span></span>`
+                      ? `<span class="file-state wait" title="${h(f.parse_error)}"><i>!</i><span><b>${h(statementReviewLabel(f))}</b><small>กดตรวจรายละเอียด — ยังไม่ยืนยันผลกระทบยอด</small></span></span>`
                       : f.kind === "unknown"
                         ? `<span class="file-state bad"><i>!</i><span><b>ยังไม่ทราบประเภท</b><small>ต้องเปิด Preview และเลือกประเภท</small></span></span>`
                       : f.kind === "doc_clarify"
@@ -7023,3 +7023,9 @@ async function boot() {
   retagTracks();
 }
 document.addEventListener("DOMContentLoaded", boot);
+function statementReviewLabel(file) {
+  const reason = String(file.parse_error || "");
+  return /อ่านรายการได้ \d+ รายการ แต่ไม่มีรายการวันที่/.test(reason)
+    ? "ได้รับไฟล์แล้ว — ไม่พบรายการในวันตรวจ รอเทียบ BO"
+    : "อ่านไฟล์ไม่สำเร็จ";
+}
