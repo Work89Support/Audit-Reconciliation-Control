@@ -1,0 +1,22 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const source=process.argv[2];
+if(!source) throw new Error('Pass the exported live Worker JSON path');
+const live=JSON.parse(await readFile(source,'utf8'));
+assert.equal(live.id,'dLkbNHgk3xMy9p82');
+assert.equal(live.nodes.length,33);
+const byName=name=>{const n=live.nodes.find(n=>n.name===name);assert.ok(n,name);return n;};
+const summary=byName('จบรอบ Worker');
+summary.parameters.jsCode="const job=$('Supabase: จองหนึ่งงาน').first().json; return [{json:{worked:!!job.id,job_id:job.id||null,finished_at:new Date().toISOString()}}];";
+byName('Supabase: จองหนึ่งงาน').alwaysOutputData=true;
+// Leave timer enabled until live child+parent tests succeed.
+live.nodes.push({id:'round-subworkflow',name:'รับงานจากรอบตรวจ',type:'n8n-nodes-base.executeWorkflowTrigger',typeVersion:1.1,position:[-1040,400],parameters:{inputSource:'passthrough'}});
+live.connections['รับงานจากรอบตรวจ']={main:[[{node:'รวมเป็นหนึ่งรอบ',type:'main',index:0}]]};
+live.settings.timezone='Asia/Bangkok';
+const parent=JSON.parse(await readFile('n8n/audit-round-dispatcher.json','utf8'));
+const cred=byName('Supabase: ตรวจไฟล์และจัดคิว').credentials;
+for(const n of parent.nodes) if(n.type==='n8n-nodes-base.httpRequest') n.credentials=structuredClone(cred);
+await mkdir('/private/tmp/audit-round-import',{recursive:true});
+await writeFile('/private/tmp/audit-round-import/worker.json',JSON.stringify(live,null,2));
+await writeFile('/private/tmp/audit-round-import/parent.json',JSON.stringify(parent,null,2));
+console.log('Prepared private import files; old schedule retained until tests pass; credentials referenced, not replaced.');

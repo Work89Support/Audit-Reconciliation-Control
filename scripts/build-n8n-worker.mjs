@@ -12,10 +12,7 @@ const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("pdf-stm.js"),
 ]);
 
-const pdf = pdfOriginal.replace(
-  "async function parse(fileName, arrayBuffer, businessDate) {\n    const pages = await textLines(arrayBuffer);",
-  "async function parse(fileName, pages, businessDate) {",
-);
+const pdf = pdfOriginal;
 
 const runtime = [formats, rules, registry, engine, pdf].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
@@ -36,29 +33,7 @@ try{
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
   }else if(ext==='pdf'){
     extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
-    const rawLines=extractedText.split(/\\r?\\n/).map(s=>s.replace(/\\s+/g,' ').trim()).filter(Boolean);
-    // n8n's native PDF extractor returns some KBANK rows in visual-column order:
-    // date time channel+balance description++transaction amount. Rebuild those rows
-    // into the logical order expected by PdfStm (date time transaction amount balance ...).
-    const joined=[];
-    let pending='';
-    for(const line of rawLines){
-      if(/^\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4}\\s+\\d{1,2}:\\d{2}\\b/.test(line)){
-        if(pending) joined.push(pending);
-        pending=line;
-        if(/\\+\\+/.test(pending)){joined.push(pending);pending='';}
-      }else if(pending){
-        pending+=' '+line;
-        if(/\\+\\+/.test(pending)){joined.push(pending);pending='';}
-      }else joined.push(line);
-    }
-    if(pending) joined.push(pending);
-    const lines=joined.map(line=>{
-      const m=line.match(/^(\\d{1,2}-\\d{1,2}-\\d{2,4})\\s+(\\d{1,2}:\\d{2})\\s+(.+?)(-?[\\d,]+\\.\\d{2})\\s+(.*?)\\+\\+(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\\s+(-?[\\d,]+\\.\\d{2})\\s*$/);
-      return m?[m[1],m[2],m[6],m[7],m[4],m[3].trim(),m[5].trim()].filter(Boolean).join(' '):line;
-    });
-    const pages=[lines.map(text=>({text,items:text.split(/\\s+/).map(s=>({s}))}))];
-    norm=await PdfStm.parse(file.file_name,pages,job.business_date);
+    norm=await PdfStm.parseText(file.file_name,extractedText,job.business_date);
   }else if(ext==='csv'){
     const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
     rawRows=Engine.parseCSV(text);
@@ -106,7 +81,8 @@ if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อ�
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf) parseError='อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf) parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ') : 'อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+if(!parseError&&ext==='pdf'&&norm.quality&&!norm.quality.complete) parseError='PDF อ่านได้บางส่วน: มี '+norm.quality.unreadRows.length+' บรรทัดที่อ่านไม่ได้ และ '+norm.quality.invalidRows.length+' รายการที่ต้องยืนยัน (ยังไม่นำไปกระทบยอด)';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
@@ -125,7 +101,7 @@ for(const r of (norm.records||[])){
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
 
 const reconcileCode = `const performance={now:()=>Date.now()};\n${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
@@ -180,7 +156,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.4.5',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.1',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
@@ -198,6 +174,21 @@ const driveHttp = (id, name, position, parameters) => ({
   waitBetweenTries: 1000,
   onError: "continueRegularOutput",
 });
+
+const nativePdfProbe = `${runtime}
+const meta=$('วนทีละไฟล์').item.json;
+const source=$json;
+const text=typeof source.text==='string'?source.text:typeof source.data==='string'?source.data:'';
+let readable=false, diagnostics=null;
+try {
+  if(!source.error) {
+    const result=await PdfStm.parseText(meta.file.file_name,text,meta.job.business_date);
+    diagnostics=result.quality;
+    const explicitEmpty=/(ไม่มีรายการเคลื่อนไหว|ไม่มีรายการธุรกรรม|ไม่พบรายการเคลื่อนไหว|no transactions|no activity)/i.test(text);
+    readable=!!result.header.bank && !!result.header.account && result.quality.complete && (result.quality.parsedRows>0 || explicitEmpty);
+  }
+} catch(error) { diagnostics={error:String(error.message||error)}; }
+return [{json:{text,pdf_readable:readable,native_quality:diagnostics,numpages:source.numpages||null},pairedItem:{item:0}}];`;
 
 const nodes = [
   { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80] },
@@ -227,7 +218,8 @@ const nodes = [
   { parameters: { conditions: { options: { caseSensitive: false, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-pdf", leftValue: "={{ $('วนทีละไฟล์').item.json.file.ext }}", rightValue: "pdf", operator: { type: "string", operation: "equals" } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
   { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF โดยตรง", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 220], onError: "continueRegularOutput" },
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-pdf-text", leftValue: "={{ String($json.text ?? $json.data ?? '').trim().length >= 40 }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf-text", name: "PDF มีข้อความ?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1640, 220] },
+  { parameters: { jsCode: nativePdfProbe }, id: "probe-native-pdf", name: "ตรวจรายการ PDF ก่อน OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1530, 220] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-pdf-text", leftValue: "={{ $json.pdf_readable === true }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf-text", name: "PDF มีข้อความ?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1640, 220] },
   { parameters: { jsCode: "const text=String($json.text??$json.data??'').trim(); return [{json:{text,ocr_used:false,ocr_provider:'native_pdf',ocr_confidence:null,ocr_page_count:Number($json.numpages||0)||null},pairedItem:{item:0}}];" }, id: "format-native-pdf", name: "จัดผล PDF โดยตรง", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 180] },
   { parameters: { jsCode: "const src=$('คืนชื่อไฟล์ต้นฉบับ').item; if(!src.binary||!src.binary.data) throw new Error('ไม่พบไฟล์ PDF ต้นฉบับสำหรับ OCR'); return [{json:{},binary:src.binary,pairedItem:{item:0}}];" }, id: "restore-pdf-binary", name: "เตรียม PDF สำหรับ OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 280] },
   driveHttp("google-drive-ocr-upload", "Google Drive OCR: แปลง PDF", [2080, 280], {
@@ -240,7 +232,7 @@ const nodes = [
     url: "=https://www.googleapis.com/drive/v2/files/{{ $json.id }}/export", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
     sendQuery: true, queryParameters: { parameters: [{ name: "mimeType", value: "text/plain" }] }, options: { timeout: 180000, response: { response: { responseFormat: "text" } } },
   }),
-  { parameters: { jsCode: "const raw=$json.data??$json.body??$json; const text=typeof raw==='string'?raw:(raw&&typeof raw==='object'&&typeof raw.data==='string'?raw.data:JSON.stringify(raw??'')); const cleaned=String(text||'').replace(/\\u0000/g,'').trim(); return [{json:{text:cleaned,ocr_used:true,ocr_provider:'google_drive',ocr_confidence:cleaned?0.8:0,ocr_page_count:null},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
+  { parameters: { jsCode: "if($json.error) return [{json:{error:$json.error,text:'',ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null},pairedItem:{item:0}}]; const raw=$json.data??$json.body??$json.text; const text=typeof raw==='string'?raw:''; return [{json:{text,ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_page_count:null},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: false, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520], onError: "continueRegularOutput" },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
@@ -289,7 +281,8 @@ const connections = {
   "คืนชื่อไฟล์ต้นฉบับ": { main: [[{ node: "เป็น PDF?", type: "main", index: 0 }]] },
   "เป็น PDF?": { main: [[{ node: "อ่าน PDF โดยตรง", type: "main", index: 0 }], [{ node: "เป็น Excel?", type: "main", index: 0 }]] },
   "เป็น Excel?": { main: [[{ node: "อ่าน Excel", type: "main", index: 0 }], [{ node: "อ่าน CSV", type: "main", index: 0 }]] },
-  "อ่าน PDF โดยตรง": { main: [[{ node: "PDF มีข้อความ?", type: "main", index: 0 }]] },
+  "อ่าน PDF โดยตรง": { main: [[{ node: "ตรวจรายการ PDF ก่อน OCR", type: "main", index: 0 }]] },
+  "ตรวจรายการ PDF ก่อน OCR": { main: [[{ node: "PDF มีข้อความ?", type: "main", index: 0 }]] },
   "PDF มีข้อความ?": { main: [[{ node: "จัดผล PDF โดยตรง", type: "main", index: 0 }], [{ node: "เตรียม PDF สำหรับ OCR", type: "main", index: 0 }]] },
   "จัดผล PDF โดยตรง": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "เตรียม PDF สำหรับ OCR": { main: [[{ node: "Google Drive OCR: แปลง PDF", type: "main", index: 0 }]] },

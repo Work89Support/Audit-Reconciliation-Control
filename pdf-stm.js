@@ -81,11 +81,11 @@ const PdfStm = (() => {
   /* ---------------- ตรวจธนาคารและเลขบัญชี ---------------- */
   function header(pages) {
     const blob = (pages[0] || []).map((l) => l.text).join("\n");
-    const bodyBlob = (pages || []).map((p) => p.map((l) => l.text).join("\n")).join("\n");
+    const heading = blob.split(/\n\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/)[0];
     let bank = null;
     if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(blob)) bank = "SCB";
-    // LINE BK (LBK): สเตทเมนต์ฟอร์แมตเดียวกับกสิกร (เคลียริงเดียวกัน) แต่ต้องแท็กเป็น LBK ให้ตรงทะเบียนบัญชี — ตรวจก่อน KBANK เพราะมี "เลขที่บัญชีเงินฝาก" เหมือนกัน
-    else if (/LINE\s*BK|ไลน์\s*บีเค/i.test(bodyBlob)) bank = "LBK";
+    // LINE BK in a transaction channel does not identify the statement's bank.
+    else if (/LINE\s*BK|ไลน์\s*บีเค/i.test(heading)) bank = "LBK";
     else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(blob)) bank = "KBANK";
     else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
     else if (/ธนาคารกรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL"; // ต้องมีคำว่า "ธนาคาร" นำ กัน "กรุงเทพฯ" ในที่อยู่สำนักงานใหญ่ธนาคารอื่น
@@ -95,7 +95,7 @@ const PdfStm = (() => {
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
     let account = "";
-    const am = blob.match(/(?:เลข(?:ที่)?บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
+    const am = blob.match(/(?:เลข(?:ที่)?บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d-\d{5}-\d)\b/) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
     if (am) account = digits(am[1]);
 
     let holder = "";
@@ -142,7 +142,8 @@ const PdfStm = (() => {
     pages.forEach((lines) => {
       lines.forEach((l) => {
         const t = l.text;
-        if (!/^\d{2}-\d{2}-\d{2}\b/.test(t)) return;
+        const dateMatch = t.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\b/);
+        if (!dateMatch) return;
         if (/ยอดยกมา|ยอดยกไป/.test(t)) return;
         const time = (t.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
         if (!time) return;
@@ -154,7 +155,7 @@ const PdfStm = (() => {
         const chIdx = l.items.findIndex((i) => i === amts[amts.length - 1]);
         const tail = l.items.slice(chIdx + 1).map((i) => i.s).join(" ").trim();
         rows.push({
-          date: isoOf(t.slice(0, 8)),
+          date: isoOf(dateMatch[1]),
           sec: secOf(time),
           code: kind,
           channel: tail.split(" จาก ")[0].split(" ไป ")[0].trim(),
@@ -269,11 +270,11 @@ const PdfStm = (() => {
           else if (c === "XB") dir = "adjustment";
         }
         if (!dir) {
-          if (/รับโอน|ฝากเงิน|เงินเข้า|TRF FR|deposit/i.test(r.code + " " + r.desc)) dir = "deposit";
+          if (/รับโอน|เงินโอนเข้า|ฝากเงิน|เงินเข้า|TRF FR|deposit/i.test(r.code + " " + r.desc)) dir = "deposit";
           else if (/โอนเงิน|โอนไป|ถอน|เงินออก|หักบัญชี|ค่าธรรมเนียม|TRF TO|withdraw/i.test(r.code + " " + r.desc)) dir = "withdraw";
         }
       }
-      r.direction = dir || "deposit";
+      r.direction = dir;
       if (r.balance !== null) prevBal = r.balance;
       r.seq = i;
     });
@@ -347,14 +348,70 @@ const PdfStm = (() => {
     return rows;
   }
 
+  // Native n8n and OCR text share the same bank parser. Preserve explicit page
+  // breaks, repair only structural line wraps; never replace ambiguous digits.
+  function pagesFromText(text) {
+    const start = /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/;
+    return String(text || "").replace(/\u0000/g, "").split("\f").map((page) => {
+      const lines = page.split(/\r?\n/).map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+      const joined = [];
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        // Only join a wrapped row up to its two monetary columns. A new date,
+        // header or footer is never consumed into the preceding transaction.
+        if (start.test(line) && !isStatementPeriod(line) && !isBalanceForward(line) && !/ยอดยกมา|ยอดยกไป|balance brought|balance carried/i.test(line)) {
+          while (i + 1 < lines.length && !start.test(lines[i + 1])
+            && !/ยอดรวม|รวมรายการ|รายการถอนทั้งหมด|รายการฝากทั้งหมด|total|page|statement|วันที่.*รายการ/i.test(lines[i + 1])
+            && (line.match(/-?[\d,]+\.\d{2}(?!\d)/g) || []).length < 2) {
+            line += " " + lines[++i];
+          }
+        }
+        // KBANK native extraction sometimes places balance before amount.
+        const m = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(-?[\d,]+\.\d{2})\s+(.*?)\+\s*\+\s*(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\s+(-?[\d,]+\.\d{2})\s*$/);
+        if (m) line = [m[1], m[2], m[6], m[7], m[4], m[3].trim(), m[5].trim()].filter(Boolean).join(" ");
+        // KBANK debit-card annual fee has no ++ transfer marker. Native PDF
+        // text joins ATM to the balance and places the fee amount last.
+        const fee = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ATM\s*(-?[\d,]+\.\d{2})\s+(.*?)ค่าธรรมเนียมรายปีบัตรเดบิต\s+(-?[\d,]+\.\d{2})\s*$/);
+        if (fee) line = [fee[1], fee[2], "ค่าธรรมเนียมรายปีบัตรเดบิต", fee[5], fee[3], "ATM", fee[4].trim()].filter(Boolean).join(" ");
+        joined.push({ text: line, items: line.split(/\s+/).map((s) => ({ s })) });
+      }
+      return joined;
+    });
+  }
+
+  async function parseText(fileName, text, businessDate) {
+    return parse(fileName, pagesFromText(text), businessDate);
+  }
+
+  function isStatementPeriod(text) {
+    return /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*[-–]\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$/.test(text);
+  }
+
+  // BBL opening/closing balances have one amount, not a transaction amount
+  // plus balance. Do not swallow a malformed two-amount transaction here.
+  function isBalanceForward(text) {
+    return /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+(?:B\/F|C\/F)\s+-?[\d,]+\.\d{2}\s*$/i.test(text);
+  }
+
   /* ---------------- public ---------------- */
   async function parse(fileName, arrayBuffer, businessDate) {
-    const pages = await textLines(arrayBuffer);
+    const pages = Array.isArray(arrayBuffer) ? arrayBuffer : await textLines(arrayBuffer);
     const head = header(pages);
     let rows =
       head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
+    const remainingRows = [...rows];
+    const unreadRows = [];
+    pages.forEach((lines, pageIndex) => lines.forEach((line, lineIndex) => {
+      if (!/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(line.text) || isStatementPeriod(line.text) || isBalanceForward(line.text) || /ยอดยกมา|ยอดยกไป|balance brought|balance carried/i.test(line.text)) return;
+      const matchedIndex = remainingRows.findIndex((row) => String(row.raw).includes(line.text));
+      if (matchedIndex >= 0) remainingRows.splice(matchedIndex, 1);
+      else unreadRows.push({ page: pageIndex + 1, line: lineIndex + 1, raw: line.text });
+    }));
+    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction);
+    const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
+      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
 
     // ทีมใช้งานตั้งรอบจากวันที่ในหัวข้ออีเมล แต่ statement ธนาคารบางฉบับ
     // (โดยเฉพาะ KBANK) เป็นรายการของวันก่อนหน้า 1 วันทั้งฉบับ เมื่อทุกแถว
@@ -373,6 +430,7 @@ const PdfStm = (() => {
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
     rows.forEach((r, i) => {
+      if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
       if (r.isFee) return drop("ค่าธรรมเนียม/โยกเงินออกธนาคาร TrueMoney (ไม่ใช่รายการลูกค้า)");
@@ -408,7 +466,9 @@ const PdfStm = (() => {
     if (previousDayReport) warnings.push(`Statement เป็นข้อมูลวันที่ ${expectedPreviousDate} และถูกนำเข้ารอบ ${businessDate} ตามวันที่รายงาน`);
     if (!head.bank) warnings.push("ระบุธนาคารจากหัวกระดาษไม่ได้ — ใช้ตัวอ่านแบบทั่วไป");
     if (!head.account) warnings.push("อ่านเลขบัญชีจากหัวกระดาษไม่ได้ — ต้องระบุเองในหน้าตั้งค่าบัญชี");
-    if (!records.length) warnings.push("ไม่พบบรรทัดรายการใน PDF — อาจเป็นไฟล์สแกนภาพ ต้องขอไฟล์ที่เป็นข้อความ");
+    if (!records.length) warnings.push(rows.length && dropped["วันที่ไม่ตรงกับวันที่ตรวจ"] === rows.length
+      ? `ได้รับไฟล์แล้ว อ่านรายการได้ ${rows.length} รายการ แต่ไม่มีรายการวันที่ ${businessDate} ในข้อมูลที่อ่านได้ — ไม่ใช่ไฟล์ขาด; ตรวจ BO แยกฝากและถอนก่อนยืนยันว่าไม่มีรายการ ไม่ต้องขอไฟล์ซ้ำหากต้นฉบับครบและ BO ไม่มีรายการ`
+      : "ไม่พบรายการที่ใช้กระทบยอดได้ — ตรวจรายการที่ถูกกรองและความครบถ้วนของ PDF");
 
     return {
       fileName,
@@ -429,11 +489,12 @@ const PdfStm = (() => {
       aux: [],
       dropped,
       warnings,
+      quality,
       pageCount: pages.length,
     };
   }
 
-  return { parse, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
+  return { parse, parseText, pagesFromText, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;

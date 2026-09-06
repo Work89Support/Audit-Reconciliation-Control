@@ -60,9 +60,9 @@ const BBL = `
 `;
 eq("BBL: ตรวจเจอเมื่อมี 'ธนาคารกรุงเทพ'", P.header(toPages(BBL)).bank, "BBL");
 
-/* ---- LBK = LINE BK : สเตทเมนต์ฟอร์แมตเดียวกับกสิกร (เคลียริงเดียวกัน) ต้องแท็กเป็น LBK ----
-   ตรวจ "LINE BK" ในคอลัมน์ช่องทาง แล้วส่งเข้า parser กสิกร (parseKbank) */
+/* LINE BK must be identified by the document heading, not a transaction channel. */
 const LBK = `
+LINE BK Statement
 หน้าที่ (PAGE/OF) 12/14
 ชื่อบัญชี น.ส. เพ็ญศรี เกิดนิมิตร เลขที่อ้างอิง 26081104446463387474
 เลขที่บัญชีเงินฝาก 195-3-16715-4
@@ -72,7 +72,8 @@ const LBK = `
 `;
 const lbkPages = toPages(LBK);
 const lbkHead = P.header(lbkPages);
-eq("LBK: ตรวจเจอจากช่องทาง 'LINE BK' (ก่อน KBANK แม้มี 'เลขที่บัญชีเงินฝาก')", lbkHead.bank, "LBK");
+eq("LBK: ตรวจเจอจากหัวเอกสาร LINE BK", lbkHead.bank, "LBK");
+eq("KBANK: ช่องทาง LINE BK ไม่เปลี่ยนธนาคารเจ้าของบัญชี", P.header(toPages(LBK.replace('LINE BK Statement', 'KASIKORNBANK'))).bank, "KBANK");
 eq("LBK: อ่านเลขบัญชีจาก 'เลขที่บัญชีเงินฝาก'", lbkHead.account, "1953167154");
 const lbkRows = P.parseKbank(lbkPages);
 P.applyDirection(lbkRows, lbkHead.bank);
@@ -178,6 +179,56 @@ eq("BBL: 'TRF FR' = deposit", bblRows[0] && bblRows[0].direction, "deposit");
 eq("BBL: 'TRF FR' ยอด = 14", bblRows[0] && bblRows[0].amount, 14);
 eq("BBL: 'TRF TO' = withdraw", bblRows[1] && bblRows[1].direction, "withdraw");
 eq("BBL: 'TRF TO' ยอด = 500", bblRows[1] && bblRows[1].amount, 500);
+
+const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1 ENET 100.00 1,100.00\n04/09/26 10:01 X2 ENET 50.00 1,050.00`;
+const completeScb = await P.parseText("3XB_STM_SCB.pdf", scbText, "2026-09-04");
+eq("SCB text: อ่านครบ 2 รายการ", completeScb.records.length, 2);
+eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
+const wrappedScb = await P.parseText("SCB.pdf", scbText.replace("100.00 1,100.00", "100.00\n1,100.00"), "2026-09-04");
+eq("SCB wrapped: ต่อคอลัมน์ที่ตัดบรรทัด", wrappedScb.records.length, 2);
+eq("SCB wrapped: ยอดไม่เปลี่ยน", wrappedScb.records[0].amount, 100);
+const partialScb = await P.parseText("SCB.pdf", scbText + "\n04/09/26 10:02 X2 ENET unreadable", "2026-09-04");
+eq("partial: อ่านได้ 2 แถวแต่ห้ามผ่านเป็นไฟล์ครบ", partialScb.quality.complete, false);
+eq("partial: เก็บบรรทัดที่อ่านไม่ได้", partialScb.quality.unreadRows.length, 1);
+const multiPage = await P.parseText("SCB.pdf", scbText + "\fSIAM COMMERCIAL BANK\n04/09/26 10:02 unreadable", "2026-09-04");
+eq("multi-page: เก็บจำนวนหน้า", multiPage.pageCount, 2);
+eq("multi-page: ระบุหน้าที่มีปัญหา", multiPage.quality.unreadRows[0].page, 2);
+const kbNative = await P.parseText("KB.pdf", "KASIKORN BANK\nAccount No. 1234567890\n04-09-2026 10:00 K PLUS1,100.00 จากบัญชี ++รับโอนเงิน 100.00", "2026-09-04");
+eq("KB native: รองรับปี 4 หลักและยอดสลับตำแหน่ง", kbNative.records.length, 1);
+eq("KB native: แยกยอดจากยอดคงเหลือ", kbNative.records[0]?.amount, 100);
+eq("KB native: ยอดคงเหลือ", kbNative.records[0]?.balance, 1100);
+const unknownDirection = await P.parseText("unknown.pdf", "Account No. 1234567890\n04/09/26 10:00 UNKNOWN 100.00 1,100.00", "2026-09-04");
+eq("unknown direction: ไม่เดาเป็นฝาก", unknownDirection.records.length, 0);
+eq("unknown direction: ไม่ผ่าน quality", unknownDirection.quality.complete, false);
+
+const kbWrapped = await P.parseText("KB.pdf", "KASIKORN BANK\n123-4-56789-0\n01/09/2026 - 04/09/2026\nเลขที่บัญชีเงินฝาก\n04-09-26 10:00 Internet/Mobile KTB1,134.00 จาก TEST+\n+\nรับโอนเงิน 134.00", "2026-09-04");
+eq("KB cloud: four-part account", kbWrapped.header.account, "1234567890");
+eq("KB cloud: period is not a transaction", kbWrapped.quality.complete, true);
+eq("KB cloud: split plus marker preserves row", kbWrapped.records.length, 1);
+eq("KB cloud: amount not balance", kbWrapped.records[0]?.amount, 134);
+eq("KB cloud: balance preserved", kbWrapped.records[0]?.balance, 1134);
+
+const bblOpening = await P.parseText("BBL.pdf", "BANGKOK BANK\nAccount No. 1234567890\n01/09/26 B/F 494.95\n02/09/26 TRF FR OTH BK 70.00 564.95 mPhone", "2026-09-02");
+eq("BBL B/F: opening balance is not an unread transaction", bblOpening.quality.complete, true);
+eq("BBL B/F: preserve actual transaction", bblOpening.records.length, 1);
+eq("BBL B/F: preserve deposit amount", bblOpening.records[0]?.amount, 70);
+const bblBroken = await P.parseText("BBL.pdf", "BANGKOK BANK\n01/09/26 B/F unreadable", "2026-09-01");
+eq("BBL B/F: unreadable balance is not silently accepted", bblBroken.quality.complete, false);
+const outOfPeriod = await P.parseText("SCB.pdf", scbText, "2026-09-02");
+ok("out-of-period: explain date mismatch, not an image-scan failure", outOfPeriod.warnings.some(w => w.includes("ไม่มีรายการวันที่ 2026-09-02")));
+ok("out-of-period: not a missing file or automatic zero-activity approval", outOfPeriod.warnings.some(w => w.includes("ไม่ใช่ไฟล์ขาด") && w.includes("BO แยกฝากและถอน")));
+eq("out-of-period: does not invent transactions", outOfPeriod.records.length, 0);
+
+const kbFeeText = "KASIKORN BANK\nAccount No. 1234567890\n01-09-26 619.01ยอดยกมา\n03-09-26 02:55 ATM369.01 รหัสอ้างอิง ATM99001ค่าธรรมเนียมรายปีบัตรเดบิต 250.00";
+const kbFee = await P.parseText("KB.pdf", kbFeeText, "2026-09-03");
+eq("KB annual fee: native quality complete", kbFee.quality.complete, true);
+eq("KB annual fee: one transaction", kbFee.records.length, 1);
+eq("KB annual fee: preserve transaction date", kbFee.records[0]?.sourceDate, "2026-09-03");
+eq("KB annual fee: amount not balance", kbFee.records[0]?.amount, 250);
+eq("KB annual fee: balance preserved", kbFee.records[0]?.balance, 369.01);
+eq("KB annual fee: withdrawal not deposit", kbFee.records[0]?.direction, "withdraw");
+const kbFeeBroken = await P.parseText("KB.pdf", kbFeeText.replace("250.00", "unreadable"), "2026-09-03");
+eq("KB annual fee: missing amount must fail quality", kbFeeBroken.quality.complete, false);
 
 console.log("\nPdfStm unit tests");
 console.log(out.join("\n"));

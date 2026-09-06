@@ -9,3 +9,11 @@ node_modules/
 
 # โฟลเดอร์ชั่วคราวจากการแก้ git lock (ลบทิ้งได้)
 _gitlock_trash/
+
+# Private operational reports: retain locally, never publish with the website.
+outputs/mail-db-completeness-2026-09-05.md
+outputs/mail-inventory-2026-09-05.json
+outputs/mail-inventory-expanded-2026-09-05.json
+outputs/recovery-followup-2026-09-05.md
+outputs/system-audit-review-2026-09-05.md
+outputs/ui-function-test-2026-09-06.md

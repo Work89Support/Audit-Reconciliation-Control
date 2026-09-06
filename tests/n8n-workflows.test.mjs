@@ -99,6 +99,22 @@ assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromF
 assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "อ่าน PDF โดยตรง", "PDFs must enter the native parser first");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
+assert.equal(worker.connections["อ่าน PDF โดยตรง"].main[0][0].node, "ตรวจรายการ PDF ก่อน OCR");
+const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+const probeCode = worker.nodes.find(node => node.name === "ตรวจรายการ PDF ก่อน OCR").parameters.jsCode;
+const probe = new AsyncFunction('$json', '$', probeCode);
+const metaForPdf = () => ({item:{json:{file:{file_name:'3XB_STM_SCB.pdf'},job:{business_date:'2026-09-04'}}}});
+const pdfHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
+const validPdfText = pdfHeader + '04/09/26 10:00 X1 ENET 100.00 1100.00';
+assert.equal((await probe({text:validPdfText},metaForPdf))[0].json.pdf_readable, true);
+for(const text of [pdfHeader.repeat(4), validPdfText+'\n04/09/26 10:01 unreadable', 'scanned']) {
+  assert.equal((await probe({text},metaForPdf))[0].json.pdf_readable, false, 'unreadable/partial text must reach OCR even when over 40 characters');
+}
+assert.equal((await probe({text:validPdfText,error:'extract failed'},metaForPdf))[0].json.pdf_readable, false);
+const formatOcr = new AsyncFunction('$json',worker.nodes.find(node => node.name === "จัดผล OCR").parameters.jsCode);
+assert.equal((await formatOcr({data:'text'}))[0].json.ocr_confidence,null,'no fabricated OCR confidence');
+assert.equal((await formatOcr({error:'OCR unavailable'}))[0].json.error,'OCR unavailable');
+assert.equal((await formatOcr({unexpected:'error object'}))[0].json.text,'','JSON/error output must not be interpreted as statement text');
 assert.equal(worker.connections["ดาวน์โหลดไฟล์จาก Storage"].main[0][0].node, "คืนชื่อไฟล์ต้นฉบับ", "downloaded binaries must restore the original attachment name");
 const originalNameNode = worker.nodes.find((node) => node.name === "คืนชื่อไฟล์ต้นฉบับ");
 assert.ok(originalNameNode, "worker must preserve the original Gmail attachment name");
@@ -140,7 +156,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.4\.5'/, "worker version must identify strict zero-activity validation");
+assert.match(workerText, /worker_version:'1\.5\.1'/, "worker version must identify KBANK native completeness repair");
 const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
 const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
 const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
@@ -242,7 +258,7 @@ assert.match(appSource, /data-cloud-file-view/, "Cloud Inbox must separate ready
 assert.match(appSource, /queueableFiles/, "manual processing must only select eligible files");
 assert.match(appSource, /ไม่ส่งไปรันจนกว่าจะแก้/, "problem files must be clearly excluded from processing");
 assert.match(appSource, /พักไฟล์ปัญหา/, "processing must explicitly hold problem files instead of running them");
-assert.match(appSource, /f\.kind !== "unknown" && !f\.parse_error/, "the automatic browser worker must exclude problem files");
+assert.doesNotMatch(appSource, /Sb\.claimJob\(/, "browsers must never claim Cloud automatic jobs");
 assert.match(appSource, /isEmptyPmFile/, "the UI must distinguish a valid empty PM export from a failed file");
 assert.match(appSource, /ไม่มีรายการ \(0\)/, "valid empty PM exports must have a clear status");
 
