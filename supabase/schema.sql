@@ -121,6 +121,10 @@ create table if not exists public.exceptions (
   detail         text,
   stm_raw        text,
   bo_raw         text,
+  bo_date        date,
+  bo_time        time without time zone,
+  stm_date       date,
+  stm_time       time without time zone,
   created_at     timestamptz default now(),
   updated_at     timestamptz default now(),
   unique (run_id, code)

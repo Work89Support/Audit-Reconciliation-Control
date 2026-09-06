@@ -274,6 +274,7 @@ const Sb = (() => {
   const quality = (opts = 1000) => rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000);
 
   async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {
+    if (from && to) return rpc("audit_daily_checklist", { p_from: from, p_to: to, p_company: company === "ALL" ? null : company || null, p_limit: limit });
     const filters = ["select=*", "order=business_date.desc,company.asc", `limit=${limit}`];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
@@ -365,6 +366,7 @@ const Sb = (() => {
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
       "responded_by", "responded_at", "approved_by", "approved_at",
+      "bo_date", "bo_time", "stm_date", "stm_time",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
        เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
@@ -641,6 +643,10 @@ const Sb = (() => {
           code: e.id,
           business_date: e.date,
           occurred_at: e.time,
+          bo_date: e.boDate || null,
+          bo_time: e.boTime && e.boTime !== "-" ? e.boTime : null,
+          stm_date: e.stmDate || null,
+          stm_time: e.stmTime && e.stmTime !== "-" ? e.stmTime : null,
           company: e.company,
           bank: e.bank,
           account: e.account,

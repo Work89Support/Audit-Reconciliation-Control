@@ -1047,7 +1047,7 @@ async function loadLiveOverview(force = false) {
     let checklistRows = coreValue(3, liveOverviewState.checklist);
     let boFirstRows = coreValue(4, liveOverviewState.boFirst);
     const settings = coreValue(5, liveOverviewState.settings ? [liveOverviewState.settings] : null);
-    liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []);
+    liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
     const qualityReady = core[2].status === "fulfilled";
     const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
       && state.filters.from === DEFAULT_RANGE_FROM
