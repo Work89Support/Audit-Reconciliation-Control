@@ -5,6 +5,11 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
+assert.match(app, /reviewQueueIds = sorted\.map/);
+assert.match(app, /if \(!e \|\| !canAccessCompany\(e.company\)\) return/);
+assert.match(app, /มี Note ที่ยังไม่บันทึก/);
+assert.match(app, /การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส/);
+assert.match(app, /data-review-status="answered"/);
 const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
 const completionBlockers = extractFunction("dailyCompletionBlockers");
 const statementNeedsBoReview = extractFunction("statementNeedsBoReview");

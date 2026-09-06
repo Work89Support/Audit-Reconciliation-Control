@@ -2416,6 +2416,7 @@ VIEWS.intake = (root) => {
 /* =============================================================
    VIEW: Exceptions
    ============================================================= */
+let reviewQueueIds = [];
 VIEWS.exceptions = (root) => {
   if (!ensureLiveOverview(root)) return;
   const query = String(state.exFilter.q || "").trim();
@@ -2436,6 +2437,7 @@ VIEWS.exceptions = (root) => {
     return av > bv ? dir : av < bv ? -dir : 0;
   });
   const pages = Math.max(1, Math.ceil(sorted.length / state.perPage));
+  reviewQueueIds = sorted.map((row) => row.id);
   state.page = Math.min(state.page, pages);
   const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
   const x = state.exFilter;
@@ -2547,6 +2549,15 @@ VIEWS.exceptions = (root) => {
         <button class="ghost-button sm" id="exReset">ล้างตัวกรอง</button>
       </div>
 
+      <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
+        <div><b>โต๊ะตรวจเคส</b><small>เฉพาะข้อมูลที่โหลดตามสิทธิ์และตัวกรอง ไม่ใช่ยอดทั้งระบบ</small></div>
+        <div class="review-workbench-actions">
+          <button class="ghost-button sm" data-review-status="open">รอตรวจ</button>
+          <button class="ghost-button sm" data-review-status="answered">ชี้แจงแล้ว</button>
+          <button class="ghost-button sm" data-review-status="clarifying">รอทีมตอบ</button>
+          <button class="primary-button sm" id="reviewStart" ${sorted.length ? "" : "disabled"}>เริ่มตรวจ ${num(sorted.length)} เคสตามตัวกรอง</button>
+        </div>
+      </div>
       <div class="result-line">
         พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
         · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
@@ -2584,6 +2595,11 @@ VIEWS.exceptions = (root) => {
     state.page = 1;
     render();
   };
+  root.querySelectorAll('[data-review-status]').forEach((button) => button.addEventListener('click', () => {
+    state.exFilter.status = button.dataset.reviewStatus;
+    rerender();
+  }));
+  $('#reviewStart')?.addEventListener('click', () => openException(reviewQueueIds[0]));
   $("#openDailyResult")?.addEventListener("click", () => {
     state.dailySummary.date = state.filters.date || state.filters.to || DEFAULT_WORK_DATE;
     if (state.filters.company !== "ALL") state.dailySummary.company = state.filters.company;
@@ -2696,7 +2712,9 @@ async function loadExceptionSupport(e, options = {}) {
 
 function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
-  if (!e) return;
+  if (!e || !canAccessCompany(e.company)) return;
+  const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
+  const queueIndex = queue.indexOf(id);
   state.selected = id;
   const drawer = $("#drawer");
   const overlay = $("#drawerOverlay");
@@ -2721,6 +2739,7 @@ function openException(id, options = {}) {
     </header>
 
     <div class="drawer-body">
+      ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
       <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
       <div class="case-summary-grid" id="caseSummarySection">
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
@@ -2798,6 +2817,13 @@ function openException(id, options = {}) {
   requestAnimationFrame(() => drawer.classList.add("on"));
 
   $("#drawerClose").addEventListener("click", closeDrawer);
+  const moveReview = (offset) => {
+    if (String($('#noteText')?.value || '').trim()) return toast('มี Note ที่ยังไม่บันทึก กรุณาบันทึกหรือล้างข้อความก่อนเปลี่ยนเคส', 'warn');
+    const nextId = queue[queueIndex + offset];
+    if (nextId) openException(nextId);
+  };
+  $('#reviewPrevious')?.addEventListener('click', () => moveReview(-1));
+  $('#reviewNext')?.addEventListener('click', () => moveReview(1));
   overlay.addEventListener("click", closeDrawer, { once: true });
   $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   $("#btnAttachQuick").addEventListener("click", () => $("#evInput")?.click());

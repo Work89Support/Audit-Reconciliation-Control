@@ -2242,3 +2242,10 @@ tr.on { background: #f0f7ff; }
   .bo-follow-message dl > div { grid-template-columns: 1fr; gap: 2px; }
   .bo-follow-section-head { flex-direction: column; }
 }
+/* Compact reviewer workbench; no change to approval permissions. */
+.review-workbench { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:16px; margin:12px 0; background:#f1f7ff; border:1px solid #cbdff7; border-radius:12px; }
+.review-workbench small,.review-case-nav small { display:block; color:#64748b; font-size:12px; margin-top:4px; }
+.review-workbench-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.review-case-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 0; border-bottom:1px solid #dbe5f0; margin-bottom:16px; }
+.review-case-nav span { text-align:center; }
+@media(max-width:600px) { .review-case-nav { flex-wrap:wrap; } .review-case-nav span { order:-1; width:100%; } }
