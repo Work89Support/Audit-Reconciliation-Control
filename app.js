@@ -1830,7 +1830,7 @@ function renderDailyCompanySummary(root) {
   const companies = dailyCompanyOptions();
   const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
   state.dailySummary.company = company;
-  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" value="${h(state.dailySummary.date)}" /></label><label>บริษัท<select id="dailySummaryCompany">${companies.map((code) => `<option value="${h(code)}" ${code === company ? "selected" : ""}>${h(code)}</option>`).join("")}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>บริษัท<select id="dailySummaryCompany">${companies.map((code) => `<option value="${h(code)}" ${code === company ? "selected" : ""}>${h(code)}</option>`).join("")}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
   if (dailyCompanyState.loading && !dailyCompanyState.batches) {
     root.innerHTML = controls + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
   } else if (dailyCompanyState.error) {
@@ -6728,8 +6728,8 @@ async function openExportDialog() {
         <label>ช่วงสำเร็จรูป
           <select id="expPreset">${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}</select>
         </label>
-        <label>ตั้งแต่<input type="date" id="expFrom" value="${f.from}" /></label>
-        <label>ถึง<input type="date" id="expTo" value="${f.to}" /></label>
+        <label>ตั้งแต่<input type="date" id="expFrom" value="${f.from}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" /></label>
+        <label>ถึง<input type="date" id="expTo" value="${f.to}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" /></label>
       </div>
       <p class="hint" id="expSummary"></p>
     </div>

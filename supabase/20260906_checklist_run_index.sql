@@ -1,4 +1,4 @@
--- Performance only. No data deletion, RLS change, or financial-status update.
--- Run separately (not inside a transaction) to avoid blocking normal writes.
-create index concurrently if not exists exceptions_run_status_lookup_idx
-  on public.exceptions (run_id, status);
+-- NOT REQUIRED: production inspected on 2026-09-06 already has
+-- exceptions_run_id_code_key on (run_id, code), which supports run lookups.
+-- No additional index is created. Investigate the authenticated query plan
+-- before adding another index; preserve RLS and all historical audit data.

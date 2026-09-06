@@ -11,4 +11,10 @@ assert.equal(clamp(''), '2026-09-01');
 assert.match(app, /state.dailySummary.date = visibleDate/);
 assert.match(app, /from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company/);
 assert.match(app, /const OPERATING_START_DATE = "2026-08-30"/);
+for (const id of ['dailySummaryDate', 'expFrom', 'expTo']) {
+  const input = app.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0];
+  assert.ok(input, `${id} exists`);
+  assert.ok(input.includes('min="${VISIBLE_DATE_FROM}"'), `${id} starts in September`);
+  assert.ok(input.includes('max="${VISIBLE_DATE_TO}"'), `${id} ends in September`);
+}
 console.log('September display scope passed; original operating start preserved');
