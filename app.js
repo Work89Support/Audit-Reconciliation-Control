@@ -197,7 +197,7 @@ function logAction(action, entity, target, detail) {
 }
 
 /* บันทึกสถานะเคสที่ถูกแก้ ให้อยู่รอดข้ามการรีเฟรช */
-function saveOverride(e) {
+function saveOverride(e, persistRemote = true) {
   Store.data.exOverrides[e.id] = {
     status: e.status,
     hasEvidence: e.hasEvidence,
@@ -208,7 +208,7 @@ function saveOverride(e) {
     evidence: (e.evidence || []).map((f) => ({ name: f.name, size: f.size, at: f.at })),
   };
   Store.persist();
-  if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
+  if (persistRemote && state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
     const authId = Sb.authUser()?.id || null;
     const stamp = new Date().toISOString();
     const payload = { status: e.status, updated_at: new Date().toISOString() };
@@ -937,6 +937,7 @@ function mapLiveException(e) {
     account: e.account || "-",
     direction: e.direction || "-",
     member: e.member_code || "-",
+    customerDetails: e.customer_details || {},
     type: e.ex_type || "unknown",
     typeName: e.type_name || e.ex_type || "ยังไม่จำแนก",
     severity,
@@ -1562,7 +1563,10 @@ VIEWS.dashboard = (root) => {
   root.querySelectorAll("[data-goto]").forEach((b) =>
     b.addEventListener("click", () => go(b.dataset.goto, b.dataset.sla ? { exFilter: { sla: true } } : {})),
   );
-  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", () => openException(tr.dataset.ex)));
+  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", (event) => {
+    if (event.target.closest("details,button,a,input")) return;
+    openException(tr.dataset.ex);
+  }));
 };
 
 /* =============================================================
@@ -2475,6 +2479,19 @@ function exceptionSideTimestamp(e, side) {
   return time && time !== "-" && date ? `${date} ${time}` : "ยังไม่มีเวลาต้นฉบับ — เปิดหลักฐานตรวจ";
 }
 
+function reviewCustomer(e, side) {
+  const value = e.customerDetails?.[side] || {};
+  const account = String(value.account || "").trim();
+  const digits = account.replace(/[\s-]/g, "");
+  return { user: String(value.user || ""), account, name: String(value.name || ""),
+    tail: /^\d{4,}$/.test(digits) ? digits.slice(-4) : "", reference: String(value.reference || "") };
+}
+function reviewCustomerHtml(e, side) {
+  const c = reviewCustomer(e, side);
+  if (!Object.values(c).some(Boolean)) return '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
+  return `<details><summary>ดู User / บัญชีลูกค้า</summary><dl><dt>User</dt><dd>${h(c.user || "ไม่ระบุ")}</dd><dt>เลขบัญชีลูกค้า</dt><dd>${h(c.account || "ไม่ระบุ")}</dd><dt>ชื่อลูกค้า</dt><dd>${h(c.name || "ไม่ระบุ")}</dd><dt>ท้าย 4 ตัว</dt><dd>${h(c.tail || "ยังยืนยันไม่ได้")}</dd><dt>รหัสอ้างอิงต้นฉบับ</dt><dd>${h(c.reference || "ไม่ระบุ")}</dd></dl></details>`;
+}
+
 function groupReviewCases(rows) {
   const groups = new Map();
   for (const row of rows) {
@@ -2562,9 +2579,9 @@ VIEWS.exceptions = (root) => {
     return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
       <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(e.id)}</small></td>
       <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${h(e.account)}</td>
-      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>` : ""}</td>
+      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
-      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>` : ""}</td>
+      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>${reviewCustomerHtml(e, "stm")}` : ""}</td>
       <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
       <td class="right tnum">${hasStm && hasBo ? `${num(e.timeDiffSec)} วิ` : ""}</td>
       <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
@@ -2641,6 +2658,9 @@ VIEWS.exceptions = (root) => {
 
       <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
         <div><b>โต๊ะตรวจเคส</b><small>เฉพาะข้อมูลที่โหลดตามสิทธิ์และตัวกรอง ไม่ใช่ยอดทั้งระบบ</small></div>
+        <div class="audit-view-switch" role="group" aria-label="แยกตรวจฝากและถอน">
+          ${[["ฝาก", "ชีทฝาก (ฝ)"], ["ถอน", "ชีทถอน (ถ)"], ["ALL", "ชีทรวม"]].map(([value, label]) => `<button type="button" data-review-direction="${value}" aria-pressed="${state.filters.direction === value}" class="${state.filters.direction === value ? "active" : ""}">${label}</button>`).join("")}
+        </div>
         <div class="review-workbench-actions">
           <button class="ghost-button sm" data-review-status="open">รอตรวจ</button>
           <button class="ghost-button sm" data-review-status="answered">ชี้แจงแล้ว</button>
@@ -2648,6 +2668,7 @@ VIEWS.exceptions = (root) => {
           <button class="primary-button sm" id="reviewStart" ${sorted.length ? "" : "disabled"}>เริ่มตรวจ ${num(sorted.length)} เคสตามตัวกรอง</button>
         </div>
       </div>
+      <p class="head-sub">ขั้นตอนทำงาน: Audit รีวิว → รอผู้ชี้แจง → ผู้ชี้แจงตอบ → Audit ตรวจคำตอบ / อนุมัติปิดเคสตามสิทธิ์</p>
       <div class="result-line">
         พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
         · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
@@ -2692,6 +2713,11 @@ VIEWS.exceptions = (root) => {
     render();
   };
   $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
+  root.querySelectorAll('[data-review-direction]').forEach((button) => button.addEventListener('click', () => {
+    state.filters.direction = button.dataset.reviewDirection;
+    reviewQueueIds = [];
+    rerender();
+  }));
   root.querySelectorAll('[data-review-status]').forEach((button) => button.addEventListener('click', () => {
     state.exFilter.status = button.dataset.reviewStatus;
     rerender();
@@ -2732,7 +2758,7 @@ VIEWS.exceptions = (root) => {
   });
   $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
   $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
-  $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]));
+  $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
   root.querySelectorAll("[data-ex-view]").forEach((button) => button.addEventListener("click", () => {
     state.exceptionView = button.dataset.exView;
     render();
@@ -2976,14 +3002,34 @@ function openException(id, options = {}) {
     issueClarificationDoc(e, ($("#noteText").value || "").trim() || (e.notes || []).map((n) => n.text).join("\n")),
   );
 
-  $("#btnClarify").addEventListener("click", () => {
+  $("#btnClarify").textContent = "รีวิวแล้ว → รอผู้ชี้แจง";
+  $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
+  $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
-    e.status = "clarifying";
-    logAction("request_clarify", "exception", e.id, "ส่งให้ผู้ดูแลบริษัท " + e.company + " ชี้แจง");
-    saveOverride(e);
-    toast("ส่งให้ผู้ดูแลบริษัทชี้แจงแล้ว");
-    openException(id);
-    renderNav();
+    if (!["open", "answered"].includes(e.status)) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const requestedAt = new Date().toISOString();
+      const requestedBy = state.dataset === "production" ? Sb.authUser()?.id : null;
+      if (state.dataset === "production") {
+        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
+        await Sb.requestClarification(e.dbId, e.status, {
+          status: "clarifying", requested_at: requestedAt, requested_by: requestedBy, updated_at: requestedAt,
+        });
+      }
+      e.status = "clarifying";
+      e.requestedAt = requestedAt;
+      e.requestedBy = requestedBy;
+      saveOverride(e, false);
+      logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
+      toast("บันทึกสถานะรอผู้ชี้แจงแล้ว");
+      openException(id);
+      renderNav();
+    } catch (err) {
+      toast("ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนลองใหม่: " + err.message, "warn");
+      button.disabled = false;
+    }
   });
   $("#btnRespond").addEventListener("click", () => {
     if (!can("respond")) return deny("ตอบชี้แจง");
@@ -3807,7 +3853,7 @@ VIEWS.reports = (root) => {
   $("#repDaily").addEventListener("click", () =>
     exportSheets("รายงานรายวัน", [SHEET_BUILDERS.daily.build(), SHEET_BUILDERS.exceptions.build(), SHEET_BUILDERS.intake.build()]),
   );
-  $("#repEx").addEventListener("click", () => exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]));
+  $("#repEx").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
   $("#repMonthly").addEventListener("click", () =>
     exportSheets("สรุปรายเดือน", [SHEET_BUILDERS.monthly.build(), SHEET_BUILDERS.damage.build(), SHEET_BUILDERS.kpi.build()]),
   );
@@ -6560,6 +6606,20 @@ function closeModal() {
   setTimeout(() => (m.hidden = true), 200);
 }
 
+// Reuse the exact visible/filter-scoped rows. Do not expand access or date scope on export.
+function buildReviewExportSheets() {
+  const combined = SHEET_BUILDERS.exceptions.build();
+  const directionColumn = combined.headers.indexOf("ทิศทาง");
+  const split = (name, direction) => ({ ...combined, name,
+    title: `${name} — ${combined.title}`,
+    rows: combined.rows.filter((row) => row[directionColumn] === direction) });
+  const sheets = [split("ฝาก (ฝ)", "ฝาก"), split("ถอน (ถ)", "ถอน")];
+  const unknown = combined.rows.filter((row) => !["ฝาก", "ถอน"].includes(row[directionColumn]));
+  if (unknown.length) sheets.push({ ...combined, name: "รอระบุประเภท", rows: unknown });
+  sheets.push({ ...combined, name: "รวม" });
+  return sheets;
+}
+
 /* ตัวสร้างชุดข้อมูลแต่ละชีต ตามช่วงวันที่ปัจจุบัน */
 const SHEET_BUILDERS = {
   exceptions: {
@@ -6569,8 +6629,8 @@ const SHEET_BUILDERS = {
       return {
         name: "กระทบยอด",
         title: "ตารางกระทบยอด — ช่องว่างหมายถึงไม่พบคู่และรอชี้แจง",
-        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA"],
-        widths: [14, 11, 12, 12, 9, 18, 21, 15, 13, 21, 18, 13, 13, 13, 24, 42, 10, 14, 10],
+        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA", "BO User", "BO บัญชีลูกค้า", "BO ชื่อลูกค้า", "BO ท้าย 4 ตัว", "BO รหัสอ้างอิง", "STM/PM User", "STM/PM บัญชีลูกค้า", "STM/PM ชื่อลูกค้า", "STM/PM ท้าย 4 ตัว", "STM/PM รหัสอ้างอิง"],
+        widths: [14, 11, 12, 12, 9, 18, 21, 15, 13, 21, 18, 13, 13, 13, 24, 42, 10, 14, 10, 18, 20, 25, 14, 35, 18, 20, 25, 14, 35],
         rows: rows.map((e) => {
           const hasStm = e.bankAmount !== null;
           const hasBo = e.systemAmount !== null;
@@ -6584,6 +6644,7 @@ const SHEET_BUILDERS = {
             hasStm ? exceptionSideTimestamp(e, "stm") : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
             hasStm && hasBo ? e.timeDiffSec : "", hasStm && hasBo ? e.amountDiff : "", result,
             explanation || "เว้นไว้รอชี้แจง", sevMeta(e.severity).name, dueOf(e).short, e.overSla ? "เกิน" : "ปกติ",
+            ...["bo", "stm"].flatMap((side) => { const c = reviewCustomer(e, side); return [c.user, c.account, c.name, c.tail, c.reference]; }),
           ];
         }),
       };
@@ -6900,7 +6961,7 @@ function downloadCSV(filename, headers, rows, sheetName) {
   ]);
 }
 function exportExceptions() {
-  exportSheets("รายการผิดปกติ", [SHEET_BUILDERS.exceptions.build()]);
+  exportSheets("รายการผิดปกติ", buildReviewExportSheets());
 }
 
 /* =============================================================

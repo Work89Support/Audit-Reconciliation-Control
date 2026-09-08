@@ -366,7 +366,7 @@ const Sb = (() => {
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
       "responded_by", "responded_at", "approved_by", "approved_at",
-      "bo_date", "bo_time", "stm_date", "stm_time",
+      "bo_date", "bo_time", "stm_date", "stm_time", "customer_details",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
        เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
@@ -594,6 +594,17 @@ const Sb = (() => {
       body: JSON.stringify(body),
     });
 
+  async function requestClarification(id, previousStatus, body) {
+    if (!["open", "answered"].includes(previousStatus)) throw new Error("สถานะนี้ส่งรอผู้ชี้แจงไม่ได้");
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ ...body, status: "clarifying" }),
+    });
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].status !== "clarifying") throw new Error("สถานะเปลี่ยนแล้วหรือไม่มีสิทธิ์แก้เคส กรุณาโหลดใหม่");
+    return rows[0];
+  }
+
   async function closeException(id, previousStatus, body) {
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
       method: "PATCH",
@@ -652,6 +663,7 @@ const Sb = (() => {
           account: e.account,
           direction: e.direction,
           member_code: e.member || null,
+          customer_details: e.customerDetails || {},
           ex_type: e.type,
           type_name: e.typeName,
           severity: e.severity,
@@ -748,6 +760,7 @@ const Sb = (() => {
     ping,
     post,
     patch,
+    requestClarification,
     closeException,
   };
 })();

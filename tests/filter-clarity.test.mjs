@@ -12,3 +12,10 @@ const reset = app.slice(app.indexOf('$("#exReset").addEventListener'), app.index
 assert.ok(reset.includes('status: "ACTION"'));
 assert.ok(!reset.includes('state.filters ='), 'case reset preserves date/company scope');
 console.log('Filter labels, selected status, escaped summary, and scoped reset passed');
+assert.ok(app.includes('aria-label="แยกตรวจฝากและถอน"'));
+assert.ok(app.includes('data-review-direction="${value}"'));
+const directionHandler = app.slice(app.indexOf("root.querySelectorAll('[data-review-direction]')"), app.indexOf("root.querySelectorAll('[data-review-status]')"));
+assert.ok(directionHandler.includes('state.filters.direction = button.dataset.reviewDirection'));
+assert.ok(directionHandler.includes('reviewQueueIds = []'));
+assert.ok(directionHandler.includes('rerender()'));
+assert.ok(!directionHandler.includes('state.filters ='), 'direction switch preserves date/company');

@@ -146,7 +146,7 @@ const DB = (() => {
 
   const statuses = [
     { code: "open", name: "รอตรวจ", tone: "amber" },
-    { code: "clarifying", name: "รอชี้แจง", tone: "blue" },
+    { code: "clarifying", name: "รอผู้ชี้แจง", tone: "blue" },
     { code: "answered", name: "ชี้แจงแล้ว", tone: "violet" },
     { code: "approved", name: "อนุมัติแล้ว", tone: "green" },
     { code: "closed", name: "ปิดเคส", tone: "grey" },
