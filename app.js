@@ -139,6 +139,7 @@ const state = {
   filters: { date: DEFAULT_WORK_DATE, from: DEFAULT_RANGE_FROM, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
+  reviewSheet: "normal",
   exceptionView: "sheet",
   sort: { key: "time", dir: "asc" },
   page: 1,
@@ -271,11 +272,15 @@ function deny(what) {
 }
 
 /* ---------------- data selectors ---------------- */
+function belongsToClarificationSheet(e) {
+  return Boolean(e.requestedAt || e.respondedAt || ["clarifying", "answered"].includes(e.status));
+}
 function filteredExceptions(source = DB.exceptions) {
   const f = state.filters;
   const x = state.exFilter;
   return source.filter((e) => {
     if (!canAccessCompany(e.company)) return false;
+    if (state.route === "exceptions" && belongsToClarificationSheet(e) !== (state.reviewSheet === "clarification")) return false;
     if (!inRange(e.date)) return false;
     if (f.company !== "ALL" && e.company !== f.company) return false;
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
@@ -2486,6 +2491,13 @@ function reviewCustomer(e, side) {
   return { user: String(value.user || ""), account, name: String(value.name || ""),
     tail: /^\d{4,}$/.test(digits) ? digits.slice(-4) : "", reference: String(value.reference || "") };
 }
+function reviewAccountHtml(e) {
+  const account = String(e.account || "").trim();
+  const isPm = /^(AUTOPEER|ATP|AZPAY|COREPAY|CPXM|CYBERPLUS|MYPAY|12PAY|PM)$/i.test(account);
+  const bo = reviewCustomer(e, "bo");
+  const stm = reviewCustomer(e, "stm");
+  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}<span>บัญชีลูกค้าใน BO: <b>${h(bo.account || "ไม่ระบุในข้อมูลเคส")}</b></span><span>บัญชีลูกค้าใน STM/PM: <b>${h(stm.account || "ไม่ระบุในข้อมูลเคส")}</b></span></div>`;
+}
 function reviewCustomerHtml(e, side) {
   const c = reviewCustomer(e, side);
   if (!Object.values(c).some(Boolean)) return '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
@@ -2508,6 +2520,21 @@ function groupReviewCases(rows) {
 
 let reviewQueueIds = [];
 VIEWS.exceptions = (root) => {
+  // A work sheet always belongs to one authorized company; ALL is a picker, not a mixed queue.
+  if (state.filters.company === "ALL" || !canAccessCompany(state.filters.company)) {
+    reviewQueueIds = [];
+    root.innerHTML = `<section class="panel"><h2>เลือกบริษัทที่จะตรวจ</h2><p>เปิดงานทีละบริษัท → เลือกชีทฝากหรือถอน → ตรวจ BO เทียบ STM / PM</p><div class="review-company-picker">${companyMaster().map((c) => `<button type="button" class="ghost-button" data-review-company="${h(c.code)}"><b>${h(c.code)}</b><span>${h(c.name || c.code)}</span><small>เปิดชีทของบริษัทนี้</small></button>`).join("") || "ยังไม่มีบริษัทที่คุณมีสิทธิ์ตรวจ"}</div></section>`;
+    root.querySelectorAll('[data-review-company]').forEach((button) => button.addEventListener('click', () => {
+      if (!canAccessCompany(button.dataset.reviewCompany)) return;
+      state.filters.company = button.dataset.reviewCompany;
+      state.filters.direction = "ฝาก";
+      state.reviewSheet = "normal";
+      state.exFilter.status = "ACTION";
+      state.page = 1;
+      render();
+    }));
+    return;
+  }
   if (!ensureLiveOverview(root)) return;
   const query = String(state.exFilter.q || "").trim();
   const searchKey = `${query}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
@@ -2575,10 +2602,10 @@ VIEWS.exceptions = (root) => {
     const result = hasStm && hasBo
       ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
       : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
-    const explanation = e.resolutionNote || (e.notes || []).at(-1)?.text || "";
+    const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
     return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
       <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(e.id)}</small></td>
-      <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${h(e.account)}</td>
+      <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
       <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
       <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>${reviewCustomerHtml(e, "stm")}` : ""}</td>
@@ -2657,18 +2684,20 @@ VIEWS.exceptions = (root) => {
       </div>
 
       <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
-        <div><b>โต๊ะตรวจเคส</b><small>เฉพาะข้อมูลที่โหลดตามสิทธิ์และตัวกรอง ไม่ใช่ยอดทั้งระบบ</small></div>
+        <div><b>บริษัท ${h(state.filters.company)} · โต๊ะตรวจเคส</b><small>ทุกชีทในหน้านี้เป็นของบริษัทนี้เท่านั้น</small><button type="button" class="ghost-button sm" id="reviewChangeCompany">เปลี่ยนบริษัท</button></div>
+        <div class="audit-view-switch" role="group" aria-label="ชีทการทำงาน">
+          <button type="button" data-review-sheet="normal" aria-pressed="${state.reviewSheet !== "clarification"}" class="${state.reviewSheet !== "clarification" ? "active" : ""}">1. ตรวจปกติ</button>
+          <button type="button" data-review-sheet="clarification" aria-pressed="${state.reviewSheet === "clarification"}" class="${state.reviewSheet === "clarification" ? "active" : ""}">2. ต้องชี้แจง</button>
+        </div>
         <div class="audit-view-switch" role="group" aria-label="แยกตรวจฝากและถอน">
           ${[["ฝาก", "ชีทฝาก (ฝ)"], ["ถอน", "ชีทถอน (ถ)"], ["ALL", "ชีทรวม"]].map(([value, label]) => `<button type="button" data-review-direction="${value}" aria-pressed="${state.filters.direction === value}" class="${state.filters.direction === value ? "active" : ""}">${label}</button>`).join("")}
         </div>
         <div class="review-workbench-actions">
-          <button class="ghost-button sm" data-review-status="open">รอตรวจ</button>
-          <button class="ghost-button sm" data-review-status="answered">ชี้แจงแล้ว</button>
-          <button class="ghost-button sm" data-review-status="clarifying">รอทีมตอบ</button>
+          ${state.reviewSheet === "clarification" ? `<button class="ghost-button sm" data-review-status="clarifying">รอตอบ</button><button class="ghost-button sm" data-review-status="answered">ตอบแล้ว</button><button class="ghost-button sm" data-review-status="closed">ปิดแล้ว</button>` : `<button class="ghost-button sm" data-review-status="open">รอ Audit ตรวจ</button>`}
           <button class="primary-button sm" id="reviewStart" ${sorted.length ? "" : "disabled"}>เริ่มตรวจ ${num(sorted.length)} เคสตามตัวกรอง</button>
         </div>
       </div>
-      <p class="head-sub">ขั้นตอนทำงาน: Audit รีวิว → รอผู้ชี้แจง → ผู้ชี้แจงตอบ → Audit ตรวจคำตอบ / อนุมัติปิดเคสตามสิทธิ์</p>
+      <p class="head-sub">${state.reviewSheet === "clarification" ? "เคสที่ส่งชี้แจงแล้ว · ดูคำตอบและเปิดหลักฐานจากเคสเดิม · ตอบแล้วไม่ได้แปลว่าปิดเคส" : "ตรวจ BO เทียบ STM/PM ก่อน หากต้องถามจึงเปิดเคสแล้วกด “ส่งไปชีทชี้แจง” · หน้านี้แสดงเคสที่ต้องตรวจ ไม่ใช่รายการที่จับคู่สำเร็จทั้งหมด"}</p>
       <div class="result-line">
         พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
         · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
@@ -2713,6 +2742,17 @@ VIEWS.exceptions = (root) => {
     render();
   };
   $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
+  root.querySelectorAll('[data-review-sheet]').forEach((button) => button.addEventListener('click', () => {
+    state.reviewSheet = button.dataset.reviewSheet;
+    state.exFilter.status = state.reviewSheet === "clarification" ? "ALL" : "ACTION";
+    reviewQueueIds = [];
+    rerender();
+  }));
+  $('#reviewChangeCompany')?.addEventListener('click', () => {
+    state.filters.company = "ALL";
+    reviewQueueIds = [];
+    rerender();
+  });
   root.querySelectorAll('[data-review-direction]').forEach((button) => button.addEventListener('click', () => {
     state.filters.direction = button.dataset.reviewDirection;
     reviewQueueIds = [];
@@ -2970,6 +3010,10 @@ function openException(id, options = {}) {
     if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");
     const files = [...evt.target.files];
     if (!files.length) return;
+    if (state.dataset === "production") {
+      evt.target.value = "";
+      return toast("ช่องนี้ยังไม่รองรับการอัปโหลดหลักฐานขึ้นระบบจริง กรุณานำเข้าไฟล์ชี้แจงผ่านหน้าไฟล์และสถานะก่อน — ยังไม่ได้บันทึกไฟล์", "warn");
+    }
     e.evidence = e.evidence || [];
     files.forEach((f) => e.evidence.push({ name: f.name, size: f.size, at: nowStamp(), url: URL.createObjectURL(f) }));
     e.hasEvidence = true;
@@ -3002,7 +3046,7 @@ function openException(id, options = {}) {
     issueClarificationDoc(e, ($("#noteText").value || "").trim() || (e.notes || []).map((n) => n.text).join("\n")),
   );
 
-  $("#btnClarify").textContent = "รีวิวแล้ว → รอผู้ชี้แจง";
+  $("#btnClarify").textContent = "ส่งไปชีทชี้แจง";
   $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
@@ -3023,7 +3067,11 @@ function openException(id, options = {}) {
       e.requestedBy = requestedBy;
       saveOverride(e, false);
       logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
-      toast("บันทึกสถานะรอผู้ชี้แจงแล้ว");
+      toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
+      state.reviewSheet = "clarification";
+      state.exFilter.status = "ALL";
+      state.page = 1;
+      render();
       openException(id);
       renderNav();
     } catch (err) {
@@ -3031,15 +3079,34 @@ function openException(id, options = {}) {
       button.disabled = false;
     }
   });
-  $("#btnRespond").addEventListener("click", () => {
+  $("#btnRespond").disabled = e.status !== "clarifying";
+  $("#btnRespond").addEventListener("click", async (event) => {
     if (!can("respond")) return deny("ตอบชี้แจง");
-    e.status = "answered";
-    e.hasEvidence = true;
-    logAction("respond", "clarification", e.id, "ตอบชี้แจงและแนบหลักฐาน");
-    saveOverride(e);
-    toast("ตอบชี้แจงและแนบหลักฐานแล้ว");
-    openException(id);
-    renderNav();
+    if (e.status !== "clarifying") return;
+    const response = $("#noteText").value.trim() || e.responseText || "";
+    if (!response) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
+    if (state.dataset === "production" && !e.clarificationFileId) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const stamp = new Date().toISOString();
+      if (state.dataset === "production") {
+        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
+        await Sb.submitClarification(e.dbId, { response_text: response, clarification_file_id: e.clarificationFileId,
+          responded_at: stamp, responded_by: Sb.authUser()?.id, updated_at: stamp });
+      }
+      e.status = "answered";
+      e.responseText = response;
+      e.respondedAt = stamp;
+      saveOverride(e, false);
+      logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
+      render();
+      openException(id);
+      toast("บันทึกคำตอบแล้ว — ยังไม่ปิดเคส");
+    } catch (err) {
+      toast("ยังยืนยันการบันทึกไม่ได้: " + err.message, "warn");
+      button.disabled = false;
+    }
   });
   $("#btnDamage").addEventListener("click", async () => {
     if (!can("close_case")) return deny("บันทึกความเสียหาย");

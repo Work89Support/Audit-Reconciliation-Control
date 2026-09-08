@@ -605,6 +605,18 @@ const Sb = (() => {
     return rows[0];
   }
 
+  async function submitClarification(id, body) {
+    if (!String(body.response_text || "").trim()) throw new Error("กรุณากรอกคำชี้แจง");
+    if (!body.clarification_file_id) throw new Error("ต้องมีไฟล์ชี้แจงที่บันทึกในระบบแล้ว");
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.clarifying`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ ...body, status: "answered" }),
+    });
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].status !== "answered") throw new Error("สถานะเปลี่ยนหรือไม่มีสิทธิ์ตอบ กรุณาโหลดเคสใหม่");
+    return rows[0];
+  }
+
   async function closeException(id, previousStatus, body) {
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
       method: "PATCH",
@@ -761,6 +773,7 @@ const Sb = (() => {
     post,
     patch,
     requestClarification,
+    submitClarification,
     closeException,
   };
 })();

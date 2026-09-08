@@ -2272,3 +2272,9 @@ tr.on { background: #f0f7ff; }
 .review-group { background: white; border: 1px solid #d7e3f0; border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 12px; justify-content: space-between; overflow-wrap: anywhere; }
 .review-group p { margin: 6px 0; }
 .review-group button { flex-shrink: 0; }
+/* Company-first review: keep the operational sheets separate. */
+.review-company-picker { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-top:24px; }
+.review-company-picker button { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:20px; }
+.review-account-details { display:flex; flex-direction:column; gap:10px; min-width:240px; padding:8px 0; }
+.review-account-details > span { border-top:1px solid #dce7f5; padding-top:8px; font-size:13px; }
+.review-account-details > small { color:#6b7280; }

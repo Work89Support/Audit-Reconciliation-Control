@@ -2,6 +2,23 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const workflowContext = vm.createContext({});
+const workflowStart = app.indexOf('function belongsToClarificationSheet(e)');
+vm.runInContext(app.slice(workflowStart, app.indexOf('function filteredExceptions', workflowStart)), workflowContext);
+for (const [row, expected] of [
+  [{status:'open'},false],
+  [{status:'open', type:'no_stm'},false],
+  [{status:'clarifying'},true],
+  [{status:'answered'},true],
+  [{status:'closed', requestedAt:'2026-09-08'},true],
+  [{status:'closed'},false],
+  [{status:'open', respondedAt:'2026-09-08'},true],
+]) {
+  workflowContext.row = row;
+  assert.equal(vm.runInContext('belongsToClarificationSheet(row)', workflowContext), expected);
+}
+assert.ok(app.includes('reviewSheet: "normal"'));
+assert.ok(app.includes('state.route === "exceptions" && belongsToClarificationSheet(e)'));
 const start = app.indexOf('function buildReviewExportSheets()');
 const end = app.indexOf('/* ตัวสร้างชุดข้อมูลแต่ละชีต', start);
 const rows = [['a', 'ฝาก'], ['b', 'ถอน'], ['c', 'PM']];
@@ -23,6 +40,19 @@ vm.runInContext(app.slice(customerStart, customerEnd), ctx);
 ctx.example = { customerDetails: { bo: { account: '0012345678', name: '<ชื่อ>', user: 'member', reference: 'ref' } } };
 vm.runInContext('globalThis.customer = reviewCustomer(example, "bo")', ctx);
 assert.equal(ctx.customer.account, '0012345678');
+ctx.h = value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+ctx.example.account = 'AUTOPEER';
+vm.runInContext('globalThis.accountHtml = reviewAccountHtml(example)', ctx);
+assert.ok(ctx.accountHtml.includes('ผู้ให้บริการ PM: AUTOPEER'));
+assert.ok(ctx.accountHtml.includes('บัญชีลูกค้าใน BO: <b>0012345678'));
+assert.ok(ctx.accountHtml.includes('บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส'));
+const viewStart = app.indexOf('VIEWS.exceptions = (root) =>');
+const viewGate = app.slice(viewStart, app.indexOf('if (!ensureLiveOverview(root)) return;', viewStart));
+assert.ok(viewGate.includes('state.filters.company === "ALL"'));
+assert.ok(viewGate.includes('companyMaster().map'));
+assert.ok(viewGate.includes('canAccessCompany(button.dataset.reviewCompany)'));
+assert.ok(viewGate.includes('state.filters.direction = "ฝาก"'));
+assert.ok(viewGate.includes('reviewQueueIds = []'));
 assert.equal(ctx.customer.tail, '5678');
 vm.runInContext('globalThis.customer = reviewCustomer({account:"9999999999"}, "stm")', ctx);
 assert.equal(ctx.customer.account, '', 'never substitute company bank account for customer');
