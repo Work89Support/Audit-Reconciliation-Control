@@ -2855,11 +2855,17 @@ async function loadExceptionSupport(e, options = {}) {
     const filesPromise = exceptionSupportCache.has(cacheKey)
       ? Promise.resolve(exceptionSupportCache.get(cacheKey))
       : Sb.exceptionFiles(e.runId, e.clarificationFileId).then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
-    const [detail, files] = await Promise.all([detailPromise, filesPromise]);
+    const evidencePromise = e._caseEvidenceLoaded ? Promise.resolve(null) : Sb.caseEvidence(e.dbId);
+    const [detail, files, storedEvidence] = await Promise.all([detailPromise, filesPromise, evidencePromise]);
+    if (storedEvidence) {
+      e.evidence = storedEvidence.map(f => ({ id: f.id, name: f.file_name, size: f.size_bytes, at: f.created_at, storagePath: f.storage_path }));
+      e._caseEvidenceLoaded = true;
+    }
     if (detail) {
       const notes = e.notes || [];
       const evidence = e.evidence || [];
       Object.assign(e, mapLiveException(detail), { notes, evidence, _detailLoaded: true });
+      e.hasEvidence = e.hasEvidence || evidence.some(f => f.storagePath);
       const stm = $("#caseRawStm");
       const bo = $("#caseRawBo");
       if (stm) stm.textContent = e.stmRaw || "— ไม่พบรายการฝั่ง STM —";
@@ -2871,6 +2877,11 @@ async function loadExceptionSupport(e, options = {}) {
       }
     }
     if (!document.body.contains(host)) return;
+    if (storedEvidence && !detail && state.selected === e.id) {
+      e.hasEvidence = !!e.clarificationFileId || e.evidence.some(f => f.storagePath);
+      openException(e.id, options);
+      return;
+    }
     host.innerHTML = exceptionFilesMarkup(files, e);
     bindStoredFileLinks(host);
     $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
@@ -2960,7 +2971,7 @@ function openException(id, options = {}) {
             ? `<ul class="evidence-list">${e.evidence
                 .map(
                   (f) =>
-                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.url ? `<a class="link-btn" href="${f.url}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
+                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
             : `<p class="muted small-note">${quickCloseEligible ? "ไม่มีไฟล์ชี้แจงเพิ่มเติม — มีข้อมูลต้นฉบับสองฝั่งแล้ว ผู้ตรวจยังต้องตรวจหลักฐานและยืนยันก่อนปิด" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
@@ -3005,14 +3016,36 @@ function openException(id, options = {}) {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
   loadExceptionSupport(e, options);
+  drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      const url = await Sb.signedUrl(button.dataset.caseEvidence);
+      const link = document.createElement('a');
+      link.href = url; link.target = '_blank'; link.rel = 'noopener'; link.click();
+    } catch (error) { toast("เปิดหลักฐานไม่ได้: " + error.message, "warn"); }
+    finally { button.disabled = false; }
+  }));
 
-  $("#evInput").addEventListener("change", (evt) => {
+  $("#evInput").addEventListener("change", async (evt) => {
     if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");
     const files = [...evt.target.files];
     if (!files.length) return;
     if (state.dataset === "production") {
-      evt.target.value = "";
-      return toast("ช่องนี้ยังไม่รองรับการอัปโหลดหลักฐานขึ้นระบบจริง กรุณานำเข้าไฟล์ชี้แจงผ่านหน้าไฟล์และสถานะก่อน — ยังไม่ได้บันทึกไฟล์", "warn");
+      const input = evt.target;
+      input.disabled = true;
+      let saved = 0;
+      try {
+        for (const file of files) { await Sb.uploadCaseEvidence(e.dbId, file); saved++; }
+        toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
+      } catch (error) {
+        toast(`ยืนยันสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message}`, "warn");
+      } finally {
+        input.value = "";
+        input.disabled = false;
+        e._caseEvidenceLoaded = false;
+        if (state.selected === e.id) openException(e.id);
+      }
+      return;
     }
     e.evidence = e.evidence || [];
     files.forEach((f) => e.evidence.push({ name: f.name, size: f.size, at: nowStamp(), url: URL.createObjectURL(f) }));
@@ -3085,7 +3118,7 @@ function openException(id, options = {}) {
     if (e.status !== "clarifying") return;
     const response = $("#noteText").value.trim() || e.responseText || "";
     if (!response) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
-    if (state.dataset === "production" && !e.clarificationFileId) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
+    if (state.dataset === "production" && !e.clarificationFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
     const button = event.currentTarget;
     button.disabled = true;
     try {

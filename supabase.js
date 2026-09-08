@@ -605,9 +605,40 @@ const Sb = (() => {
     return rows[0];
   }
 
+  async function caseEvidence(id) {
+    if (!id) return [];
+    return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
+  }
+
+  async function uploadCaseEvidence(exceptionId, file) {
+    if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
+    if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
+    if (!/\.(pdf|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ");
+    const id = crypto.randomUUID();
+    const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
+    const buffer = await file.arrayBuffer();
+    await req(`/storage/v1/object/${cfg().bucket}/${storagePath}`, {
+      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
+      body: buffer, timeoutMs: 120000,
+    });
+    const metadata = { id, exception_id: exceptionId, storage_path: storagePath, file_name: file.name,
+      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: authUser().id };
+    try {
+      const rows = await post("case_evidence", [metadata]);
+      if (!Array.isArray(rows) || rows.length !== 1 || rows[0].id !== id) throw new Error("ไม่พบผลยืนยันทะเบียนหลักฐาน");
+      return rows[0];
+    } catch (error) {
+      // A timeout may happen after commit. Read back before reporting failure; never delete an uncertain upload.
+      const rows = await caseEvidence(exceptionId).catch(() => []);
+      const saved = rows.find(row => row.id === id);
+      if (saved) return saved;
+      throw new Error(`ไฟล์ส่งถึงคลังแล้ว แต่ยังยืนยันการผูกเคสไม่ได้ (รหัส ${id}) กรุณาแจ้งผู้ดูแลก่อนอัปซ้ำ: ${error.message}`);
+    }
+  }
+
   async function submitClarification(id, body) {
     if (!String(body.response_text || "").trim()) throw new Error("กรุณากรอกคำชี้แจง");
-    if (!body.clarification_file_id) throw new Error("ต้องมีไฟล์ชี้แจงที่บันทึกในระบบแล้ว");
+    if (!body.clarification_file_id && !(await caseEvidence(id)).length) throw new Error("ต้องมีไฟล์ชี้แจงที่บันทึกในระบบแล้ว");
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.clarifying`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Prefer: "return=representation" },
@@ -774,6 +805,8 @@ const Sb = (() => {
     patch,
     requestClarification,
     submitClarification,
+    caseEvidence,
+    uploadCaseEvidence,
     closeException,
   };
 })();
