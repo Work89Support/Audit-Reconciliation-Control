@@ -69,7 +69,7 @@ const ROUTES = [
       { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
       { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
       { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
-      { id: "exceptions", label: "รายการผิดปกติ", icon: "exceptions", title: "Exception Queue", desc: "คิวรายการที่ไม่ผ่าน 3-point match พร้อมหลักฐานย้อนกลับและ workflow ชี้แจง", filters: true },
+      { id: "exceptions", label: "ผลตรวจและเคส", icon: "exceptions", title: "ภาพรวมผลตรวจและเคส", desc: "ดูคู่สำเร็จและรายการที่ต้องตรวจ แยกบริษัท วันที่ ฝาก–ถอน และสถานะ", filters: true },
       { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true, hidden: true },
     ],
   },
@@ -621,7 +621,7 @@ function renderRoleSelect() {
 function renderFilters() {
   const route = ROUTE_MAP[state.route];
   const box = $("#globalFilters");
-  if (!route || !route.filters) {
+  if (!route || !route.filters || (state.route === "exceptions" && state.dataset === "production" && Sb.signedIn())) {
     box.hidden = true;
     box.innerHTML = "";
     return;
