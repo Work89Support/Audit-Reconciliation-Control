@@ -787,7 +787,26 @@ const Sb = (() => {
     return out;
   }
 
+  // Compact authenticated export for Company Hub. Page until complete; never
+  // copy raw financial evidence or Supabase sessions into the receiving app.
+  async function companyHubResults({from, to} = {}) {
+    const operationsRows = await operations({from, to, limit:1000});
+    const jobs = operationsRows.filter(row => !row.is_archived);
+    const ids = [...new Set(jobs.filter(row => row.status === "completed").map(row => row.last_run_id).filter(Boolean))];
+    const rows = [];
+    if (ids.length) {
+      const fields = "id,code,type_name,company,business_date,status,assigned_to";
+      for (let offset=0; offset<100000; offset+=1000) {
+        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=id.asc&limit=1000&offset=${offset}`);
+        rows.push(...page);
+        if (page.length<1000) return {rows,jobs,partial:operationsRows.length>=1000};
+      }
+    }
+    return {rows,jobs,partial:operationsRows.length>=1000 || rows.length>=100000};
+  }
+
   return {
+    companyHubResults,
     cfg,
     saveConfig,
     configured,
