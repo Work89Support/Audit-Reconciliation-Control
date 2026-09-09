@@ -180,7 +180,7 @@ eq("BBL: 'TRF FR' ยอด = 14", bblRows[0] && bblRows[0].amount, 14);
 eq("BBL: 'TRF TO' = withdraw", bblRows[1] && bblRows[1].direction, "withdraw");
 eq("BBL: 'TRF TO' ยอด = 500", bblRows[1] && bblRows[1].amount, 500);
 
-const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1 ENET 100.00 1,100.00\n04/09/26 10:01 X2 ENET 50.00 1,050.00`;
+const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1 ENET 100.00 1,100.00 รับโอนจาก KBANK x1111 TEST A\n04/09/26 10:01 X2 ENET 50.00 1,050.00 โอนไป SCB x2222 TEST B`;
 const completeScb = await P.parseText("3XB_STM_SCB.pdf", scbText, "2026-09-04");
 eq("SCB text: อ่านครบ 2 รายการ", completeScb.records.length, 2);
 eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
@@ -229,6 +229,24 @@ eq("KB annual fee: balance preserved", kbFee.records[0]?.balance, 369.01);
 eq("KB annual fee: withdrawal not deposit", kbFee.records[0]?.direction, "withdraw");
 const kbFeeBroken = await P.parseText("KB.pdf", kbFeeText.replace("250.00", "unreadable"), "2026-09-03");
 eq("KB annual fee: missing amount must fail quality", kbFeeBroken.quality.complete, false);
+
+const scbHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
+const scbRows = ['08/09/26 00:02 X1 ENET 55.00 9,529.48', '08/09/26 00:05 X2 ENET 3,500.00 6,029.48', '08/09/26 00:09 X1 ENET 99.00 6,128.48', '08/09/26 00:11 X1 ENET 80.00 6,208.48', '08/09/26 00:14 X1 ENET 70.00 6,278.48'];
+const scbDescriptions = ['รับโอนจาก KBANK x1631 TEST A', 'โอนไป BBL x0736 TEST B', 'รับโอนจาก KBANK x2621 TEST C', 'รับโอนจาก KBANK x0561 TEST D', 'รับโอนจาก SCB x2052 TEST E'];
+for (const layout of ['inline','before','after']) {
+  const text = scbHeader + scbRows.map((r,i)=>layout==='inline'?r+' '+scbDescriptions[i]:layout==='before'?scbDescriptions[i]+'\n'+r:r+'\n'+scbDescriptions[i]).join('\n');
+  const result = await P.parseText('FR8_SCB.pdf',text,'2026-09-08');
+  eq(`SCB ${layout}: complete`,result.quality.complete,true);
+  eq(`SCB ${layout}: identities stay on their rows`,JSON.stringify(result.records.map(r=>r.desc)),JSON.stringify(scbDescriptions));
+  eq(`SCB ${layout}: explicit directions`,result.records.map(r=>r.direction).join(','),'deposit,withdraw,deposit,deposit,deposit');
+}
+const ambiguousScb=await P.parseText('SCB.pdf',scbHeader+scbRows[0]+'\n'+scbRows[1]+'\n'+scbDescriptions[1],'2026-09-08');
+eq('SCB missing description: fail closed',ambiguousScb.quality.complete,false);
+eq('SCB ambiguous identities: never match guessed rows',ambiguousScb.records.length,0);
+const pageBoundaryScb=await P.parseText('SCB.pdf',scbHeader+scbDescriptions[0]+'\f'+scbHeader+scbRows[0],'2026-09-08');
+eq('SCB never carry a description across pages',pageBoundaryScb.records.length,0);
+const reverseScb=P.applyDirection([{code:'X1',amount:100,balance:1100},{code:'X1',amount:100,balance:1000}],'SCB');
+eq('SCB explicit X1 wins over reversed balances',reverseScb[1].direction,'deposit');
 
 console.log("\nPdfStm unit tests");
 console.log(out.join("\n"));

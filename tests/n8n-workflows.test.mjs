@@ -107,8 +107,15 @@ const probeCode = worker.nodes.find(node => node.name === "ตรวจราย
 const probe = new AsyncFunction('$json', '$', probeCode);
 const metaForPdf = () => ({item:{json:{file:{file_name:'3XB_STM_SCB.pdf'},job:{business_date:'2026-09-04'}}}});
 const pdfHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
-const validPdfText = pdfHeader + '04/09/26 10:00 X1 ENET 100.00 1100.00';
+const validPdfText = pdfHeader + '04/09/26 10:00 X1 ENET 100.00 1100.00\nรับโอนจาก KBANK x1234 TEST CUSTOMER';
 assert.equal((await probe({text:validPdfText},metaForPdf))[0].json.pdf_readable, true);
+assert.equal((await probe({text:pdfHeader+'04/09/26 10:00 X1 ENET 100.00 1100.00'},metaForPdf))[0].json.pdf_readable, false, 'missing transfer description must not approve an unidentified SCB row');
+const testedPdfParser = (await readFile(new URL('../pdf-stm.js', import.meta.url), 'utf8')).trim();
+for (const workflow of [worker, await load('audit-round-worker.json')]) {
+  for (const node of workflow.nodes.filter(n => n.parameters?.jsCode?.includes('const PdfStm'))) {
+    assert.ok(node.parameters.jsCode.includes(testedPdfParser), 'embedded PDF parser must match the tested browser parser');
+  }
+}
 for(const text of [pdfHeader.repeat(4), validPdfText+'\n04/09/26 10:01 unreadable', 'scanned']) {
   assert.equal((await probe({text},metaForPdf))[0].json.pdf_readable, false, 'unreadable/partial text must reach OCR even when over 40 characters');
 }
