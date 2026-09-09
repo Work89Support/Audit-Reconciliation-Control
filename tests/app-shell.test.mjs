@@ -27,6 +27,11 @@ assert.match(sideTimestamp({time: "12:00:00", date: "2026-09-06"}, "bo"), /ย�
 assert.equal(sideTimestamp({boTime: "12:01:00", boDate: "2026-09-05"}, "bo"), "2026-09-05 12:01:00");
 const completionBlockers = extractFunction("dailyCompletionBlockers");
 const statementNeedsBoReview = extractFunction("statementNeedsBoReview");
+const exportSummarySource = app.slice(app.indexOf('function exportDailyCompanySummary('), app.indexOf('function exportDailyCompanySummary(')+9000);
+assert.match(exportSummarySource, /file\.parse_error && !statementNeedsBoReview\(file\)/);
+assert.match(exportSummarySource, /ไฟล์ไม่พบรายการวันตรวจ รอเทียบ BO/);
+assert.match(exportSummarySource, /statementNeedsBoReview\(file\) \? statementReviewLabel\(file\)/);
+assert.match(app, /code: "needs_bo_review", tone: "amber"/);
 const statementReviewLabel = new Function('statementNeedsBoReview', `${app.match(/function statementReviewLabel\([^]*?\n}/)[0]}; return statementReviewLabel;`)(statementNeedsBoReview);
 assert.equal(statementNeedsBoReview({parse_error: 'อ่านรายการได้ 23 รายการ แต่ไม่มีรายการวันที่ 2026-09-02'}), true);
 assert.equal(statementNeedsBoReview({parse_error: 'อ่านได้บางส่วน อ่านรายการได้ 23 รายการ แต่ไม่มีรายการวันที่ 2026-09-02'}), false);

@@ -1760,7 +1760,8 @@ function exportDailyCompanySummary(data) {
   if (!can("export")) return deny("export ข้อมูล");
   const date = state.dailySummary.date;
   const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
-  const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error).length;
+  const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error && !statementNeedsBoReview(file)).length;
+  const fileBoReview = data.reconciliationFiles.filter(statementNeedsBoReview).length;
   const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
   const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
   const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
@@ -1776,6 +1777,7 @@ function exportDailyCompanySummary(data) {
         ["ไฟล์ที่ได้รับ", data.files.length, "ไฟล์จริงใน Supabase Storage"],
         ["ไฟล์สำหรับกระทบยอด", data.reconciliationFiles.length, "ไม่นับไฟล์ชี้แจงหรือหลักฐานประกอบ"],
         ["ไฟล์ที่ระบบอ่านสำเร็จ", parsed, "ไฟล์สำหรับกระทบยอดที่พร้อมใช้งาน"],
+        ["ไฟล์ไม่พบรายการวันตรวจ รอเทียบ BO", fileBoReview, "ได้รับไฟล์แล้ว ยังไม่ยืนยันว่า BO ไม่มีรายการหรือไฟล์ครอบคลุมวันตรวจ"],
         ["ไฟล์ชี้แจง/หลักฐาน", data.evidenceFiles.length, "เก็บไว้เปิดตรวจและใช้ประกอบการปิดเคส ไม่ต้องอ่านเป็นรายการ"],
         ["ไฟล์อ่านไม่สำเร็จ", fileErrors, "ต้องเปิดต้นฉบับหรือตรวจรูปแบบไฟล์"],
         ["รายการฝั่ง STM", stm, "รายการฝาก-ถอน/PM ที่ระบบอ่านได้"],
@@ -1793,7 +1795,7 @@ function exportDailyCompanySummary(data) {
       title: `ไฟล์ที่ได้รับ ${data.company} วันที่ ${date}`,
       headers: ["รับเมื่อ", "หัวข้อเมล", "ผู้ส่ง", "ชื่อไฟล์", "ประเภท", "ขนาด (KB)", "แถว", "สถานะอ่าน", "ข้อผิดพลาด", "Storage path"],
       widths: [22, 42, 28, 38, 24, 14, 12, 18, 42, 50],
-      rows: data.files.map((file) => [file.receivedAt, file.batch.subject || "", file.batch.sender || "", file.file_name || "", LIVE_KIND_LABEL[file.kind] || file.kind || "", Math.round(Number(file.size_bytes || 0) / 1024), Number(file.row_count || 0), file.kind === "doc_clarify" ? "หลักฐานพร้อมตรวจ" : file.parse_error ? "อ่านไม่สำเร็จ" : file.parsed ? parsedFileLabel(file) : "รออ่าน", file.parse_error || "", file.storage_path || ""]),
+      rows: data.files.map((file) => [file.receivedAt, file.batch.subject || "", file.batch.sender || "", file.file_name || "", LIVE_KIND_LABEL[file.kind] || file.kind || "", Math.round(Number(file.size_bytes || 0) / 1024), Number(file.row_count || 0), file.kind === "doc_clarify" ? "หลักฐานพร้อมตรวจ" : statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่สำเร็จ" : file.parsed ? parsedFileLabel(file) : "รออ่าน", file.parse_error || "", file.storage_path || ""]),
     },
     {
       name: "ผลกระทบยอด",
@@ -1911,13 +1913,15 @@ function renderDailyCompanySummary(root) {
         sourceNames: Array.isArray(received?.source_files) ? received.source_files.filter(Boolean) : [],
       };
       const files = sourceFilesFor(item.kind);
-      const errors = files.filter((file) => file.parse_error);
+      const errors = files.filter((file) => file.parse_error && !statementNeedsBoReview(file));
+      const needsBoReview = files.filter(statementNeedsBoReview);
       const parsedFiles = files.filter((file) => file.parsed);
       const sameIdentity = boReceived.find((candidate) => candidate.kind === item.kind && candidate.identity === item.identity);
       const sameNames = Array.isArray(sameIdentity?.source_files) ? sameIdentity.source_files.filter(Boolean) : [];
       const allNames = files.map((file) => file.file_name).filter(Boolean);
       if (!files.length) return { code: "missing_file", tone: "red", title: `ยังไม่ได้รับไฟล์ ${item.kind || "STM"}`, detail: "ไม่พบไฟล์ต้นทางของบริษัท/วันที่นี้", sourceNames: [] };
       if (errors.length) return { code: "read_error", tone: "red", title: "ได้รับไฟล์แล้ว แต่อ่านไม่ได้", detail: `${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}`, sourceNames: allNames };
+      if (needsBoReview.length) return { code: "needs_bo_review", tone: "amber", title: "ได้รับไฟล์แล้ว · มีไฟล์ไม่พบรายการในวันตรวจ", detail: `${num(needsBoReview.length)} ไฟล์รอเทียบ BO และตรวจช่วงวันที่ — ยังไม่ยืนยันว่าเป็นบัญชีคู่กันหรือไม่มีรายการทั้งสองฝั่ง`, sourceNames: allNames };
       if (parsedFiles.length < files.length) return { code: "waiting", tone: "amber", title: "ได้รับไฟล์แล้ว · รออ่าน", detail: `อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์`, sourceNames: allNames };
       if (sameIdentity) return { code: "wrong_direction", tone: "red", title: "พบบัญชีแล้ว แต่ทิศทางไม่ตรง", detail: `BO ${directionLabel(item.direction)} · ไฟล์ ${directionLabel(sameIdentity.direction)}`, sourceNames: sameNames.length ? sameNames : allNames };
       return { code: "identity_not_found", tone: "red", title: "มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่", detail: `ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์`, sourceNames: allNames };
