@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node tests/engine.test.mjs && node tests/units.test.mjs && node tests/registry.test.mjs && node tests/pdfstm.test.mjs && node tests/n8n-workflows.test.mjs && node tests/n8n-rounds.test.mjs && node tests/app-shell.test.mjs && node tests/review-export.test.mjs && node tests/clarification-save.test.mjs && node tests/filter-clarity.test.mjs",
     "build:rounds": "node scripts/build-n8n-worker.mjs && node scripts/build-n8n-rounds.mjs",
-    "test:overview": "node tests/review-overview.test.cjs"
+    "test:overview": "node tests/review-overview.test.cjs",
+    "test:background": "node tests/live-background-update.test.mjs"
   }
 }

@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const helper=app.slice(app.indexOf('function offerLiveOverviewUpdate()'),app.indexOf('async function loadLiveOverview('));
+const load=app.slice(app.indexOf('async function loadLiveOverview('),app.indexOf('function ensureLiveOverview('));
+assert.equal((load.match(/\brender\(\);/g)||[]).length,1,'Only first untouched dashboard may render automatically');
+assert.match(load,/firstDashboardLoad && state.route === "dashboard" && liveInteractionVersion === interactionAtStart/);
+assert.match(load,/auxiliaryLoading = false;\s+offerLiveOverviewUpdate\(\);/);
+const elements=new Map();
+function element(){return {children:[],setAttribute(){},append(...items){this.children.push(...items);for(const i of items)if(i.id)elements.set(i.id,i);},querySelector(tag){return this.children.find(i=>i.tag===tag);}};}
+const root=element(); elements.set('viewRoot',root);
+let renders=0,confirm=false,scroll;
+const context={document:{createElement(tag){return {...element(),tag};}},$:s=>elements.get(s.slice(1)),Sb:{signedIn:()=>true},liveOverviewState:{},render(){renders++;},window:{confirm:()=>confirm,scrollX:12,scrollY:700,scrollTo(...args){scroll=args;}}};
+vm.createContext(context);vm.runInContext(helper,context);
+context.offerLiveOverviewUpdate();context.offerLiveOverviewUpdate();
+assert.equal(root.children.length,1,'Repeated responses reuse the notice');
+assert.equal(renders,0,'Background response never replaces active content');
+const notice=root.children[0]; const button=notice.querySelector('button');
+button.onclick();assert.equal(renders,0,'Cancel keeps drafts and view untouched');
+confirm=true;button.onclick();assert.equal(renders,1);assert.deepEqual(scroll,[12,700]);
+context.liveOverviewState.error='timeout';context.offerLiveOverviewUpdate();
+assert.match(notice.querySelector('span').textContent,/โหลดไม่สำเร็จ/);
+console.log('Background updates: no unsolicited render, one notice, cancel and scroll preservation passed');
