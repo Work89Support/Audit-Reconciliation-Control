@@ -11,7 +11,8 @@ const ReviewOverview = (() => {
   }
   function model(data) {
     const evidence = Array.isArray(data.run?.summary?.match_evidence) ? data.run.summary.match_evidence : [];
-    const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
+    const confirmed=new Map((data.confirmations||[]).map(c=>[c.pair_index,c]));
+    const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, pairIndex:i,confirmation:confirmed.get(i),category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
     const cases = data.cases.map(e => ({ id:e.id, category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) }));
     return { rows:[...pairs,...cases], evidenceCount:evidence.length, reportedMatched:Number(data.run?.matched || 0), counts:Object.fromEntries(Object.keys(labels).map(k => [k, k === 'all' ? pairs.length + cases.length : [...pairs,...cases].filter(r => r.category === k).length])) };
   }
@@ -21,7 +22,7 @@ const ReviewOverview = (() => {
   }
   const detailHeaders=['วัน / เวลา','ยอด','บัญชีลูกค้า','ท้าย 4','ธนาคารลูกค้า','ชื่อ / User','User','อ้างอิง','รายละเอียดต้นฉบับ'];
   function auditLabel(row) {
-    if (!row.case) return 'ยังไม่ยืนยันโดย Audit';
+    if (!row.case) return row.confirmation?'Audit ยืนยันแล้ว':'ยังไม่ยืนยันโดย Audit';
     return ({open:'รอตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',closed:'ยืนยันแล้ว ปิดเคส',approved:'อนุมัติแล้ว',damage:'ความเสียหาย'})[row.case.status] || row.case.status;
   }
   function sheetRow(row) {
@@ -77,7 +78,7 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,load,onCase,onCompany,onExport,isActive=()=>true}) {
+  async function mount(root, {company,date,load,onCase,onCompany,onExport,onConfirm,isActive=()=>true}) {
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
     let columnRules={},columnSort={column:5,direction:'asc'};
@@ -110,6 +111,10 @@ const ReviewOverview = (() => {
       const toolbar=document.createElement('div'); toolbar.className='audit-sheet-tools';
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
+      const runStatus=document.createElement('p');runStatus.className='sheet-active-filters';
+      runStatus.textContent=`การประมวลผล: ${({completed:'เสร็จแล้ว',queued:'รอประมวลผลใหม่ — ข้อมูลที่เห็นเป็นผลรอบก่อน',ready:'พร้อมประมวลผล — ยังไม่ยืนยันผลใหม่',processing:'กำลังประมวลผล',needs_review:'ต้องตรวจข้อมูลก่อน'})[data?.run?.jobStatus]||data?.run?.jobStatus||'ยังไม่มีผล'} • Audit ยืนยัน ${data?.confirmations?.length||0} คู่ (แยกจากการปิดเคส)`;
+      if(data?.confirmationError)runStatus.textContent=runStatus.textContent.replace('Audit ยืนยัน 0 คู่','Audit ยืนยัน — คู่')+' • ยังโหลดประวัติ Audit ไม่ได้ จึงปิดปุ่มยืนยันไว้';
+      toolbar.before(runStatus);
       toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)}))],{date,company});
       const chooser=document.createElement('details');chooser.className='audit-column-picker';
       chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${i<2?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
@@ -132,6 +137,22 @@ const ReviewOverview = (() => {
       chooser.querySelectorAll('[data-column]').forEach(el=>el.onchange=()=>{const i=Number(el.dataset.column);hidden=el.checked?hidden.filter(n=>n!==i):[...hidden,i];saveColumns();});
       chooser.querySelectorAll('[data-columns]').forEach(el=>el.onclick=()=>{hidden=el.dataset.columns==='compact'?[...compactHidden]:[];saveColumns();});
       applyColumns();
+      rows.slice(page*50,page*50+50).forEach((row,index)=>{
+        if(!row.pair)return;
+        const td=table.querySelectorAll('tbody tr')[index]?.children[1];if(!td)return;
+        if(row.confirmation){
+          td.innerHTML=`<b>Audit ยืนยันแล้ว</b><small>${escape(row.confirmation.confirmed_at)}<br>ผู้ตรวจ: ${escape(row.confirmation.confirmed_by)}<br>${escape(row.confirmation.note)}</small>`;return;
+        }
+        const b=document.createElement('button');b.className='ghost-button sm';b.textContent='Audit ยืนยันถูกต้อง';
+        b.disabled=!onConfirm||!!data.confirmationError||!data.complete||data.run.jobStatus!=='completed'||!!row.pair.manualReview;
+        b.onclick=async()=>{
+          const note=window.prompt('ยืนยันว่าตรวจยอด บัญชี และหลักฐานคู่นี้แล้ว ระบุหมายเหตุ (ไม่ปิดเคสเตือนที่เกี่ยวข้อง)');
+          if(!note?.trim())return;
+          b.disabled=true;
+          try{await onConfirm(data.run.id,[row.pairIndex],note.trim());await refresh();}
+          catch(error){window.alert('ยืนยันไม่สำเร็จ: '+error.message);b.disabled=false;}
+        };td.append(document.createElement('br'),b);
+      });
       table.querySelectorAll('thead tr:last-child th').forEach((th,i)=>{
         th.innerHTML=`<button type="button" class="sheet-filter-button ${columnRules[i]?'active':''}" aria-label="กรอง ${escape(allHeaders[i])}">${escape(allHeaders[i])} ${Number(columnSort.column)===i?(columnSort.direction==='asc'?'↑':'↓'):''} ${columnRules[i]?'●':'▾'}</button>`;
         th.querySelector('button').onclick=()=>{

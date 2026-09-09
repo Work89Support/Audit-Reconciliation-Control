@@ -262,7 +262,8 @@ const Sb = (() => {
   /* สรุปรายวัน (view) — กรองที่ฐานข้อมูลเพื่อลดเวลารอและปริมาณข้อมูล */
   function rangedView(name, order, input, defaultLimit) {
     const opts = typeof input === "number" ? { limit: input } : (input || {});
-    const filters = ["select=*", `order=${order}`, `limit=${opts.limit || defaultLimit}`];
+    const columns = name === 'v_recon_quality' ? 'business_date,company,business_system,status,missing_groups,file_count,error_count,is_archived,run_id,run_at,stm_count,bo_count,matched,match_rate,exception_count' : '*';
+    const filters = [`select=${columns}`, `order=${order}`, `limit=${opts.limit || defaultLimit}`];
     if (opts.from) filters.push(`business_date=gte.${encodeURIComponent(opts.from)}`);
     if (opts.to) filters.push(`business_date=lte.${encodeURIComponent(opts.to)}`);
     if (opts.company && opts.company !== "ALL") filters.push(`company=eq.${encodeURIComponent(opts.company)}`);
@@ -281,9 +282,9 @@ const Sb = (() => {
       if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) throw new Error("ช่วงวันที่เช็กลิสต์ไม่ถูกต้อง");
       const cap = Math.min(5000, Math.max(1, Number(limit) || 5000));
       const day = 86400000, rows = [];
-      for (let cursor = end; cursor >= start && rows.length < cap; cursor -= 3 * day) {
+      for (let cursor = end; cursor >= start && rows.length < cap; cursor -= day) {
         const chunk = await rpc("audit_daily_checklist", {
-          p_from: new Date(Math.max(start, cursor - 2 * day)).toISOString().slice(0, 10),
+          p_from: new Date(cursor).toISOString().slice(0, 10),
           p_to: new Date(cursor).toISOString().slice(0, 10),
           p_company: company === "ALL" ? null : company || null,
           p_limit: cap - rows.length,
@@ -443,13 +444,20 @@ const Sb = (() => {
   async function reconciliationOverview(company, date) {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
+    let confirmations=[],confirmationError='';
+    try {
+      for(let offset=0;;offset+=1000){
+        const page=await json(`/rest/v1/pair_audit_confirmations?run_id=eq.${encodeURIComponent(run.id)}&select=pair_index,confirmed_by,confirmed_at,note&order=pair_index.asc&limit=1000&offset=${offset}`);
+        confirmations.push(...page);if(page.length<1000)break;
+      }
+    } catch(error) { confirmationError=error.message; }
     const cases = [];
     for (let offset = 0; offset < 20000; offset += 500) {
       const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
-      if (page.length < 500) return { run, cases, complete: true };
+      if (page.length < 500) return { run, cases, complete: true, confirmations, confirmationError };
     }
-    return { run, cases, complete: false };
+    return { run, cases, complete: false, confirmations, confirmationError };
   }
 
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
@@ -471,6 +479,7 @@ const Sb = (() => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+  const confirmAuditPairs=(runId,indices,note)=>rpc('confirm_audit_pairs',{p_run_id:runId,p_indices:indices,p_note:note});
 
   /* สิทธิ์ใช้งานจริงมาจากฐานข้อมูลเท่านั้น ไม่อ่าน role จาก user_metadata
      เพื่อป้องกันผู้ใช้แก้ metadata ฝั่ง client แล้วขยายสิทธิ์ตนเอง */
@@ -838,6 +847,7 @@ const Sb = (() => {
     exceptionDetail,
     matchedEvidence,
     reconciliationOverview,
+    confirmAuditPairs,
     exceptionFiles,
     queueDueJobs,
     claimJob,
