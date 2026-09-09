@@ -374,6 +374,26 @@ await (async () => {
   eq('pair evidence: missing name stays empty',r.matchEvidence[0].customer.stm.name,'');
 })();
 
+await (async () => {
+  const s=rec({account:'4311918665',amount:3,sec:27000,direction:'withdraw',desc:'โอนไป KBNK x6460 น.ส. กนิชา วงศ์วานิช'});
+  const b=rec({account:'4311918665',amount:3,sec:27005,direction:'withdraw',custAccount:'1251516460',custBank:'KBANK'});
+  let r=await run([s],[b]);
+  eq('STM description: matches customer tail',r.customerIdentityMatched,1);
+  eq('STM description: tail evidence',r.matchEvidence[0].customer.stm.last4,'6460');
+  eq('STM description: never invent full account',r.matchEvidence[0].customer.stm.account,'');
+  eq('STM description: bank alias',r.matchEvidence[0].customer.stm.bank,'KBANK');
+  eq('STM description: direction retained',r.matchEvidence[0].direction,'withdraw');
+  eq('STM description: source retained',r.matchEvidence[0].customer.stm.description,s.desc);
+  eq('STM description: input not mutated',s.custAccountLast4,undefined);
+  for (const patch of [{custAccount:'1251519999'},{direction:'deposit'},{account:'different'},{custBank:'SCB'},{sec:30601}]) {
+    r=await run([s],[{...b,...patch}]);
+    eq('STM tail: reject '+JSON.stringify(patch),r.matched,0);
+  }
+  r=await run([s],[b,{...b,custAccount:'9999916460'}]);
+  eq('STM tail: ambiguity stays unmatched',r.matched,0);
+  eq('STM header: not customer identity',Engine.statementCustomer({desc:'Account No. 4311918665',account:'4311918665'}).custAccountLast4,undefined);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));

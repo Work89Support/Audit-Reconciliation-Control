@@ -25,7 +25,7 @@ const ReviewOverview = (() => {
     const values = {status:'all', direction:'all', account:'', query:''};
     const amount = n => n == null ? '—' : Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
     const timestamp = side => !side?.date ? 'ไม่ระบุ' : `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec*1000).toISOString().slice(11,19) : 'ไม่ระบุเวลา'}`;
-    const customer = p => `<small>บัญชีลูกค้า: ${escape(p?.account || 'ไม่ระบุ')}<br>ชื่อ: ${escape(p?.name || 'ไม่ระบุ')}<br>User: ${escape(p?.user || 'ไม่ระบุ')}<br>อ้างอิง: ${escape(p?.reference || 'ไม่ระบุ')}</small>`;
+    const customer = p => `<small>บัญชีลูกค้า: ${escape(p?.account || (p?.last4 ? 'ปิดบังเลขบัญชี · ท้าย '+p.last4 : 'ไม่ระบุ'))}<br>ธนาคารลูกค้า: ${escape(p?.bank || 'ไม่ระบุ')}<br>ชื่อ: ${escape(p?.name || 'ไม่ระบุ')}<br>User: ${escape(p?.user || 'ไม่ระบุ')}<br>อ้างอิง: ${escape(p?.reference || 'ไม่ระบุ')}${p?.description ? '<br>รายละเอียดต้นฉบับ: '+escape(p.description) : ''}</small>`;
     function rowHtml(row) {
       const p=row.pair, e=row.case;
       const b=p ? timestamp(p.bo) : e.bo_date ? `${e.bo_date} ${e.bo_time || 'ไม่ระบุเวลา'}` : 'ไม่พบ BO';

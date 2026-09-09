@@ -8,6 +8,22 @@
    ============================================================= */
 
 const Engine = (() => {
+  // Only transfer descriptions identify a counterparty; never use the statement header account.
+  function statementCustomer(row) {
+    const description = String(row.desc || row.raw || "");
+    const hit = description.match(/(?:รับโอนจาก|โอนจาก|โอนไป|จาก|ไป|from|to)\s*(KBANK|KBNK|KTB|SCB|BBL|GSB|BAAC|TTB|BAY|KKP|UOB|CIMB|LHB|TISCO|GHB)\s*[xX×*]+\s*(\d{4})(?!\d)(?:\s+([^\r\n]+))?/i);
+    if (!hit) return { ...row };
+    return { ...row, custAccountLast4: hit[2],
+      custBank: row.custBank || (hit[1].toUpperCase() === 'KBNK' ? 'KBANK' : hit[1].toUpperCase()),
+      custName: row.custName || (hit[3] || '').trim(), customerDescription: description,
+      customerIdentitySource: 'statement-description' };
+  }
+  function customerEvidence(row) {
+    return { account: row.custAccount || '', last4: row.custAccountLast4 || '',
+      bank: row.custBank || '', name: row.custName || '', user: row.memberCode || '',
+      reference: row.ref || '', description: row.customerDescription || '',
+      identitySource: row.customerIdentitySource || '' };
+  }
   /* ---------------- CSV parser (รองรับ quote และ \r\n) ---------------- */
   function parseCSV(text) {
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
@@ -369,6 +385,7 @@ const Engine = (() => {
   }
 
   async function reconcile(stmRecords, boRecords, settings, masterAccounts, onProgress) {
+    stmRecords = stmRecords.map(statementCustomer);
     const t0 = performance.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -454,7 +471,10 @@ const Engine = (() => {
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction && s.account === b.account
       && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
-      && !!customerAccount(s) && customerAccount(s) === customerAccount(b)
+      && !!customerAccount(b)
+      && (customerAccount(s) ? customerAccount(s) === customerAccount(b)
+        : /^\d{4}$/.test(s.custAccountLast4 || '') && customerAccount(b).endsWith(s.custAccountLast4))
+      && (!s.custBank || !b.custBank || String(s.custBank).toUpperCase().replace('KBNK','KBANK') === String(b.custBank).toUpperCase().replace('KBNK','KBANK'))
       && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
       && s.sec >= 0 && s.sec < 86400 && b.sec >= 0 && b.sec < 86400
       && timeDistance(s, b) <= 3600;
@@ -478,6 +498,7 @@ const Engine = (() => {
     }
     const dirOK = (s, b) => {
       if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
+      if (s.custAccountLast4 && customerAccount(b) && !identityCandidate(s, b)) return false;
       if (customerAccount(s) && customerAccount(b) && customerAccount(s) !== customerAccount(b)) return false;
       if (customerAccount(s) && customerAccount(b) && !identityCandidate(s, b)) return false;
       if (!sameCompany(s, b)) return false;
@@ -679,7 +700,7 @@ const Engine = (() => {
       /* จุดตรวจที่ 4: ธนาคารและเลขบัญชีปลายทางของลูกค้าต้องตรงกับที่สลิปธนาคารระบุ */
       const hit = String(m.s.desc || m.s.raw || "").match(FROM_RE);
       if (!hit) return;
-      const stmBank = BANK_ALIAS[(hit[1] || "").toUpperCase()] || (hit[1] || "").toUpperCase();
+      const stmBank = hit[1]?.toUpperCase() === 'KBNK' ? 'KBANK' : BANK_ALIAS[(hit[1] || "").toUpperCase()] || (hit[1] || "").toUpperCase();
       const stmTail = hit[2];
       const boBank = BANK_ALIAS[String(m.b.custBank || "").toUpperCase()] || String(m.b.custBank || "").toUpperCase();
       const boTail = String(m.b.custAccount || "").replace(/\D/g, "").slice(-stmTail.length);
@@ -745,7 +766,7 @@ const Engine = (() => {
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
         customer: {
           bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "" },
-          stm: { account: m.s.custAccount || "", name: m.s.custName || "", user: m.s.memberCode || "", reference: m.s.ref || "" },
+          stm: customerEvidence(m.s),
         },
         boAmount: m.b.amount,
         stmAmount: m.s.amount,
@@ -803,7 +824,7 @@ const Engine = (() => {
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
         customerDetails: {
           bo: b ? { user: b.memberCode || "", account: b.custAccount || "", name: b.custName || "", reference: b.ref || "", origin: b.via || "", performedBy: b.performedBy || "", note: b.note || "" } : null,
-          stm: s ? { user: s.memberCode || "", account: s.custAccount || "", name: s.custName || "", reference: s.ref || "" } : null,
+          stm: s ? customerEvidence(s) : null,
         },
         assignee: "audit_som",
         track: null, // แอปจะเติมให้จากระบบต้นทางของบริษัท (XB = รายวัน, 123 = รายรอบ)
@@ -840,5 +861,5 @@ const Engine = (() => {
     );
   }
 
-  return { parseCSV, parseSheet, detectFormat, normalize, reconcile, TYPE_NAME, hhmmss };
+  return { parseCSV, parseSheet, detectFormat, normalize, reconcile, TYPE_NAME, hhmmss, statementCustomer };
 })();
