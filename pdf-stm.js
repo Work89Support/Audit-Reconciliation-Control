@@ -111,26 +111,55 @@ const PdfStm = (() => {
 
   /* ---------------- SCB ----------------
      บรรทัดรายการ: 18/07/26 07:04 | X2 | ENET | 5,000.00 | 23,932.00
-     คำอธิบายอยู่บรรทัดเหนือขึ้นไปหนึ่งบรรทัด                                */
+     ผูกคำอธิบายจากแถวเดียวกัน หรือรูปแบบแยกบรรทัดที่ยืนยันได้ทั้งช่วงเท่านั้น */
   function parseScb(pages) {
     const rows = [];
     pages.forEach((lines) => {
-      lines.forEach((l, i) => {
+      const tokens = [];
+      const description = /^(?:รับโอนจาก|โอนจาก|โอนไป|ดอกเบี้ย|ค่าธรรมเนียม|ปรับปรุง)/;
+      lines.forEach((l) => {
         const t = l.text;
         const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3})\s+([A-Z/]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
-        if (!m) return;
-        const prev = lines[i - 1];
-        rows.push({
+        if (!m) {
+          if (description.test(t)) tokens.push({ desc: t });
+          return;
+        }
+        const inline = t.slice(m[0].length).trim();
+        const row = {
           date: isoOf(m[1]),
           sec: secOf(m[2]),
           code: m[3],
           channel: m[4],
           amount: numOf(m[5]),
           balance: numOf(m[6]),
-          desc: prev && !/^\d{1,2}\/\d{1,2}\//.test(prev.text) ? prev.text : "",
-          raw: (prev && !/^\d{1,2}\/\d{1,2}\//.test(prev.text) ? prev.text + " | " : "") + t,
-        });
+          desc: inline,
+          raw: t,
+          descriptionUncertain: !inline && /^X[12]$/.test(m[3]),
+        };
+        rows.push(row);
+        tokens.push({ row, inline: !!inline });
       });
+      // Native extraction may emit all descriptions AFTER rows; older files
+      // emit them BEFORE rows. Never borrow the preceding text unconditionally.
+      // Inline rows form boundaries, so a missing description cannot shift
+      // identities across an already complete transaction or a PDF page.
+      let segment = [];
+      const flush = () => {
+        if (segment.length && segment.length % 2 === 0) {
+          const before = !!segment[0].desc;
+          const alternating = segment.every((token, i) => !!token.desc === (i % 2 === 0 ? before : !before));
+          if (alternating) for (let i = 0; i < segment.length; i += 2) {
+            const row = segment[i + (before ? 1 : 0)].row;
+            const desc = segment[i + (before ? 0 : 1)].desc;
+            row.desc = desc;
+            row.raw += " | " + desc;
+            row.descriptionUncertain = false;
+          }
+        }
+        segment = [];
+      };
+      tokens.forEach((token) => { if (token.inline) flush(); else segment.push(token); });
+      flush();
     });
     return rows;
   }
@@ -258,8 +287,9 @@ const PdfStm = (() => {
   function applyDirection(rows, bank) {
     let prevBal = null;
     rows.forEach((r, i) => {
-      let dir = null;
-      if (prevBal !== null && r.balance !== null && Math.abs(Math.abs(r.balance - prevBal) - r.amount) < 0.01) {
+      const scbCode = String(r.code || "").toUpperCase();
+      let dir = bank === "SCB" ? ({ X1: "deposit", X2: "withdraw", XB: "adjustment" }[scbCode] || null) : null;
+      if (!dir && prevBal !== null && r.balance !== null && Math.abs(Math.abs(r.balance - prevBal) - r.amount) < 0.01) {
         dir = r.balance > prevBal ? "deposit" : "withdraw";
       }
       if (!dir) {
@@ -409,9 +439,9 @@ const PdfStm = (() => {
       if (matchedIndex >= 0) remainingRows.splice(matchedIndex, 1);
       else unreadRows.push({ page: pageIndex + 1, line: lineIndex + 1, raw: line.text });
     }));
-    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction);
+    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction || r.descriptionUncertain);
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
-      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
+      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: r.descriptionUncertain ? "ยังผูกรายละเอียด SCB กับแถวรายการไม่ได้อย่างแน่นอน" : "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
 
     // ทีมใช้งานตั้งรอบจากวันที่ในหัวข้ออีเมล แต่ statement ธนาคารบางฉบับ
     // (โดยเฉพาะ KBANK) เป็นรายการของวันก่อนหน้า 1 วันทั้งฉบับ เมื่อทุกแถว
@@ -430,6 +460,7 @@ const PdfStm = (() => {
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
     rows.forEach((r, i) => {
+      if (r.descriptionUncertain) return drop("ยังผูกรายละเอียด SCB กับแถวรายการไม่ได้อย่างแน่นอน");
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
