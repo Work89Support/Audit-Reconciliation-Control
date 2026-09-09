@@ -504,7 +504,7 @@ function scopedWorkflowMetrics() {
     return sum + (checklistCoversRun ? reportedOpen : Math.max(0, total - resolved));
   }, 0);
   const loadedOpen = DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status)).length;
-  const qualityReady = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const qualityReady = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
   return {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
@@ -1220,6 +1220,9 @@ function ensureLiveOverview(root) {
   return true;
 }
 
+function hasLiveCoreError(section, errors = liveOverviewState.coreErrors) {
+  return errors.some((message) => message === section || message.startsWith(`${section}:`));
+}
 function renderLiveDashboard(root) {
   if (!liveOverviewState.quality && !liveOverviewState.loading) loadLiveOverview();
 
@@ -1237,8 +1240,8 @@ function renderLiveDashboard(root) {
   const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
   const exceptionTotal = quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0);
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
-  const dailyAvailable = Array.isArray(liveOverviewState.daily) && !liveOverviewState.coreErrors.includes("ยอดเมลและไฟล์");
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const dailyAvailable = Array.isArray(liveOverviewState.daily) && !hasLiveCoreError("ยอดเมลและไฟล์");
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
   const showMetric = (available, value) => available ? num(value) : "—";
 
   const opByKey = new Map(operations.map((x) => [`${x.business_date}|${x.company}|${x.business_system || ""}`, x]));
@@ -1297,7 +1300,7 @@ function renderLiveDashboard(root) {
       <article class="ok" data-action-route="daily-summary"><span>ระบบประมวลผลเสร็จ</span><strong>${showMetric(qualityAvailable, completed)}</strong><small>จำนวนงานรายวัน/บริษัท · ยังไม่ใช่การยืนยันจาก Audit</small></article>
       <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${showMetric(qualityAvailable, needsReview)}</strong><small>${qualityAvailable ? "ข้อมูลมาแล้วแต่ยังไม่ครบ" : "ผลกระทบยอดยังไม่พร้อม"} · กดดูสิ่งที่ขาด</small></article>
       <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${showMetric(qualityAvailable, waiting + failed)}</strong><small>${qualityAvailable ? `รอ ${num(waiting)} · ล้มเหลว ${num(failed)}` : "ผลกระทบยอดยังไม่พร้อม"} · กดแก้ไฟล์</small></article>
-      <article class="bad" data-action-route="exceptions"><span>เคสที่ระบบตรวจพบ</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="exceptions"><span>เคสที่ระบบตรวจพบ</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : !liveOverviewState.exceptionsReady ? "ยอดเสี่ยงยังโหลดไม่สำเร็จ" : `ยอดเสี่ยงเฉพาะ ${num(exceptions.length)} เคสที่โหลด ${money0(risk)} บาท · ไม่ใช่ยอดรวมทั้งระบบ`} · กดตรวจเคส</small></article>
     </section>
 
     <section class="action-overview">
@@ -2694,7 +2697,7 @@ VIEWS.exceptions = (root) => {
   const boTotal = finishedRuns.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
   const matchedTotal = finishedRuns.reduce((sum, row) => sum + Number(row.matched || 0), 0);
   const generatedExceptionTotal = finishedRuns.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
   const exceptionsAvailable = liveOverviewState.exceptionsReady;
   const resultMetric = (available, value) => available ? num(value) : "—";
   const reconMessage = liveOverviewState.loading && !qualityRows.length
@@ -3963,8 +3966,8 @@ function renderLiveReports(root) {
   const matched = quality.reduce((sum,row)=>sum+Number(row.matched||0),0);
   const stm = quality.reduce((sum,row)=>sum+Number(row.stm_count||0),0);
   const totalDamage = damages.reduce((sum,row)=>sum+Number(row.amount||0),0);
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !liveOverviewState.coreErrors.includes("ผลกระทบยอด");
-  const operationsAvailable = Array.isArray(liveOverviewState.operations) && !liveOverviewState.coreErrors.includes("คิวกระทบยอด");
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
+  const operationsAvailable = Array.isArray(liveOverviewState.operations) && !hasLiveCoreError("คิวกระทบยอด");
   const exceptionsAvailable = liveOverviewState.exceptionsReady;
   const damagesAvailable = liveOverviewState.damagesReady;
   const reportMetric = (available, value, formatter = num) => available ? formatter(value) : "—";
