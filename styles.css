@@ -2317,5 +2317,23 @@ tr.on { background: #f0f7ff; }
 .case-mail-evidence article { border:1px solid #dce5ee; padding:12px; margin:10px 0; border-radius:8px; }
 .review-overview-table td { vertical-align:top; font-size:16px; }
 .review-overview-table small { display:block; margin-top:8px; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
-.review-overview-table th:nth-child(3),.review-overview-table th:nth-child(4) { background:#e9f6ed; }
-.review-overview-table th:nth-child(5),.review-overview-table th:nth-child(6) { background:#e6f1ff; }
+.review-overview-table.audit-sheet { color:#334155; line-height:1.5; }
+.review-overview-table.audit-sheet th,.review-overview-table.audit-sheet td { white-space:normal; vertical-align:middle; padding:9px 12px; border-color:#e5eaf0; }
+.review-overview-table.audit-sheet thead th { position:static; color:#53647b; font-weight:600; }
+.review-overview-table.audit-sheet thead tr:first-child th { padding:10px 12px; font-size:12px; letter-spacing:.02em; }
+.review-overview-table.audit-sheet thead tr:last-child th:nth-child(n+6):nth-child(-n+14) { background:#f0f8f3; }
+.review-overview-table.audit-sheet thead tr:last-child th:nth-child(n+15):nth-child(-n+23) { background:#edf5ff; }
+.review-overview-table.audit-sheet tbody td { background:#fff; font-variant-numeric:tabular-nums; }
+.review-overview-table.audit-sheet tbody tr:nth-child(even) td { background:#fafcfe; }
+.review-overview-table.audit-sheet tbody tr:hover td { background:#eef5ff; }
+.review-overview-table.audit-sheet tbody td:first-child { min-width:190px; max-width:190px; overflow-wrap:anywhere; }
+.review-overview-table.audit-sheet td:last-child { display:table-cell; }
+.review-overview-table.audit-sheet .sheet-col-1 { min-width:175px; max-width:175px; }
+.review-overview-table.audit-sheet .sheet-col-2,.review-overview-table.audit-sheet .sheet-col-4 { min-width:85px; }
+.review-overview-table.audit-sheet .sheet-col-5,.review-overview-table.audit-sheet .sheet-col-14 { min-width:165px; white-space:nowrap; }
+.review-overview-table.audit-sheet .sheet-money { text-align:right; font-weight:600; min-width:100px; white-space:nowrap; }
+.review-overview-table.audit-sheet select { width:100%; min-height:34px; padding:6px 10px; border-radius:7px; border-color:#d5dfeb; background:#f8fafc; font-size:12px; color:#44556c; box-sizing:border-box; }
+.sheet-result { display:inline-block; max-width:100%; box-sizing:border-box; border-radius:6px; padding:4px 7px; font-size:12px; line-height:1.5; white-space:normal; overflow-wrap:anywhere; }
+.sheet-result.is-match { color:#187146; background:#e8f5ed; }
+.sheet-result.is-review { color:#93651c; background:#fff5df; }
+.review-overview-table.audit-sheet .sheet-filter-button { line-height:1.45; font-size:12px; }
