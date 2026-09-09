@@ -2581,6 +2581,7 @@ VIEWS.exceptions = (root) => {
       date: state.filters.to || DEFAULT_WORK_DATE,
       load: Sb.reconciliationOverview,
       onExport: exportSheets,
+      onConfirm: Sb.confirmAuditPairs,
       isActive: () => state.route === "exceptions" && state.filters.company === company,
       onCompany: () => { state.filters.company = "ALL"; render(); },
       onCase: (row, {action = 'files'} = {}) => {

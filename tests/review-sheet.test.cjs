@@ -7,6 +7,7 @@ assert.equal(sheetRow(pair)[10],'User: demo-user');
 assert.equal(sheetRow(pair)[9],''); // Customer bank must not copy company bank.
 assert.equal(sheetRow({...pair,direction:'unknown'})[4],'ไม่ระบุประเภท');
 assert.equal(auditLabel({case:{status:'answered'}}),'รอตรวจคำตอบ');
+assert.equal(auditLabel({...pair,confirmation:{confirmed_at:'2026-09-09'}}),'Audit ยืนยันแล้ว');
 console.log('Sheet fields and independent audit states passed');
 const {normalizeHidden}=require('../review-overview.js');
 require('node:assert/strict').deepEqual(normalizeHidden([0,1,2,2,26,27,-1,'5',null]),[2,26]);
