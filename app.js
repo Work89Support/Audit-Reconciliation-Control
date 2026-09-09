@@ -1943,8 +1943,8 @@ function renderDailyCompanySummary(root) {
     const unmatchedReceivedRows = unmatchedReceived.map((item) => `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td>${Array.isArray(item.source_files) && item.source_files.length ? h(item.source_files.join(" · ")) : "ไฟล์ถูกอ่านแล้ว แต่ผลรันเดิมยังไม่ได้เก็บชื่อไฟล์"}</td></tr>`).join("");
     const boFileCards = boSourceFiles.map((file) => {
       const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
-      const statusLabel = file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
-      const tone = file.parse_error ? "red" : file.parsed ? "green" : "amber";
+      const statusLabel = statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
+      const tone = statementNeedsBoReview(file) ? "amber" : file.parse_error ? "red" : file.parsed ? "green" : "amber";
       return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
     }).join("");
     const boPreviewButton = (file, sourceLabel) => {
@@ -2168,6 +2168,8 @@ function renderDailyCompanySummary(root) {
         const fileStatus = evidence ? "evidence" : file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
         const statusHtml = evidence
           ? `<span class="badge blue">หลักฐานพร้อมตรวจ</span><small class="sub">ไม่ต้องอ่านเป็นรายการ</small>`
+          : statementNeedsBoReview(file)
+            ? `<span class="badge amber">${h(statementReviewLabel(file))}</span><small class="sub">${h(file.parse_error)} · ต้องยืนยันว่าต้นฉบับครอบคลุมวันตรวจ และเทียบ BO บัญชีเดียวกัน แยกฝาก–ถอนก่อนสรุปว่าไม่มีรายการทั้งสองฝั่ง</small>`
           : file.parse_error
             ? `<span class="badge red">อ่านไม่ได้</span><small class="sub danger">${h(file.parse_error)}</small>`
             : file.parsed
