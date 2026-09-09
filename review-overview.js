@@ -96,7 +96,7 @@ const ReviewOverview = (() => {
     }
     function rowHtml(row) {
       const cells=sheetRow(row);
-      return `<tr>${cells.map((v,i)=>`<td>${i===1&&row.case?`<select aria-label="สถานะ Audit ${escape(row.case.code)}" data-audit-action="${escape(row.id)}"><option value="">${escape(v)}</option><option value="review">ตรวจรายละเอียด</option><option value="files">เลือกหลักฐาน / Preview</option><option value="close">ยืนยันปิดเคส…</option><option value="clarify">รอชี้แจง…</option><option value="answer">ตรวจคำตอบ…</option></select>`:escape(v??'—')||'—'}</td>`).join('')}<td>${row.case?`<button class="ghost-button sm" data-overview-case="${escape(row.id)}">📎 หลักฐาน / เมล</button>`:'คู่สำเร็จยังไม่ใช่การอนุมัติปิดเคส'}</td></tr>`;
+      return `<tr>${cells.map((v,i)=>`<td class="sheet-col-${i} ${[6,15].includes(i)?'sheet-money':''}">${i===1&&row.case?`<select aria-label="สถานะ Audit ${escape(row.case.code)}" data-audit-action="${escape(row.id)}"><option value="">${escape(v)}</option><option value="review">ตรวจรายละเอียด</option><option value="files">เลือกหลักฐาน / Preview</option><option value="close">ยืนยันปิดเคส…</option><option value="clarify">รอชี้แจง…</option><option value="answer">ตรวจคำตอบ…</option></select>`:i===0?`<span class="sheet-result ${row.pair?'is-match':'is-review'}">${escape(v)}</span>`:[6,15].includes(i)?amount(v):escape(v??'—')||'—'}</td>`).join('')}<td>${row.case?`<button class="ghost-button sm" data-overview-case="${escape(row.id)}">📎 หลักฐาน / เมล</button>`:'คู่สำเร็จยังไม่ใช่การอนุมัติปิดเคส'}</td></tr>`;
     }
     function draw(error='') {
       if (!root.isConnected || instances.get(root)!==instance || !isActive()) return;
