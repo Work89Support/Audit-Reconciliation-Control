@@ -2294,6 +2294,16 @@ tr.on { background: #f0f7ff; }
 .audit-column-options label { display:flex; align-items:center; gap:10px; padding:7px 0; }
 .audit-column-options input { width:16px; height:16px; margin:0; }
 .audit-sheet [hidden] { display:none !important; }
+.sheet-filter-button { border:0; background:transparent; color:inherit; font:inherit; font-weight:600; cursor:pointer; text-align:left; padding:2px; }
+.sheet-filter-button.active { color:#006acb; }
+.sheet-active-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0; font-size:13px; }
+.sheet-active-filters button { padding:6px 10px; border:1px solid #b8cde8; background:#edf5ff; border-radius:6px; cursor:pointer; }
+.sheet-filter-dialog { width:440px; max-width:90vw; border:1px solid #b8cde8; border-radius:12px; padding:24px; }
+.sheet-filter-dialog::backdrop { background:#14243b66; }
+.sheet-filter-dialog label { display:grid; gap:8px; margin:12px 0; }
+.sheet-filter-dialog input,.sheet-filter-dialog select { padding:10px; width:100%; box-sizing:border-box; }
+.sheet-filter-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.sheet-filter-actions button { padding:10px; cursor:pointer; border:1px solid #b8cde8; border-radius:6px; background:#edf5ff; }
 .table-wrap:has(.audit-sheet) { max-height:70vh; overflow:auto; }
 .review-overview-table.audit-sheet { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
 .review-overview-table.audit-sheet td,.review-overview-table.audit-sheet th { min-width:130px; max-width:270px; padding:10px 12px; border-right:1px solid #dce5ee; border-bottom:1px solid #dce5ee; font-size:13px; overflow-wrap:anywhere; }
