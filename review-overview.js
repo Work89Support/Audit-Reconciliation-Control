@@ -36,6 +36,42 @@ const ReviewOverview = (() => {
     return [p?'จับคู่ได้':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'',e?.resolution_note||''];
   }
   const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
+  const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
+  function columnValue(row,i) {
+    if(i===26)return row.case?'เปิดหลักฐาน / เมล':'คู่สำเร็จ ยังไม่ยืนยัน Audit';
+    if(i===23)return row.pair?.timeDifferenceSeconds ?? (row.case?.bo_date&&row.case?.stm_date?row.case.time_diff_sec:null);
+    return sheetRow(row)[i];
+  }
+  function filterColumns(rows,rules={},sort={column:5,direction:'asc'}) {
+    const cell=(r,i)=>columnValue(r,Number(i));
+    const filtered=rows.filter(r=>Object.entries(rules).every(([i,f])=>{
+      const raw=cell(r,i),s=String(raw??'').toLowerCase(),v=String(f.value??'').trim().toLowerCase();
+      if(f.op==='blank')return raw==null||raw==='';
+      if(f.op==='filled')return raw!=null&&raw!=='';
+      if(f.op==='equals')return s===v;
+      if(f.op==='gte'||f.op==='lte'){
+        if(raw==null||raw===''||v==='')return false;
+        const numeric=[6,15,23].includes(Number(i));
+        const a=numeric?Number(raw):s,b=numeric?Number(v.replace(/,/g,'')):v;
+        return f.op==='gte'?a>=b:a<=b;
+      }
+      return s.includes(v);
+    }));
+    const key=r=>{
+      const i=Number(sort.column),v=cell(r,i);
+      if(i===5||i===14){
+        const valid=x=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(x));
+        return valid(v)?v:(i===5&&valid(cell(r,14))?cell(r,14):null);
+      }
+      return v;
+    };
+    return filtered.sort((a,b)=>{
+      const x=key(a),y=key(b),empty=v=>v==null||v==='';
+      if(empty(x)||empty(y))return Number(empty(x))-Number(empty(y));
+      const n=[6,15,23].includes(Number(sort.column))?Number(x)-Number(y):String(x).localeCompare(String(y),'th',{numeric:true});
+      return sort.direction==='desc'?-n:n;
+    });
+  }
   const columnKey='audit-sheet-columns-v1';
   const compactHidden=[2,9,11,12,13,18,20,21,22,25];
   function normalizeHidden(value) {
@@ -44,6 +80,7 @@ const ReviewOverview = (() => {
   async function mount(root, {company,date,load,onCase,onCompany,onExport,isActive=()=>true}) {
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
+    let columnRules={},columnSort={column:5,direction:'asc'};
     let hidden=[];
     try { hidden=normalizeHidden(JSON.parse(localStorage.getItem(columnKey))); } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
@@ -63,7 +100,7 @@ const ReviewOverview = (() => {
     }
     function draw(error='') {
       if (!root.isConnected || instances.get(root)!==instance || !isActive()) return;
-      const rows=view ? filter(view.rows,values) : [];
+      const rows=view ? filterColumns(filter(view.rows,values),columnRules,columnSort) : [];
       const pages=Math.max(1,Math.ceil(rows.length/50)); page=Math.min(page,pages-1);
       const accounts=view ? [...new Set(view.rows.map(r=>r.account))].sort() : [];
       root.innerHTML=`<section class="panel"><div class="panel-heading"><div><h2>${escape(company)} · ภาพรวมผลตรวจ</h2><p>คู่สำเร็จและเคสที่ยังต้องตรวจ อยู่ในหน้าเดียวกัน</p></div><button id="overviewCompany" class="ghost-button">เปลี่ยนบริษัท</button></div><div class="review-overview-controls"><label>วันที่ตรวจ<input id="overviewDate" type="date" value="${escape(date)}"></label><label>ประเภท<select id="overviewDirection"><option value="all">ฝากและถอน</option value="deposit" ${values.direction==='deposit'?'selected':''}>ฝาก</option><option value="withdraw" ${values.direction==='withdraw'?'selected':''}>ถอน</option></select></label><label>บัญชี / Provider<select id="overviewAccount"><option value="">ทั้งหมด</option>${accounts.map(a=>`<option ${a===values.account?'selected':''} value="${escape(a)}">${escape(a)}</option>`).join('')}</select></label><label>ค้นหาบัญชี ชื่อ User หรืออ้างอิง<input id="overviewQuery" value="${escape(values.query)}"></label><button id="overviewRefresh" class="ghost-button">รีเฟรช</button></div><div class="review-overview-states" aria-label="กรองสถานะ">${Object.entries(labels).map(([key,label])=>`<button data-overview-status="${key}" aria-pressed="${values.status===key}" class="${values.status===key?'primary-button':'ghost-button'}">${label} <b>${view?view.counts[key].toLocaleString():'—'}</b></button>`).join('')}</div>${error?`<p role="alert">โหลดผลไม่ได้: ${escape(error)} <button id="overviewRetry">ลองอีกครั้ง</button></p>`:!data?'<p role="status">กำลังอ่านผลล่าสุด…</p>':!data.run?'<p>ยังไม่มีผลประมวลผลของบริษัทและวันที่นี้</p>':`<p>สถานะงาน: ${escape(data.run.jobStatus)} · ระบบรายงานจับคู่ ${view.reportedMatched.toLocaleString()} คู่ · มีรายละเอียดเปิดดู ${view.evidenceCount.toLocaleString()} คู่</p>${view.evidenceCount<view.reportedMatched?'<div class="alert"><strong>รายละเอียดคู่สำเร็จยังเก็บไม่ครบ</strong><span>ยอดรวมมีแล้ว แต่ยังไม่สามารถแสดงคู่ที่ไม่ได้บันทึกหลักฐาน ต้องใช้ Worker ที่เก็บรายละเอียดและประมวลผลใหม่ ไม่ได้หมายความว่าจับคู่ไม่ได้</span></div>':''}${data.run.jobStatus!=='completed'?'<p role="alert">งานยังไม่เสร็จสมบูรณ์ รายละเอียดนี้อาจเป็นผลรอบก่อน</p>':''}${!data.complete?'<p role="alert">โหลดเคสยังไม่ครบ จำนวนด้านล่างเป็นเฉพาะที่โหลดแล้ว</p>':''}<p>ตัวกรองสถานะนับจากรายละเอียดที่โหลดได้ คู่สำเร็จไม่ใช่การอนุมัติปิดเคส คู่หนึ่งอาจมีเคสเตือนเพิ่มเติม จึงไม่ใช่จำนวนธุรกรรมที่ไม่ซ้ำ</p>`}</section><section class="panel"><p>แสดง ${rows.length.toLocaleString()} แถวตามตัวกรอง · หน้า ${page+1}/${pages}</p><div class="table-wrap"><table class="rows review-overview-table"><thead><tr><th>สถานะ</th><th>บัญชี / ประเภท</th><th>BO · เวลาและลูกค้า</th><th>ยอด BO</th><th>STM/PM · เวลาและลูกค้า</th><th>ยอด STM/PM</th><th>ต่างเวลา</th><th>เหตุผล / ตรวจต่อ</th></tr></thead><tbody>${rows.slice(page*50,page*50+50).map(rowHtml).join('') || '<tr><td colspan="8">ยังไม่มีรายละเอียดในตัวกรองนี้</td></tr>'}</tbody></table></div><div class="pager"><button id="overviewPrev" ${page===0?'disabled':''}>ก่อนหน้า</button><button id="overviewNext" ${page+1>=pages?'disabled':''}>ถัดไป</button></div></section>`;
@@ -95,6 +132,31 @@ const ReviewOverview = (() => {
       chooser.querySelectorAll('[data-column]').forEach(el=>el.onchange=()=>{const i=Number(el.dataset.column);hidden=el.checked?hidden.filter(n=>n!==i):[...hidden,i];saveColumns();});
       chooser.querySelectorAll('[data-columns]').forEach(el=>el.onclick=()=>{hidden=el.dataset.columns==='compact'?[...compactHidden]:[];saveColumns();});
       applyColumns();
+      table.querySelectorAll('thead tr:last-child th').forEach((th,i)=>{
+        th.innerHTML=`<button type="button" class="sheet-filter-button ${columnRules[i]?'active':''}" aria-label="กรอง ${escape(allHeaders[i])}">${escape(allHeaders[i])} ${Number(columnSort.column)===i?(columnSort.direction==='asc'?'↑':'↓'):''} ${columnRules[i]?'●':'▾'}</button>`;
+        th.querySelector('button').onclick=()=>{
+          const dialog=document.createElement('dialog');dialog.className='sheet-filter-dialog';
+          const rule=columnRules[i]||{op:'contains',value:''};
+          dialog.innerHTML=`<form method="dialog"><h3>กรอง ${escape(allHeaders[i])}</h3><p>กรองร่วมกับช่องอื่น ทุกหน้าของบริษัทและวันที่เลือก${i===23?' • ต่างเวลาใช้หน่วยวินาที':''}</p><label>เงื่อนไข<select name="op"><option value="contains">มีข้อความ</option><option value="equals">ตรงกับ</option><option value="gte">มากกว่าหรือเท่ากับ / ตั้งแต่</option><option value="lte">น้อยกว่าหรือเท่ากับ / ถึง</option><option value="blank">ช่องว่าง</option><option value="filled">ไม่ใช่ช่องว่าง</option></select></label><label>ค่า<input name="value" value="${escape(rule.value||'')}" placeholder="พิมพ์ข้อความ ยอด หรือ YYYY-MM-DD HH:mm"></label><div class="sheet-filter-actions"><button value="apply">ใช้ตัวกรอง</button><button value="clear">ล้างช่องนี้</button><button value="asc">เรียงน้อย→มาก / เก่า→ใหม่</button><button value="desc">เรียงมาก→น้อย / ใหม่→เก่า</button><button value="cancel">ยกเลิก</button></div></form>`;
+          root.append(dialog);
+          const op=dialog.querySelector('[name=op]'),input=dialog.querySelector('[name=value]');op.value=rule.op;
+          op.onchange=()=>{input.disabled=['blank','filled'].includes(op.value);};op.onchange();
+          dialog.addEventListener('close',()=>{
+            const action=dialog.returnValue;
+            if(action==='apply'){
+              if(input.value.trim()||['blank','filled'].includes(op.value))columnRules[i]={op:op.value,value:input.value};else delete columnRules[i];
+            }else if(action==='clear')delete columnRules[i];
+            else if(action==='asc'||action==='desc')columnSort={column:i,direction:action};
+            dialog.remove();if(action&&action!=='cancel'){page=0;draw();}
+          },{once:true});
+          dialog.showModal();
+        };
+      });
+      const active=document.createElement('div');active.className='sheet-active-filters';
+      active.innerHTML=`<span>เรียง: ${escape(allHeaders[columnSort.column])} ${columnSort.direction==='asc'?'↑':'↓'}${columnSort.column===5?' (ไม่มี BO ใช้เวลา STM/PM · ไม่มีเวลาอยู่ท้าย)':''}</span>${Object.entries(columnRules).map(([i,f])=>`<button type="button" data-clear-column="${i}">${escape(allHeaders[i])}: ${escape(({contains:'มี',equals:'=',gte:'≥',lte:'≤',blank:'ว่าง',filled:'ไม่ว่าง'})[f.op])} ${escape(f.value||'')} ×</button>`).join('')}<button type="button" data-clear-all>ล้างตัวกรองทุกช่อง</button>`;
+      toolbar.after(active);
+      active.querySelectorAll('[data-clear-column]').forEach(b=>b.onclick=()=>{delete columnRules[b.dataset.clearColumn];page=0;draw();});
+      active.querySelector('[data-clear-all]').onclick=()=>{columnRules={};page=0;draw();};
       root.querySelectorAll('[data-audit-action]').forEach(el=>el.onchange=()=>{const action=el.value;el.value='';if(action)onCase(data.cases.find(e=>e.id===el.dataset.auditAction),{action});});
       root.querySelector('#overviewCompany').onclick=onCompany;
       root.querySelector('#overviewDate').onchange=e=>{date=e.target.value; if(date) refresh();};
@@ -111,6 +173,6 @@ const ReviewOverview = (() => {
     await refresh();
     return ()=>{generation++;};
   }
-  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden};
+  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue};
 })();
 if (typeof module !== 'undefined') module.exports = ReviewOverview;
