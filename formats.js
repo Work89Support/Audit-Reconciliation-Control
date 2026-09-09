@@ -260,6 +260,8 @@ const Formats = (() => {
 
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
   function companyOf(fileName) {
+    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
+    if (known) return known[1].toUpperCase();
     const m = String(fileName || "").replace(/_/g, " ").match(/\b([A-Z]{2,4}\d{0,2})\b/);
     return m ? m[1].toUpperCase() : null;
   }
@@ -279,6 +281,8 @@ const Formats = (() => {
     return hit ? hit[1] : null;
   }
   function subcoOf(fileName, title) {
+    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
+    if (known) return known[1].toUpperCase();
     // จากหัวเรื่องในไฟล์ก่อน (เช่น UFABET7M -> 7M) แล้วค่อยจากชื่อไฟล์
     const t = String(title || "").replace(/^ufabet/i, "").trim().toUpperCase();
     if (t) return t;
@@ -457,7 +461,7 @@ const Formats = (() => {
         memberCode: valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
         custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
-        custBank: valAny(f, r, ["ธนาคาร", "ธนาคารต้นทาง"]),
+        custBank: valAny(f, r, ["ชื่อธนาคารสมาชิก", "ธนาคารลูกค้า", "ธนาคาร", "ธนาคารต้นทาง"]),
         ref: valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]),
         status,
         partial: /partial/.test(status),
