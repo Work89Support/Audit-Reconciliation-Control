@@ -274,7 +274,24 @@ const Sb = (() => {
   const quality = (opts = 1000) => rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000);
 
   async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {
-    if (from && to) return rpc("audit_daily_checklist", { p_from: from, p_to: to, p_company: company === "ALL" ? null : company || null, p_limit: limit });
+    if (from && to) {
+      // Keep each authenticated aggregate bounded. Do not turn a failed slice
+      // into an empty checklist (which would incorrectly imply missing files).
+      const start = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) throw new Error("ช่วงวันที่เช็กลิสต์ไม่ถูกต้อง");
+      const cap = Math.min(5000, Math.max(1, Number(limit) || 5000));
+      const day = 86400000, rows = [];
+      for (let cursor = end; cursor >= start && rows.length < cap; cursor -= 3 * day) {
+        const chunk = await rpc("audit_daily_checklist", {
+          p_from: new Date(Math.max(start, cursor - 2 * day)).toISOString().slice(0, 10),
+          p_to: new Date(cursor).toISOString().slice(0, 10),
+          p_company: company === "ALL" ? null : company || null,
+          p_limit: cap - rows.length,
+        });
+        rows.push(...chunk);
+      }
+      return rows.slice(0, cap);
+    }
     const filters = ["select=*", "order=business_date.desc,company.asc", `limit=${limit}`];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
