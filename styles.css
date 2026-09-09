@@ -2287,6 +2287,13 @@ tr.on { background: #f0f7ff; }
 .review-overview-states b { margin-left:8px; }
 .review-overview-table { min-width:1150px; }
 .audit-sheet-tools { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:12px; font-size:13px; }
+.audit-sheet-tools { flex-wrap:wrap; }
+.audit-column-picker { position:relative; }
+.audit-column-picker summary { cursor:pointer; padding:10px 14px; border:1px solid #b8cde8; border-radius:8px; background:#fff; }
+.audit-column-options { position:absolute; right:0; top:100%; z-index:8; width:340px; max-width:85vw; max-height:60vh; overflow:auto; background:#fff; border:1px solid #b8cde8; border-radius:8px; padding:16px; box-shadow:0 8px 24px #18365c26; }
+.audit-column-options label { display:flex; align-items:center; gap:10px; padding:7px 0; }
+.audit-column-options input { width:16px; height:16px; margin:0; }
+.audit-sheet [hidden] { display:none !important; }
 .table-wrap:has(.audit-sheet) { max-height:70vh; overflow:auto; }
 .review-overview-table.audit-sheet { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
 .review-overview-table.audit-sheet td,.review-overview-table.audit-sheet th { min-width:130px; max-width:270px; padding:10px 12px; border-right:1px solid #dce5ee; border-bottom:1px solid #dce5ee; font-size:13px; overflow-wrap:anywhere; }
