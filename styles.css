@@ -2286,6 +2286,18 @@ tr.on { background: #f0f7ff; }
 .review-overview-states button { min-height:48px; font-size:16px; }
 .review-overview-states b { margin-left:8px; }
 .review-overview-table { min-width:1150px; }
+.audit-sheet-tools { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:12px; font-size:13px; }
+.table-wrap:has(.audit-sheet) { max-height:70vh; overflow:auto; }
+.review-overview-table.audit-sheet { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; }
+.review-overview-table.audit-sheet td,.review-overview-table.audit-sheet th { min-width:130px; max-width:270px; padding:10px 12px; border-right:1px solid #dce5ee; border-bottom:1px solid #dce5ee; font-size:13px; overflow-wrap:anywhere; }
+.audit-sheet thead { position:sticky; top:0; z-index:3; }
+.review-overview-table.audit-sheet th { background:#f1f5f9; }
+.review-overview-table.audit-sheet .bo-group { background:#e4f4e8; }
+.review-overview-table.audit-sheet .stm-group { background:#e3efff; }
+.audit-sheet tbody td:first-child { position:sticky; left:0; z-index:2; background:#f8fafc; min-width:170px; max-width:170px; }
+.audit-sheet tbody tr:hover td { background:#f0f7ff; }
+.audit-sheet select { font:inherit; padding:8px; max-width:220px; border:1px solid #b8cde8; border-radius:6px; background:#fff; }
+.case-mail-evidence article { border:1px solid #dce5ee; padding:12px; margin:10px 0; border-radius:8px; }
 .review-overview-table td { vertical-align:top; font-size:16px; }
 .review-overview-table small { display:block; margin-top:8px; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
 .review-overview-table th:nth-child(3),.review-overview-table th:nth-child(4) { background:#e9f6ed; }

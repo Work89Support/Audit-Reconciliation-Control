@@ -2580,9 +2580,10 @@ VIEWS.exceptions = (root) => {
       company,
       date: state.filters.to || DEFAULT_WORK_DATE,
       load: Sb.reconciliationOverview,
+      onExport: exportSheets,
       isActive: () => state.route === "exceptions" && state.filters.company === company,
       onCompany: () => { state.filters.company = "ALL"; render(); },
-      onCase: row => {
+      onCase: (row, {action = 'files'} = {}) => {
         if (!row) return;
         const item = mapLiveException(row);
         // EX codes repeat between runs/companies; use the persisted UUID here.
@@ -2590,7 +2591,12 @@ VIEWS.exceptions = (root) => {
         reviewQueueIds = [];
         const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
         if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
-        openException(item.id);
+        openException(item.id, {focusFiles: action === 'files'});
+        if (action !== 'files') {
+          const target = action === 'close' ? '#btnApprove' : action === 'clarify' ? '#btnClarify' : action === 'answer' ? '#btnRespond' : '#caseSummarySection';
+          $(target)?.scrollIntoView({block:'center',behavior:'smooth'});
+          toast('ตรวจรายละเอียดและกดยืนยันอีกครั้ง — ยังไม่ได้เปลี่ยนสถานะหรือส่งข้อความ');
+        }
       },
     });
     return;
@@ -2943,6 +2949,26 @@ async function loadExceptionSupport(e, options = {}) {
       return;
     }
     host.innerHTML = exceptionFilesMarkup(files, e);
+    const mailButton=document.createElement('button');
+    mailButton.className='ghost-button'; mailButton.textContent='เลือกเอกสารชี้แจงจากเมลของบริษัทนี้';
+    host.append(mailButton);
+    mailButton.onclick=async()=>{
+      mailButton.disabled=true;
+      try {
+        const candidates=(await Sb.evidenceFiles({from:e.date,to:e.date})).filter(f=>(f.company||f.batch_company)===e.company);
+        const list=document.createElement('section');list.className='case-mail-evidence';
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงแล้วจึงยืนยันปิดเคส ไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารวันเดียวกัน ใช้คลังไฟล์เพื่อตรวจวันอื่น หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>Preview</button><button class="ghost-button sm" data-link-mail="${h(f.id)}">ใช้เป็นหลักฐานเคสนี้</button></article>`).join('')}`;
+        mailButton.after(list);bindStoredFileLinks(list);
+        list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
+          if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
+          const note=window.prompt('ระบุเหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)');
+          if(!note?.trim())return;
+          b.disabled=true;
+          try{await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note.trim());exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;openException(e.id,{focusFiles:true});toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');}
+          catch(err){b.disabled=false;toast('ผูกหลักฐานไม่สำเร็จ: '+err.message,'warn');}
+        });
+      }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
+    };
     bindStoredFileLinks(host);
     $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
     if (options.focusFiles) setTimeout(() => host.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
@@ -6914,7 +6940,7 @@ const FILE_SLUG = {
   "ความเสียหาย_C2": "damage-cycle-2",
   "ความเสียหาย_C3": "damage-cycle-3",
 };
-function exportSheets(baseName, sheets) {
+function exportSheets(baseName, sheets, context = {}) {
   if (!can("export")) return deny("export ข้อมูล");
   const ascii =
     FILE_SLUG[baseName] ||
@@ -6924,8 +6950,8 @@ function exportSheets(baseName, sheets) {
       .replace(/-+/g, "-")
       .replace(/^-+|-+$/g, "") ||
     "report";
-  const stamp = state.filters.from === state.filters.to ? state.filters.from : `${state.filters.from}_to_${state.filters.to}`;
-  const meta = `ช่วงข้อมูล ${rangeLabel()} · บริษัท ${state.filters.company === "ALL" ? "ทุกบริษัท" : state.filters.company} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
+  const stamp = context.date || (state.filters.from === state.filters.to ? state.filters.from : `${state.filters.from}_to_${state.filters.to}`);
+  const meta = `ช่วงข้อมูล ${context.date || rangeLabel()} · บริษัท ${context.company || (state.filters.company === "ALL" ? "ทุกบริษัท" : state.filters.company)} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
   const res = Exporter.workbook(sheets, `${ascii}_${stamp}.xlsx`, meta);
   if (res.ok) {
     logAction("export", "report", baseName, `Excel ${sheets.length} ชีต · ${sheets.reduce((a, c) => a + c.rows.length, 0)} แถว · ${rangeLabel()}`);
