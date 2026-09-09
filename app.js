@@ -863,7 +863,7 @@ const LIVE_KIND_LABEL = {
 };
 
 const LIVE_STATUS = {
-  completed: { label: "กระทบยอดสำเร็จ", tone: "green" },
+  completed: { label: "ระบบประมวลผลเสร็จ", tone: "green" },
   needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
   waiting_files: { label: "รอไฟล์", tone: "amber" },
   ready: { label: "พร้อมกระทบยอด", tone: "blue" },
@@ -903,7 +903,7 @@ const CHECKLIST_STATUS = {
   running: { label: "กำลังกระทบยอด", tone: "violet" },
   needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
   open_cases: { label: "มีเคสต้องปิด", tone: "amber" },
-  completed: { label: "ครบและปิดงาน", tone: "green" },
+  completed: { label: "ระบบประมวลผลเสร็จ", tone: "green" },
   error: { label: "ทำงานล้มเหลว", tone: "red" },
 };
 
@@ -1246,14 +1246,14 @@ function renderLiveDashboard(root) {
     ${loadNotice}
     <section class="status-strip live-status-strip action-tiles">
       <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${showMetric(dailyAvailable, totalMail)}</strong><small>${dailyAvailable ? `${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)}` : "ข้อมูลเมลยังไม่พร้อม"} · กดดูไฟล์</small></article>
-      <article class="ok" data-action-route="daily-summary"><span>กระทบยอดสำเร็จ</span><strong>${showMetric(qualityAvailable, completed)}</strong><small>แยกตามวัน / บริษัท / ระบบ · กดดูสรุป</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>ระบบประมวลผลเสร็จ</span><strong>${showMetric(qualityAvailable, completed)}</strong><small>จำนวนงานรายวัน/บริษัท · ยังไม่ใช่การยืนยันจาก Audit</small></article>
       <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${showMetric(qualityAvailable, needsReview)}</strong><small>${qualityAvailable ? "ข้อมูลมาแล้วแต่ยังไม่ครบ" : "ผลกระทบยอดยังไม่พร้อม"} · กดดูสิ่งที่ขาด</small></article>
       <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${showMetric(qualityAvailable, waiting + failed)}</strong><small>${qualityAvailable ? `รอ ${num(waiting)} · ล้มเหลว ${num(failed)}` : "ผลกระทบยอดยังไม่พร้อม"} · กดแก้ไฟล์</small></article>
-      <article class="bad" data-action-route="exceptions"><span>Exception จริง</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="exceptions"><span>เคสที่ระบบตรวจพบ</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : `ยอดเสี่ยง ${money0(risk)} บาท`} · กดตรวจเคส</small></article>
     </section>
 
     <section class="action-overview">
-      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${!qualityAvailable ? "กำลังรอผลกระทบยอดจริง" : needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "งานในช่วงนี้เรียบร้อย"}</h2><p>${!qualityAvailable ? "ระบบไม่สรุปเป็นศูนย์จนกว่าจะอ่านผลจริงสำเร็จ" : `${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}`}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
+      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${!qualityAvailable ? "กำลังรอผลกระทบยอดจริง" : needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "ตรวจผลและการยืนยันของ Audit ต่อในหน้ารายการ"}</h2><p>${!qualityAvailable ? "ระบบไม่สรุปเป็นศูนย์จนกว่าจะอ่านผลจริงสำเร็จ" : `${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}`}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
       <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
     </section>
 
@@ -1274,7 +1274,7 @@ function renderLiveDashboard(root) {
     </section>
 
     <section class="panel daily-checklist-panel">
-      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง โดย Google Sheet ใช้ยืนยันชื่อมาตรฐานเท่านั้น</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทปิดงาน</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง โดย Google Sheet ใช้ยืนยันชื่อมาตรฐานเท่านั้น</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทที่ระบบประมวลผลเสร็จ</span></div>
       <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ตาม BO</th><th>BO ที่รับ / ต้องมี</th><th>PM ตาม BO</th><th>บัญชี/Provider ที่ BO ระบุ</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
         ${checklist.map((row) => {
           const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
@@ -1864,7 +1864,7 @@ function renderDailyCompanySummary(root) {
       : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
     const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
     const status = latestStatus === "completed" && data.stillOpen > 0
-      ? { label: "กระทบยอดสำเร็จ · รอตรวจเคส", tone: "amber" }
+      ? { label: "ระบบประมวลผลเสร็จ · รอ Audit ตรวจเคส", tone: "amber" }
       : LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
     const kindCounts = Object.entries(data.files.reduce((acc, file) => {
       const label = LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้";
@@ -2145,7 +2145,7 @@ function renderDailyCompanySummary(root) {
       </section>
 
       <section class="panel company-day-checklist">
-        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${dayComplete ? "ok" : "attention"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : dayComplete ? "ครบและปิดงาน" : "ยังตรวจไม่ครบ"}</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${dayComplete ? "ok" : "attention"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : dayComplete ? "Checklist ครบ · ตรวจการยืนยัน Audit ต่อ" : "ยังตรวจไม่ครบ"}</span></div>
         <div class="checklist-cards">
           ${[
             ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
@@ -2158,7 +2158,7 @@ function renderDailyCompanySummary(root) {
             ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
             : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
         </div>
-        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : !dayComplete ? `<div class="alert warn"><strong>ยังยืนยันปิดงานไม่ได้</strong><span>${h(completionBlockers.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบและปิดงานแล้ว</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
+        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : !dayComplete ? `<div class="alert warn"><strong>ยังยืนยันปิดงานไม่ได้</strong><span>${h(completionBlockers.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบ · ไม่ใช่การยืนยันจาก Audit</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
         ${data.checklist?.registry_warning ? `<div class="alert warn registry-alert"><strong>ข้อมูลทะเบียนที่ควรยืนยัน</strong><span>${h(data.checklist.registry_warning)}</span></div>` : ""}
       </section>
 
@@ -3811,7 +3811,7 @@ function renderLiveKpi(root) {
   }).sort((a,b)=>b.rows.length-a.rows.length);
   root.innerHTML = `
     <section class="status-strip four">
-      <article><span>Exception จริง</span><strong>${num(ex.length)}</strong><small>${h(rangeLabel())}</small></article>
+      <article><span>เคสที่ระบบตรวจพบ</span><strong>${num(ex.length)}</strong><small>${h(rangeLabel())}</small></article>
       <article class="bad"><span>Critical</span><strong>${num(ex.filter((e)=>e.severity==="critical").length)}</strong><small>ต้องตรวจเร่งด่วน</small></article>
       <article class="warn"><span>เกิน SLA</span><strong>${num(ex.filter((e)=>e.overSla).length)}</strong><small>คำนวณจาก created_at จริง</small></article>
       <article><span>ยอดเสี่ยงรวม</span><strong>${money0(sumRisk(ex))}</strong><small>บาท</small></article>

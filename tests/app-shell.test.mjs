@@ -5,6 +5,10 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
+assert.match(app, /completed: \{ label: "ระบบประมวลผลเสร็จ"/);
+assert.doesNotMatch(app, /บริษัทปิดงาน|ครบและปิดงาน|งานในช่วงนี้เรียบร้อย/);
+assert.match(app, /ยังไม่ใช่การยืนยันจาก Audit/);
+assert.match(app, /เคสที่ระบบตรวจพบ/);
 assert.match(app, /reviewQueueIds = sorted\.map/);
 assert.match(app, /if \(!e \|\| !canAccessCompany\(e.company\)\) return/);
 assert.match(app, /มี Note ที่ยังไม่บันทึก/);
