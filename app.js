@@ -1024,11 +1024,46 @@ function hydrateLiveData(quality, operations, exceptions, damages, logs) {
     : null;
 }
 
+// Background requests must not replace a sheet, filter or draft being used.
+let liveInteractionVersion = 0;
+for (const eventName of ["pointerdown", "keydown", "input", "wheel", "touchmove"]) {
+  document.addEventListener(eventName, () => { liveInteractionVersion++; }, { passive: true });
+}
+function offerLiveOverviewUpdate() {
+  const root = $("#viewRoot");
+  if (!root || !Sb.signedIn()) return;
+  let notice = $("#liveUpdateAvailable");
+  if (!notice) {
+    notice = document.createElement("aside");
+    notice.id = "liveUpdateAvailable";
+    notice.className = "alert live-update-available";
+    notice.setAttribute("role", "status");
+    const text = document.createElement("span");
+    text.textContent = "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
+    const button = document.createElement("button");
+    button.className = "ghost-button sm";
+    button.textContent = "แสดงข้อมูลล่าสุด";
+    button.onclick = () => {
+      // Applying is explicit; never discard a form or open case silently.
+      if (!window.confirm("แสดงข้อมูลล่าสุด? หากมีข้อความหรือเคสที่ยังไม่บันทึก กรุณากดยกเลิกและบันทึกก่อน")) return;
+      const x = window.scrollX, y = window.scrollY;
+      render();
+      window.scrollTo(x, y);
+    };
+    notice.append(text, button);
+    root.append(notice);
+  }
+  notice.querySelector("span").textContent = liveOverviewState.error || liveOverviewState.auxiliaryError
+    ? "ข้อมูลบางส่วนโหลดไม่สำเร็จ · กดแสดงข้อมูลล่าสุดเพื่อดูรายละเอียด"
+    : "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
+}
 async function loadLiveOverview(force = false) {
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   if (liveOverviewState.loading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
   const requestId = ++liveOverviewState.requestId;
   const changedFilter = liveOverviewState.key !== key;
+  const firstDashboardLoad = state.route === "dashboard" && !liveOverviewState.quality;
+  const interactionAtStart = liveInteractionVersion;
   liveOverviewState.loading = true;
   liveOverviewState.auxiliaryLoading = false;
   liveOverviewState.auxiliaryError = null;
@@ -1050,7 +1085,7 @@ async function loadLiveOverview(force = false) {
     DB.exceptions = [];
     DB.damages = [];
   }
-  if (state.route === "dashboard") render();
+  // Keep existing content while the request is in flight.
   try {
     // Phase 1: ข้อมูลสรุปขนาดเล็กต้องขึ้นหน้าจอก่อน ไม่รอ exception/หลักฐานหลายพันแถว
     const core = await Promise.allSettled([
@@ -1063,6 +1098,10 @@ async function loadLiveOverview(force = false) {
     ]);
     if (requestId !== liveOverviewState.requestId) return;
     const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ"];
+    if (key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
+      liveOverviewState.loading = false;
+      return loadLiveOverview(true);
+    }
     const coreValue = (index, fallback) => core[index].status === "fulfilled" ? (core[index].value ?? fallback) : fallback;
     let daily = coreValue(0, liveOverviewState.daily);
     let operations = coreValue(1, liveOverviewState.operations);
@@ -1119,7 +1158,11 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.loading = false;
     liveOverviewState.auxiliaryLoading = true;
     hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], [], [], []);
-    render();
+    if (firstDashboardLoad && state.route === "dashboard" && liveInteractionVersion === interactionAtStart && liveOverviewState.quality) {
+      const x = window.scrollX, y = window.scrollY;
+      render();
+      window.scrollTo(x, y);
+    } else offerLiveOverviewUpdate();
 
     // Phase 2: เติมรายละเอียดหนักด้านหลัง โดยไม่บล็อกแดชบอร์ดหลัก
     const aux = await Promise.allSettled([
@@ -1131,6 +1174,11 @@ async function loadLiveOverview(force = false) {
       Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
+    if (liveOverviewState.key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
+      liveOverviewState.loading = false;
+      liveOverviewState.auxiliaryLoading = false;
+      return loadLiveOverview(true);
+    }
     const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
     const exceptionRows = value(0, DB.exceptions || []);
     const damageRows = value(1, liveOverviewState.damages || []);
@@ -1158,7 +1206,7 @@ async function loadLiveOverview(force = false) {
   if (requestId === liveOverviewState.requestId) {
     liveOverviewState.loading = false;
     liveOverviewState.auxiliaryLoading = false;
-    render();
+    offerLiveOverviewUpdate();
   }
 }
 

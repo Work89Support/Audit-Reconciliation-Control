@@ -2337,3 +2337,14 @@ tr.on { background: #f0f7ff; }
 .sheet-result.is-match { color:#187146; background:#e8f5ed; }
 .sheet-result.is-review { color:#93651c; background:#fff5df; }
 .review-overview-table.audit-sheet .sheet-filter-button { line-height:1.45; font-size:12px; }
+.alert.live-update-available {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  width: max-content;
+  max-width: calc(100vw - 40px);
+  margin: 0;
+  box-shadow: 0 8px 28px #12345626;
+  flex-wrap: wrap;
+}
