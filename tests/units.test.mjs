@@ -35,20 +35,38 @@ const ok = (n, c, extra) => (c ? (passed++, out.push("  ✓ " + n)) : (failed++,
 const eq = (n, a, b) => ok(n, a === b, `ได้ ${JSON.stringify(a)} คาดหวัง ${JSON.stringify(b)}`);
 
 /* ---------- Formats.stamp: ปี พ.ศ. ---------- */
+const serial = (Date.UTC(2026, 8, 6, 18, 48, 49) - Date.UTC(1899, 11, 30)) / 86400000;
+eq("Excel serial: original date, not US formatted date", Formats.stamp(String(serial)).date, "2026-09-06");
+eq("Excel serial: preserve seconds", Formats.stamp(serial).sec, 18 * 3600 + 48 * 60 + 49);
+const serialPm = Formats.parse("3X_PM_AUTOPEER_D_2026-09-06.xlsx", [
+  ["id", "amount", "provider", "status", "requestTime", "paymentTime"],
+  ["REF-1", 100, "autopeer", "successed", serial - 420 / 86400, serial],
+  ["REF-2", 200, "autopeer", "create_failed", serial, ""],
+], "2026-09-06");
+eq("PM raw Excel: successful row retained", serialPm.records.length, 1);
+eq("PM raw Excel: payment time retained", serialPm.records[0].sec, 18 * 3600 + 48 * 60 + 49);
+eq("PM raw Excel: failed payment excluded", serialPm.dropped["รายการไม่สำเร็จ (PM: create_failed)"], 1);
 eq("stamp: ISO พ.ศ. -> ค.ศ.", Formats.stamp("2569-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: ISO ค.ศ. ไม่แตะ", Formats.stamp("2026-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: DD/MM/YY พ.ศ. 2 หลัก", Formats.stamp("19/07/69 10:00").date, "2026-07-19");
 eq("stamp: เวลาถูก", Formats.stamp("2026-07-19 10:30:15").sec, 10 * 3600 + 30 * 60 + 15);
 
 /* ---------- Formats.pm_provider: MYPAY ถอนสำเร็จบางส่วน ---------- */
+for (const [token, direction] of [["D", "deposit"], ["W", "withdraw"]]) {
+  const cyber = Formats.parse(`SK8_PM_CYBERPAY_${token}_2026-09-06.xlsx`, [
+    ["วันที่ทำรายการ", "Ref Id", "จำนวนเงิน", "สถานะ"],
+    ["2026-09-06 10:03:08", "test-cyber", 100, "success"],
+  ], "2026-09-06");
+  eq(`CYBERPAY ${token}: same identity as BO CYBERPLUS`, cyber.records[0].account, "CYBERPLUS");
+  eq(`CYBERPAY ${token}: direction preserved`, cyber.records[0].direction, direction);
+  eq(`CYBERPAY ${token}: amount preserved`, cyber.records[0].amount, 100);
+}
 const mypayRows = [
   ["id", "amount", "provider", "status", "requestTime", "updateTime", "transferredAmount", "submitStatus"],
   ['="p2p-test"', "10000", "mypays24", "PARTIAL", "2026-08-26 07:54:04", "2026-08-26 08:55:07", "8700", "SENDED"],
 ];
 const mypayPartial = Formats.parse("MC mypays24-report-withdraw.csv", mypayRows, "2026-08-26");
-eq("MYPAY partial+sended: อ่านเป็นรายการถอน", mypayPartial.records.length, 1);
-eq("MYPAY partial+sended: ใช้ยอดที่โอนจริง", mypayPartial.records[0].amount, 8700);
-eq("MYPAY partial+sended: ใช้เวลาอัปเดต", mypayPartial.records[0].sec, 8 * 3600 + 55 * 60 + 7);
+eq("MYPAY partial+sended: excluded from Success-only reconciliation", mypayPartial.records.length, 0);
 
 const autopeerWithdrawRows = [
   ["UFABET7M"],
@@ -57,10 +75,10 @@ const autopeerWithdrawRows = [
   ["27/08/2026 23:32", "P2C-20260827-233242-YQPJGV", "ufpyo7mm106968", "ธนาคารไทยพาณิชย์", "4341146018", "ชัยณรงค์ ชัยทัศน์", "1920", "1600", "1600/1920", "SUCCESS-PARTIAL"],
 ];
 const autopeerWithdraw = Formats.parse("UFABET7M_PM_AUTOPEER_W_2026-08-27.xlsx", autopeerWithdrawRows, "2026-08-27");
-eq("AUTOPEER _W_: อ่านเป็นรายการถอน", autopeerWithdraw.records.length, 2);
-eq("AUTOPEER _W_: ใช้ยอด P2P จ่าย", autopeerWithdraw.records[1].amount, 1600);
-eq("AUTOPEER _W_: เก็บยอดที่แจ้งถอน", autopeerWithdraw.records[1].requested, 1920);
-eq("AUTOPEER _W_: ระบุทิศทางถอน", autopeerWithdraw.records[1].direction, "withdraw");
+eq("AUTOPEER _W_: exact Success only", autopeerWithdraw.records.length, 1);
+eq("AUTOPEER _W_: ใช้ยอด P2P จ่าย", autopeerWithdraw.records[0].amount, 1000);
+eq("AUTOPEER _W_: เก็บยอดที่แจ้งถอน", autopeerWithdraw.records[0].requested, 1000);
+eq("AUTOPEER _W_: ระบุทิศทางถอน", autopeerWithdraw.records[0].direction, "withdraw");
 
 const compactBoRows = [
   ["UFABET7M"],
@@ -103,6 +121,7 @@ eq("cross-day: วันที่ BO หาย ไม่เปิดเคสเ
 eq("cross-day: วันเดียวกัน ไม่เปิดเคส", crossDayCount({ boDate: "2026-08-29", date: "2026-08-29" }).length, 0);
 const validCrossDay = crossDayCount({ boDate: "2026-08-29", date: "2026-08-30", boSec: 86340, sec: 60 });
 eq("cross-day: คนละวันจริงยังเปิดเคส", validCrossDay.length, 1);
+ok("cross-day: BO timestamp has its own date", /^\d{4}-\d{2}-\d{2}$/.test(validCrossDay[0]?.boDate || ""));
 ok("cross-day: รายละเอียดไม่มี undefined/NaN", !/undefined|NaN/.test(validCrossDay[0]?.detail || ""), validCrossDay[0]?.detail);
 
 /* ---------- Charts.spark: กัน NaN ---------- */
@@ -110,6 +129,42 @@ ok("spark: จุดเดียว ไม่มี NaN", !Charts.spark([5]).inc
 ok("spark: ว่าง คืน <svg ไม่ throw", Charts.spark([]).includes("<svg"));
 ok("spark: หลายจุด ไม่มี NaN", !Charts.spark([1, 2, 3, 4]).includes("NaN"));
 
+const thaiDepositRows = [["วันเวลา", "OrderId", "จำนวนเงินฝาก", "ค่าธรรมเนียม", "รับสุทธิ", "สถานะ"],
+  ["2026-09-03 12:00:00", "P2C-test", 125, 5, 120, "Success"]];
+const thaiDeposit = Formats.parse("AT4_PM_AUTOPEER_D_2026-09-03.xlsx", thaiDepositRows, "2026-09-03");
+eq("PM Thai deposit: use gross deposit, not net", thaiDeposit.records[0]?.amount, 125);
+thaiDepositRows[1][2] = 0;
+eq("PM Thai deposit: zero is not a matching transaction", Formats.parse("AT4_PM_AUTOPEER_D_2026-09-03.xlsx", thaiDepositRows, "2026-09-03").records.length, 0);
+const customerHeaders = ["No.", "วันที่ทำรายการ", "วันที่ธนาคาร", "รหัสอ้างอิง", "สมาชิก", "บัญชีลูกค้า", "จำนวนเงินฝากจริง", "จำนวนเงินถอนจริง", "ชื่อธนาคาร"];
+eq("CPXM maps to COREPAY", Formats.canonicalPm("CPXM-598 : CP"), "COREPAY");
+eq("BO channel uses full bank field, not CP suffix", Formats.channelOf("CPXM-598 : CP").channel, "COREPAY");
+for (const [token,dep,wit,direction] of [["D",100,0,"deposit"],["W",0,100,"withdraw"]]) {
+  const r = Formats.parse(`FR8_BO_${token}_2026-09-07.xlsx`, [customerHeaders,[1,"2026-09-07 12:00:00","2026-09-07 12:00:00","ref","user","1262976366 | ชาญชัย ตนเล็ก",dep,wit,"CPXM-598 : CP"]],"2026-09-07").records[0];
+  eq(`CPXM ${token}: provider`,r?.account,"COREPAY");
+  eq(`CPXM ${token}: company`,r?.company,"FR8");
+  eq(`CPXM ${token}: direction`,r?.direction,direction);
+  eq(`CPXM ${token}: date`,r?.date,"2026-09-07");
+  eq(`CPXM ${token}: original label`,r?.boIdentityRaw,"CPXM-598 : CP");
+}
+for (const [raw, tail] of [["1262976366 | ชาญชัย ตนเล็ก", "6366"], ["0012345678 | ตัวอย่าง", "5678"], [" | ตัวอย่าง", null], ["xxx6366 | ตัวอย่าง", null]]) {
+  const row = Formats.parse("FR8_BO_W_2026-09-07.xlsx", [customerHeaders, [1, "2026-09-07 23:57:45", "2026-09-07 23:59:11", "test-ref", "เจมส์ | FAZ330483", raw, 0, 800, "4311918665 : Manual"]], "2026-09-07").records[0];
+  eq("BO customer: combined text preserved " + raw, row?.custAccountRaw, raw.trim());
+  eq("BO customer: separate account " + raw, row?.custAccount, raw.split("|")[0].trim());
+  eq("BO customer: separate name " + raw, row?.custName, raw.split("|")[1].trim());
+  eq("BO customer: last four " + raw, row?.custAccountLast4, tail);
+  eq("BO customer: withdrawal preserved", row?.direction, "withdraw");
+}
+for (const [token, label, direction] of [["D", "ฝาก", "deposit"], ["W", "ถอน", "withdraw"]]) {
+  const headers = ["วันเวลา", "รหัสสมาชิก", "เลขบัญชีสมาชิก", "ชื่อบัญชีสมาชิก", "ชื่อธนาคารสมาชิก", "OrderId", "PaymentId", "Ref1", "Ref2", `จำนวนเงิน${label}`, "ค่าธรรมเนียม", token === "D" ? "รับสุทธิ" : "ถอนสุทธิ", "สถานะ"];
+  const entries = ["Success", "Cancel", "Time out", "unsuccessful", "SUCCESS-PARTIAL"].map(status => ["2026-09-07 12:00:00", "TEST-USER", "0012345678", "ทดสอบ", "KBANK", "TEST-ORDER", "TEST-PAYMENT", "", "", 100, 2, 98, status]);
+  const parsed = Formats.parse(`FR8_PM_AUTOPEER_${token}_2026-09-07.xlsx`, [headers, ...entries], "2026-09-07");
+  eq(`AUTOPEER ${token}: one Success`, parsed.records.length, 1);
+  eq(`AUTOPEER ${token}: gross amount`, parsed.records[0]?.amount, 100);
+  eq(`AUTOPEER ${token}: direction`, parsed.records[0]?.direction, direction);
+  eq(`AUTOPEER ${token}: customer account not company`, parsed.records[0]?.custAccount, "0012345678");
+  eq(`AUTOPEER ${token}: user retained`, parsed.records[0]?.memberCode, "TEST-USER");
+  eq(`AUTOPEER ${token}: reference retained`, parsed.records[0]?.ref, "TEST-ORDER");
+}
 console.log("\nUnit tests (Formats / Rules / Charts)");
 console.log(out.join("\n"));
 console.log(`\n${passed} ผ่าน, ${failed} ล้มเหลว\n`);

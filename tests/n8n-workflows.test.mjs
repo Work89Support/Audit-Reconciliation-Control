@@ -34,6 +34,8 @@ validateGraph(live);
 validateGraph(backfill);
 validateGraph(daily);
 validateGraph(worker);
+assert.equal(worker.nodes.find(node => node.name === "อ่าน Excel").parameters.options.rawData, true,
+  "Excel must preserve raw serial dates, not locale-dependent m/d/yy displays");
 validateGraph(clarification);
 validateGraph(telegram);
 
@@ -164,6 +166,9 @@ const qualityGate = new Function('norm','rawRows','file','extractedText','parseE
 const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
   {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
 const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
+const zeroPm = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'ยอดเงินเป็นศูนย์':7}}, [['header'],['row']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
+assert.match(zeroPm.parseError, /ยอดเงินเป็นศูนย์ 7 รายการ/);
+assert.match(zeroPm.parseError, /ยังไม่ยืนยันว่าไม่มีธุรกรรม/);
 assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');
 assert.equal(checkEmpty([['valid header']], 'bo', boHeaderFixture).parseError, null, 'recognized header-only BO is valid');
 assert.ok(checkEmpty([['valid header'],['unreadable transaction']], 'bo', boHeaderFixture).parseError, 'dropped BO rows must not become zero activity');

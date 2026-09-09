@@ -414,6 +414,27 @@ const Sb = (() => {
     return rows[0] || null;
   }
 
+  // Follow the job's committed run, never select a possibly stale run by date alone.
+  async function matchedEvidence(company, date) {
+    if (!company || company === "ALL" || !date) throw new Error("เลือกบริษัทและวันที่ก่อน");
+    const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
+    if (!jobs[0]?.last_run_id) return null;
+    const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,matched,summary&limit=1`);
+    return runs[0] ? { ...runs[0], jobStatus: jobs[0].status } : null;
+  }
+
+  async function reconciliationOverview(company, date) {
+    const run = await matchedEvidence(company, date);
+    if (!run) return { run: null, cases: [], complete: true };
+    const cases = [];
+    for (let offset = 0; offset < 20000; offset += 500) {
+      const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&select=*&order=id.asc&limit=500&offset=${offset}`);
+      cases.push(...page);
+      if (page.length < 500) return { run, cases, complete: true };
+    }
+    return { run, cases, complete: false };
+  }
+
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
   async function exceptionFiles(runId, clarificationFileId) {
     const ids = [];
@@ -684,7 +705,7 @@ const Sb = (() => {
         exception_count: (exceptions || []).length,
         no_stm_count: run.noStmCount || 0,
         file_ids: opts.fileIds || null,
-        summary: opts.summary || null,
+        summary: { ...opts.summary, match_evidence: run.matchEvidence || [], match_evidence_version: 1 },
       },
     ]);
     const runId = rows[0].id;
@@ -779,6 +800,8 @@ const Sb = (() => {
     currentExceptionsSummary,
     searchExceptions,
     exceptionDetail,
+    matchedEvidence,
+    reconciliationOverview,
     exceptionFiles,
     queueDueJobs,
     claimJob,

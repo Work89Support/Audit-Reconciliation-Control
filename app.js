@@ -2204,6 +2204,35 @@ function renderDailyCompanySummary(root) {
     loadDailyCompanySummary(true);
   });
   $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
+  const matchedButton = document.createElement("button");
+  matchedButton.className = "primary-button";
+  matchedButton.textContent = "ดูรายการจับคู่สำเร็จ";
+  $("#dailySummaryRefresh")?.after(matchedButton);
+  matchedButton.addEventListener("click", async () => {
+    matchedButton.disabled = true;
+    const company = state.dailySummary.company, date = state.dailySummary.date;
+    try {
+      const run = await Sb.matchedEvidence(company, date);
+      const evidence = run?.summary?.match_evidence;
+      if (!Array.isArray(evidence) || !evidence.length) {
+        openModal("รายการจับคู่สำเร็จ", `<p>${h(company)} · ${h(date)}</p><p>ผลรอบนี้มีคู่สำเร็จ ${num(run?.matched || 0)} รายการ แต่${run ? "ยังไม่ได้เก็บหลักฐานรายคู่สำหรับมุมมองนี้" : "ยังไม่มีผลประมวลผล"} จึงยังแสดงรายละเอียดไม่ได้ ไม่ใช่ยืนยันว่าไม่มีคู่สำเร็จ</p><p>ต้องประมวลผลด้วย Worker ที่เก็บหลักฐานรายคู่ก่อน ไม่สร้างรายการทดแทนจากยอดรวม</p>`);
+        return;
+      }
+      const time = side => side?.date ? `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec * 1000).toISOString().slice(11,19) : "ไม่ระบุเวลา"}` : "ไม่ระบุ";
+      const person = p => p ? `บัญชี: ${h(p.account || "ไม่ระบุ")}<br>ชื่อ: ${h(p.name || "ไม่ระบุ")}<br>User: ${h(p.user || "ไม่ระบุ")}<br>อ้างอิง: ${h(p.reference || "ไม่ระบุ")}` : "ผลเก่าไม่ได้เก็บข้อมูลลูกค้า";
+      let direction = "deposit", page = 0;
+      const draw = () => {
+        const rows = evidence.filter(e => e.direction === direction);
+        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือต้องตรวจเอกสารเพิ่มเติม</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(e.timeDifferenceSeconds)} วินาที</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
+        $("#matchedDeposit").onclick = () => { direction = "deposit"; page = 0; draw(); };
+        $("#matchedWithdraw").onclick = () => { direction = "withdraw"; page = 0; draw(); };
+        $("#matchedPrev").onclick = () => { page--; draw(); };
+        $("#matchedNext").onclick = () => { page++; draw(); };
+      };
+      draw();
+    } catch (error) { toast(`โหลดคู่สำเร็จไม่ได้: ${error.message}`); }
+    finally { matchedButton.disabled = false; }
+  });
   $("#dailySummaryExport")?.addEventListener("click", async () => {
     let data = dailyCompanyData(state.dailySummary.company);
     if (data.exceptionTotal > data.exceptions.length) {
@@ -2496,12 +2525,16 @@ function reviewAccountHtml(e) {
   const isPm = /^(AUTOPEER|ATP|AZPAY|COREPAY|CPXM|CYBERPLUS|MYPAY|12PAY|PM)$/i.test(account);
   const bo = reviewCustomer(e, "bo");
   const stm = reviewCustomer(e, "stm");
-  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}<span>บัญชีลูกค้าใน BO: <b>${h(bo.account || "ไม่ระบุในข้อมูลเคส")}</b></span><span>บัญชีลูกค้าใน STM/PM: <b>${h(stm.account || "ไม่ระบุในข้อมูลเคส")}</b></span></div>`;
+  const customerBlock = (label, c) => `<span><b>${label}</b><br>เลขบัญชี: ${h(c.account || "ไม่ระบุในข้อมูลเคส")}<br>ชื่อลูกค้า: ${h(c.name || "ไม่ระบุในข้อมูลเคส")}<br>ท้าย 4 ตัว: <b>${h(c.tail || "ยังยืนยันไม่ได้")}</b></span>`;
+  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}${customerBlock("บัญชีลูกค้าใน BO", bo)}${customerBlock("บัญชีลูกค้าใน STM/PM", stm)}</div>`;
 }
 function reviewCustomerHtml(e, side) {
   const c = reviewCustomer(e, side);
-  if (!Object.values(c).some(Boolean)) return '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
-  return `<details><summary>ดู User / บัญชีลูกค้า</summary><dl><dt>User</dt><dd>${h(c.user || "ไม่ระบุ")}</dd><dt>เลขบัญชีลูกค้า</dt><dd>${h(c.account || "ไม่ระบุ")}</dd><dt>ชื่อลูกค้า</dt><dd>${h(c.name || "ไม่ระบุ")}</dd><dt>ท้าย 4 ตัว</dt><dd>${h(c.tail || "ยังยืนยันไม่ได้")}</dd><dt>รหัสอ้างอิงต้นฉบับ</dt><dd>${h(c.reference || "ไม่ระบุ")}</dd></dl></details>`;
+  const source = e.customerDetails?.[side] || {};
+  const manual = side === "bo" && /เติม\s*มือ|เติมเอง|manual/i.test(String(source.origin || ""));
+  const manualHtml = manual ? `<div class="review-account-details"><b>รายการเติมมือ</b><span>ทำรายการโดย (N): <b>${h(source.performedBy || "ไม่ระบุในต้นฉบับ")}</b></span><span style="white-space:pre-wrap">หมายเหตุ (O): ${h(source.note || "ไม่ระบุในต้นฉบับ")}</span><small>หมายเหตุจาก BO ไม่ใช่เอกสารชี้แจง</small></div>` : "";
+  if (!Object.values(c).some(Boolean)) return manualHtml + '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
+  return manualHtml + `<details><summary>ดู User / บัญชีลูกค้า</summary><dl><dt>User</dt><dd>${h(c.user || "ไม่ระบุ")}</dd><dt>เลขบัญชีลูกค้า</dt><dd>${h(c.account || "ไม่ระบุ")}</dd><dt>ชื่อลูกค้า</dt><dd>${h(c.name || "ไม่ระบุ")}</dd><dt>ท้าย 4 ตัว</dt><dd>${h(c.tail || "ยังยืนยันไม่ได้")}</dd><dt>รหัสอ้างอิงต้นฉบับ</dt><dd>${h(c.reference || "ไม่ระบุ")}</dd></dl></details>`;
 }
 
 function groupReviewCases(rows) {
@@ -2533,6 +2566,27 @@ VIEWS.exceptions = (root) => {
       state.page = 1;
       render();
     }));
+    return;
+  }
+  if (state.dataset === "production" && Sb.signedIn()) {
+    const company = state.filters.company;
+    ReviewOverview.mount(root, {
+      company,
+      date: state.filters.to || DEFAULT_WORK_DATE,
+      load: Sb.reconciliationOverview,
+      isActive: () => state.route === "exceptions" && state.filters.company === company,
+      onCompany: () => { state.filters.company = "ALL"; render(); },
+      onCase: row => {
+        if (!row) return;
+        const item = mapLiveException(row);
+        // EX codes repeat between runs/companies; use the persisted UUID here.
+        item.id = row.id;
+        reviewQueueIds = [];
+        const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
+        if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
+        openException(item.id);
+      },
+    });
     return;
   }
   if (!ensureLiveOverview(root)) return;
@@ -3702,7 +3756,7 @@ function pmProviderOf(value) {
   if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
   if (/AZPAY/.test(text)) return "AZPAY";
   if (/COREPAY|CP[ _-]?PAY/.test(text)) return "COREPAY";
-  if (/CPXM/.test(text)) return "CPXM";
+  if (/CPXM/.test(text)) return "COREPAY";
   if (/CYBERPLUS|CYNERPLUS|\bCBY\b/.test(text)) return "CYBERPLUS";
   if (/MYPAY/.test(text)) return "MYPAY";
   if (/12PAY/.test(text)) return "12PAY";

@@ -81,7 +81,14 @@ if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อ�
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf) parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ') : 'อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf){
+  const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
+  const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
+  parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
+    : file.kind==='pm_statement'&&zeroAmountRows>0 ? 'ได้รับไฟล์ PM และอ่านตารางแล้ว แต่พบรายการยอดเงินเป็นศูนย์ '+zeroAmountRows+' รายการที่นำไปจับคู่ไม่ได้ — ตรวจยอดในไฟล์ต้นฉบับหรือขอฉบับแก้ไข (ไม่ใช่ไฟล์หาย และยังไม่ยืนยันว่าไม่มีธุรกรรม)'
+    : outsideDay>0 ? 'ได้รับไฟล์และอ่านได้แล้ว แต่มี '+outsideDay+' รายการคนละวันที่กับงาน '+job.business_date+' — ตรวจวันที่ในไฟล์ก่อนย้ายเข้ารอบที่ถูกต้อง (ยังไม่ถือว่าขาดไฟล์หรือไม่มียอด)'
+    : 'อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
+}
 if(!parseError&&ext==='pdf'&&norm.quality&&!norm.quality.complete) parseError='PDF อ่านได้บางส่วน: มี '+norm.quality.unreadRows.length+' บรรทัดที่อ่านไม่ได้ และ '+norm.quality.invalidRows.length+' รายการที่ต้องยืนยัน (ยังไม่นำไปกระทบยอด)';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
@@ -113,7 +120,7 @@ if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:pars
 const stm=[],bo=[];
 for(const f of files){
   if(f.format&&f.format.source==='aux') continue;
-  const records=(f.records||[]).map(r=>({...r,source_file:f.file.file_name}));
+  const records=(f.records||[]).map(r=>({...r,source_file:f.file.file_name,source_file_id:f.file.id,source_checksum:f.file.checksum||null}));
   if(f.format&&f.format.source==='bo') bo.push(...records);
   else stm.push(...records);
 }
@@ -153,10 +160,11 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   bank:e.bank||null,account:e.account||null,direction:e.direction||null,member_code:e.member||null,ex_type:e.type,type_name:e.typeName||e.type,
   severity:['critical','high','medium','low'].includes(e.severity)?e.severity:'medium',status:e.status||'open',track:e.track||null,
   system_amount:e.systemAmount??null,bank_amount:e.bankAmount??null,amount_diff:e.amountDiff??0,risk_amount:e.riskAmount??0,time_diff_sec:e.timeDiffSec??0,
+  customer_details:e.customerDetails||{},
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.1',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.1',exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
@@ -233,7 +241,7 @@ const nodes = [
     sendQuery: true, queryParameters: { parameters: [{ name: "mimeType", value: "text/plain" }] }, options: { timeout: 180000, response: { response: { responseFormat: "text" } } },
   }),
   { parameters: { jsCode: "if($json.error) return [{json:{error:$json.error,text:'',ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null},pairedItem:{item:0}}]; const raw=$json.data??$json.body??$json.text; const text=typeof raw==='string'?raw:''; return [{json:{text,ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_page_count:null},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
-  { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: false, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },
+  { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: true, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520], onError: "continueRegularOutput" },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
   { parameters: { jsCode: reconcileCode }, id: "reconcile", name: "กระทบยอดและสร้าง Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [980, 80] },

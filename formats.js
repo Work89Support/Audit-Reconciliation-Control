@@ -172,6 +172,14 @@ const Formats = (() => {
   function stamp(v) {
     const s = String(v || "").trim();
     if (!s) return null;
+    // Read Excel's underlying serial, not its locale-dependent m/d/yy display.
+    // Round once to seconds to avoid floating point noise around midnight.
+    if (/^\d{5}(?:\.\d+)?$/.test(s) && +s >= 20000 && +s < 80000) {
+      const seconds = Math.round(+s * 86400);
+      const instant = new Date(Date.UTC(1899, 11, 30) + seconds * 1000);
+      return { date: instant.toISOString().slice(0, 10), sec: seconds % 86400,
+        hasTime: +s % 1 !== 0, secPrecision: +s % 1 !== 0 };
+    }
     let date = null;
     let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) {
@@ -210,7 +218,7 @@ const Formats = (() => {
     const i = s.lastIndexOf(":");
     const terminal = (i >= 0 ? s.slice(0, i) : s).trim();
     const channel = (i >= 0 ? s.slice(i + 1) : "").trim().toUpperCase();
-    return { terminal, channel: channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
+    return { terminal, channel: canonicalPm(s) || channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
   const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CPXM", "12PAY", "MYPAY"];
@@ -220,7 +228,7 @@ const Formats = (() => {
     if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
     if (/AZPAY|^AZ$/.test(s)) return "AZPAY";
     if (/COREPAY|CPPAY/.test(s)) return "COREPAY";
-    if (/CPXM/.test(s)) return "CPXM";
+    if (/CPXM/.test(s)) return "COREPAY";
     if (/MYPAY/.test(s)) return "MYPAY";
     if (/12PAY/.test(s)) return "12PAY";
     return "";
@@ -252,7 +260,7 @@ const Formats = (() => {
 
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
   function companyOf(fileName) {
-    const m = String(fileName || "").match(/\b([A-Z]{2,4}\d{0,2})\b/);
+    const m = String(fileName || "").replace(/_/g, " ").match(/\b([A-Z]{2,4}\d{0,2})\b/);
     return m ? m[1].toUpperCase() : null;
   }
 
@@ -264,7 +272,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "CPXM"], ["cyberplus", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
@@ -413,10 +421,9 @@ const Formats = (() => {
       const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
       const submitStatus = valAny(f, r, ["submitStatus", "สถานะส่งจ่าย"]).toLowerCase();
       const transferred = num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง"]));
-      // MYPAY ใช้ PARTIAL + SENDED เมื่อจ่ายเงินจริงบางส่วนสำเร็จ ยอดจริงอยู่ใน transferredAmount
-      // จึงต้องรับเป็นรายการถอนที่เกิดขึ้นจริง แทนการทิ้งทั้งแถวเพราะ status ไม่ใช่ SUCCESS
-      const paidPartial = /partial/.test(status) && /sended|sent|success|สำเร็จ/.test(submitStatus) && transferred > 0;
-      if (!/success|สำเร็จ/.test(status) && !paidPartial) {
+      // Working reconciliation contains exact Success only. Partial payments remain
+      // outside this set for separate evidence review; do not imply no money moved.
+      if (!["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       const t = stamp(valAny(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
@@ -426,8 +433,8 @@ const Formats = (() => {
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
       const amount =
         dir === "withdraw"
-          ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
-          : num(valAny(f, r, ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
+          ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
+          : num(valAny(f, r, ["โอนจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
@@ -447,10 +454,11 @@ const Formats = (() => {
         bank: "",
         company: provider,
         subco: (meta && meta.subco) || "",
-        memberCode: valAny(f, r, ["Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
-        custName: valAny(f, r, ["ชื่อ - นามสกุล ผู้รับ", "payee"]),
+        memberCode: valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
+        custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า"]),
+        custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
         custBank: valAny(f, r, ["ธนาคาร", "ธนาคารต้นทาง"]),
-        ref: valAny(f, r, ["Ref", "Ref Id", "reference", "id"]),
+        ref: valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]),
         status,
         partial: /partial/.test(status),
         submitStatus,
@@ -475,6 +483,7 @@ const Formats = (() => {
         rowNo: i + 1,
         source: "bo",
         formatCode: "bo_main",
+        boIdentityRaw: val(f, r, "ชื่อธนาคาร"),
         date: bankT.date || boT.date,
         sec: bankT.sec,
         boDate: boT.date,
@@ -490,10 +499,14 @@ const Formats = (() => {
         memberNick: mem.left,
         custAccount: cust.left,
         custName: cust.right,
+        custAccountRaw: val(f, r, "บัญชีลูกค้า"),
+        // Only complete numeric accounts yield a matching hint. Preserve leading zeros.
+        custAccountLast4: /^\d{4,}$/.test(cust.left.replace(/[\s-]/g, "")) ? cust.left.replace(/[\s-]/g, "").slice(-4) : null,
         bonus: num(val(f, r, "โบนัส/โปรโมชั่น")),
         promo: val(f, r, "ชื่อโปรโมชั่น"),
         ref: val(f, r, "รหัสอ้างอิง"),
         via: val(f, r, "เกิดโดย"),
+        performedBy: val(f, r, "ทำรายการโดย"),
         username: val(f, r, "ทำรายการโดย") || val(f, r, "สร้างโดย") || "",
         note: val(f, r, "หมายเหตุ"),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),

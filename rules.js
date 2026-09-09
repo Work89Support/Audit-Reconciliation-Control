@@ -96,6 +96,7 @@ const Rules = (() => {
       stmRaw: o.stmRaw || "— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —",
       boRaw: o.boRaw || o.raw || "",
       boTime: hhmmss(o.boSec ?? sec),
+      boDate: o.boDate || o.date || "",
       notes: [],
       evidence: [],
       fromImport: true,

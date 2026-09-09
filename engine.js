@@ -135,12 +135,20 @@ const Engine = (() => {
   };
   function secOf(dateStr, timeStr) {
     const t = String(timeStr || "").trim();
+    if (/^\d{5}(?:\.\d+)?$/.test(t) && typeof Formats !== "undefined") {
+      const stamp = Formats.stamp(t);
+      if (stamp) return stamp.sec;
+    }
     const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
     if (!m) return null;
     return +m[1] * 3600 + +m[2] * 60 + (+m[3] || 0);
   }
   function isoDateOf(v) {
     const s = String(v || "").trim();
+    if (/^\d{5}(?:\.\d+)?$/.test(s) && typeof Formats !== "undefined") {
+      const stamp = Formats.stamp(s);
+      if (stamp) return stamp.date;
+    }
     let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (m) return `${m[1]}-${m[2]}-${m[3]}`;
     m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
@@ -303,6 +311,7 @@ const Engine = (() => {
 
   /* ---------------- reconciliation ---------------- */
   const TYPE_NAME = {
+    manual_review: "เติมมือ — รอ Audit ตรวจเอกสารชี้แจง",
     time_diff: "เวลาเกิน tolerance",
     missing_bo: "STM มากกว่า BO",
     missing_stm: "BO มากกว่า STM",
@@ -313,6 +322,7 @@ const Engine = (() => {
     wrong_account: "ลูกค้าฝากผิดบัญชี",
   };
   const BASE_SEVERITY = {
+    manual_review: "medium",
     time_diff: "low",
     missing_bo: "high",
     missing_stm: "high",
@@ -419,7 +429,67 @@ const Engine = (() => {
     let timeDiffCount = 0;
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
-    const dirOK = (s, b) => !s.direction || !b.direction || s.direction === b.direction;
+    const sameCompany = (s, b) => String(s.company || s.subco || "").toUpperCase() === String(b.company || b.subco || "").toUpperCase();
+    const crossCandidate = (s, b) => {
+      if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
+      if (!s.direction || s.direction !== b.direction || s.account !== b.account || s.amount !== b.amount) return false;
+      if (s.noTime || b.noTime || !isIsoDate(s.date) || !isIsoDate(b.date)) return false;
+      if (s.sec == null || b.sec == null) return false;
+      return timeDistance(s, b) <= Math.max(tolOf(s.direction, s, b), exactUniqueTol);
+    };
+    // Count candidates against the original inputs, not only unused rows:
+    // processing order must never turn an ambiguous cross-day pair into a match.
+    const crossSafe = new Map();
+    const stmByExact = new Map();
+    stmRecords.forEach((s) => {
+      const key = key2(s.account, s.amount);
+      if (!stmByExact.has(key)) stmByExact.set(key, []);
+      stmByExact.get(key).push(s);
+    });
+    const customerAccount = (r) => {
+      const value = String(r.custAccount || "").trim().replace(/[\s-]/g, "");
+      return /^\d{5,}$/.test(value) ? value : "";
+    };
+    const identityCandidate = (s, b) => sameCompany(s, b) && !!String(s.company || s.subco || "").trim()
+      && s.date === b.date && isIsoDate(s.date)
+      && !!s.direction && s.direction === b.direction && s.account === b.account
+      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+      && !!customerAccount(s) && customerAccount(s) === customerAccount(b)
+      && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && s.sec >= 0 && s.sec < 86400 && b.sec >= 0 && b.sec < 86400
+      && timeDistance(s, b) <= 3600;
+    const identityMatched = new Set();
+    const identityAmbiguous = new Set();
+    // Count on original inputs on BOTH sides, before consumption, to avoid order-dependent matches.
+    for (const s of stmRecords) {
+      const candidates = (exactIdx.get(key2(s.account, s.amount)) || []).filter(i => identityCandidate(s, boRecords[i]));
+      if (!candidates.length) continue;
+      const i = candidates[0], b = boRecords[i];
+      const peers = (stmByExact.get(key2(b.account, b.amount)) || []).filter(other => identityCandidate(other, b));
+      if (candidates.length !== 1 || peers.length !== 1) {
+        identityAmbiguous.add(s);
+        candidates.forEach(ci => identityAmbiguous.add(boRecords[ci]));
+        peers.forEach(other => identityAmbiguous.add(other));
+        continue;
+      }
+      boUsed[i] = 1;
+      identityMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), customerIdentityMatch: true });
+    }
+    const dirOK = (s, b) => {
+      if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
+      if (customerAccount(s) && customerAccount(b) && customerAccount(s) !== customerAccount(b)) return false;
+      if (customerAccount(s) && customerAccount(b) && !identityCandidate(s, b)) return false;
+      if (!sameCompany(s, b)) return false;
+      if (s.date === b.date) return !s.direction || !b.direction || s.direction === b.direction;
+      if (!crossCandidate(s, b)) return false;
+      let candidates = crossSafe.get(s);
+      if (!candidates) {
+        candidates = (exactIdx.get(key2(s.account, s.amount)) || []).map((i) => boRecords[i]).filter((other) => crossCandidate(s, other));
+        crossSafe.set(s, candidates);
+      }
+      return candidates.length === 1 && (stmByExact.get(key2(b.account, b.amount)) || []).filter((other) => crossCandidate(other, b)).length === 1;
+    };
 
     // pass 1a: จับคู่ exact (บัญชี+ยอด+ทิศทาง) ที่อยู่ "ในเกณฑ์เวลา" ให้ครบก่อน
     //   ทำก่อนขั้น time_diff เพื่อกันรายการที่เวลาใกล้กว่าถูกแย่ง BO ไปโดยรายการที่อยู่ไกลกว่า
@@ -428,6 +498,7 @@ const Engine = (() => {
       stmRecords,
       10000,
       (s) => {
+        if (identityMatched.has(s)) return;
         const cands = exactIdx.get(key2(s.account, s.amount));
         let best = -1;
         let bestDt = Infinity;
@@ -616,6 +687,19 @@ const Engine = (() => {
       else if (boTail && stmTail && boTail !== stmTail) exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
     });
 
+    // A matched manual credit still requires documentary review, not automatic clearance.
+    matched.forEach((m) => {
+      if (/เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || ""))) {
+        const review = mkException("manual_review", m.s, m.b, m.dt);
+        review.riskAmount = 0;
+        review.severity = "medium";
+        review.slaHours = SLA_OF.medium;
+        review.overSla = review.ageHours > review.slaHours;
+        review.cause = "ยอดจับคู่แล้ว แต่รายการเติมมือต้องตรวจเอกสารชี้แจงก่อนปิด";
+        exceptions.push(review);
+      }
+    });
+
     // สถิติรายชั่วโมงเพื่อให้ dashboard ตรงกับผลจับคู่จริง
     const hourlyStm = new Array(24).fill(0);
     const hourlyMatched = new Array(24).fill(0);
@@ -633,6 +717,7 @@ const Engine = (() => {
     const elapsed = Math.round(performance.now() - t0);
     return {
       matched: matched.length,
+      customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       exceptions,
       stmCount: stmRecords.length,
       boCount: boRecords.length,
@@ -646,6 +731,27 @@ const Engine = (() => {
       noStmCount: noStmSide.length,
       /* ใช้เฉพาะใน Worker เพื่อไม่ให้ Rules เปิด cross_day ซ้ำกับคู่ที่ Engine จับสำเร็จ */
       matchedBoKeys: matched.map((m) => recordKey(m.b)),
+      crossDayMatched: matched.filter((m) => m.s.date !== m.b.date).length,
+      // Evidence only. This does not reserve transactions or authorize closure
+      // across separately committed runs. A database uniqueness gate is required.
+      matchEvidence: matched.map((m) => ({
+        company: m.b.company || m.b.subco || null,
+        account: m.b.account,
+        direction: m.b.direction,
+        amount: m.b.amount,
+        crossDay: m.s.date !== m.b.date,
+        timeDifferenceSeconds: m.dt,
+        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : "legacy-rule",
+        manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
+        customer: {
+          bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "" },
+          stm: { account: m.s.custAccount || "", name: m.s.custName || "", user: m.s.memberCode || "", reference: m.s.ref || "" },
+        },
+        boAmount: m.b.amount,
+        stmAmount: m.s.amount,
+        stm: { fileId: m.s.source_file_id || null, checksum: m.s.source_checksum || null, row: m.s.rowNo ?? null, date: m.s.date, sec: m.s.noTime ? null : m.s.sec, noTime: !!m.s.noTime },
+        bo: { fileId: m.b.source_file_id || null, checksum: m.b.source_checksum || null, row: m.b.rowNo ?? null, date: m.b.date, sec: m.b.noTime ? null : m.b.sec, noTime: !!m.b.noTime },
+      })),
     };
 
     function summarizeNoStm(list) {
@@ -695,6 +801,10 @@ const Engine = (() => {
         status: "open",
         shift: shiftOf(hour),
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
+        customerDetails: {
+          bo: b ? { user: b.memberCode || "", account: b.custAccount || "", name: b.custName || "", reference: b.ref || "", origin: b.via || "", performedBy: b.performedBy || "", note: b.note || "" } : null,
+          stm: s ? { user: s.memberCode || "", account: s.custAccount || "", name: s.custName || "", reference: s.ref || "" } : null,
+        },
         assignee: "audit_som",
         track: null, // แอปจะเติมให้จากระบบต้นทางของบริษัท (XB = รายวัน, 123 = รายรอบ)
         cause: causeOf(type),

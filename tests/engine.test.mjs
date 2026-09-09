@@ -110,6 +110,21 @@ await (async function () {
   );
   eq("midnight exact: 23:59 กับ 00:01 ต่าง 120 วินาที = matched", r.matched, 1);
   eq("midnight exact: ไม่สร้าง cross_day ซ้ำ", r.exceptions.length, 0);
+  eq("midnight exact: ระบุจำนวนคู่ข้ามวัน", r.crossDayMatched, 1);
+  eq("midnight evidence: preserve BO date", r.matchEvidence[0].bo.date, "2026-08-29");
+  eq("midnight evidence: preserve STM date", r.matchEvidence[0].stm.date, "2026-08-30");
+  eq("midnight evidence: unknown file ID is not invented", r.matchEvidence[0].stm.fileId, null);
+})();
+
+await (async function () {
+  const s = rec({ account: "MID-SAFE", amount: 100, date: "2026-09-02", sec: 60 });
+  const b = rec({ account: "MID-SAFE", amount: 100, date: "2026-09-01", sec: 86340 });
+  eq("cross-day: ambiguous BO is not auto-matched", (await run([s], [b, {...b, sec: 86350}])).matched, 0);
+  eq("cross-day: ambiguous STM is not auto-matched", (await run([s, {...s, sec: 50}], [b])).matched, 0);
+  eq("cross-day: unknown time is not auto-matched", (await run([{...s, noTime: true}], [b])).matched, 0);
+  eq("cross-day: different company is not auto-matched", (await run([{...s, company: "OTHER"}], [b])).matched, 0);
+  eq("cross-day: different direction is not auto-matched", (await run([{...s, direction: "withdraw"}], [b])).matched, 0);
+  eq("cross-day: originals preserved", b.date, "2026-09-01");
 })();
 
 /* ===== 18) รายงาน PM เป็น statement ฝั่ง STM และใช้ provider เป็น match key ===== */
@@ -319,6 +334,44 @@ await (async function () {
   );
   eq("noTime 1:1: matched = 2", r.matched, 2);
   eq("noTime 1:1: ไม่มี exception", r.exceptions.length, 0);
+})();
+
+await (async () => {
+  const s = rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200});
+  const b = rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:3600});
+  let r = await run([s],[b]);
+  eq('customer: exactly 60 minutes matches',r.customerIdentityMatched,1);
+  eq('customer: only one consumed pair',r.matched,1);
+  eq('customer: evidence method',r.matchEvidence[0].method,'customer-account-amount-same-day-60m');
+  r=await run([s],[{...b,sec:3599}]);
+  eq('customer: 60 minutes plus 1 second rejected',r.matched,0);
+  r=await run([s],[{...b,sec:7200,custAccount:'9912345678'}]);
+  eq('customer: same tail but different full account rejected',r.matched,0);
+  r=await run([s],[b,{...b,rowNo:999,sec:3700}]);
+  eq('customer: ambiguous BO not greedily matched',r.matched,0);
+  r=await run([s,{...s,rowNo:998,sec:7100}],[b]);
+  eq('customer: ambiguous STM not reused',r.matched,0);
+  for (const patch of [{date:'2026-08-02'},{company:'OTHER'},{direction:'withdraw'},{custAccount:'5678'},{noTime:true},{amount:124}]) {
+    r=await run([s],[{...b,...patch}]);
+    eq('customer: disallow '+JSON.stringify(patch),r.customerIdentityMatched,0);
+  }
+})();
+
+await (async () => {
+  const s=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200});
+  const b=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200,via:'เติมมือ',performedBy:'Meta X8',note:'รอเอกสาร'});
+  const r=await run([s],[b]);
+  const review=r.exceptions.find(e=>e.type==='manual_review');
+  eq('manual: matched amount retained',r.matched,1);
+  eq('manual: documentary review stays open',review?.status,'open');
+  eq('manual: no assumed financial loss',review?.riskAmount,0);
+  eq('manual: operator N preserved',review?.customerDetails.bo.performedBy,'Meta X8');
+  eq('manual: note O preserved',review?.customerDetails.bo.note,'รอเอกสาร');
+  eq('pair evidence: retain leading zeros',r.matchEvidence[0].customer.bo.account,'0012345678');
+  eq('pair evidence: manual is not approved',r.matchEvidence[0].manualReview,true);
+  eq('pair evidence: actual BO amount',r.matchEvidence[0].boAmount,123);
+  eq('pair evidence: actual STM amount',r.matchEvidence[0].stmAmount,123);
+  eq('pair evidence: missing name stays empty',r.matchEvidence[0].customer.stm.name,'');
 })();
 
 /* ---------------- report ---------------- */

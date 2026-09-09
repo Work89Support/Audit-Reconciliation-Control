@@ -2278,3 +2278,15 @@ tr.on { background: #f0f7ff; }
 .review-account-details { display:flex; flex-direction:column; gap:10px; min-width:240px; padding:8px 0; }
 .review-account-details > span { border-top:1px solid #dce7f5; padding-top:8px; font-size:13px; }
 .review-account-details > small { color:#6b7280; }
+/* Unified audit work sheet: status selection stays above actual BO/STM rows. */
+.review-overview-controls { display:flex; flex-wrap:wrap; gap:16px; align-items:end; margin:20px 0; }
+.review-overview-controls label { display:flex; flex-direction:column; gap:8px; font-size:14px; }
+.review-overview-controls input,.review-overview-controls select { min-height:42px; max-width:100%; padding:8px 12px; font:inherit; border:1px solid #b8cde8; border-radius:8px; }
+.review-overview-states { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+.review-overview-states button { min-height:48px; font-size:16px; }
+.review-overview-states b { margin-left:8px; }
+.review-overview-table { min-width:1150px; }
+.review-overview-table td { vertical-align:top; font-size:16px; }
+.review-overview-table small { display:block; margin-top:8px; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
+.review-overview-table th:nth-child(3),.review-overview-table th:nth-child(4) { background:#e9f6ed; }
+.review-overview-table th:nth-child(5),.review-overview-table th:nth-child(6) { background:#e6f1ff; }
