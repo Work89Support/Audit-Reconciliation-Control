@@ -36,9 +36,16 @@ const ReviewOverview = (() => {
     return [p?'จับคู่ได้':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'',e?.resolution_note||''];
   }
   const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
+  const columnKey='audit-sheet-columns-v1';
+  const compactHidden=[2,9,11,12,13,18,20,21,22,25];
+  function normalizeHidden(value) {
+    return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
+  }
   async function mount(root, {company,date,load,onCase,onCompany,onExport,isActive=()=>true}) {
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
+    let hidden=[];
+    try { hidden=normalizeHidden(JSON.parse(localStorage.getItem(columnKey))); } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
     const amount = n => n == null ? '—' : Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
     const timestamp = side => !side?.date ? 'ไม่ระบุ' : `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec*1000).toISOString().slice(11,19) : 'ไม่ระบุเวลา'}`;
@@ -67,6 +74,27 @@ const ReviewOverview = (() => {
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
       toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)}))],{date,company});
+      const chooser=document.createElement('details');chooser.className='audit-column-picker';
+      chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${i<2?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
+      toolbar.append(chooser);
+      const applyColumns=()=>{
+        const invisible=new Set(hidden);
+        table.querySelectorAll('thead tr:last-child th').forEach((th,i)=>th.hidden=invisible.has(i));
+        table.querySelectorAll('tbody tr').forEach(tr=>{
+          if(tr.children.length===1){tr.firstElementChild.colSpan=27-hidden.length;return;}
+          [...tr.children].forEach((td,i)=>td.hidden=invisible.has(i));
+        });
+        [[0,5],[5,14],[14,23],[23,27]].forEach(([start,end],g)=>{
+          const count=Array.from({length:end-start},(_,i)=>i+start).filter(i=>!invisible.has(i)).length;
+          const th=table.querySelector('thead tr').children[g];th.hidden=count===0;th.colSpan=Math.max(1,count);
+        });
+        chooser.querySelector('[data-column-count]').textContent=`(${27-hidden.length}/27)`;
+        chooser.querySelectorAll('[data-column]').forEach(el=>el.checked=!invisible.has(Number(el.dataset.column)));
+      };
+      const saveColumns=()=>{hidden=normalizeHidden(hidden);try{localStorage.setItem(columnKey,JSON.stringify(hidden));}catch(_){}applyColumns();};
+      chooser.querySelectorAll('[data-column]').forEach(el=>el.onchange=()=>{const i=Number(el.dataset.column);hidden=el.checked?hidden.filter(n=>n!==i):[...hidden,i];saveColumns();});
+      chooser.querySelectorAll('[data-columns]').forEach(el=>el.onclick=()=>{hidden=el.dataset.columns==='compact'?[...compactHidden]:[];saveColumns();});
+      applyColumns();
       root.querySelectorAll('[data-audit-action]').forEach(el=>el.onchange=()=>{const action=el.value;el.value='';if(action)onCase(data.cases.find(e=>e.id===el.dataset.auditAction),{action});});
       root.querySelector('#overviewCompany').onclick=onCompany;
       root.querySelector('#overviewDate').onchange=e=>{date=e.target.value; if(date) refresh();};
@@ -83,6 +111,6 @@ const ReviewOverview = (() => {
     await refresh();
     return ()=>{generation++;};
   }
-  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel};
+  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden};
 })();
 if (typeof module !== 'undefined') module.exports = ReviewOverview;
