@@ -6,6 +6,7 @@ const PdfReview = (() => {
     return (Array.isArray(evidence?.rows) ? evidence.rows : []).map((row, index) => {
       const description = String(row.desc || row.descriptionOcr || row.detail || '');
       const identity = description.match(/(?:รับโอนจาก|โอนไป|Transfer (?:from|to))\s+([A-Z]+)\s+[xX](\d{4})\s*(.*)/i);
+      const directionConflict = (['deposit','ฝาก'].includes(row.direction) && /โอนไป|Transfer to/i.test(description)) || (['withdraw','ถอน'].includes(row.direction) && /รับโอนจาก|Transfer from/i.test(description));
       return {
         index, page: Number.isInteger(Number(row.page)) && Number(row.page) > 0 ? Number(row.page) : null,
         date: row.sourceDate || row.date || '',
@@ -17,7 +18,7 @@ const PdfReview = (() => {
         last4: row.last4 || row.custAccLast4 || identity?.[2] || '',
         customerName: row.custName || row.nameOcr || identity?.[3] || '',
         raw: row.raw || row.rawOcr || description,
-        issue: row.issue || row.reason || (!['deposit','withdraw','ฝาก','ถอน'].includes(row.direction) ? 'ยังแยกประเภทไม่ได้' : !finite(row.amount) ? 'ยังอ่านยอดไม่ได้' : ''),
+        issue: row.issue || row.reason || (directionConflict ? 'ประเภทกับรายละเอียดขัดกัน — ตรวจแถวต้นฉบับ' : !['deposit','withdraw','ฝาก','ถอน'].includes(row.direction) ? 'ยังแยกประเภทไม่ได้' : !finite(row.amount) ? 'ยังอ่านยอดไม่ได้' : ''),
       };
     });
   }
