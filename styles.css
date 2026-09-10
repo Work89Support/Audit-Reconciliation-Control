@@ -1477,6 +1477,20 @@ td.wrap { white-space: normal; max-width: 420px; }
   border: 0;
   background: #fff;
 }
+.pdf-review { width:100%; min-width:0; background:#fff; text-align:left; }
+.pdf-review-heading { padding:12px; border-bottom:1px solid var(--line); }
+.pdf-review-heading b,.pdf-review-heading span { display:block; }
+.pdf-review-heading span,.pdf-review-heading p { font-size:14px; margin:5px 0; }
+.pdf-review-split { display:grid; grid-template-columns:minmax(280px, 45%) minmax(0, 1fr); }
+.pdf-review-data { min-width:0; padding:12px; font-size:14px; }
+.pdf-review-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.pdf-review-tools input,.pdf-review-tools select { max-width:100%; min-height:36px; font:inherit; }
+.pdf-review-grid { overflow:auto; max-height:45vh; border:1px solid var(--line); }
+.pdf-review-grid table { font-size:14px; border-collapse:collapse; min-width:1100px; }
+.pdf-review-grid th { position:sticky; top:0; background:#edf4fc; z-index:1; }
+.pdf-review-grid td,.pdf-review-grid th { padding:8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+.pdf-review-data pre { white-space:pre-wrap; overflow:auto; max-height:220px; font-size:14px; }
+@media(max-width:850px) { .pdf-review-split { grid-template-columns:1fr; } .pdf-review-split .file-preview-frame { height:42vh; } }
 .file-preview-image {
   display: block;
   max-width: 100%;

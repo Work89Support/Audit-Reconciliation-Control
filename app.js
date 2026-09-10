@@ -4917,15 +4917,21 @@ async function openStoredFilePreview(meta) {
       if (canReclassify && typeof Sb.fileOcr === "function") {
         try {
           const ocr = await Sb.fileOcr(meta.id);
+          if (pendingReplacementFile || !target.isConnected) return;
+          PdfReview.mount(target, { url: originalUrl, evidence: ocr, name });
           if (ocr) {
-            target.insertAdjacentHTML("afterbegin", `<div class="file-ocr-summary"><div><b>อ่าน PDF ด้วย OCR แล้ว</b><span>${num(ocr.page_count)} หน้า · ความมั่นใจ ${num(Math.round(Number(ocr.confidence || 0) * 100))}% · ${num(ocr.line_count)} บรรทัด</span></div><button class="ghost-button" id="fileOcrExcel">ดาวน์โหลด Excel OCR</button></div>`);
-            $("#fileOcrExcel").addEventListener("click", () => {
-              try { exportOcrExcel(meta, ocr); toast("สร้าง Excel จากผล OCR แล้ว", "ok"); }
-              catch (error) { toast(error.message, "warn"); }
+            const exportButton = document.createElement('button');
+            exportButton.className = 'ghost-button';
+            exportButton.textContent = 'ดาวน์โหลด Excel OCR';
+            exportButton.addEventListener('click', () => {
+              try { exportOcrExcel(meta, ocr); toast('สร้าง Excel จากผล OCR แล้ว', 'ok'); }
+              catch (error) { toast(error.message, 'warn'); }
             });
+            target.querySelector('.pdf-review-heading').append(exportButton);
           }
         } catch (error) {
           console.warn("Load OCR evidence failed", error);
+          if (target.isConnected && !pendingReplacementFile) target.insertAdjacentHTML("afterbegin", '<p role="alert">โหลดข้อมูลที่อ่านจาก PDF ไม่สำเร็จ ยังตรวจภาพต้นฉบับได้ และยังไม่ยืนยันว่าไม่มีรายการ</p>');
         }
       }
     } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
