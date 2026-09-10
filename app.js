@@ -4919,6 +4919,17 @@ async function openStoredFilePreview(meta) {
           const ocr = await Sb.fileOcr(meta.id);
           if (pendingReplacementFile || !target.isConnected) return;
           PdfReview.mount(target, { url: originalUrl, evidence: ocr, name });
+          if (meta.kind === 'stm_pdf' && ['monitor','lead','admin'].includes(state.role)) {
+            PdfSourceApproval.mount(target, {
+              loadSource: () => Sb.recoverySource(meta.id),
+              download: getDownload,
+              approve: (payload, note) => {
+                if (pendingReplacementFile) throw new Error('กรุณาปิดไฟล์ที่เลือกแทนก่อนยืนยันต้นฉบับเดิม');
+                return Sb.approvePdfRecovery(payload, note);
+              },
+              onPage: page => { target.querySelector('iframe').src = originalUrl.split('#')[0] + '#page=' + page; },
+            });
+          }
           if (ocr) {
             const exportButton = document.createElement('button');
             exportButton.className = 'ghost-button';

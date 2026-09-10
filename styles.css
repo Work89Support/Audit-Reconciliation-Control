@@ -2362,3 +2362,10 @@ tr.on { background: #f0f7ff; }
   box-shadow: 0 8px 28px #12345626;
   flex-wrap: wrap;
 }
+/* Keep source approval separate from case decisions. */
+.pdf-source-approval { margin-top: 1rem; padding: 1rem; border: 1px solid #b6cce5; border-radius: 12px; background: #f8fbff; color: #21344b; }
+.pdf-source-approval label { display: block; margin: .8rem 0; font-size: 1rem; }
+.pdf-source-approval textarea { display: block; width: 100%; box-sizing: border-box; margin-top: .4rem; }
+.pdf-source-approval input[type=checkbox] { width: 20px; height: 20px; vertical-align: middle; }
+.pdf-source-approval button { min-height: 36px; }
+.pdf-source-approval [data-status] { overflow-wrap: anywhere; }

@@ -592,6 +592,14 @@ const Sb = (() => {
     return rows[0] || null;
   }
 
+  async function recoverySource(fileId) {
+    const rows = await json(`/rest/v1/source_files?id=eq.${encodeURIComponent(fileId)}&select=id,company,kind,checksum,mail_batches(company,business_date)&limit=1`);
+    if (!rows[0]) throw new Error('ไม่พบไฟล์ต้นฉบับหรือไม่มีสิทธิ์อ่าน');
+    const f = rows[0], b = f.mail_batches;
+    return {...f, company:f.company || b?.company, business_date:b?.business_date};
+  }
+  const approvePdfRecovery = (payload, note) => rpc('approve_reviewed_pdf_recovery', {p_payload:payload,p_note:note});
+
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
   async function batches({ from, to, company } = {}) {
     const filters = ["select=*,source_files(*)", "order=received_at.desc"];
@@ -863,6 +871,8 @@ const Sb = (() => {
     manualMatchClarificationFile,
     replaceSourceFile,
     fileOcr,
+    recoverySource,
+    approvePdfRecovery,
     batches,
     download,
     signedUrl,
