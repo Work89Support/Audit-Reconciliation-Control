@@ -8,7 +8,7 @@
  state.textContent=`ช่วงวันที่ ${from} ถึง ${to}`;button.disabled=false;
  button.onclick=async()=>{button.disabled=true;state.textContent='กำลังอ่านผลจริงตามสิทธิ์ Audit…';try{
   if(!await Sb.restore())throw Error('กรุณาเข้าสู่ Audit ก่อน แล้วกดเชื่อมอีกครั้ง');
-  const result=await Sb.companyHubResults({from,to}),cases=result.rows,operations=result.jobs;
+  const result=await Sb.companyHubResults({from,to,onProgress:message=>{state.textContent=message;}}),cases=result.rows,operations=result.jobs;
   const rows=cases.map(x=>({id:x.id,title:x.code||x.type_name||'เคสออดิท',company:x.company||'',date:x.business_date,status:x.status,ownerId:x.assigned_to||'',owner:x.assigned_to||'ยังไม่มอบหมาย',closed:['closed','approved'].includes(x.status),waiting:x.status==='clarifying'}));
   const runs=operations.filter(x=>!x.is_archived).map(x=>({id:x.id,company:x.company||'',date:x.business_date,status:x.status,matched:x.last_run_id?x.matched:null}));
   opener.postMessage({type:'company-hub-results',nonce,source:'audit',data:{version:1,from,to,fetchedAt:new Date().toISOString(),partial:result.partial,rows,runs}},origin);
