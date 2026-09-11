@@ -825,9 +825,12 @@ const Sb = (() => {
     const ids = [...new Set(jobs.filter(row => row.status === "completed").map(row => row.last_run_id).filter(Boolean))];
     const rows = [];
     if (ids.length) {
-      const fields = "id,code,type_name,company,business_date,status,assigned_to";
+      const fields = "id,run_id,code,type_name,company,business_date,status,assigned_to";
+      let cursor = null;
       for (let offset=0; offset<100000; offset+=1000) {
-        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=run_id.asc,id.asc&limit=1000&offset=${offset}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
+        const after = cursor ? `&or=(run_id.gt.${encodeURIComponent(cursor.run_id)},and(run_id.eq.${encodeURIComponent(cursor.run_id)},id.gt.${encodeURIComponent(cursor.id)}))` : "";
+        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=run_id.asc,id.asc&limit=1000${after}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
+        if (page.length) cursor = page[page.length - 1];
         rows.push(...page);
         onProgress(`อ่านเคสแล้ว ${rows.length.toLocaleString()} รายการ กำลังตรวจหน้าถัดไป…`);
         if (page.length<1000) return {rows,jobs,partial:operationsRows.length>=1000};
