@@ -806,7 +806,7 @@ const Sb = (() => {
 
   // Compact authenticated export for Company Hub. Page until complete; never
   // copy raw financial evidence or Supabase sessions into the receiving app.
-  async function companyHubResults({from, to} = {}) {
+  async function companyHubResults({from, to, onProgress = () => {}} = {}) {
     // Read only the job metadata needed for the handoff. The operations view
     // also aggregates notifications and can time out on a busy database.
     const filters = ["select=id,company,business_date,status,last_run_id,is_archived",
@@ -815,6 +815,7 @@ const Sb = (() => {
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     const operationsRows = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`).catch(e => { throw new Error("อ่านรอบตรวจไม่สำเร็จ: " + e.message); });
     const jobs = operationsRows.filter(row => !row.is_archived);
+    onProgress(`อ่านรอบตรวจแล้ว ${jobs.length} รอบ กำลังอ่านผลจับคู่…`);
     const runIds = [...new Set(jobs.map(row => row.last_run_id).filter(Boolean))];
     if (runIds.length) {
       const runs = await json(`/rest/v1/recon_runs?select=id,matched&id=in.(${runIds.join(",")})&limit=1000`).catch(e => { throw new Error("อ่านผลจับคู่ไม่สำเร็จ: " + e.message); });
@@ -828,6 +829,7 @@ const Sb = (() => {
       for (let offset=0; offset<100000; offset+=1000) {
         const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=run_id.asc,id.asc&limit=1000&offset=${offset}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
         rows.push(...page);
+        onProgress(`อ่านเคสแล้ว ${rows.length.toLocaleString()} รายการ กำลังตรวจหน้าถัดไป…`);
         if (page.length<1000) return {rows,jobs,partial:operationsRows.length>=1000};
       }
     }
