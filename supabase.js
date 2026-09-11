@@ -807,8 +807,20 @@ const Sb = (() => {
   // Compact authenticated export for Company Hub. Page until complete; never
   // copy raw financial evidence or Supabase sessions into the receiving app.
   async function companyHubResults({from, to} = {}) {
-    const operationsRows = await operations({from, to, limit:1000});
+    // Read only the job metadata needed for the handoff. The operations view
+    // also aggregates notifications and can time out on a busy database.
+    const filters = ["select=id,company,business_date,status,last_run_id,is_archived",
+      "order=business_date.desc,company.asc,id.asc", "limit=1000"];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    const operationsRows = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`);
     const jobs = operationsRows.filter(row => !row.is_archived);
+    const runIds = [...new Set(jobs.map(row => row.last_run_id).filter(Boolean))];
+    if (runIds.length) {
+      const runs = await json(`/rest/v1/recon_runs?select=id,matched&id=in.(${runIds.join(",")})&limit=1000`);
+      const matched = new Map(runs.map(row => [row.id, row.matched]));
+      jobs.forEach(row => { row.matched = matched.get(row.last_run_id) ?? null; });
+    }
     const ids = [...new Set(jobs.filter(row => row.status === "completed").map(row => row.last_run_id).filter(Boolean))];
     const rows = [];
     if (ids.length) {
