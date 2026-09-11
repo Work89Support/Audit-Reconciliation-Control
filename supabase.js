@@ -813,11 +813,11 @@ const Sb = (() => {
       "order=business_date.desc,company.asc,id.asc", "limit=1000"];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    const operationsRows = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`);
+    const operationsRows = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`).catch(e => { throw new Error("อ่านรอบตรวจไม่สำเร็จ: " + e.message); });
     const jobs = operationsRows.filter(row => !row.is_archived);
     const runIds = [...new Set(jobs.map(row => row.last_run_id).filter(Boolean))];
     if (runIds.length) {
-      const runs = await json(`/rest/v1/recon_runs?select=id,matched&id=in.(${runIds.join(",")})&limit=1000`);
+      const runs = await json(`/rest/v1/recon_runs?select=id,matched&id=in.(${runIds.join(",")})&limit=1000`).catch(e => { throw new Error("อ่านผลจับคู่ไม่สำเร็จ: " + e.message); });
       const matched = new Map(runs.map(row => [row.id, row.matched]));
       jobs.forEach(row => { row.matched = matched.get(row.last_run_id) ?? null; });
     }
@@ -826,7 +826,7 @@ const Sb = (() => {
     if (ids.length) {
       const fields = "id,code,type_name,company,business_date,status,assigned_to";
       for (let offset=0; offset<100000; offset+=1000) {
-        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=id.asc&limit=1000&offset=${offset}`);
+        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=id.asc&limit=1000&offset=${offset}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
         rows.push(...page);
         if (page.length<1000) return {rows,jobs,partial:operationsRows.length>=1000};
       }
