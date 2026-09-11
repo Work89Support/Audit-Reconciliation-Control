@@ -826,7 +826,7 @@ const Sb = (() => {
     if (ids.length) {
       const fields = "id,code,type_name,company,business_date,status,assigned_to";
       for (let offset=0; offset<100000; offset+=1000) {
-        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=id.asc&limit=1000&offset=${offset}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
+        const page = await json(`/rest/v1/exceptions?select=${fields}&run_id=in.(${ids.join(",")})&order=run_id.asc,id.asc&limit=1000&offset=${offset}`).catch(e => { throw new Error(`อ่านเคสหน้าที่ ${offset / 1000 + 1} ไม่สำเร็จ: ` + e.message); });
         rows.push(...page);
         if (page.length<1000) return {rows,jobs,partial:operationsRows.length>=1000};
       }
