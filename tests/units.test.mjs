@@ -66,7 +66,8 @@ const mypayRows = [
   ['="p2p-test"', "10000", "mypays24", "PARTIAL", "2026-08-26 07:54:04", "2026-08-26 08:55:07", "8700", "SENDED"],
 ];
 const mypayPartial = Formats.parse("MC mypays24-report-withdraw.csv", mypayRows, "2026-08-26");
-eq("MYPAY partial+sended: excluded from Success-only reconciliation", mypayPartial.records.length, 0);
+eq("MYPAY partial+sended: use actual payout", mypayPartial.records.length, 1);
+eq("MYPAY partial+sended: partial marker retained", mypayPartial.records[0].partial, true);
 
 const autopeerWithdrawRows = [
   ["UFABET7M"],
@@ -75,7 +76,8 @@ const autopeerWithdrawRows = [
   ["27/08/2026 23:32", "P2C-20260827-233242-YQPJGV", "ufpyo7mm106968", "ธนาคารไทยพาณิชย์", "4341146018", "ชัยณรงค์ ชัยทัศน์", "1920", "1600", "1600/1920", "SUCCESS-PARTIAL"],
 ];
 const autopeerWithdraw = Formats.parse("UFABET7M_PM_AUTOPEER_W_2026-08-27.xlsx", autopeerWithdrawRows, "2026-08-27");
-eq("AUTOPEER _W_: exact Success only", autopeerWithdraw.records.length, 1);
+eq("AUTOPEER _W_: Success and partial actual payouts", autopeerWithdraw.records.length, 2);
+eq("AUTOPEER _W_: partial uses P2P paid, not requested", autopeerWithdraw.records[1].amount, 1600);
 eq("AUTOPEER _W_: ใช้ยอด P2P จ่าย", autopeerWithdraw.records[0].amount, 1000);
 eq("AUTOPEER _W_: เก็บยอดที่แจ้งถอน", autopeerWithdraw.records[0].requested, 1000);
 eq("AUTOPEER _W_: ระบุทิศทางถอน", autopeerWithdraw.records[0].direction, "withdraw");

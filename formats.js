@@ -298,6 +298,7 @@ const Formats = (() => {
       fileName,
       company,
       code: f.spec.code,
+      headerIdx: f.headerIdx,
       label: f.spec.label,
       side: f.spec.side,
       records: [],
@@ -424,24 +425,36 @@ const Formats = (() => {
     pm_provider(f, r, i, company, drop, fileDir, meta) {
       const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
       const submitStatus = valAny(f, r, ["submitStatus", "สถานะส่งจ่าย"]).toLowerCase();
-      const transferred = num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง"]));
-      // Working reconciliation contains exact Success only. Partial payments remain
-      // outside this set for separate evidence review; do not imply no money moved.
-      if (!["success", "successed", "สำเร็จ"].includes(status)) {
+      const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
+      const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
+      const provRaw = valAny(f, r, ["provider"]).toLowerCase();
+      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
+      const partial = ["partial", "success-partial"].includes(status);
+      // Partial payouts are a provider rule, not a company/date exception.
+      // Unsupported partials must not pass the worker's "no successful rows" gate.
+      if (partial && (dir !== "withdraw" || !["AUTOPEER", "MYPAY"].includes(provider))) {
+        return drop("PARTIAL ต้องตรวจรูปแบบ Provider/ประเภทก่อน"), null;
+      }
+      if (!partial && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       const t = stamp(valAny(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
-      const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
-      const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
+      // Never use the requested amount or rounded Progress as a partial payout.
+      const paidRaw = valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง"]);
+      const paidText = paidRaw.replace(/[,\s฿]/g, "");
+      if (partial && (!/^\d+(?:\.\d{1,2})?$/.test(paidText) || Number(paidText) <= 0)) {
+        return drop("PARTIAL ไม่มียอดจ่ายจริงที่ตรวจสอบได้"), null;
+      }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
       const amount =
-        dir === "withdraw"
+        partial ? Number(paidText) : dir === "withdraw"
           ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
           : num(valAny(f, r, ["โอนจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
-      const provRaw = valAny(f, r, ["provider"]).toLowerCase();
-      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
+      const requestedRaw = valAny(f, r, ["แจ้งถอน", "สร้างฝาก", "amount"]);
+      const requested = num(requestedRaw) || null;
+      if (partial && requested !== null && amount > requested) return drop("PARTIAL ยอดจ่ายจริงมากกว่ายอดคำขอ"), null;
       return {
         rowNo: i + 1,
         source: "bo",
@@ -449,7 +462,10 @@ const Formats = (() => {
         date: t.date,
         sec: t.sec,
         amount: Math.round(amount * 100) / 100,
-        requested: num(valAny(f, r, ["แจ้งถอน", "สร้างฝาก", "amount"])) || null,
+        requested,
+        paidAmount: dir === "withdraw" ? Math.round(amount * 100) / 100 : null,
+        // An unpaid balance is not evidence that a refund actually occurred.
+        unpaidAmount: partial && requested !== null ? Math.round((requested - amount) * 100) / 100 : null,
         fee: num(valAny(f, r, ["ค่าธรรมเนียม", "fee"])),
         direction: dir,
         account: provider,
@@ -459,12 +475,12 @@ const Formats = (() => {
         company: provider,
         subco: (meta && meta.subco) || "",
         memberCode: valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
-        custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า"]),
+        custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า", "bankAccountNo", "เลขบัญชี"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
         custBank: valAny(f, r, ["ชื่อธนาคารสมาชิก", "ธนาคารลูกค้า", "ธนาคาร", "ธนาคารต้นทาง"]),
         ref: valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]),
         status,
-        partial: /partial/.test(status),
+        partial,
         submitStatus,
         crossDay: false,
         lateNight: t.sec >= 82800,

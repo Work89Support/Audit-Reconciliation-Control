@@ -19,3 +19,5 @@ jobs:
       # เทสใช้เฉพาะโมดูลในตัวของ Node ไม่มี dependency ภายนอก จึงไม่ต้อง npm install
       - name: Run unit tests
         run: npm test
+      - name: Verify confirmed damage and PM payout guards
+        run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs

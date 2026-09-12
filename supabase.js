@@ -311,11 +311,19 @@ const Sb = (() => {
   const runtimeSettings = () => json("/rest/v1/audit_runtime_settings?select=*&id=eq.true&limit=1");
 
   async function damages({ from, to, company, limit = 5000 } = {}) {
-    const filters = ["select=*", "order=business_date.desc,created_at.desc", `limit=${limit}`];
+    const filters = ["select=*", "order=business_date.desc,created_at.desc,id.desc"];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-    return json(`/rest/v1/damages?${filters.join("&")}`);
+    const maximum = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit,5000) : 5000;
+    const rows=[];
+    while (rows.length < maximum) {
+      const page = await json(`/rest/v1/damages?${filters.join("&")}&limit=${Math.min(500,maximum-rows.length)}&offset=${rows.length}`);
+      if (!Array.isArray(page)) throw new Error('รูปแบบทะเบียนความเสียหายไม่ถูกต้อง');
+      if (!page.length) break;
+      rows.push(...page);
+    }
+    return rows;
   }
 
   async function evidenceFiles({ from, to, limit = 2000 } = {}) {
@@ -703,6 +711,17 @@ const Sb = (() => {
     return rows[0];
   }
 
+  async function confirmDamage(id, previousStatus, amount, cause) {
+    const rows = await json('/rest/v1/rpc/confirm_damage', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_exception_id: id, p_previous_status: previousStatus, p_amount: amount, p_cause: cause }),
+    });
+    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0].id || rows[0].exception_id !== id) {
+      throw new Error('ยังยืนยันผลบันทึกไม่ได้ กรุณารีเฟรชทะเบียนก่อนลองใหม่');
+    }
+    return rows[0];
+  }
+
   async function closeException(id, previousStatus, body) {
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
       method: "PATCH",
@@ -904,6 +923,7 @@ const Sb = (() => {
     caseEvidence,
     uploadCaseEvidence,
     closeException,
+    confirmDamage,
   };
 })();
 
