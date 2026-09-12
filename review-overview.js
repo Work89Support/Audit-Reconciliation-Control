@@ -4,6 +4,35 @@ const ReviewOverview = (() => {
   const instances = new WeakMap();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
+  const splitHeaders=['อ้างอิง PM','Provider','บัญชีจ่ายยอดซอย','ยอดขอถอน','PM จ่ายจริง','BO ยอดซอย','ธนาคารจ่ายจริง','PM + ธนาคาร','ต่างจากคำขอ','สถานะ / สิ่งที่ต้องตรวจ'];
+  function splitRows(data,values={}) {
+    const summary=data?.run?.summary||{},pairs=summary.match_evidence||[];
+    if(values.direction==='deposit'||(values.status&&!['all','review'].includes(values.status)))return [];
+    const money=n=>Number.isSafeInteger(n)?n/100:null;
+    return (summary.split_payout_evidence||[]).filter(e=>e.direction==='withdraw')
+      .filter(e=>!values.account||[e.provider,e.boSplit?.account].includes(values.account))
+      .filter(e=>!values.query||JSON.stringify(e).toLowerCase().includes(values.query.trim().toLowerCase()))
+      .map(e=>{
+        // Only display actual bank money from an unambiguous stored pair.
+        // Never substitute the BO split amount for an absent bank payment.
+        const bankPairs=e.bank?.fileId ? pairs.filter(p=>p.direction==='withdraw'&&p.company===e.company
+          &&p.stm?.fileId===e.bank.fileId&&p.stm?.row===e.bank.row
+          &&p.bo?.fileId===e.boSplit?.fileId&&p.bo?.row===e.boSplit?.row) : [];
+        const raw=bankPairs.length===1?bankPairs[0].stmAmount:null;
+        const cents=typeof raw==='number'&&Number.isFinite(raw)&&Math.abs(raw*100-Math.round(raw*100))<1e-7?Math.round(raw*100):null;
+        const total=cents!==null&&Number.isSafeInteger(e.paidCents)?cents+e.paidCents:null;
+        const issues=(e.issues||[]).map(i=>({BANK_PAYMENT_NOT_MATCHED:'ยังไม่พบคู่ธนาคาร',AMOUNT_DIFFERENCE:'BO ยอดซอยต่างจากยอดคงเหลือ PM',SOURCE_PROVENANCE_MISSING:'อ้างอิงไฟล์ไม่ครบ'})[i]||i);
+        if(cents===null&&!issues.includes('ยังไม่พบคู่ธนาคาร'))issues.push('ยังยืนยันยอดธนาคารไม่ได้');
+        return [e.reference,e.provider,e.boSplit?.account,money(e.requestedCents),money(e.paidCents),money(e.splitCents),money(cents),money(total),total!==null&&Number.isSafeInteger(e.requestedCents)?money(e.requestedCents-total):null,
+          'รอ Audit ตรวจ'+(issues.length?' · '+issues.join(' / '):' · ยอดเชื่อมครบ ยังไม่ใช่การปิดเคส')];
+      });
+  }
+  function splitHtml(data,values={}) {
+    const rows=splitRows(data,values);
+    if(!rows.length)return '';
+    const cell=(v,i)=>v==null?'—':i>=3&&i<=8?Number(v).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}):escape(v);
+    return `<section class="panel"><details open><summary>ตรวจยอดถอนซอย · ${rows.length} รายการ</summary><p>หลักฐานประกอบ ไม่รวมเพิ่มในจำนวนคู่หรือยอดรวมด้านบน · ช่องว่างคือยังไม่มีหลักฐาน · ส่วนต่างยังไม่ใช่ความเสียหาย</p><div style="overflow:auto"><table><thead><tr>${splitHeaders.map(h=>`<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td>${cell(v,i)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details></section>`;
+  }
   function caseState(e) {
     if (e.status === 'closed') return 'closed';
     if (['clarifying','answered'].includes(e.status)) return 'clarification';
@@ -116,7 +145,8 @@ const ReviewOverview = (() => {
       runStatus.textContent=`การประมวลผล: ${({completed:'เสร็จแล้ว',queued:'รอประมวลผลใหม่ — ข้อมูลที่เห็นเป็นผลรอบก่อน',ready:'พร้อมประมวลผล — ยังไม่ยืนยันผลใหม่',processing:'กำลังประมวลผล',needs_review:'ต้องตรวจข้อมูลก่อน'})[data?.run?.jobStatus]||data?.run?.jobStatus||'ยังไม่มีผล'} • Audit ยืนยัน ${data?.confirmations?.length||0} คู่ (แยกจากการปิดเคส)`;
       if(data?.confirmationError)runStatus.textContent=runStatus.textContent.replace('Audit ยืนยัน 0 คู่','Audit ยืนยัน — คู่')+' • ยังโหลดประวัติ Audit ไม่ได้ จึงปิดปุ่มยืนยันไว้';
       toolbar.before(runStatus);
-      toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)}))],{date,company});
+      const splitPanel=document.createElement('div');splitPanel.innerHTML=splitHtml(data,values);root.append(splitPanel);
+      toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)})),{name:'ยอดซอย-หลักฐาน',headers:splitHeaders,rows:splitRows(data,values)}],{date,company});
       const chooser=document.createElement('details');chooser.className='audit-column-picker';
       chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${i<2?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
       toolbar.append(chooser);
@@ -195,6 +225,6 @@ const ReviewOverview = (() => {
     await refresh();
     return ()=>{generation++;};
   }
-  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue};
+  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue,splitRows,splitHtml,splitHeaders};
 })();
 if (typeof module !== 'undefined') module.exports = ReviewOverview;
