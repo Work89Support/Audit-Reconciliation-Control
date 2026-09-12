@@ -83,7 +83,10 @@ const ReviewOverview = (() => {
     const seconds=p?p.timeDifferenceSeconds:e?.bo_date&&e?.stm_date?e.time_diff_sec:null;
     const payout=p?.pmPayout?.partial ? ` · PM ${p.pmPayout.status}: คำขอ ${p.pmPayout.requested??'ไม่ระบุ'} / จ่ายจริง ${p.pmPayout.paid??'ไม่ระบุ'} / คงเหลือ ${p.pmPayout.unpaid??'ไม่ระบุ'} (ยังไม่ยืนยันยอดคืนหรือรายการต่อ)` : '';
     const noteReview=xbPayoutNote(row);
-    return [p?'จับคู่ได้':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'')+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
+    const withinHour=!p&&e?.ex_type==='time_diff'&&/^\d{4}-\d{2}-\d{2}$/.test(e.bo_date||'')&&e.bo_date===e.stm_date
+      &&typeof seconds==='number'&&Number.isFinite(seconds)&&Math.abs(seconds)<=3600;
+    const reason=withinHour?'เวลาอยู่ใน 60 นาที แต่ระบบยังไม่ยืนยันคู่ — ตรวจข้อมูลลูกค้า เลขอ้างอิง และคู่ซ้ำ':(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'');
+    return [p?'จับคู่ได้':withinHour?'ใน 60 นาที — รอยืนยันคู่รายการ':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
   }
   const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
   const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
