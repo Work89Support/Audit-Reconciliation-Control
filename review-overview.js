@@ -54,17 +54,36 @@ const ReviewOverview = (() => {
     if (!row.case) return row.confirmation?'Audit ยืนยันแล้ว':'ยังไม่ยืนยันโดย Audit';
     return ({open:'รอตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',closed:'ยืนยันแล้ว ปิดเคส',approved:'อนุมัติแล้ว',damage:'ความเสียหาย'})[row.case.status] || row.case.status;
   }
+  function xbPayoutNote(row) {
+    if(row.direction!=='withdraw'||!['AUTOPEER','MYPAY'].includes(row.account))return '';
+    const note=row.pair?.customer?.bo?.note||row.case?.customer_details?.bo?.note||'';
+    // This is a BO claim, not a linked PM payment or proof of a refund.
+    const amount='((?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{1,2})?)';
+    const matches=[...String(note).matchAll(new RegExp('(?:^|\\|)\\s*โอนจริง\\s+'+amount+'\\s+สำเร็จ\\s+'+amount+'\\s+คืน\\s+'+amount+'(?=\\s*(?:$|\\|))','g'))];
+    if(matches.length!==1)return '';
+    const cents=s=>{
+      const [whole,frac='']=s.replace(/,/g,'').split('.');
+      const n=Number(whole)*100+Number(frac.padEnd(2,'0'));
+      return Number.isSafeInteger(n)?n:null;
+    };
+    const [requested,paid,returned]=matches[0].slice(1).map(cents);
+    if([requested,paid,returned].includes(null))return '';
+    const money=n=>(n/100).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `BO ระบุ: โอนจริง ${money(requested)} / สำเร็จ ${money(paid)} / คืน ${money(returned)} · ${requested===paid+returned?'ยอดตามหมายเหตุสมดุล':'ยอดตามหมายเหตุไม่สมดุล'} · ยังไม่ยืนยัน PM จ่ายจริง ยอดคืน หรือรายการถอนต่อ`;
+  }
   function sheetRow(row) {
     const p=row.pair,e=row.case;
     const side=(which)=>{
       const c=p?.customer?.[which] || e?.customer_details?.[which] || {};
       const t=p?.[which];
       const time=p ? (t?.date ? `${t.date} ${Number.isFinite(t.sec)?new Date(t.sec*1000).toISOString().slice(11,19):'ไม่ระบุเวลา'}`:'ไม่ระบุเวลา') : `${e?.[which+'_date']||'ไม่พบรายการ'} ${e?.[which+'_time']||''}`.trim();
-      return [time,p ? (which==='bo'?p.boAmount??p.amount:p.stmAmount) : (which==='bo'?e.system_amount:e.bank_amount),c.account||'',c.last4||'',c.bank||'',c.name||(c.user?'User: '+c.user:''),c.user||'',c.reference||'',c.description||''];
+      const sourceText=[...new Set([c.description,c.note].filter(Boolean))].join(' | ');
+      return [time,p ? (which==='bo'?p.boAmount??p.amount:p.stmAmount) : (which==='bo'?e.system_amount:e.bank_amount),c.account||'',c.last4||'',c.bank||'',c.name||(c.user?'User: '+c.user:''),c.user||'',c.reference||'',sourceText];
     };
     const seconds=p?p.timeDifferenceSeconds:e?.bo_date&&e?.stm_date?e.time_diff_sec:null;
     const payout=p?.pmPayout?.partial ? ` · PM ${p.pmPayout.status}: คำขอ ${p.pmPayout.requested??'ไม่ระบุ'} / จ่ายจริง ${p.pmPayout.paid??'ไม่ระบุ'} / คงเหลือ ${p.pmPayout.unpaid??'ไม่ระบุ'} (ยังไม่ยืนยันยอดคืนหรือรายการต่อ)` : '';
-    return [p?'จับคู่ได้':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'')+payout,e?.resolution_note||''];
+    const noteReview=xbPayoutNote(row);
+    return [p?'จับคู่ได้':e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'')+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
   }
   const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
   const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
