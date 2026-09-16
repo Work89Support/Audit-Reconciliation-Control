@@ -3044,9 +3044,19 @@ async function openEvidenceRelatedCase(id) {
   closeModal();
   openException(item.id);
 }
-function openException(id, options = {}) {
+async function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
   if (!e || !canAccessCompany(e.company)) return;
+  state.selected = id;
+  if (state.dataset === "production" && e.dbId) {
+    try {
+      e.notes = await Sb.caseNotes(e.dbId);
+    } catch (err) {
+      e.notes = [];
+      toast("โหลด Note ส่วนกลางไม่สำเร็จ: " + err.message, "warn");
+    }
+    if (state.selected !== id) return;
+  }
   const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
   const queueIndex = queue.indexOf(id);
   state.selected = id;
@@ -3208,15 +3218,28 @@ function openException(id, options = {}) {
     openException(id);
   });
 
-  $("#btnNote").addEventListener("click", () => {
+  $("#btnNote").addEventListener("click", async () => {
     if (!can("note")) return deny("เพิ่ม note");
     const txt = $("#noteText").value.trim();
     if (!txt) return toast("กรุณาพิมพ์ note ก่อน", "warn");
-    e.notes.push({ by: currentUser().username, at: nowStamp(), text: txt });
-    logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
-    saveOverride(e);
-    toast("บันทึก note แล้ว");
-    openException(id);
+    const button = $("#btnNote");
+    button.disabled = true;
+    try {
+      if (state.dataset === "production") {
+        if (!e.dbId) throw new Error("ไม่พบรหัสเคสฐานข้อมูล");
+        await Sb.appendCaseNote(e.dbId, txt);
+      } else {
+        e.notes.push({ by: currentUser().username, at: nowStamp(), text: txt });
+        logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
+        saveOverride(e);
+      }
+      toast("บันทึก note แล้ว");
+      if (state.selected === id) await openException(id);
+    } catch (err) {
+      toast("บันทึก Note ไม่สำเร็จ: " + err.message, "warn");
+    } finally {
+      button.disabled = false;
+    }
   });
   $("#btnDocReq").addEventListener("click", () => {
     const d = dueOf(e);

@@ -698,6 +698,32 @@ const Sb = (() => {
     return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
   }
 
+  // Full, append-only notes; existing audit_log RLS is unchanged.
+  async function caseNotes(id) {
+    if (!id) return [];
+    const rows = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await json(`/rest/v1/audit_log?entity=eq.exception&action=eq.case_note&target=eq.${encodeURIComponent(id)}&select=id,actor,at,detail&order=at.asc,id.asc&limit=500&offset=${offset}`);
+      if (!Array.isArray(page)) throw new Error("อ่าน Note จากฐานข้อมูลไม่สำเร็จ");
+      rows.push(...page.map((row) => ({ id: row.id, by: row.actor, at: row.at, text: row.detail })));
+      if (page.length < 500) return rows;
+    }
+  }
+
+  async function appendCaseNote(id, text) {
+    if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนบันทึก Note");
+    const detail = String(text || "").trim();
+    if (!id || !detail) throw new Error("กรุณาระบุเคสและข้อความ Note");
+    const saved = await post("audit_log", [{
+      actor: currentEmail() || authUser().id, actor_user_id: authUser().id,
+      action: "case_note", entity: "exception", target: id, detail,
+    }], "return=representation");
+    if (!Array.isArray(saved) || saved.length !== 1 || saved[0].detail !== detail) {
+      throw new Error("ยังยืนยันการบันทึก Note ไม่ได้ กรุณาตรวจประวัติก่อนลองซ้ำ");
+    }
+    return { id: saved[0].id, by: saved[0].actor, at: saved[0].at, text: saved[0].detail };
+  }
+
   async function uploadCaseEvidence(exceptionId, file) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
     if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
@@ -949,6 +975,8 @@ const Sb = (() => {
     requestClarification,
     submitClarification,
     caseEvidence,
+    caseNotes,
+    appendCaseNote,
     uploadCaseEvidence,
     closeException,
     confirmDamage,
