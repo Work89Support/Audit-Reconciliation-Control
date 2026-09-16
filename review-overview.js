@@ -39,10 +39,11 @@ const ReviewOverview = (() => {
     return 'review';
   }
   function model(data) {
+    const preliminary = typeof PreliminaryReview !== 'undefined' ? PreliminaryReview.candidates(data) : new Set();
     const evidence = Array.isArray(data.run?.summary?.match_evidence) ? data.run.summary.match_evidence : [];
     const confirmed=new Map((data.confirmations||[]).map(c=>[c.pair_index,c]));
     const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, pairIndex:i,confirmation:confirmed.get(i),category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
-    const cases = data.cases.map(e => ({ id:e.id, category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) }));
+    const cases = data.cases.map(e => ({ id:e.id, preliminary:preliminary.has(e.id), category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) }));
     return { rows:[...pairs,...cases], evidenceCount:evidence.length, reportedMatched:Number(data.run?.matched || 0), counts:Object.fromEntries(Object.keys(labels).map(k => [k, k === 'all' ? pairs.length + cases.length : [...pairs,...cases].filter(r => r.category === k).length])) };
   }
   function filter(rows, values) {
@@ -134,6 +135,8 @@ const ReviewOverview = (() => {
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
     let columnRules={},columnSort={column:5,direction:'asc'};
+    let preliminaryOnly=false;
+    const selected=new Set();
     let hidden=[];
     try { hidden=normalizeHidden(JSON.parse(localStorage.getItem(columnKey))); } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
@@ -153,7 +156,9 @@ const ReviewOverview = (() => {
     }
     function draw(error='') {
       if (!root.isConnected || instances.get(root)!==instance || !isActive()) return;
-      const rows=view ? filterColumns(filter(view.rows,values),columnRules,columnSort) : [];
+      const rows=view ? filterColumns(filter(view.rows,values),columnRules,columnSort).filter(r=>!preliminaryOnly||r.preliminary) : [];
+      // Selection is scoped to the visible filter, not hidden cases from a previous view.
+      for(const id of selected) if(!rows.some(r=>r.id===id&&r.preliminary)) selected.delete(id);
       const pages=Math.max(1,Math.ceil(rows.length/50)); page=Math.min(page,pages-1);
       const accounts=view ? [...new Set(view.rows.map(r=>r.account))].sort() : [];
       root.innerHTML=`<section class="panel"><div class="panel-heading"><div><h2>${escape(company)} · ภาพรวมผลตรวจ</h2><p>คู่สำเร็จและเคสที่ยังต้องตรวจ อยู่ในหน้าเดียวกัน</p></div><button id="overviewCompany" class="ghost-button">เปลี่ยนบริษัท</button></div><div class="review-overview-controls"><label>วันที่ตรวจ<input id="overviewDate" type="date" value="${escape(date)}"></label><label>ประเภท<select id="overviewDirection"><option value="all">ฝากและถอน</option value="deposit" ${values.direction==='deposit'?'selected':''}>ฝาก</option><option value="withdraw" ${values.direction==='withdraw'?'selected':''}>ถอน</option></select></label><label>บัญชี / Provider<select id="overviewAccount"><option value="">ทั้งหมด</option>${accounts.map(a=>`<option ${a===values.account?'selected':''} value="${escape(a)}">${escape(a)}</option>`).join('')}</select></label><label>ค้นหาบัญชี ชื่อ User หรืออ้างอิง<input id="overviewQuery" value="${escape(values.query)}"></label><button id="overviewRefresh" class="ghost-button">รีเฟรช</button></div><div class="review-overview-states" aria-label="กรองสถานะ">${Object.entries(labels).map(([key,label])=>`<button data-overview-status="${key}" aria-pressed="${values.status===key}" class="${values.status===key?'primary-button':'ghost-button'}">${label} <b>${view?view.counts[key].toLocaleString():'—'}</b></button>`).join('')}</div>${error?`<p role="alert">โหลดผลไม่ได้: ${escape(error)} <button id="overviewRetry">ลองอีกครั้ง</button></p>`:!data?'<p role="status">กำลังอ่านผลล่าสุด…</p>':!data.run?'<p>ยังไม่มีผลประมวลผลของบริษัทและวันที่นี้</p>':`<p>สถานะงาน: ${escape(data.run.jobStatus)} · ระบบรายงานจับคู่ ${view.reportedMatched.toLocaleString()} คู่ · มีรายละเอียดเปิดดู ${view.evidenceCount.toLocaleString()} คู่</p>${view.evidenceCount<view.reportedMatched?'<div class="alert"><strong>รายละเอียดคู่สำเร็จยังเก็บไม่ครบ</strong><span>ยอดรวมมีแล้ว แต่ยังไม่สามารถแสดงคู่ที่ไม่ได้บันทึกหลักฐาน ต้องใช้ Worker ที่เก็บรายละเอียดและประมวลผลใหม่ ไม่ได้หมายความว่าจับคู่ไม่ได้</span></div>':''}${data.run.jobStatus!=='completed'?'<p role="alert">งานยังไม่เสร็จสมบูรณ์ รายละเอียดนี้อาจเป็นผลรอบก่อน</p>':''}${!data.complete?'<p role="alert">โหลดเคสยังไม่ครบ จำนวนด้านล่างเป็นเฉพาะที่โหลดแล้ว</p>':''}<p>ตัวกรองสถานะนับจากรายละเอียดที่โหลดได้ คู่สำเร็จไม่ใช่การอนุมัติปิดเคส คู่หนึ่งอาจมีเคสเตือนเพิ่มเติม จึงไม่ใช่จำนวนธุรกรรมที่ไม่ซ้ำ</p>`}</section><section class="panel"><p>แสดง ${rows.length.toLocaleString()} แถวตามตัวกรอง · หน้า ${page+1}/${pages}</p><div class="table-wrap"><table class="rows review-overview-table"><thead><tr><th>สถานะ</th><th>บัญชี / ประเภท</th><th>BO · เวลาและลูกค้า</th><th>ยอด BO</th><th>STM/PM · เวลาและลูกค้า</th><th>ยอด STM/PM</th><th>ต่างเวลา</th><th>เหตุผล / ตรวจต่อ</th></tr></thead><tbody>${rows.slice(page*50,page*50+50).map(rowHtml).join('') || '<tr><td colspan="8">ยังไม่มีรายละเอียดในตัวกรองนี้</td></tr>'}</tbody></table></div><div class="pager"><button id="overviewPrev" ${page===0?'disabled':''}>ก่อนหน้า</button><button id="overviewNext" ${page+1>=pages?'disabled':''}>ถัดไป</button></div></section>`;
@@ -171,6 +176,27 @@ const ReviewOverview = (() => {
       if(loadRecommendations){const hint=document.createElement('p');hint.className='sheet-active-filters';hint.textContent=data?.recommendationError?'โหลดคู่แนะนำไม่ได้: '+data.recommendationError:'🟡 พื้นเหลือง = มีหลักฐานแนะนำที่เชื่อมกับเคสนี้ · ยังไม่ยืนยันและไม่ปิดเคส';toolbar.before(hint);}
       const splitPanel=document.createElement('div');splitPanel.innerHTML=splitHtml(data,values);root.append(splitPanel);
       toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)})),{name:'ยอดซอย-หลักฐาน',headers:splitHeaders,rows:splitRows(data,values)}],{date,company});
+      if(typeof PreliminaryReview!=='undefined') {
+        const eligible=(view?.rows||[]).filter(r=>r.preliminary);
+        const picked=PreliminaryReview.selectedRows(rows,selected);
+        const bar=document.createElement('div');bar.className='audit-sheet-tools';
+        bar.innerHTML=`<button id="preliminaryFilter" aria-pressed="${preliminaryOnly}" class="${preliminaryOnly?'primary-button':'ghost-button'}">ผ่านเกณฑ์เบื้องต้น — รอยืนยัน (${eligible.length}) · ${amount(PreliminaryReview.total(eligible))} บาท</button><span>เฉพาะ ${escape(company)} / ${escape(date)} · ไม่ใช่การอนุมัติปิดเคส</span><button id="preliminaryAll" ${!rows.some(r=>r.preliminary)?'disabled':''}>เลือกทั้งหมดตามตัวกรอง (ทุกหน้า)</button><button id="preliminaryClear" ${!picked.length?'disabled':''}>ล้างที่เลือก</button><strong>เลือก ${picked.length} เคส · ${amount(PreliminaryReview.total(picked))} บาท</strong><button id="preliminaryExport" ${!picked.length||!onExport?'disabled':''}>Export เคสที่เลือก</button><button id="preliminaryOpen" ${!picked.length?'disabled':''}>เปิดตรวจเคสที่เลือกทีละเคส</button>`;
+        toolbar.before(bar);
+        bar.querySelector('#preliminaryFilter').onclick=()=>{preliminaryOnly=!preliminaryOnly;values.status='all';page=0;draw();};
+        bar.querySelector('#preliminaryAll').onclick=()=>{rows.filter(r=>r.preliminary).forEach(r=>selected.add(r.id));draw();};
+        bar.querySelector('#preliminaryClear').onclick=()=>{selected.clear();draw();};
+        bar.querySelector('#preliminaryExport').onclick=()=>onExport?.(`รอยืนยัน_${company}_${date}`,[{name:'รอยืนยัน-ที่เลือก',headers:sheetHeaders,rows:picked.map(sheetRow)}],{date,company});
+        bar.querySelector('#preliminaryOpen').onclick=()=>{const first=picked[0];if(first){selected.delete(first.id);draw();onCase(first.case,{action:'review'});}};
+        table.querySelectorAll('tbody tr').forEach((tr,i)=>{
+          const row=rows[page*50+i];if(!row?.preliminary)return;
+          const label=document.createElement('label');
+          label.style.cssText='display:flex;gap:8px;align-items:center;background:#fff4cc;padding:8px;border-radius:6px;white-space:normal';
+          label.innerHTML=`<input type="checkbox" aria-label="เลือกเคส ${escape(row.case.code)}" ${selected.has(row.id)?'checked':''}>ผ่านเกณฑ์เบื้องต้น · รอยืนยัน`;
+          label.title='ยอดตรงกัน · อ้างอิง BO และ sapan ตรง · PM SUCCESSED · วันเดียวกัน ภายใน 60 นาที · ไม่พบคู่ซ้ำในผลรอบนี้';
+          label.querySelector('input').onchange=e=>{e.target.checked?selected.add(row.id):selected.delete(row.id);draw();};
+          tr.firstElementChild.prepend(label);
+        });
+      }
       const chooser=document.createElement('details');chooser.className='audit-column-picker';
       chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${i<2?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
       toolbar.append(chooser);
@@ -245,7 +271,7 @@ const ReviewOverview = (() => {
       root.querySelector('#overviewNext').onclick=()=>{page++;draw();};
       root.querySelectorAll('[data-overview-case]').forEach(b=>b.onclick=()=>onCase(data.cases.find(e=>e.id===b.dataset.overviewCase)));
     }
-    async function refresh(){const g=++generation;data=null;view=null;page=0;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
+    async function refresh(){const g=++generation;selected.clear();data=null;view=null;page=0;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
     await refresh();
     return ()=>{generation++;};
   }
