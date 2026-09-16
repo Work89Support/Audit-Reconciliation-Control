@@ -12,7 +12,10 @@ const EvidenceRecommendations = (() => {
         const files = await api.exceptionFiles(null, button.dataset.recommendationFile);
         if (!files[0]) throw new Error('ไม่พบไฟล์หรือไม่มีสิทธิ์เปิด');
         const f = files[0];
-        await openFile({id:f.id,name:f.file_name,company:f.company,kind:f.kind,path:f.storage_path,size:f.size_bytes,status:f.parsed?'parsed':'waiting'});
+        const proposals = await api.evidenceRecommendations({fileId:f.id});
+        const selectedDate = document.getElementById('recommendationDate')?.value;
+        const date = selectedDate || proposals[0]?.business_date || '';
+        await openFile({id:f.id,name:f.file_name,company:f.company,date,kind:f.kind,path:f.storage_path,size:f.size_bytes,status:f.parsed?'parsed':'waiting'});
       } catch (error) { button.textContent = error.message; }
       finally { button.disabled = false; }
     }));
