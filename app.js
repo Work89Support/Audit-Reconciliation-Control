@@ -394,6 +394,7 @@ const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรา�
 
 /* ปิดด่วนได้เมื่อมีรายการครบทั้งสองฝั่งและยอดเท่ากัน ผู้ตรวจยังต้องกดยืนยันเอง */
 function isQuickCloseEligible(e) {
+  if (typeof state !== "undefined" && state.dataset === "production") return !!e?._quickSourceEvidence && e.status === "open";
   const realEvidence = (raw) => {
     const value = String(raw || "").trim();
     return value.length > 1 && !/^[—–-]|ไม่พบรายการ|ไม่ต้องใช้\s*statement|ตรวจจากรายงานหลังบ้าน|รอข้อมูล|ไม่มีข้อมูล/i.test(value);
@@ -408,6 +409,22 @@ function isQuickCloseEligible(e) {
     && realEvidence(e.stmRaw)
     && realEvidence(e.boRaw)
     && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
+}
+
+async function refreshQuickCloseEvidence(e) {
+  e._quickSourceEvidence = false;
+  if (state.dataset !== "production" || !e.dbId || !e._detailLoaded) return;
+  const [data, links] = await Promise.all([
+    Sb.reconciliationOverview(e.company, e.date),
+    Sb.evidenceCaseRecommendations({caseId:e.dbId}),
+  ]);
+  const row = data.cases?.find(row => row.id === e.dbId);
+  // Fail closed for linked clarification/cross-company cases and incomplete queries.
+  if (!row || row.company !== e.company || !Array.isArray(links) || links.length
+      || !["open","closed"].includes(row.status)) return;
+  const review = {...data, cases:data.cases.map(item => item.id === row.id ? {...item,status:"open"} : item)};
+  e._quickSourceEvidence = PreliminaryReview.candidates(review).has(row.id);
+  e._quickVerifiedStatus = row.status;
 }
 
 // Completion is a positive assertion: absent/failed queries must never count as passed checks.
@@ -453,8 +470,11 @@ async function persistCaseClosure(e, note) {
 
 async function completeQuickClose(e) {
   if (!can("approve")) return deny("ปิดเคส");
+  try { await refreshQuickCloseEvidence(e); }
+  catch (err) { return toast("ตรวจหลักฐานล่าสุดไม่สำเร็จ: " + err.message, "warn"); }
+  if (state.dataset === "production" && e._quickVerifiedStatus !== "open") return toast("สถานะเคสเปลี่ยนแล้ว กรุณาเปิดตรวจใหม่", "warn");
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
-  const note = "Audit ยืนยันรายการครบทั้ง STM และ BO/ระบบ และยอดตรงกัน";
+  const note = "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ 60 นาที ใช้หลักฐาน BO/PM ต้นทาง; ยอด " + e.systemAmount + " บาท; ต่างเวลา " + e.timeDiffSec + " วินาที; BO: " + e.boRaw + "; PM: " + e.stmRaw;
   if (!await persistCaseClosure(e, note)) return;
   e.resolutionNote = note;
   e.resolvedAt = new Date().toISOString();
@@ -3057,22 +3077,27 @@ async function openException(id, options = {}) {
       toast("โหลด Note ส่วนกลางไม่สำเร็จ: " + err.message, "warn");
     }
     if (state.selected !== id) return;
+    try { await refreshQuickCloseEvidence(e); }
+    catch (err) { e._quickSourceEvidence = false; toast("ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: " + err.message, "warn"); }
+    if (state.selected !== id) return;
   }
   const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
   const queueIndex = queue.indexOf(id);
   state.selected = id;
   const drawer = $("#drawer");
   const overlay = $("#drawerOverlay");
+  const closed = ["closed", "approved"].includes(e.status);
+  const sourceEvidence = !!e._quickSourceEvidence;
   const checklist = [
     { key: "raw", label: "โหลดข้อมูลรายการ STM / BO แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
     { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
     { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
-    { key: "evidence", label: "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence },
-    { key: "note", label: "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote },
+    { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — อ้างอิงตรง ไม่ซ้ำ วันเดียวกันใน 60 นาที" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
+    { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
     { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const ready = checklist.every((c) => c.ok) || quickCloseEligible;
+  const ready = !closed && (checklist.every((c) => c.ok) || quickCloseEligible);
 
   drawer.innerHTML = `
     <header class="drawer-head">
@@ -3115,16 +3140,16 @@ async function openException(id, options = {}) {
             : `ไม่ผ่านเกณฑ์: ${h(e.typeName)} — tolerance ที่ใช้ ${e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit} วินาที`
         }</span></div></li>
         <li><span class="t-dot"></span><div><b>สาเหตุที่บันทึกไว้</b><span>${h(e.cause)}</span></div></li>
-        ${e.hasEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>สลิป / ไฟล์ชี้แจงจากหัวหน้ากะ (2 ไฟล์)</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
+        ${e.hasEvidence || sourceEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>${sourceEvidence ? "BO/PM ต้นทาง — ตรวจอ้างอิง ยอด วัน เวลา และคู่ซ้ำแล้ว" : "มีหลักฐานบันทึกในระบบ"}</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
         ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(n.at)}</b><span>${h(n.text)}</span></div></li>`).join("")}
       </ol>
 
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
-      ${quickCloseEligible ? `<p class="quick-close-hint"><b>ปิดเคสได้ทันที:</b> พบทั้ง STM และ BO/ระบบ และยอดตรงกัน ผู้ตรวจสามารถยืนยันปิดเคสได้โดยไม่ต้องรอหลักฐานเพิ่ม</p>` : ""}
+      ${sourceEvidence ? `<p class="quick-close-hint"><b>ปิดเคสได้ทันที:</b> ${closed ? "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ ใช้หลักฐาน BO/PM ต้นทาง" : "อ้างอิง BO/PM ตรงกัน ไม่พบคู่ซ้ำ วันเดียวกันไม่เกิน 60 นาที — รอ Audit ยืนยัน"}</p>` : ""}
       <ul class="close-check">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
-      ${ready ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
+      ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
       <div class="evidence-box">
@@ -3136,7 +3161,7 @@ async function openException(id, options = {}) {
                     `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
-            : `<p class="muted small-note">${quickCloseEligible ? "ไม่มีไฟล์ชี้แจงเพิ่มเติม — มีข้อมูลต้นฉบับสองฝั่งแล้ว ผู้ตรวจยังต้องตรวจหลักฐานและยืนยันก่อนปิด" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
+            : `<p class="muted small-note">${sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — มีข้อมูลต้นฉบับสองฝั่งแล้ว ผู้ตรวจยังต้องตรวจหลักฐานและยืนยันก่อนปิด" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
           <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.csv,.xlsx,.txt" />
@@ -3152,8 +3177,8 @@ async function openException(id, options = {}) {
     </div>
 
     <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${quickCloseEligible ? "ยอดสองฝั่งตรงกัน — ยืนยันเพื่อปิดเคสได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${quickCloseEligible ? "ยืนยันยอดตรงและปิดเคส" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <details class="drawer-more-actions"><summary>เอกสารและการดำเนินการอื่น</summary><div><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>`;
 
