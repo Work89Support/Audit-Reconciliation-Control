@@ -4685,6 +4685,7 @@ async function openStoredFilePreview(meta) {
     `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
+  if (canMatchClarification) EvidenceRecommendations.mount($("#modal .modal-body"), meta, companyOptions, Sb, openStoredFilePreview);
   $("#filePreviewClose").addEventListener("click", closeModal);
   let signedUrl = "";
   let downloaded = null;
@@ -5244,6 +5245,7 @@ VIEWS.cloud = (root) => {
         <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : cloudState.partialError ? h(cloudState.partialError) : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
+          <button class="ghost-button sm" id="cEvidenceRecommendations">คู่แนะนำจากหลักฐาน</button>
           <button class="ghost-button sm" id="cPickNew">เลือกเฉพาะไฟล์ที่พร้อมรัน</button>
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>อ่านไฟล์ที่เลือก ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
@@ -5337,6 +5339,7 @@ VIEWS.cloud = (root) => {
     }`;
 
   $("#cReload").addEventListener("click", () => cloudLoad(true));
+  $("#cEvidenceRecommendations").addEventListener("click", () => EvidenceRecommendations.browse(Sb, state.date || DEFAULT_WORK_DATE, openStoredFilePreview));
   $("#cPickNew").addEventListener("click", () => {
     cloudState.picked = {};
     queueableFiles.forEach((f) => (cloudState.picked[f.id] = true));

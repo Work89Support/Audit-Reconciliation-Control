@@ -533,6 +533,17 @@ const Sb = (() => {
     p_note: note || "Audit จับคู่ไฟล์ชี้แจงกับเคสที่เลือก",
   });
 
+  const evidenceRecommendations = ({fileId, date} = {}) => {
+    const filters = ['select=*', 'order=created_at.desc', 'limit=501'];
+    if (fileId) filters.push(`source_file_id=eq.${encodeURIComponent(fileId)}`);
+    if (date) filters.push(`business_date=eq.${encodeURIComponent(date)}`);
+    return json(`/rest/v1/evidence_recommendations?${filters.join('&')}`);
+  };
+  const saveEvidenceRecommendation = (row) => json('/rest/v1/evidence_recommendations', {
+    method: 'POST', headers: {'Content-Type':'application/json', Prefer:'return=representation'},
+    body: JSON.stringify(row),
+  });
+
   const replacementSafeName = (name) => String(name || "replacement.bin")
     .normalize("NFKD")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
@@ -905,6 +916,8 @@ const Sb = (() => {
     adminInviteUser,
     reclassifySourceFile,
     manualMatchClarificationFile,
+    evidenceRecommendations,
+    saveEvidenceRecommendation,
     replaceSourceFile,
     fileOcr,
     recoverySource,
