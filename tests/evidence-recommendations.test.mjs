@@ -20,3 +20,14 @@ assert.match(sql,/has_company_access\(company\) and public.has_company_access\(p
 assert.match(sql,/evidence_recommendations.company,evidence_recommendations.payer_company/);
 assert.doesNotMatch(sql,/update public.exceptions|insert into public.damages|grant.*update/i);
 console.log('Evidence recommendation safety tests passed');
+let modalHtml='';
+const readerContext=vm.createContext({openModal:(_title,html)=>{modalHtml=html;},document:{getElementById:()=>({querySelectorAll:()=>[]})}});
+vm.runInContext(source+';this.show=EvidenceRecommendations.showCaseLinks;',readerContext);
+readerContext.show([{recommendation_id:'r1',reason:'Reason <unsafe>',evidence_recommendations:{...row,id:'r1'}}],{},()=>{});
+assert.ok(modalHtml.includes('recommendation-route'));
+assert.ok(modalHtml.includes('บริษัทเจ้าของรายการ'));
+assert.ok(modalHtml.includes('บริษัทจ่ายแทน'));
+assert.ok(modalHtml.includes('Reason &lt;unsafe&gt;'));
+assert.ok(modalHtml.includes('<details class="recommendation-full">'));
+assert.ok(!modalHtml.includes('<details open'));
+console.log('Recommendation reader: structured summary, escaped reason, collapsed full note passed');
