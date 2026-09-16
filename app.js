@@ -3145,7 +3145,7 @@ async function openException(id, options = {}) {
       </ol>
 
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
-      ${sourceEvidence ? `<p class="quick-close-hint"><b>ปิดเคสได้ทันที:</b> ${closed ? "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ ใช้หลักฐาน BO/PM ต้นทาง" : "อ้างอิง BO/PM ตรงกัน ไม่พบคู่ซ้ำ วันเดียวกันไม่เกิน 60 นาที — รอ Audit ยืนยัน"}</p>` : ""}
+      ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ ใช้หลักฐาน BO/PM ต้นทาง" : "อ้างอิง BO/PM ตรงกัน ไม่พบคู่ซ้ำ วันเดียวกันไม่เกิน 60 นาที — รอ Audit ยืนยัน"}</p>` : ""}
       <ul class="close-check">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
@@ -3161,7 +3161,7 @@ async function openException(id, options = {}) {
                     `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
-            : `<p class="muted small-note">${sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — มีข้อมูลต้นฉบับสองฝั่งแล้ว ผู้ตรวจยังต้องตรวจหลักฐานและยืนยันก่อนปิด" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
+            : `<p class="muted small-note">${sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
           <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.csv,.xlsx,.txt" />
