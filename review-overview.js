@@ -131,7 +131,9 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,isActive=()=>true}) {
+  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,isActive=()=>true}) {
+    const scopedDate = value => minDate && (!value || value < minDate) ? minDate : value;
+    date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
     let columnRules={},columnSort={column:5,direction:'asc'};
@@ -269,7 +271,8 @@ const ReviewOverview = (() => {
       active.querySelector('[data-clear-all]').onclick=()=>{columnRules={};page=0;draw();};
       root.querySelectorAll('[data-audit-action]').forEach(el=>el.onchange=()=>{const action=el.value;el.value='';if(action)onCase(data.cases.find(e=>e.id===el.dataset.auditAction),{action});});
       root.querySelector('#overviewCompany').onclick=onCompany;
-      root.querySelector('#overviewDate').onchange=e=>{date=e.target.value; if(date) refresh();};
+      root.querySelector('#overviewDate').min=minDate;
+      root.querySelector('#overviewDate').onchange=e=>{date=scopedDate(e.target.value); e.target.value=date; if(date) refresh();};
       root.querySelector('#overviewRefresh').onclick=refresh;
       root.querySelector('#overviewRetry')?.addEventListener('click',refresh);
       root.querySelectorAll('[data-overview-status]').forEach(b=>b.onclick=()=>{values.status=b.dataset.overviewStatus;page=0;draw();});

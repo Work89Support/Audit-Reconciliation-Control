@@ -353,8 +353,8 @@ const Sb = (() => {
     return json(`/rest/v1/audit_log?${filters.join("&")}`);
   }
 
-  const notifications = (limit = 1000) =>
-    json(`/rest/v1/recon_notifications?${q({ select: "*", limit, order: "created_at.desc" })}`);
+  const notifications = (limit = 1000, from) =>
+    json(`/rest/v1/recon_notifications?${q({ select: "*", limit, order: "created_at.desc", ...(from ? {or: `(business_date.gte.${from},and(business_date.is.null,created_at.gte.${from}T00:00:00+07:00))`} : {}) })}`);
 
   async function clarificationMatches({ from, to, company, limit = 5000 } = {}) {
     const filters = ["select=*", "order=processed_at.desc", `limit=${limit}`];

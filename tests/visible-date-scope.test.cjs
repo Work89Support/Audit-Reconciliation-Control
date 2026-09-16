@@ -1,0 +1,23 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const app = fs.readFileSync('app.js', 'utf8');
+const overview = fs.readFileSync('review-overview.js', 'utf8');
+const sb = fs.readFileSync('supabase.js', 'utf8');
+const boundary = app.slice(app.indexOf('const VISIBLE_DATE_FROM'), app.indexOf('const DEFAULT_WORK_DATE'));
+const context = vm.createContext({});
+vm.runInContext(boundary + '; this.clamp = visibleDate;', context);
+assert.equal(context.clamp('2026-09-01'), '2026-09-15');
+assert.equal(context.clamp('2026-09-14'), '2026-09-15');
+assert.equal(context.clamp('2026-09-15'), '2026-09-15');
+assert.equal(context.clamp('2026-10-01'), '2026-10-01');
+assert.equal(context.clamp(''), '2026-09-15');
+assert.ok(app.includes('minDate: VISIBLE_DATE_FROM'));
+assert.ok(overview.includes('date = scopedDate(date)'));
+assert.ok(overview.includes('date=scopedDate(e.target.value)'));
+assert.ok(app.includes('Sb.notifications(200, VISIBLE_DATE_FROM)'));
+assert.ok(sb.includes('business_date.gte.${from}'));
+// Evidence retrieval must not inherit display boundaries.
+const sources = sb.slice(sb.indexOf('async function exceptionFiles'), sb.indexOf('const queueDueJobs'));
+assert.ok(!sources.includes('VISIBLE_DATE_FROM'));
+console.log('Display cutoff, restored dates, future months, notifications and evidence separation passed');

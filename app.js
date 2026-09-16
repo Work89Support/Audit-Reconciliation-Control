@@ -119,9 +119,10 @@ const PROD_TODAY = (() => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 })();
 const OPERATING_START_DATE = "2026-08-30";
-// Display scope only: August stays in the backend; do not change ingestion/history settings.
-const VISIBLE_DATE_FROM = "2026-09-01";
-const VISIBLE_DATE_TO = "2026-09-30";
+// Display scope only: retain older sources for cross-day matching and evidence.
+// Do not apply this boundary to ingestion or reconciliation source lookups.
+const VISIBLE_DATE_FROM = "2026-09-15";
+const VISIBLE_DATE_TO = "9999-12-31";
 function visibleDate(value) {
   return !value || value < VISIBLE_DATE_FROM ? VISIBLE_DATE_FROM : value > VISIBLE_DATE_TO ? VISIBLE_DATE_TO : value;
 }
@@ -1229,7 +1230,7 @@ async function loadLiveOverview(force = false) {
       Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 250 }),
       Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 }),
       Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
-      Sb.notifications(200),
+      Sb.notifications(200, VISIBLE_DATE_FROM),
       Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
@@ -2689,6 +2690,7 @@ VIEWS.exceptions = (root) => {
     ReviewOverview.mount(root, {
       company,
       date: state.filters.to || DEFAULT_WORK_DATE,
+      minDate: VISIBLE_DATE_FROM,
       load: Sb.reconciliationOverview,
       loadRecommendations: Sb.evidenceCaseRecommendations,
       onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
