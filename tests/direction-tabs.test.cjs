@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const R=require('../review-overview.js');
+const source=fs.readFileSync('review-overview.js','utf8');
+assert.ok(source.includes("{all:'ทั้งหมด',deposit:'ฝาก',withdraw:'ถอน'}"));
+assert.ok(source.includes("selected.clear();page=0;draw();"));
+assert.ok(source.includes("values.direction==='all'?'ทั้งหมด':'ตามตัวกรอง'"));
+const rows=[{direction:'deposit',category:'review',search:'a'}, {direction:'withdraw',category:'review',search:'b'}, {direction:'withdraw',category:'closed',search:'c'}];
+const values={direction:'all',status:'all',account:'',query:''};
+assert.equal(R.filter(rows,values).length,3);
+assert.equal(R.filter(rows,{...values,direction:'deposit'}).length,1);
+assert.equal(R.filter(rows,{...values,direction:'withdraw'}).length,2);
+assert.equal(R.filter(rows,{...values,direction:'withdraw',status:'closed'}).length,1);
+console.log('Direction sheets preserve statuses and clear cross-sheet selection');
