@@ -2632,7 +2632,7 @@ VIEWS.exceptions = (root) => {
       date: state.filters.to || DEFAULT_WORK_DATE,
       load: Sb.reconciliationOverview,
       loadRecommendations: Sb.evidenceCaseRecommendations,
-      onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview),
+      onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
       onExport: exportSheets,
       onConfirm: Sb.confirmAuditPairs,
       isActive: () => state.route === "exceptions" && state.filters.company === company,
@@ -3033,6 +3033,17 @@ async function loadExceptionSupport(e, options = {}) {
   }
 }
 
+async function openEvidenceRelatedCase(id) {
+  const row = await Sb.exceptionDetail(id);
+  if (!row || !canAccessCompany(row.company)) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์เข้าถึงบริษัทนี้');
+  const item = mapLiveException(row);
+  item.id = row.id;
+  const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
+  if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
+  reviewQueueIds = [];
+  closeModal();
+  openException(item.id);
+}
 function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
   if (!e || !canAccessCompany(e.company)) return;
@@ -3156,7 +3167,7 @@ function openException(id, options = {}) {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
   loadExceptionSupport(e, options);
-  if(state.dataset==='production' && e.dbId) EvidenceRecommendations.mountCaseBanner(drawer.querySelector('.drawer-body') || drawer, e, Sb, openStoredFilePreview);
+  if(state.dataset==='production' && e.dbId) EvidenceRecommendations.mountCaseBanner(drawer.querySelector('.drawer-body') || drawer, e, Sb, openStoredFilePreview, openEvidenceRelatedCase);
   drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
     button.disabled = true;
     try {

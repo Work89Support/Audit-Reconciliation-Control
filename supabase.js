@@ -539,9 +539,10 @@ const Sb = (() => {
     if (date) filters.push(`business_date=eq.${encodeURIComponent(date)}`);
     return json(`/rest/v1/evidence_recommendations?${filters.join('&')}`);
   };
-  async function evidenceCaseRecommendations({runId,caseId} = {}) {
-    if (!runId && !caseId) throw new Error('ต้องระบุรอบตรวจหรือเคส');
-    const filters = ['select=recommendation_id,exception_id,reason,exceptions!inner(id,run_id,company,business_date),evidence_recommendations!inner(*)', 'order=exception_id.asc,recommendation_id.asc'];
+  async function evidenceCaseRecommendations({runId,caseId,recommendationId} = {}) {
+    if (!runId && !caseId && !recommendationId) throw new Error('ต้องระบุรอบตรวจ เคส หรือกลุ่มหลักฐาน');
+    const filters = ['select=recommendation_id,exception_id,reason,exceptions!inner(id,code,status,run_id,company,business_date),evidence_recommendations!inner(*)', 'order=exception_id.asc,recommendation_id.asc'];
+    if (recommendationId) filters.push(`recommendation_id=eq.${encodeURIComponent(recommendationId)}`);
     if (runId) filters.push(`exceptions.run_id=eq.${encodeURIComponent(runId)}`);
     if (caseId) filters.push(`exception_id=eq.${encodeURIComponent(caseId)}`);
     const rows=[];

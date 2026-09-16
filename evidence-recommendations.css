@@ -45,4 +45,16 @@
 .recommendation-full summary { cursor: pointer; color: #426b93; }
 .recommendation-full p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .recommendation-reader .recommendation-footnote { font-size: 12px; color: #61758a; margin: 10px 0 0; }
+.recommendation-group { border-top: 1px solid #e2eaf2; padding-top: 12px; margin-bottom: 20px; }
+.recommendation-group-id { font-size: 12px; color: #516b85; margin-bottom: 10px; overflow-wrap: anywhere; }
+.recommendation-group h3 { font-size: 14px; margin: 12px 0 8px; }
+.recommendation-case-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.recommendation-case-list > section { border: 1px solid #dee7ef; border-radius: 8px; padding: 12px; font-size: 13px; }
+.recommendation-case { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+.recommendation-case small,.recommendation-case-status { color: #63768a; font-size: 12px; }
+.recommendation-case button { font-size: 12px; padding: 5px 10px; }
+.recommendation-missing { font-size: 12px; color: #786132; }
+.recommendation-checks { border-left: 3px solid #bbcee2; padding-left: 12px; margin-top: 14px; }
+.recommendation-checks p { font-size: 13px; margin: 8px 0; }
+@media(max-width:540px) { .recommendation-case-list { grid-template-columns: 1fr; } }
 @media(max-width:480px) { .recommendation-summary { padding: 14px; } .recommendation-route { gap: 8px; padding: 10px; } .recommendation-amount { font-size: 24px; } }

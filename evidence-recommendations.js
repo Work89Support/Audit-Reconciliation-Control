@@ -80,10 +80,39 @@ const EvidenceRecommendations = (() => {
       &&link.evidence_recommendations.business_date===e.business_date
       &&[link.evidence_recommendations.company,link.evidence_recommendations.payer_company].includes(e.company));
   }
-  function showCaseLinks(links, api, openFile) {
+  function groupCasesHtml(r, links, currentIds) {
+    const statuses={open:'รอ Audit ตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',approved:'อนุมัติแล้ว',closed:'ปิดเคสแล้ว',damage:'บันทึกความเสียหาย'};
+    const cases=[...new Map(links.filter(l=>l.recommendation_id===r.id && l.exceptions?.business_date===r.business_date && [r.company,r.payer_company].includes(l.exceptions?.company)).map(l=>[l.exception_id,l.exceptions])).values()];
+    return `<div class="recommendation-case-list">${[...new Set([r.company,r.payer_company])].map(company=>`<section><b>${esc(company)} · ${company===r.company?'เจ้าของรายการ':'จ่ายแทน'}</b>${cases.filter(e=>e.company===company).map(e=>`<div class="recommendation-case"><span>${esc(e.code||'เคส')} <small>${currentIds.includes(e.id)?'· เคสที่กำลังดู':''}</small><br><span class="recommendation-case-status">${esc(statuses[e.status]||'สถานะ: '+(e.status||'ไม่ระบุ'))}</span></span><button type="button" class="ghost-button" data-related-case="${esc(e.id)}">ดูเคส</button></div>`).join('')||'<p class="recommendation-missing">ยังไม่มีเคสที่เชื่อมและคุณมีสิทธิ์ดู · ไม่ได้หมายความว่าตรวจครบ</p>'}</section>`).join('')}</div>`;
+  }
+  async function loadGroupCases(root, rows, links, api, onCase) {
+    if(!api.evidenceCaseRecommendations)return;
+    for(const r of rows){
+      const host=Array.from(root.querySelectorAll('[data-recommendation-group]')).find(el=>el.dataset.recommendationGroup===r.id);
+      if(!host)continue;
+      try {
+        const all=await api.evidenceCaseRecommendations({recommendationId:r.id});
+        if(!host.isConnected)return;
+        host.innerHTML=groupCasesHtml(r,all,links.map(l=>l.exception_id));
+        host.querySelectorAll('[data-related-case]').forEach(button=>{
+          if(!onCase){button.disabled=true;return;}
+          button.onclick=async()=>{button.disabled=true;try{await onCase(button.dataset.relatedCase);}catch(e){button.textContent=e.message;}finally{button.disabled=false;}};
+        });
+      } catch(e){if(host.isConnected)host.textContent='โหลดเคสที่เกี่ยวข้องไม่ได้: '+e.message;}
+    }
+  }
+  function showCaseLinks(links, api, openFile, onCase) {
     const unique=[...new Map(links.map(l=>[l.recommendation_id,l.evidence_recommendations])).values()];
     openModal('หลักฐานที่แนะนำ', `<div id="caseRecommendationDetails" class="recommendation-reader"><p class="recommendation-notice">🟡 รอ Audit ตรวจ · ยังไม่ยืนยันคู่และยังไม่ปิดเคส</p>${unique.map(r=>`<article class="recommendation-summary"><div class="recommendation-summary-top"><div><span class="recommendation-label">ยอดตามเอกสาร</span><strong class="recommendation-amount">${Number(r.amount).toLocaleString('th-TH',{minimumFractionDigits:2})} <small>บาท</small></strong></div><span class="recommendation-provider">${esc(r.provider)}</span></div><div class="recommendation-route"><div><span class="recommendation-label">บริษัทเจ้าของรายการ</span><b>${esc(r.company)}</b></div><span aria-hidden="true">→</span><div><span class="recommendation-label">บริษัทจ่ายแทน</span><b>${esc(r.payer_company)}</b></div></div><p class="recommendation-date">วันที่รายการ · ${esc(r.business_date)}</p><section class="recommendation-reason"><h3>ทำไมจึงแนะนำ / ต้องตรวจอะไรต่อ</h3>${[...new Set(links.filter(l=>l.recommendation_id===r.id||l.evidence_recommendations===r).map(l=>l.reason))].map(reason=>`<p>${esc(reason)}</p>`).join('')}</section><button type="button" class="primary-button recommendation-open" data-recommendation-file="${esc(r.source_file_id)}">เปิดเอกสารหลักฐาน ↗</button><details class="recommendation-full"><summary>อ่านข้อความจากหลักฐานเพิ่มเติม</summary><p>${esc(r.evidence_note)}</p></details></article>`).join('')}<p class="recommendation-footnote">ยอดนี้เป็นข้อเสนอจากเอกสาร ไม่ใช่ยอดจับคู่สำเร็จหรือยอดเสียหาย</p></div>`, '');
-    void bindFiles(document.getElementById('caseRecommendationDetails'),api,openFile);
+    const root=document.getElementById('caseRecommendationDetails');
+    root.querySelectorAll('.recommendation-summary').forEach((card,i)=>{
+      const r=unique[i];
+      const group=document.createElement('section');group.className='recommendation-group';
+      group.innerHTML=`<details class="recommendation-group-id"><summary>กลุ่มเดียวกัน · ${esc(r.id?.slice(0,8)||'ไม่ระบุ')}</summary><code>${esc(r.id)}</code></details><p class="recommendation-notice">เอกสารเรื่องเดียว ใช้ตรวจได้ทั้งสองฝั่ง · ห้ามนับยอดกลุ่มซ้ำ</p><h3>เคสที่เกี่ยวข้อง</h3><div data-recommendation-group="${esc(r.id)}" aria-live="polite">กำลังโหลดสถานะแต่ละฝั่ง…</div><div class="recommendation-checks"><p><b>1. ตรวจการจ่ายแทน</b><br>ข้อเสนอจากเอกสาร · รอ Audit ตรวจธุรกรรมจริงแต่ละฝั่ง</p><p><b>2. ตรวจการคืนเงินระหว่างบริษัท</b><br>ยังไม่ยืนยันจากข้อเสนอนี้ · ต้องมีหลักฐานคืนเงินแยกต่างหาก</p></div><p class="recommendation-footnote">ปิดเคสแต่ละฝั่งตามหลักฐานของเคสนั้น การปิดฝั่งหนึ่งไม่ปิดอีกฝั่ง และไม่ยืนยันว่าคืนเงินแล้ว</p>`;
+      card.querySelector('.recommendation-reason').before(group);
+    });
+    void bindFiles(root,api,openFile);
+    void loadGroupCases(root,unique,links,api,onCase);
   }
   function decorateRows(table, rows, links, runId, onOpen) {
     table.querySelectorAll('tbody tr').forEach((tr,index)=>{
@@ -98,7 +127,7 @@ const EvidenceRecommendations = (() => {
       tr.cells[0]?.append(button);
     });
   }
-  async function mountCaseBanner(container, e, api, openFile) {
+  async function mountCaseBanner(container, e, api, openFile, onCase) {
     const banner=document.createElement('section');banner.className='case-recommendation-banner';
     banner.textContent='กำลังตรวจหลักฐานแนะนำ…';container.prepend(banner);
     try {
@@ -108,8 +137,8 @@ const EvidenceRecommendations = (() => {
       if(!valid.length){banner.remove();return;}
       banner.classList.add('has-evidence-recommendation');
       banner.innerHTML='<b>🟡 มีคู่แนะนำ · รอ Audit ยืนยัน</b><p>พบหลักฐานที่เชื่อมกับเคสนี้ ยังไม่ใช่การรับรองคู่หรือปิดเคส</p><button type="button" class="evidence-recommendation-badge">ดูเหตุผลและหลักฐาน</button>';
-      banner.querySelector('button').onclick=()=>showCaseLinks(valid,api,openFile);
+      banner.querySelector('button').onclick=()=>showCaseLinks(valid,api,openFile,onCase);
     } catch(error) {if(banner.isConnected){banner.textContent='ตรวจคู่แนะนำไม่ได้: '+error.message;banner.setAttribute('role','status');}}
   }
-  return {mount,browse,cards,forCase,showCaseLinks,decorateRows,mountCaseBanner};
+  return {mount,browse,cards,forCase,showCaseLinks,decorateRows,mountCaseBanner,groupCasesHtml};
 })();
