@@ -489,6 +489,45 @@ async function completeQuickClose(e) {
   render();
 }
 
+let bulkCaseApprovalRunning = false;
+function confirmBulkCaseClose(rows, {company, date, onComplete}) {
+  if (!can("approve")) return deny("ปิดเคส");
+  if (bulkCaseApprovalRunning || !rows.length || state.dataset !== "production") return;
+  const snapshot = JSON.parse(JSON.stringify(rows));
+  const total = snapshot.reduce((sum,row)=>sum+Math.round(Number(row.system_amount)*100),0)/100;
+  openModal(`ยืนยันปิด ${num(snapshot.length)} เคสที่เลือก`,
+    `<p>${h(company)} · ${h(date)} · รวม ${money(total)} บาท</p><p>ตรวจอ้างอิง BO/PM ยอด วัน เวลาไม่เกิน 60 นาที และคู่ซ้ำอีกครั้งก่อนบันทึกแต่ละรายการ เคสที่เปลี่ยนสถานะหรือมีหลักฐานเชื่อมโยงจะข้ามไว้ ไม่ส่งข้อความและไม่บันทึกความเสียหาย</p><details><summary>รายการที่เลือก</summary>${snapshot.map(row=>`<p>${h(row.code || row.id)} · ${money(row.system_amount)} บาท</p>`).join('')}</details><p id="bulkCaseProgress" role="status"></p>`,
+    '<button id="bulkCaseCancel" class="ghost-button">ยกเลิก</button><button id="bulkCaseConfirm" class="primary-button">ยืนยันอนุมัติและปิดรายการที่ผ่านเกณฑ์</button>');
+  let cancelled = false;
+  $("#modal")._contentCleanup = () => { cancelled = true; };
+  $("#bulkCaseCancel").onclick = closeModal;
+  $("#bulkCaseConfirm").onclick = async () => {
+    if (bulkCaseApprovalRunning) return;
+    bulkCaseApprovalRunning = true;
+    $("#bulkCaseConfirm").disabled = true;
+    $("#bulkCaseCancel").textContent = 'หยุดรายการที่เหลือ';
+    try {
+      const results = await BulkCaseReview.run(snapshot,{company,date},{
+        allowed:()=>can('approve') && Sb.signedIn(), cancelled:()=>cancelled,
+        load:Sb.reconciliationOverview, candidates:PreliminaryReview.candidates,
+        links:id=>Sb.evidenceCaseRecommendations({caseId:id}),
+        progress:(done,count)=>{if(!cancelled && $('#bulkCaseProgress')) $('#bulkCaseProgress').textContent=`ตรวจแล้ว ${done}/${count} รายการ`;},
+        save:async row=>{
+          const e=mapLiveException(row);e.id=row.id;
+          const note=`Audit ยืนยันแบบหลายรายการ — ต่างเวลาในเกณฑ์ 60 นาที ใช้หลักฐาน BO/PM ต้นทาง; ยอด ${e.systemAmount} บาท; ต่างเวลา ${e.timeDiffSec} วินาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
+          return persistCaseClosure(e,note);
+        },
+      });
+      const closed=results.filter(r=>r.status==='closed'), skipped=results.filter(r=>r.status!=='closed');
+      await onComplete();
+      if(cancelled) return toast(`ปิดแล้ว ${closed.length} เคส · ไม่ปิด ${skipped.length} เคส`);
+      openModal('ผลอนุมัติรายการที่เลือก',`<p role="status">ปิดแล้ว ${closed.length} เคส · ${money(closed.reduce((n,r)=>n+r.amount,0))} บาท · ไม่ปิด ${skipped.length} เคส</p>${results.map(r=>`<p>${h(r.code)} — ${r.status==='closed'?'ปิดเคสแล้ว':h(r.reason)}</p>`).join('')}`, '<button id="bulkCaseDone" class="primary-button">เสร็จสิ้น</button>');
+      $('#bulkCaseDone').onclick=closeModal;
+    } catch(error) { toast('ตรวจผลล่าสุดไม่สำเร็จ: '+error.message+' — กรุณารีเฟรชก่อนลองใหม่','warn'); }
+    finally { bulkCaseApprovalRunning=false; }
+  };
+}
+
 function confirmQuickClose(e) {
   if (!can("approve")) return deny("ปิดเคส");
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
@@ -2655,6 +2694,7 @@ VIEWS.exceptions = (root) => {
       onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
       onExport: exportSheets,
       onConfirm: Sb.confirmAuditPairs,
+      onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
       isActive: () => state.route === "exceptions" && state.filters.company === company,
       onCompany: () => { state.filters.company = "ALL"; render(); },
       onCase: (row, {action = 'files'} = {}) => {

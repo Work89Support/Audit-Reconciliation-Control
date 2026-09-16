@@ -131,7 +131,7 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,isActive=()=>true}) {
+  async function mount(root, {company,date,load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,isActive=()=>true}) {
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
     let columnRules={},columnSort={column:5,direction:'asc'};
@@ -182,6 +182,14 @@ const ReviewOverview = (() => {
         const bar=document.createElement('div');bar.className='audit-sheet-tools';
         bar.innerHTML=`<button id="preliminaryFilter" aria-pressed="${preliminaryOnly}" class="${preliminaryOnly?'primary-button':'ghost-button'}">ผ่านเกณฑ์เบื้องต้น — รอยืนยัน (${eligible.length}) · ${amount(PreliminaryReview.total(eligible))} บาท</button><span>เฉพาะ ${escape(company)} / ${escape(date)} · ไม่ใช่การอนุมัติปิดเคส</span><button id="preliminaryAll" ${!rows.some(r=>r.preliminary)?'disabled':''}>เลือกทั้งหมดตามตัวกรอง (ทุกหน้า)</button><button id="preliminaryClear" ${!picked.length?'disabled':''}>ล้างที่เลือก</button><strong>เลือก ${picked.length} เคส · ${amount(PreliminaryReview.total(picked))} บาท</strong><button id="preliminaryExport" ${!picked.length||!onExport?'disabled':''}>Export เคสที่เลือก</button><button id="preliminaryOpen" ${!picked.length?'disabled':''}>เปิดตรวจเคสที่เลือกทีละเคส</button>`;
         toolbar.before(bar);
+        if(onBulkClose){
+          const approve=document.createElement('button');
+          approve.id='preliminaryApprove';approve.className='primary-button';
+          approve.textContent=`อนุมัติและปิดเคสที่เลือก (${picked.length})`;
+          approve.disabled=!picked.length;
+          approve.onclick=()=>onBulkClose(picked.map(r=>r.case),{company,date,onComplete:refresh});
+          bar.append(approve);
+        }
         bar.querySelector('#preliminaryFilter').onclick=()=>{preliminaryOnly=!preliminaryOnly;values.status='all';page=0;draw();};
         bar.querySelector('#preliminaryAll').onclick=()=>{rows.filter(r=>r.preliminary).forEach(r=>selected.add(r.id));draw();};
         bar.querySelector('#preliminaryClear').onclick=()=>{selected.clear();draw();};
