@@ -539,6 +539,19 @@ const Sb = (() => {
     if (date) filters.push(`business_date=eq.${encodeURIComponent(date)}`);
     return json(`/rest/v1/evidence_recommendations?${filters.join('&')}`);
   };
+  async function evidenceCaseRecommendations({runId,caseId} = {}) {
+    if (!runId && !caseId) throw new Error('ต้องระบุรอบตรวจหรือเคส');
+    const filters = ['select=recommendation_id,exception_id,reason,exceptions!inner(id,run_id,company,business_date),evidence_recommendations!inner(*)', 'order=exception_id.asc,recommendation_id.asc'];
+    if (runId) filters.push(`exceptions.run_id=eq.${encodeURIComponent(runId)}`);
+    if (caseId) filters.push(`exception_id=eq.${encodeURIComponent(caseId)}`);
+    const rows=[];
+    for(let offset=0;;offset+=500){
+      const page=await json(`/rest/v1/evidence_recommendation_cases?${filters.join('&')}&limit=500&offset=${offset}`);
+      rows.push(...page);
+      if(page.length<500)return rows;
+      if(rows.length>=20000)throw new Error('คู่แนะนำเกินขอบเขตการโหลด กรุณาตรวจแยกเคส');
+    }
+  }
   const saveEvidenceRecommendation = (row) => json('/rest/v1/evidence_recommendations', {
     method: 'POST', headers: {'Content-Type':'application/json', Prefer:'return=representation'},
     body: JSON.stringify(row),
@@ -917,6 +930,7 @@ const Sb = (() => {
     reclassifySourceFile,
     manualMatchClarificationFile,
     evidenceRecommendations,
+    evidenceCaseRecommendations,
     saveEvidenceRecommendation,
     replaceSourceFile,
     fileOcr,

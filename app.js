@@ -2631,6 +2631,8 @@ VIEWS.exceptions = (root) => {
       company,
       date: state.filters.to || DEFAULT_WORK_DATE,
       load: Sb.reconciliationOverview,
+      loadRecommendations: Sb.evidenceCaseRecommendations,
+      onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview),
       onExport: exportSheets,
       onConfirm: Sb.confirmAuditPairs,
       isActive: () => state.route === "exceptions" && state.filters.company === company,
@@ -3154,6 +3156,7 @@ function openException(id, options = {}) {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }));
   loadExceptionSupport(e, options);
+  if(state.dataset==='production' && e.dbId) EvidenceRecommendations.mountCaseBanner(drawer.querySelector('.drawer-body') || drawer, e, Sb, openStoredFilePreview);
   drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
     button.disabled = true;
     try {

@@ -70,5 +70,46 @@ const EvidenceRecommendations = (() => {
     button.addEventListener('click',load);
     void load();
   }
-  return {mount,browse,cards};
+  function forCase(row, links, runId) {
+    const e=row.case;
+    if(!e?.id || !runId || e.run_id!==runId || ['closed','approved','damage'].includes(e.status))return [];
+    return (links||[]).filter(link=>link.exception_id===e.id
+      &&link.exceptions?.run_id===runId &&link.exceptions.company===e.company
+      &&link.exceptions.business_date===e.business_date
+      &&link.evidence_recommendations?.status==='pending_audit'
+      &&link.evidence_recommendations.business_date===e.business_date
+      &&[link.evidence_recommendations.company,link.evidence_recommendations.payer_company].includes(e.company));
+  }
+  function showCaseLinks(links, api, openFile) {
+    const unique=[...new Map(links.map(l=>[l.recommendation_id,l.evidence_recommendations])).values()];
+    openModal('หลักฐานแนะนำของเคสนี้ — ยังไม่ยืนยัน', `<div id="caseRecommendationDetails"><p>สีเหลืองหมายถึงมีหลักฐานที่เกี่ยวข้อง ไม่ใช่ผลจับคู่สำเร็จ และยังไม่ปิดเคส</p>${links.map(l=>`<p>${esc(l.reason)}</p>`).join('')}${cards(unique)}</div>`, '');
+    void bindFiles(document.getElementById('caseRecommendationDetails'),api,openFile);
+  }
+  function decorateRows(table, rows, links, runId, onOpen) {
+    table.querySelectorAll('tbody tr').forEach((tr,index)=>{
+      const suggestions=forCase(rows[index]||{},links,runId);
+      if(!suggestions.length)return;
+      tr.classList.add('has-evidence-recommendation');
+      const button=document.createElement('button');
+      button.type='button';button.className='evidence-recommendation-badge';
+      button.textContent=`🟡 มีคู่แนะนำ (${suggestions.length}) · รอ Audit ยืนยัน`;
+      button.setAttribute('aria-label','ดูเหตุผลและหลักฐานแนะนำของ '+(rows[index].case.code||rows[index].id));
+      button.onclick=()=>onOpen(suggestions);
+      tr.cells[0]?.append(button);
+    });
+  }
+  async function mountCaseBanner(container, e, api, openFile) {
+    const banner=document.createElement('section');banner.className='case-recommendation-banner';
+    banner.textContent='กำลังตรวจหลักฐานแนะนำ…';container.prepend(banner);
+    try {
+      const links=await api.evidenceCaseRecommendations({caseId:e.dbId});
+      if(!banner.isConnected)return;
+      const valid=forCase({case:{id:e.dbId,run_id:e.runId,company:e.company,business_date:e.date,status:e.status}},links,e.runId);
+      if(!valid.length){banner.remove();return;}
+      banner.classList.add('has-evidence-recommendation');
+      banner.innerHTML='<b>🟡 มีคู่แนะนำ · รอ Audit ยืนยัน</b><p>พบหลักฐานที่เชื่อมกับเคสนี้ ยังไม่ใช่การรับรองคู่หรือปิดเคส</p><button type="button" class="evidence-recommendation-badge">ดูเหตุผลและหลักฐาน</button>';
+      banner.querySelector('button').onclick=()=>showCaseLinks(valid,api,openFile);
+    } catch(error) {if(banner.isConnected){banner.textContent='ตรวจคู่แนะนำไม่ได้: '+error.message;banner.setAttribute('role','status');}}
+  }
+  return {mount,browse,cards,forCase,showCaseLinks,decorateRows,mountCaseBanner};
 })();
