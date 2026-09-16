@@ -2984,7 +2984,8 @@ async function loadExceptionSupport(e, options = {}) {
     if (detail) {
       const notes = e.notes || [];
       const evidence = e.evidence || [];
-      Object.assign(e, mapLiveException(detail), { notes, evidence, _detailLoaded: true });
+      // Preserve the drawer/queue key; dbId remains the database UUID.
+      Object.assign(e, mapLiveException(detail), { id: e.id, notes, evidence, _detailLoaded: true });
       e.hasEvidence = e.hasEvidence || evidence.some(f => f.storagePath);
       const stm = $("#caseRawStm");
       const bo = $("#caseRawBo");
