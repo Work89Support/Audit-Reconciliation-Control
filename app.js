@@ -3078,11 +3078,34 @@ async function loadExceptionSupport(e, options = {}) {
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
           if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
-          const note=window.prompt('ระบุเหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)');
-          if(!note?.trim())return;
           b.disabled=true;
-          try{await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note.trim());exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;openException(e.id,{focusFiles:true});toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');}
-          catch(err){b.disabled=false;toast('ผูกหลักฐานไม่สำเร็จ: '+err.message,'warn');}
+          const form=document.createElement('form');
+          form.innerHTML='<label>เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)<textarea name="reason" required rows="3" aria-label="เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน"></textarea></label><p role="status"></p><button type="submit" class="ghost-button sm">ยืนยันผูกหลักฐาน</button><button type="button" class="ghost-button sm">ยกเลิก</button>';
+          b.after(form);
+          const input=form.querySelector('textarea');
+          const submit=form.querySelector('[type="submit"]');
+          const cancel=form.querySelector('[type="button"]');
+          const status=form.querySelector('[role="status"]');
+          let saving=false;
+          cancel.onclick=()=>{if(!saving){form.remove();b.disabled=false;}};
+          input.focus();
+          form.onsubmit=async(event)=>{
+            event.preventDefault();
+            if(saving)return;
+            if(!can('attach')&&!can('note'))return deny('ผูกหลักฐาน');
+            if(state.selected!==e.id||!document.body.contains(form))return;
+            const note=input.value.trim();
+            if(!note){status.textContent='กรุณาระบุเหตุผลก่อนผูกหลักฐาน';input.focus();return;}
+            saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
+            status.textContent='กำลังผูกหลักฐาน…';
+            try{
+              await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
+              exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
+              if(state.selected===e.id)await openException(e.id,{focusFiles:true});
+              toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');
+            }catch(err){status.textContent='ผูกหลักฐานไม่สำเร็จ: '+err.message;}
+            finally{saving=false;submit.disabled=false;cancel.disabled=false;input.disabled=false;}
+          };
         });
       }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
     };
