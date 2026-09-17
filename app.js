@@ -3073,6 +3073,22 @@ async function loadExceptionSupport(e, options = {}) {
       mailButton.disabled=true;
       try {
         const candidates=(await Sb.evidenceFiles({from:e.date,to:e.date})).filter(f=>(f.company||f.batch_company)===e.company);
+        // Only exact, current-case recommendation links; never browse every company's evidence.
+        const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
+        const recommended=new Map();
+        for(const link of linked){
+          const r=link.evidence_recommendations, c=link.exceptions;
+          if(link.exception_id!==e.dbId || c?.run_id!==e.runId || c?.company!==e.company || c?.business_date!==e.date
+            || r?.status!=='pending_audit' || r.business_date!==e.date
+            || ![r.company,r.payer_company].includes(e.company)
+            || !canAccessCompany(r.company) || !canAccessCompany(r.payer_company))continue;
+          const extra=await Sb.exceptionFiles(null,r.source_file_id);
+          for(const f of extra){
+            if(f.id!==r.source_file_id || f.kind!=='doc_clarify')continue;
+            if(!candidates.some(x=>x.id===f.id))candidates.push(f);
+            recommended.set(f.id,r.id);
+          }
+        }
         const list=document.createElement('section');list.className='case-mail-evidence';
         list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงแล้วจึงยืนยันปิดเคส ไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารวันเดียวกัน ใช้คลังไฟล์เพื่อตรวจวันอื่น หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>Preview</button><button class="ghost-button sm" data-link-mail="${h(f.id)}">ใช้เป็นหลักฐานเคสนี้</button></article>`).join('')}`;
         mailButton.after(list);bindStoredFileLinks(list);
@@ -3099,7 +3115,9 @@ async function loadExceptionSupport(e, options = {}) {
             saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
             status.textContent='กำลังผูกหลักฐาน…';
             try{
-              await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
+              const recommendationId=recommended.get(b.dataset.linkMail);
+              if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
+              else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
               exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
               if(state.selected===e.id)await openException(e.id,{focusFiles:true});
               toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');
@@ -3217,6 +3235,7 @@ async function openException(id, options = {}) {
       ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
+      ${e._uploadResult ? `<p role="status">${h(e._uploadResult)}</p>` : ''}
       <div class="evidence-box">
         ${
           (e.evidence || []).length
@@ -3226,7 +3245,7 @@ async function openException(id, options = {}) {
                     `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
-            : `<p class="muted small-note">${sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
+            : `<p class="muted small-note">${e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
           <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.csv,.xlsx,.txt" />
@@ -3287,10 +3306,13 @@ async function openException(id, options = {}) {
       const input = evt.target;
       input.disabled = true;
       let saved = 0;
+      e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
       try {
         for (const file of files) { await Sb.uploadCaseEvidence(e.dbId, file); saved++; }
+        e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
         toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
       } catch (error) {
+        e._uploadResult = `แนบสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message} · หากผลไม่แน่นอน โปรดตรวจทะเบียนหลักฐานก่อนอัปซ้ำ`;
         toast(`ยืนยันสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message}`, "warn");
       } finally {
         input.value = "";

@@ -558,6 +558,10 @@ const Sb = (() => {
     body: JSON.stringify(row),
   });
 
+  const linkRecommendedEvidence = (caseId, recommendationId, note) => rpc('link_recommended_case_evidence', {
+    p_exception_id: caseId, p_recommendation_id: recommendationId, p_note: note,
+  });
+
   const replacementSafeName = (name) => String(name || "replacement.bin")
     .normalize("NFKD")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
@@ -978,6 +982,7 @@ const Sb = (() => {
     caseNotes,
     appendCaseNote,
     uploadCaseEvidence,
+    linkRecommendedEvidence,
     closeException,
     confirmDamage,
   };
