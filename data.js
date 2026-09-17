@@ -71,12 +71,12 @@ const DB = (() => {
     monitor: {
       name: "เจ้าหน้าที่ Audit",
       desc: "ตรวจไฟล์และรายการ ใส่หมายเหตุ และส่งให้บริษัทชี้แจง",
-      can: ["view", "note", "status", "request_clarify", "export"],
+      can: ["view", "note", "status", "request_clarify", "respond", "export"],
     },
     lead: {
       name: "Audit Lead",
       desc: "ตรวจทาน อนุมัติ ปิดเคส ปิดรอบความเสียหาย",
-      can: ["view", "note", "status", "request_clarify", "approve", "close_case", "close_cycle", "export", "rules"],
+      can: ["view", "note", "status", "request_clarify", "respond", "approve", "close_case", "close_cycle", "export", "rules"],
     },
     shift_lead: {
       name: "ผู้ชี้แจงบริษัท",

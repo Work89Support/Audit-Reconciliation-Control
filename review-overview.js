@@ -2,6 +2,7 @@
    No automatic closure, inferred customer identity, or fabricated successful rows. */
 const ReviewOverview = (() => {
   const instances = new WeakMap();
+  const workspaces = new Map();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
   const splitHeaders=['อ้างอิง PM','Provider','บัญชีจ่ายยอดซอย','ยอดขอถอน','PM จ่ายจริง','BO ยอดซอย','ธนาคารจ่ายจริง','PM + ธนาคาร','ต่างจากคำขอ','สถานะ / สิ่งที่ต้องตรวจ'];
@@ -131,7 +132,7 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,isActive=()=>true}) {
+  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,isActive=()=>true}) {
     const scopedDate = value => minDate && (!value || value < minDate) ? minDate : value;
     date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
@@ -139,9 +140,15 @@ const ReviewOverview = (() => {
     let columnRules={},columnSort={column:5,direction:'asc'};
     let preliminaryOnly=false;
     const selected=new Set();
+    let pendingActions=new Map(), statusSelected=new Set();
+    const dateKey='audit-review-date-v1:'+company;
+    try { const saved=sessionStorage.getItem(dateKey); if(/^\d{4}-\d{2}-\d{2}$/.test(saved||'')) date=scopedDate(saved); } catch(_) {}
+    onDateChange?.(date);
     let hidden=[];
     try { hidden=normalizeHidden(JSON.parse(localStorage.getItem(columnKey))); } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
+    const savedView=workspaces.get(company+'|'+date);
+    if(savedView){Object.assign(values,savedView.values);columnRules=savedView.columnRules;columnSort=savedView.columnSort;page=savedView.page;preliminaryOnly=savedView.preliminaryOnly;pendingActions=savedView.pendingActions;statusSelected=savedView.statusSelected;}
     const amount = n => n == null ? '—' : Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
     const timestamp = side => !side?.date ? 'ไม่ระบุ' : `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec*1000).toISOString().slice(11,19) : 'ไม่ระบุเวลา'}`;
     const customer = p => `<small>บัญชีลูกค้า: ${escape(p?.account || (p?.last4 ? 'ปิดบังเลขบัญชี · ท้าย '+p.last4 : 'ไม่ระบุ'))}<br>ธนาคารลูกค้า: ${escape(p?.bank || 'ไม่ระบุ')}<br>ชื่อ: ${escape(p?.name || 'ไม่ระบุ')}<br>User: ${escape(p?.user || 'ไม่ระบุ')}<br>อ้างอิง: ${escape(p?.reference || 'ไม่ระบุ')}${p?.description ? '<br>รายละเอียดต้นฉบับ: '+escape(p.description) : ''}</small>`;
@@ -160,8 +167,9 @@ const ReviewOverview = (() => {
       if (!root.isConnected || instances.get(root)!==instance || !isActive()) return;
       const rows=view ? filterColumns(filter(view.rows,values),columnRules,columnSort).filter(r=>!preliminaryOnly||r.preliminary) : [];
       // Selection is scoped to the visible filter, not hidden cases from a previous view.
-      for(const id of selected) if(!rows.some(r=>r.id===id&&r.preliminary)) selected.delete(id);
-      const pages=Math.max(1,Math.ceil(rows.length/50)); page=Math.min(page,pages-1);
+      if(view)for(const id of selected) if(!rows.some(r=>r.id===id&&r.preliminary)) selected.delete(id);
+      const pages=Math.max(1,Math.ceil(rows.length/50)); if(view)page=Math.min(page,pages-1);
+      workspaces.set(company+'|'+date,{values:{...values},columnRules,columnSort,page,preliminaryOnly,pendingActions,statusSelected});
       const accounts=view ? [...new Set(view.rows.map(r=>r.account))].sort() : [];
       root.innerHTML=`<section class="panel"><div class="panel-heading"><div><h2>${escape(company)} · ภาพรวมผลตรวจ</h2><p>คู่สำเร็จและเคสที่ยังต้องตรวจ อยู่ในหน้าเดียวกัน</p></div><button id="overviewCompany" class="ghost-button">เปลี่ยนบริษัท</button></div><div class="review-overview-controls"><label>วันที่ตรวจ<input id="overviewDate" type="date" value="${escape(date)}"></label><label>ประเภท<select id="overviewDirection"><option value="all">ฝากและถอน</option value="deposit" ${values.direction==='deposit'?'selected':''}>ฝาก</option><option value="withdraw" ${values.direction==='withdraw'?'selected':''}>ถอน</option></select></label><label>บัญชี / Provider<select id="overviewAccount"><option value="">ทั้งหมด</option>${accounts.map(a=>`<option ${a===values.account?'selected':''} value="${escape(a)}">${escape(a)}</option>`).join('')}</select></label><label>ค้นหาบัญชี ชื่อ User หรืออ้างอิง<input id="overviewQuery" value="${escape(values.query)}"></label><button id="overviewRefresh" class="ghost-button">รีเฟรช</button></div><div class="review-overview-states" aria-label="กรองสถานะ">${Object.entries(labels).map(([key,label])=>`<button data-overview-status="${key}" aria-pressed="${values.status===key}" class="${values.status===key?'primary-button':'ghost-button'}">${label} <b>${view?view.counts[key].toLocaleString():'—'}</b></button>`).join('')}</div>${error?`<p role="alert">โหลดผลไม่ได้: ${escape(error)} <button id="overviewRetry">ลองอีกครั้ง</button></p>`:!data?'<p role="status">กำลังอ่านผลล่าสุด…</p>':!data.run?'<p>ยังไม่มีผลประมวลผลของบริษัทและวันที่นี้</p>':`<p>สถานะงาน: ${escape(data.run.jobStatus)} · ระบบรายงานจับคู่ ${view.reportedMatched.toLocaleString()} คู่ · มีรายละเอียดเปิดดู ${view.evidenceCount.toLocaleString()} คู่</p>${view.evidenceCount<view.reportedMatched?'<div class="alert"><strong>รายละเอียดคู่สำเร็จยังเก็บไม่ครบ</strong><span>ยอดรวมมีแล้ว แต่ยังไม่สามารถแสดงคู่ที่ไม่ได้บันทึกหลักฐาน ต้องใช้ Worker ที่เก็บรายละเอียดและประมวลผลใหม่ ไม่ได้หมายความว่าจับคู่ไม่ได้</span></div>':''}${data.run.jobStatus!=='completed'?'<p role="alert">งานยังไม่เสร็จสมบูรณ์ รายละเอียดนี้อาจเป็นผลรอบก่อน</p>':''}${!data.complete?'<p role="alert">โหลดเคสยังไม่ครบ จำนวนด้านล่างเป็นเฉพาะที่โหลดแล้ว</p>':''}<p>ตัวกรองสถานะนับจากรายละเอียดที่โหลดได้ คู่สำเร็จไม่ใช่การอนุมัติปิดเคส คู่หนึ่งอาจมีเคสเตือนเพิ่มเติม จึงไม่ใช่จำนวนธุรกรรมที่ไม่ซ้ำ</p>`}</section><section class="panel"><p>แสดง ${rows.length.toLocaleString()} แถวตามตัวกรอง · หน้า ${page+1}/${pages}</p><div class="table-wrap"><table class="rows review-overview-table"><thead><tr><th>สถานะ</th><th>บัญชี / ประเภท</th><th>BO · เวลาและลูกค้า</th><th>ยอด BO</th><th>STM/PM · เวลาและลูกค้า</th><th>ยอด STM/PM</th><th>ต่างเวลา</th><th>เหตุผล / ตรวจต่อ</th></tr></thead><tbody>${rows.slice(page*50,page*50+50).map(rowHtml).join('') || '<tr><td colspan="8">ยังไม่มีรายละเอียดในตัวกรองนี้</td></tr>'}</tbody></table></div><div class="pager"><button id="overviewPrev" ${page===0?'disabled':''}>ก่อนหน้า</button><button id="overviewNext" ${page+1>=pages?'disabled':''}>ถัดไป</button></div></section>`;
       const directionTabs=document.createElement('div');
@@ -182,6 +190,15 @@ const ReviewOverview = (() => {
       const toolbar=document.createElement('div'); toolbar.className='audit-sheet-tools';
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
+      if(onBatchStatus){
+        const batch=document.createElement('section');batch.className='audit-sheet-tools';
+        batch.innerHTML=`<label>ทำกับรายการที่ติ๊ก <select id="auditBatchAction"><option value="clarify">ส่งขอชี้แจง</option><option value="close">ยืนยันปิดเคสที่ผ่านเกณฑ์</option></select></label><button id="auditStageSelected" class="ghost-button">เตรียมสถานะที่เลือก (${statusSelected.size})</button><button id="auditSaveStatuses" class="primary-button" ${pendingActions.size?'':'disabled'}>บันทึกสถานะ (${pendingActions.size})</button><button id="auditDiscardStatuses" class="ghost-button">ล้างที่เตรียมไว้</button><span role="status">ยังไม่บันทึกจนกดบันทึกสถานะและยืนยัน</span>`;
+        toolbar.before(batch);
+        const selectAll=document.createElement('button');selectAll.type='button';selectAll.className='ghost-button';selectAll.textContent='เลือกเคสตามตัวกรอง (ทุกหน้า)';selectAll.onclick=()=>{for(const r of rows)if(r.case&&['open','answered'].includes(r.case.status))statusSelected.add(r.case.id);draw();};batch.prepend(selectAll);
+        batch.querySelector('#auditStageSelected').onclick=()=>{const action=batch.querySelector('select').value;for(const id of statusSelected)pendingActions.set(id,action);draw();};
+        batch.querySelector('#auditDiscardStatuses').onclick=()=>{pendingActions.clear();statusSelected.clear();draw();};
+        batch.querySelector('#auditSaveStatuses').onclick=()=>onBatchStatus([...pendingActions].map(([id,action])=>({row:data.cases.find(e=>e.id===id),action})),{company,date,onComplete:async()=>{pendingActions.clear();statusSelected.clear();await refreshInPlace();}});
+      }
       const runStatus=document.createElement('p');runStatus.className='sheet-active-filters';
       runStatus.textContent=`การประมวลผล: ${({completed:'เสร็จแล้ว',queued:'รอประมวลผลใหม่ — ข้อมูลที่เห็นเป็นผลรอบก่อน',ready:'พร้อมประมวลผล — ยังไม่ยืนยันผลใหม่',processing:'กำลังประมวลผล',needs_review:'ต้องตรวจข้อมูลก่อน'})[data?.run?.jobStatus]||data?.run?.jobStatus||'ยังไม่มีผล'} • Audit ยืนยัน ${data?.confirmations?.length||0} คู่ (แยกจากการปิดเคส)`;
       if(data?.confirmationError)runStatus.textContent=runStatus.textContent.replace('Audit ยืนยัน 0 คู่','Audit ยืนยัน — คู่')+' • ยังโหลดประวัติ Audit ไม่ได้ จึงปิดปุ่มยืนยันไว้';
@@ -280,11 +297,32 @@ const ReviewOverview = (() => {
       toolbar.after(active);
       active.querySelectorAll('[data-clear-column]').forEach(b=>b.onclick=()=>{delete columnRules[b.dataset.clearColumn];page=0;draw();});
       active.querySelector('[data-clear-all]').onclick=()=>{columnRules={};page=0;draw();};
-      root.querySelectorAll('[data-audit-action]').forEach(el=>el.onchange=()=>{const action=el.value;el.value='';if(action)onCase(data.cases.find(e=>e.id===el.dataset.auditAction),{action});});
+      const act=(row,action)=>{if(onBatchStatus&&['close','clarify'].includes(action)){pendingActions.set(row.id,action);draw();}else onCase(row,{action,onComplete:refreshInPlace});};
+      root.querySelectorAll('[data-audit-action]').forEach(el=>el.onchange=()=>{const action=el.value;el.value='';if(action)act(data.cases.find(e=>e.id===el.dataset.auditAction),action);});
+      root.querySelectorAll('[data-audit-action]').forEach(el=>{
+        const row=data.cases.find(e=>e.id===el.dataset.auditAction);
+        if(onBatchStatus){
+          const label=document.createElement('label'), check=document.createElement('input');check.type='checkbox';check.checked=statusSelected.has(row.id);check.disabled=!['open','answered'].includes(row.status);check.setAttribute('aria-label','เลือกเปลี่ยนสถานะ '+row.code);
+          check.onchange=()=>{if(check.checked)statusSelected.add(row.id);else statusSelected.delete(row.id);draw();};label.append(check,document.createTextNode(' เลือก'));el.before(label);
+          if(pendingActions.has(row.id)){const hint=document.createElement('small');hint.textContent='เตรียม'+(pendingActions.get(row.id)==='close'?'ปิดเคส':'ส่งชี้แจง')+' · ยังไม่บันทึก';el.after(hint);}
+        }
+        const clarify=el.querySelector('option[value="clarify"]');
+        clarify.textContent='ส่งขอชี้แจง…';
+        clarify.disabled=!['open','answered'].includes(row.status);
+        el.querySelector('option[value="close"]').disabled=row.status!=='open';
+        const actions=document.createElement('div');actions.className='case-actions';
+        for(const [action,label] of [['close','ยืนยันปิดเคส'],['clarify','ส่งขอชี้แจง']]){
+          const button=document.createElement('button');button.type='button';button.className='ghost-button xs';button.textContent=label;
+          button.disabled=el.querySelector(`option[value="${action}"]`).disabled;
+          button.onclick=event=>{event.stopPropagation();act(row,action);};
+          actions.append(button);
+        }
+        el.after(actions);
+      });
       root.querySelector('#overviewCompany').onclick=onCompany;
       root.querySelector('#overviewDate').min=minDate;
-      root.querySelector('#overviewDate').onchange=e=>{date=scopedDate(e.target.value); e.target.value=date; if(date) refresh();};
-      root.querySelector('#overviewRefresh').onclick=refresh;
+      root.querySelector('#overviewDate').onchange=e=>{if(pendingActions.size){e.target.value=date;window.alert('มีสถานะที่ยังไม่บันทึก กรุณาบันทึกหรือล้างก่อนเปลี่ยนวัน');return;}date=scopedDate(e.target.value); e.target.value=date;try{sessionStorage.setItem(dateKey,date);}catch(_){}onDateChange?.(date);pendingActions=new Map();statusSelected=new Set();page=0;if(date) refresh();};
+      root.querySelector('#overviewRefresh').onclick=()=>{if(pendingActions.size){window.alert('มีสถานะที่ยังไม่บันทึก กรุณาบันทึกหรือล้างก่อนรีเฟรช');return;}refreshInPlace();};
       root.querySelector('#overviewRetry')?.addEventListener('click',refresh);
       root.querySelectorAll('[data-overview-status]').forEach(b=>b.onclick=()=>{values.status=b.dataset.overviewStatus;page=0;draw();});
       for(const [id,key] of [['overviewDirection','direction'],['overviewAccount','account']]) root.querySelector('#'+id).onchange=e=>{values[key]=e.target.value;page=0;draw();};
@@ -293,7 +331,17 @@ const ReviewOverview = (() => {
       root.querySelector('#overviewNext').onclick=()=>{page++;draw();};
       root.querySelectorAll('[data-overview-case]').forEach(b=>b.onclick=()=>onCase(data.cases.find(e=>e.id===b.dataset.overviewCase)));
     }
-    async function refresh(){const g=++generation;selected.clear();data=null;view=null;page=0;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
+    async function refreshInPlace(){
+      const g=++generation, x=window.scrollX, y=window.scrollY;
+      try {
+        const next=await load(company,date);
+        if(g!==generation||!isActive()||instances.get(root)!==instance)return;
+        if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}}
+        if(g!==generation||!isActive()||instances.get(root)!==instance)return;
+        data=next;view=model(data);selected.clear();draw();window.scrollTo(x,y);
+      } catch(e){if(g===generation&&isActive())draw('บันทึกแล้ว แต่โหลดผลล่าสุดไม่ได้ กรุณารีเฟรช: '+e.message);}
+    }
+    async function refresh(){const g=++generation;selected.clear();data=null;view=null;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
     await refresh();
     return ()=>{generation++;};
   }

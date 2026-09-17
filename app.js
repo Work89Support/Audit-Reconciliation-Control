@@ -491,6 +491,47 @@ async function completeQuickClose(e) {
 }
 
 let bulkCaseApprovalRunning = false;
+let auditStatusBatchRunning = false;
+function confirmAuditStatusBatch(items, {company,date,onComplete}) {
+  if(auditStatusBatchRunning || !items.length)return;
+  const snapshot=items.map(({row,action})=>({row:row?{...row}:null,action}));
+  openModal('บันทึกสถานะที่เตรียมไว้', `<p>${h(company)} · ${h(date)} · ${snapshot.length} รายการ</p><p>ตรวจสถานะล่าสุดก่อนบันทึกทีละรายการ รายการที่ไม่ผ่านจะไม่เปลี่ยนสถานะ ไม่ส่งข้อความภายนอก</p>${snapshot.map(({row,action})=>`<p>${h(row?.code||'ไม่พบเคส')} → ${action==='close'?'ยืนยันปิดเคส':'ส่งเข้าชีทรอชี้แจง'}</p>`).join('')}<p id="auditBatchProgress" role="status"></p>`, '<button id="auditBatchCancel" class="ghost-button">ยกเลิก</button><button id="auditBatchConfirm" class="primary-button">ยืนยันบันทึกทั้งหมด</button>');
+  let cancelled=false;$('#modal')._contentCleanup=()=>{cancelled=true;};
+  $('#auditBatchCancel').onclick=closeModal;
+  $('#auditBatchConfirm').onclick=async()=>{
+    if(auditStatusBatchRunning)return;
+    auditStatusBatchRunning=true;$('#auditBatchConfirm').disabled=true;
+    const results=[];
+    try {
+      for(const {row,action} of snapshot){
+        if(cancelled)break;
+        try{
+          if(!row||row.company!==company||row.business_date!==date||!Sb.signedIn())throw new Error('บริษัท วันที่ หรือสิทธิ์ไม่ตรง');
+          if(action==='close'){
+            const result=await BulkCaseReview.run([row],{company,date},{allowed:()=>can('approve')&&Sb.signedIn(),cancelled:()=>cancelled,load:Sb.reconciliationOverview,candidates:PreliminaryReview.candidates,links:id=>Sb.evidenceCaseRecommendations({caseId:id}),progress:()=>{},save:async fresh=>{
+              const e=mapLiveException(fresh);e.id=fresh.id;
+              return persistCaseClosure(e,`Audit ยืนยันปิดจากตาราง — หลักฐาน BO/PM ต้นทางผ่านเกณฑ์ ไม่ซ้ำ ภายใน 60 นาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`);
+            }});
+            results.push({code:row.code,ok:result[0]?.status==='closed',message:result[0]?.status==='closed'?'ปิดเคสแล้ว':result[0]?.reason||'ยังไม่ปิด'});
+          }else if(action==='clarify'){
+            if(!can('request_clarify'))throw new Error('ไม่มีสิทธิ์ส่งชี้แจง');
+            const fresh=await Sb.exceptionDetail(row.id);
+            if(!fresh||fresh.company!==company||fresh.business_date!==date||fresh.run_id!==row.run_id||fresh.status!==row.status||!['open','answered'].includes(fresh.status))throw new Error('ข้อมูลเคสเปลี่ยนแล้ว กรุณาตรวจใหม่');
+            if(cancelled)break;
+            const at=new Date().toISOString();
+            await Sb.requestClarification(row.id,fresh.status,{requested_at:at,requested_by:Sb.authUser()?.id,updated_at:at});
+            results.push({code:row.code,ok:true,message:'ส่งเข้าชีทรอชี้แจงแล้ว'});
+          }else throw new Error('ไม่รองรับสถานะนี้');
+        }catch(error){results.push({code:row?.code,ok:false,message:error.message});}
+        if(!cancelled&&$('#auditBatchProgress'))$('#auditBatchProgress').textContent=`ตรวจแล้ว ${results.length}/${snapshot.length}`;
+      }
+      await onComplete();
+      if(cancelled)return toast(`บันทึกสำเร็จ ${results.filter(r=>r.ok).length} รายการ — หยุดรายการที่เหลือแล้ว`);
+      openModal('ผลบันทึกสถานะ',`<p>สำเร็จ ${results.filter(r=>r.ok).length}/${snapshot.length} รายการ</p>${results.map(r=>`<p>${h(r.code)} — ${h(r.message)}</p>`).join('')}`,'<button id="auditBatchDone" class="primary-button">เสร็จสิ้น</button>');
+      $('#auditBatchDone').onclick=closeModal;
+    } finally {auditStatusBatchRunning=false;}
+  };
+}
 function confirmBulkCaseClose(rows, {company, date, onComplete}) {
   if (!can("approve")) return deny("ปิดเคส");
   if (bulkCaseApprovalRunning || !rows.length || state.dataset !== "production") return;
@@ -2697,10 +2738,37 @@ VIEWS.exceptions = (root) => {
       onExport: exportSheets,
       onConfirm: Sb.confirmAuditPairs,
       onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
+      onBatchStatus: confirmAuditStatusBatch,
+      onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
       isActive: () => state.route === "exceptions" && state.filters.company === company,
       onCompany: () => { state.filters.company = "ALL"; render(); },
-      onCase: (row, {action = 'files'} = {}) => {
+      onCase: (row, {action = 'files', onComplete = async () => {}} = {}) => {
         if (!row) return;
+        if (action === 'close') {
+          if (!can('approve')) return deny('ปิดเคส');
+          return confirmBulkCaseClose([row], {company: row.company, date: row.business_date, onComplete});
+        }
+        if (action === 'clarify') {
+          if (!can('request_clarify')) return deny('ส่งชี้แจง');
+          if (!['open', 'answered'].includes(row.status)) return toast('สถานะนี้ส่งชี้แจงไม่ได้ หรือส่งแล้ว กรุณารีเฟรช', 'warn');
+          openModal('ส่งขอชี้แจง', `<p>${h(row.code)} · ${h(row.company)} · ${h(row.business_date)}</p><p>ส่งเข้าเป็นงานในชีทของผู้ชี้แจงบริษัท ${h(row.company)} โดยใช้เคสเดิม ไม่ส่งข้อความภายนอก</p><p id="inlineClarifyResult" role="status"></p>`, '<button id="inlineClarifyCancel" class="ghost-button">ยกเลิก</button><button id="inlineClarifyConfirm" class="primary-button">ยืนยันส่งขอชี้แจง</button>');
+          $('#inlineClarifyCancel').onclick = closeModal;
+          $('#inlineClarifyConfirm').onclick = async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+              const requestedAt = new Date().toISOString();
+              await Sb.requestClarification(row.id, row.status, {requested_at: requestedAt, requested_by: Sb.authUser()?.id, updated_at: requestedAt});
+            } catch (error) {
+              $('#inlineClarifyResult').textContent = 'ยังยืนยันการส่งไม่ได้ กรุณารีเฟรชสถานะก่อนลองใหม่: ' + error.message;
+              return;
+            }
+            closeModal();
+            toast('ส่งเข้า ชีทรอชี้แจงแล้ว — ไม่ต้องกดส่งซ้ำ');
+            await onComplete();
+          };
+          return;
+        }
         const item = mapLiveException(row);
         // EX codes repeat between runs/companies; use the persisted UUID here.
         item.id = row.id;
@@ -2709,7 +2777,7 @@ VIEWS.exceptions = (root) => {
         if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
         openException(item.id, {focusFiles: action === 'files'});
         if (action !== 'files') {
-          const target = action === 'close' ? '#btnApprove' : action === 'clarify' ? '#btnClarify' : action === 'answer' ? '#btnRespond' : '#caseSummarySection';
+          const target = action === 'answer' ? '#btnRespond' : '#caseSummarySection';
           $(target)?.scrollIntoView({block:'center',behavior:'smooth'});
           toast('ตรวจรายละเอียดและกดยืนยันอีกครั้ง — ยังไม่ได้เปลี่ยนสถานะหรือส่งข้อความ');
         }
@@ -3068,11 +3136,15 @@ async function loadExceptionSupport(e, options = {}) {
     host.innerHTML = exceptionFilesMarkup(files, e);
     const mailButton=document.createElement('button');
     mailButton.className='ghost-button'; mailButton.textContent='เลือกเอกสารชี้แจงจากเมลของบริษัทนี้';
-    host.append(mailButton);
+    const evidenceRange=document.createElement('div');
+    evidenceRange.innerHTML=`<label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
+    host.append(evidenceRange,mailButton);
     mailButton.onclick=async()=>{
       mailButton.disabled=true;
       try {
-        const candidates=(await Sb.evidenceFiles({from:e.date,to:e.date})).filter(f=>(f.company||f.batch_company)===e.company);
+        const [from,to]=[...evidenceRange.querySelectorAll('input')].map(input=>input.value);
+        if(!from||!to||from>to)throw new Error('กรุณาเลือกช่วงวันที่เอกสารให้ถูกต้อง');
+        const candidates=(await Sb.evidenceFiles({from,to,company:e.company})).filter(f=>(f.company||f.batch_company)===e.company);
         // Only exact, current-case recommendation links; never browse every company's evidence.
         const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
         const recommended=new Map();
@@ -3091,7 +3163,24 @@ async function loadExceptionSupport(e, options = {}) {
         }
         const list=document.createElement('section');list.className='case-mail-evidence';
         list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงแล้วจึงยืนยันปิดเคส ไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารวันเดียวกัน ใช้คลังไฟล์เพื่อตรวจวันอื่น หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>Preview</button><button class="ghost-button sm" data-link-mail="${h(f.id)}">ใช้เป็นหลักฐานเคสนี้</button></article>`).join('')}`;
+        host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
+        list.querySelector('h4').textContent=`เอกสารชี้แจง · ${e.company} · ${from} ถึง ${to} (${candidates.length} ไฟล์)`;
+        list.querySelector('p').textContent='ค้นหาชื่อไฟล์ หัวข้อเมล หรือผู้ส่งได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส การผูกไฟล์ไม่ใช่การปิดเคส';
+        if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
+        const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง');list.querySelector('h4').after(search);
+        search.oninput=()=>{const q=search.value.trim().toLowerCase();list.querySelectorAll('article').forEach(article=>{article.hidden=!article.textContent.toLowerCase().includes(q);});};
+        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent='ใช้กับเคสนี้แล้ว';button.disabled=true;}});
+        try {
+          const uses=await Sb.evidenceUsage(candidates.filter(f=>(f.company||f.batch_company)===e.company).map(f=>f.id),e.company);
+          if(!document.body.contains(list))return;
+          list.querySelectorAll('[data-link-mail]').forEach(button=>{
+            const rows=uses.filter(row=>row.clarification_file_id===button.dataset.linkMail);
+            const detail=document.createElement('details');
+            detail.innerHTML=`<summary>ใช้เป็นหลักฐาน ${rows.length} เคสในบริษัทนี้ (รวมเคสปิดแล้ว)</summary>${rows.map(row=>`<p>${h(row.code)} · ${h(row.business_date)} · ${h(row.status)}</p>`).join('')}`;
+            button.before(detail);
+          });
+        }catch(error){const note=document.createElement('p');note.textContent='ยังโหลดประวัติการใช้ไฟล์ไม่ได้: '+error.message;list.append(note);}
         list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
           if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
           b.disabled=true;
@@ -3404,8 +3493,11 @@ async function openException(id, options = {}) {
   $("#btnRespond").addEventListener("click", async (event) => {
     if (!can("respond")) return deny("ตอบชี้แจง");
     if (e.status !== "clarifying") return;
-    const response = $("#noteText").value.trim() || e.responseText || "";
-    if (!response) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
+    const answerText = $("#noteText").value.trim() || e.responseText || "";
+    if (!answerText) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
+    const answeringRole=currentUser().role;
+    const response=['monitor','lead','admin'].includes(answeringRole)
+      ? `[คำชี้แจงโดย ${answeringRole==='admin'?'แอดมินระบบ':'Audit'} — ไม่ใช่การอนุมัติปิดเคส]\n${answerText}` : answerText;
     if (state.dataset === "production" && !e.clarificationFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
     const button = event.currentTarget;
     button.disabled = true;
@@ -3419,6 +3511,7 @@ async function openException(id, options = {}) {
       e.status = "answered";
       e.responseText = response;
       e.respondedAt = stamp;
+      e.respondedBy = Sb.authUser()?.id || currentUser().username;
       saveOverride(e, false);
       logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
       render();

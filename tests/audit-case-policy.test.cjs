@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const P=require('../audit-case-policy.js'),Screen=require('../preliminary-review.js');
+const date='2026-09-15';
+const e={company:'MC8',business_date:date,status:'open',direction:'ถอน',ex_type:'time_diff',bo_date:date,stm_date:date,time_diff_sec:300,account:'COREPAY',system_amount:100,bank_amount:100,bo_raw:'2717119 | d | ถอน | ออโต้ | u | cp | 100 | 0 | 0 | d | sapan: aaaaaaaaaaaaaaaaaaaaaaaa',stm_raw:'pm-id | 100 | corepay | SUCCESSED | 2717119 | aaaaaaaaaaaaaaaaaaaaaaaa'};
+const input={job:{company:'MC8',business_date:date,missing_groups:[]},result:{matched:0,file_ids:['f'],summary:{match_evidence:[],bo_first:{complete:true,missing:[]}}},quality_errors:[],exceptions:[e]};
+let out=P.apply(input,Screen.candidates);assert.equal(out.exceptions[0].status,'closed');assert.equal(e.status,'open');assert.equal(out.result.matched,0,'closure must not invent a matched pair');
+for(const patch of [{time_diff_sec:3601},{status:'answered'},{resolution_note:'reviewed'},{business_date:'2026-09-14'},{bank_amount:99},{stm_raw:'— missing'}])assert.notEqual(P.apply({...input,exceptions:[{...e,...patch}]},Screen.candidates).exceptions[0].status,'closed');
+for(const patch of [{quality_errors:[{}]},{job:{...input.job,missing_groups:['f']}},{result:{...input.result,summary:{...input.result.summary,bo_first:{complete:false}}}}])assert.equal(P.apply({...input,...patch},Screen.candidates).exceptions[0].status,'open');
+out=P.apply({...input,exceptions:[e,{...e}]},Screen.candidates);assert(out.exceptions.every(x=>x.status==='open'));
+const missing={...e,ex_type:'missing_stm',bank_amount:null,stm_raw:'— missing'};
+assert.equal(P.apply({...input,exceptions:[missing]},Screen.candidates).exceptions[0].status,'clarifying');
+out=P.apply({...input,exceptions:[missing,{...missing,ex_type:'missing_bo',bank_amount:100,system_amount:null}]},Screen.candidates);assert(out.exceptions.every(x=>x.status==='open'),'possible counterpart must stay for review');
+console.log('New-run policy: quality, scope, duplicates, reviewed state, actual source and unmatched guards passed');

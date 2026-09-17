@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync('supabase.js','utf8');
+const a=source.indexOf('async function evidenceUsage('),b=source.indexOf('async function currentExceptions(',a);
+const calls=[];let pages=0;
+const context=vm.createContext({json:async url=>{calls.push(url);return ++pages===1?Array.from({length:500},(_,id)=>({id})):[];}});
+vm.runInContext(source.slice(a,b),context);
+await context.evidenceUsage(['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],'AT4');
+assert.equal(calls.length,2);assert(calls.every(url=>url.includes('company=eq.AT4')));assert(calls[1].includes('offset=500'));
+await assert.rejects(()=>context.evidenceUsage(['invalid'],'AT4'));
+await assert.rejects(()=>context.evidenceUsage([],''));
+console.log('Evidence usage: company scope, pagination and invalid input guards passed');

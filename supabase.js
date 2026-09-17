@@ -326,7 +326,7 @@ const Sb = (() => {
     return rows;
   }
 
-  async function evidenceFiles({ from, to, limit = 2000 } = {}) {
+  async function evidenceFiles({ from, to, company, limit = 2000 } = {}) {
     const filters = [
       "select=*,mail_batches!inner(business_date,company,subject,sender,received_at)",
       "kind=eq.doc_clarify",
@@ -335,6 +335,7 @@ const Sb = (() => {
     ];
     if (from) filters.push(`mail_batches.business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`mail_batches.business_date=lte.${encodeURIComponent(to)}`);
+    if (company) filters.push(`mail_batches.company=eq.${encodeURIComponent(company)}`);
     const rows = await json(`/rest/v1/source_files?${filters.join("&")}`);
     return (rows || []).map((row) => ({
       ...row,
@@ -362,6 +363,21 @@ const Sb = (() => {
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
     return json(`/rest/v1/clarification_matches?${filters.join("&")}`);
+  }
+
+  async function evidenceUsage(fileIds, company) {
+    if(!company || !Array.isArray(fileIds))throw new Error('ต้องระบุบริษัทและไฟล์');
+    const ids=[...new Set(fileIds)];
+    if(ids.some(id=>!(/^[0-9a-f-]{36}$/i).test(id)))throw new Error('รหัสไฟล์ไม่ถูกต้อง');
+    const result=[];
+    for(let i=0;i<ids.length;i+=100){
+      for(let offset=0;;offset+=500){
+        const rows=await json(`/rest/v1/exceptions?select=id,code,business_date,status,clarification_file_id&company=eq.${encodeURIComponent(company)}&clarification_file_id=in.(${ids.slice(i,i+100).join(',')})&order=id&limit=500&offset=${offset}`);
+        if(!Array.isArray(rows))throw new Error('โหลดประวัติใช้เอกสารไม่ครบ');
+        result.push(...rows);if(rows.length<500)break;
+      }
+    }
+    return result;
   }
 
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
@@ -702,7 +718,7 @@ const Sb = (() => {
     return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
   }
 
-  // Full, append-only notes; existing audit_log RLS is unchanged.
+  // Full, append-only Audit notes. Existing audit_log RLS remains authoritative.
   async function caseNotes(id) {
     if (!id) return [];
     const rows = [];
@@ -940,6 +956,7 @@ const Sb = (() => {
     auditLogs,
     notifications,
     clarificationMatches,
+    evidenceUsage,
     currentExceptions,
     currentExceptionsSummary,
     searchExceptions,

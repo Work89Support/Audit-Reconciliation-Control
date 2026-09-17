@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const app = fs.readFileSync('app.js', 'utf8');
+const view = fs.readFileSync('review-overview.js', 'utf8');
+const handler = app.slice(app.indexOf("onCase: (row, {action"), app.indexOf('const item = mapLiveException(row);', app.indexOf("onCase: (row, {action")));
+assert(!handler.includes('openException('), 'close/clarify must not open the drawer');
+assert(handler.includes('confirmBulkCaseClose([row]'), 'retain fresh source-evidence closure checks');
+assert(handler.includes("can('approve')") && handler.includes("can('request_clarify')"));
+assert(handler.includes('Sb.requestClarification(row.id, row.status'), 'retain stale-state guard');
+assert(!handler.includes('state.filters') && !handler.includes('render();'));
+assert(view.includes('onComplete:refreshInPlace'));
+const refresh = view.slice(view.indexOf('async function refreshInPlace'), view.indexOf('async function refresh(){'));
+assert(!refresh.includes('page=0') && !refresh.includes('columnRules='));
+assert(refresh.includes('!isActive()') && refresh.includes('window.scrollTo(x,y)'));
+console.log('Inline Audit actions: no drawer, authorization, source checks and preserved filters passed');
