@@ -40,7 +40,7 @@ const ReviewOverview = (() => {
     return 'review';
   }
   function model(data) {
-    const preliminary = typeof PreliminaryReview !== 'undefined' ? PreliminaryReview.candidates(data) : new Set();
+    const preliminary = typeof PreliminaryReview !== 'undefined' ? PreliminaryReview.manualCandidates(data) : new Set();
     const evidence = Array.isArray(data.run?.summary?.match_evidence) ? data.run.summary.match_evidence : [];
     const confirmed=new Map((data.confirmations||[]).map(c=>[c.pair_index,c]));
     const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, pairIndex:i,confirmation:confirmed.get(i),category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
@@ -230,7 +230,7 @@ const ReviewOverview = (() => {
           const label=document.createElement('label');
           label.style.cssText='display:flex;gap:8px;align-items:center;background:#fff4cc;padding:8px;border-radius:6px;white-space:normal';
           label.innerHTML=`<input type="checkbox" aria-label="เลือกเคส ${escape(row.case.code)}" ${selected.has(row.id)?'checked':''}>ผ่านเกณฑ์เบื้องต้น · รอยืนยัน`;
-          label.title='ยอดตรงกัน · อ้างอิง BO และ sapan ตรง · PM SUCCESSED · วันเดียวกัน ภายใน 60 นาที · ไม่พบคู่ซ้ำในผลรอบนี้';
+          label.title='คู่ BO/PM ยอดและตัวตนตรง · ไม่พบคู่ซ้ำในผลรอบนี้ · Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน';
           label.querySelector('input').onchange=e=>{e.target.checked?selected.add(row.id):selected.delete(row.id);draw();};
           tr.firstElementChild.prepend(label);
         });

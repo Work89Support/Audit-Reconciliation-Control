@@ -10,7 +10,8 @@ vm.runInContext(source.slice(source.indexOf('function isQuickCloseEligible('),so
 const reset=()=>{data={complete:true,run:{id:'r',jobStatus:'completed',matched:0,summary:{match_evidence:[]}},cases:[{...row}]};links=[];return {dbId:'c',company:'MC8',date:'2026-09-15',status:'open',_detailLoaded:true};};
 (async()=>{
  let e=reset();await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),true);
- for(const change of [{time_diff_sec:3601},{stm_date:'2026-09-16'},{bank_amount:20},{stm_raw:row.stm_raw.replace('SUCCESSED','PARTIAL')},{ex_type:'amount_diff'}]) {e=reset();Object.assign(data.cases[0],change);await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),false);}
+ for(const change of [{time_diff_sec:3601},{stm_date:'2026-09-16'}]) {e=reset();Object.assign(data.cases[0],change);await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),true);}
+ for(const change of [{bank_amount:20},{stm_raw:row.stm_raw.replace('SUCCESSED','PARTIAL')},{ex_type:'amount_diff'}]) {e=reset();Object.assign(data.cases[0],change);await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),false);}
  e=reset();links=[{reason:'จ่ายแทน'}];await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),false);
  e=reset();data.cases.push({...row,id:'duplicate'});await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),false);
  e=reset();data.complete=false;await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),false);

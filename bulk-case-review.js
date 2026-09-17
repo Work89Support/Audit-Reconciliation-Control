@@ -18,7 +18,7 @@ const BulkCaseReview = (() => {
         const data = await deps.load(scope.company, scope.date);
         const current = data.cases?.find(row => row.id === selected.id);
         if (!current || fingerprint(current) !== fingerprint(selected)) throw Error('ข้อมูลหรือสถานะเปลี่ยน กรุณาตรวจใหม่');
-        if (!deps.candidates(data).has(current.id)) throw Error('ไม่ผ่านเกณฑ์ปิดเคสล่าสุด');
+        if (!deps.candidates(data).has(current.id)) throw Error('ยังยืนยันคู่ BO/PM ที่ยอดและตัวตนตรงและไม่ซ้ำไม่ได้ — ไม่ได้ติดเงื่อนไขเวลา กรุณาตรวจหลักฐานคู่รายการ');
         const links = await deps.links(current.id);
         if (!Array.isArray(links) || links.length) throw Error('มีหลักฐานเชื่อมโยง ต้องตรวจทีละเคส');
         if (deps.cancelled?.() || !deps.allowed()) throw Error('หยุดก่อนบันทึก');

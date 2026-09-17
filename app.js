@@ -424,7 +424,7 @@ async function refreshQuickCloseEvidence(e) {
   if (!row || row.company !== e.company || !Array.isArray(links) || links.length
       || !["open","closed"].includes(row.status)) return;
   const review = {...data, cases:data.cases.map(item => item.id === row.id ? {...item,status:"open"} : item)};
-  e._quickSourceEvidence = PreliminaryReview.candidates(review).has(row.id);
+  e._quickSourceEvidence = PreliminaryReview.manualCandidates(review).has(row.id);
   e._quickVerifiedStatus = row.status;
 }
 
@@ -475,7 +475,7 @@ async function completeQuickClose(e) {
   catch (err) { return toast("ตรวจหลักฐานล่าสุดไม่สำเร็จ: " + err.message, "warn"); }
   if (state.dataset === "production" && e._quickVerifiedStatus !== "open") return toast("สถานะเคสเปลี่ยนแล้ว กรุณาเปิดตรวจใหม่", "warn");
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
-  const note = "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ 60 นาที ใช้หลักฐาน BO/PM ต้นทาง; ยอด " + e.systemAmount + " บาท; ต่างเวลา " + e.timeDiffSec + " วินาที; BO: " + e.boRaw + "; PM: " + e.stmRaw;
+  const note = "Audit ยืนยันคู่ BO/PM และปิดเคส — ยอมรับเวลาต่างหรือข้ามวัน ตรวจยอด อ้างอิงและคู่ซ้ำแล้ว; ยอด " + e.systemAmount + " บาท; ต่างเวลา " + e.timeDiffSec + " วินาที; BO: " + e.boRaw + "; PM: " + e.stmRaw;
   if (!await persistCaseClosure(e, note)) return;
   e.resolutionNote = note;
   e.resolvedAt = new Date().toISOString();
@@ -506,11 +506,14 @@ function confirmAuditStatusBatch(items, {company,date,onComplete}) {
       for(const {row,action} of snapshot){
         if(cancelled)break;
         try{
-          if(!row||row.company!==company||row.business_date!==date||!Sb.signedIn())throw new Error('บริษัท วันที่ หรือสิทธิ์ไม่ตรง');
+          if(!Sb.signedIn())throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          if(!row)throw new Error('ไม่พบเคสในชุดข้อมูลล่าสุด กรุณาเลือกเคสใหม่');
+          if(row.company!==company)throw new Error(`เคสเป็นของ ${row.company} ไม่ใช่ ${company}`);
+          if(row.business_date!==date)throw new Error(`เคสอยู่วันที่ ${row.business_date} แต่กำลังตรวจวันที่ ${date} กรุณาเปิดวันที่ของเคส`);
           if(action==='close'){
-            const result=await BulkCaseReview.run([row],{company,date},{allowed:()=>can('approve')&&Sb.signedIn(),cancelled:()=>cancelled,load:Sb.reconciliationOverview,candidates:PreliminaryReview.candidates,links:id=>Sb.evidenceCaseRecommendations({caseId:id}),progress:()=>{},save:async fresh=>{
+            const result=await BulkCaseReview.run([row],{company,date},{allowed:()=>can('approve')&&Sb.signedIn(),cancelled:()=>cancelled,load:Sb.reconciliationOverview,candidates:PreliminaryReview.manualCandidates,links:id=>Sb.evidenceCaseRecommendations({caseId:id}),progress:()=>{},save:async fresh=>{
               const e=mapLiveException(fresh);e.id=fresh.id;
-              return persistCaseClosure(e,`Audit ยืนยันปิดจากตาราง — หลักฐาน BO/PM ต้นทางผ่านเกณฑ์ ไม่ซ้ำ ภายใน 60 นาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`);
+              return persistCaseClosure(e,`Audit ยืนยันปิดจากตาราง — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; BO: ${e.boRaw}; PM: ${e.stmRaw}`);
             }});
             results.push({code:row.code,ok:result[0]?.status==='closed',message:result[0]?.status==='closed'?'ปิดเคสแล้ว':result[0]?.reason||'ยังไม่ปิด'});
           }else if(action==='clarify'){
@@ -538,7 +541,7 @@ function confirmBulkCaseClose(rows, {company, date, onComplete}) {
   const snapshot = JSON.parse(JSON.stringify(rows));
   const total = snapshot.reduce((sum,row)=>sum+Math.round(Number(row.system_amount)*100),0)/100;
   openModal(`ยืนยันปิด ${num(snapshot.length)} เคสที่เลือก`,
-    `<p>${h(company)} · ${h(date)} · รวม ${money(total)} บาท</p><p>ตรวจอ้างอิง BO/PM ยอด วัน เวลาไม่เกิน 60 นาที และคู่ซ้ำอีกครั้งก่อนบันทึกแต่ละรายการ เคสที่เปลี่ยนสถานะหรือมีหลักฐานเชื่อมโยงจะข้ามไว้ ไม่ส่งข้อความและไม่บันทึกความเสียหาย</p><details><summary>รายการที่เลือก</summary>${snapshot.map(row=>`<p>${h(row.code || row.id)} · ${money(row.system_amount)} บาท</p>`).join('')}</details><p id="bulkCaseProgress" role="status"></p>`,
+    `<p>${h(company)} · ${h(date)} · รวม ${money(total)} บาท</p><p>ตรวจอ้างอิง BO/PM ยอด ตัวตน และคู่ซ้ำอีกครั้ง โดยยอมรับเวลาต่างหรือข้ามวันก่อนบันทึกแต่ละรายการ เคสที่เปลี่ยนสถานะหรือมีหลักฐานเชื่อมโยงจะข้ามไว้ ไม่ส่งข้อความและไม่บันทึกความเสียหาย</p><details><summary>รายการที่เลือก</summary>${snapshot.map(row=>`<p>${h(row.code || row.id)} · ${money(row.system_amount)} บาท</p>`).join('')}</details><p id="bulkCaseProgress" role="status"></p>`,
     '<button id="bulkCaseCancel" class="ghost-button">ยกเลิก</button><button id="bulkCaseConfirm" class="primary-button">ยืนยันอนุมัติและปิดรายการที่ผ่านเกณฑ์</button>');
   let cancelled = false;
   $("#modal")._contentCleanup = () => { cancelled = true; };
@@ -551,12 +554,12 @@ function confirmBulkCaseClose(rows, {company, date, onComplete}) {
     try {
       const results = await BulkCaseReview.run(snapshot,{company,date},{
         allowed:()=>can('approve') && Sb.signedIn(), cancelled:()=>cancelled,
-        load:Sb.reconciliationOverview, candidates:PreliminaryReview.candidates,
+        load:Sb.reconciliationOverview, candidates:PreliminaryReview.manualCandidates,
         links:id=>Sb.evidenceCaseRecommendations({caseId:id}),
         progress:(done,count)=>{if(!cancelled && $('#bulkCaseProgress')) $('#bulkCaseProgress').textContent=`ตรวจแล้ว ${done}/${count} รายการ`;},
         save:async row=>{
           const e=mapLiveException(row);e.id=row.id;
-          const note=`Audit ยืนยันแบบหลายรายการ — ต่างเวลาในเกณฑ์ 60 นาที ใช้หลักฐาน BO/PM ต้นทาง; ยอด ${e.systemAmount} บาท; ต่างเวลา ${e.timeDiffSec} วินาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
+          const note=`Audit ยืนยันแบบหลายรายการ — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; ยอด ${e.systemAmount} บาท; ต่างเวลา ${e.timeDiffSec} วินาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
           return persistCaseClosure(e,note);
         },
       });
@@ -3264,7 +3267,7 @@ async function openException(id, options = {}) {
     { key: "raw", label: "โหลดข้อมูลรายการ STM / BO แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
     { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
     { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
-    { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — อ้างอิงตรง ไม่ซ้ำ วันเดียวกันใน 60 นาที" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
+    { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — คู่ตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
     { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
     { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
@@ -3317,7 +3320,7 @@ async function openException(id, options = {}) {
       </ol>
 
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
-      ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ต่างเวลาในเกณฑ์ ใช้หลักฐาน BO/PM ต้นทาง" : "อ้างอิง BO/PM ตรงกัน ไม่พบคู่ซ้ำ วันเดียวกันไม่เกิน 60 นาที — รอ Audit ยืนยัน"}</p>` : ""}
+      ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ใช้หลักฐานคู่ BO/PM ต้นทาง" : "คู่ BO/PM ตรงกัน ไม่พบคู่ซ้ำ — Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน"}</p>` : ""}
       <ul class="close-check">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
