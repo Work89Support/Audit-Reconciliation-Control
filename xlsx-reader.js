@@ -156,13 +156,15 @@ const XlsxReader = (() => {
     return n - 1;
   };
 
-  function sheetRows(xml, sst, dstyles) {
+  function sheetRows(xml, sst, dstyles, metadata) {
     const rows = [];
     /* ต้องเป็น non-greedy และรองรับแท็กปิดในตัว <c r="E2"/> ไม่งั้นคอลัมน์จะเลื่อน */
     const rowRe = /<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g;
     const cellRe = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
     let rm;
     while ((rm = rowRe.exec(xml))) {
+      const sourceRow = Number((rm[0].match(/^<row\b[^>]*\br="(\d+)"/) || [])[1]) || rows.length + 1;
+      if (metadata) metadata.rowNumbers.push(sourceRow);
       const inner = rm[1] || "";
       const cells = [];
       let cm;
@@ -170,6 +172,11 @@ const XlsxReader = (() => {
       while ((cm = cellRe.exec(inner))) {
         const attr = cm[1] || "";
         const body = cm[2] || "";
+        const formula = (body.match(/<f\b[^>]*>([\s\S]*?)<\/f>/) || [])[1];
+        if (metadata && formula !== undefined) {
+          const address = (attr.match(/r="([A-Z]+\d+)"/) || [])[1];
+          if (address) metadata.formulas[address] = unesc(formula);
+        }
         const ref = (attr.match(/r="([A-Z]+)/) || [])[1] || "";
         const idx = ref ? colOf(ref) : cells.length;
         const type = (attr.match(/t="([^"]+)"/) || [])[1] || "n";
@@ -191,6 +198,8 @@ const XlsxReader = (() => {
             val = dstyles.has(style) && Number.isFinite(num) && num > 0 ? serialToText(num, true) : v;
           }
         }
+        // Literal identifier formulas may have no cached value. Never evaluate other formulas.
+        if (metadata && val === "" && formula !== undefined && /^"[^"]*"$/.test(unesc(formula))) val = unesc(formula).slice(1, -1);
         while (cells.length < idx) cells.push("");
         cells[idx] = val;
       }
@@ -200,7 +209,7 @@ const XlsxReader = (() => {
   }
 
   /* ---------------- public ---------------- */
-  async function readWorkbook(arrayBuffer) {
+  async function readWorkbook(arrayBuffer, options = {}) {
     const zip = listEntries(arrayBuffer);
     const wbXml = (await readEntry(zip, "xl/workbook.xml")) || "";
     const relsXml = (await readEntry(zip, "xl/_rels/workbook.xml.rels")) || "";
@@ -231,7 +240,8 @@ const XlsxReader = (() => {
     for (const s of sheets) {
       const xml = await readEntry(zip, s.path);
       if (!xml) continue;
-      out.push({ name: s.name, rows: sheetRows(xml, sst, dstyles) });
+      const metadata = options.includeMetadata ? { rowNumbers: [], formulas: {} } : undefined;
+      out.push({ name: s.name, rows: sheetRows(xml, sst, dstyles, metadata), ...(metadata || {}) });
     }
     return out;
   }
