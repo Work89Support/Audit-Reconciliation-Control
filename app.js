@@ -67,6 +67,7 @@ const ROUTES = [
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
       { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
+      { id: "mc8-sheets", label: "ชีต Audit 5 บริษัท", icon: "reports", title: "ชีต Audit 5 บริษัท", desc: "ผลกระทบยอด STM / PM กับ BO แยก 8 หน้า พร้อมยอดรวมท้ายตาราง", filters: false },
       { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
       { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
       { id: "exceptions", label: "ผลตรวจและเคส", icon: "exceptions", title: "ภาพรวมผลตรวจและเคส", desc: "ดูคู่สำเร็จและรายการที่ต้องตรวจ แยกบริษัท วันที่ ฝาก–ถอน และสถานะ", filters: true },
@@ -104,8 +105,8 @@ ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "exceptions", "matching", "clarify", "reports", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
+  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
@@ -692,6 +693,7 @@ function nextActionForState() {
 }
 
 function renderNextAction(root) {
+  if (state.route === "mc8-sheets") return;
   if (state.dataset !== "production" || !Sb.signedIn()) return;
   const action = nextActionForState();
   const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
@@ -846,6 +848,20 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
+  date: state.filters.date || DEFAULT_WORK_DATE,
+  company: MC8LiveSheets.COMPANIES.includes(state.dailySummary.company) ? state.dailySummary.company : 'MC8',
+  companies: MC8LiveSheets.COMPANIES,
+  signedIn: () => state.dataset === 'production' && Sb.signedIn(),
+  load: Sb.reconciliationOverview,
+  loadFiles: runId => Sb.exceptionFiles(runId),
+  isActive: () => state.route === 'mc8-sheets',
+  onLocal: () => MC8Sheets.render(root),
+  onCompany: company => { state.dailySummary.company = company; },
+  onDate: date => { state.filters.date = date; },
+  onCase: (row,company) => { if(row) go('exceptions', {filters:{date:row.business_date,from:row.business_date,to:row.business_date,preset:'day',company:row.company||company},exFilter:{q:row.code||'',type:'ALL',severity:'ALL',status:'ALL',sla:false}}); },
+  onFile: (file,date,company) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||company,date,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
+});
 function showLoginGate(message) {
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
@@ -886,7 +902,7 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
-  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage"].includes(route.id)) {
+  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets"].includes(route.id)) {
     const liveNotice = liveOverviewState.loading
       ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`
       : liveOverviewState.error

@@ -461,7 +461,7 @@ const Sb = (() => {
     if (!company || company === "ALL" || !date) throw new Error("เลือกบริษัทและวันที่ก่อน");
     const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
     if (!jobs[0]?.last_run_id) return null;
-    const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,matched,summary&limit=1`);
+    const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,stm_count,bo_count,exception_count,matched,summary&limit=1`);
     return runs[0] ? { ...runs[0], jobStatus: jobs[0].status } : null;
   }
 
