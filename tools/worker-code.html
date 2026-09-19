@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Audit worker code</title>
+<pre id="code">Loading…</pre>
+<script>
+fetch("../n8n/audit-headless-worker.json")
+  .then((response) => response.json())
+  .then((workflow) => {
+    const node = workflow.nodes.find((item) => item.name === "กระทบยอดและสร้าง Exception");
+    if (!node?.parameters?.jsCode) throw new Error("Worker code node not found");
+    document.getElementById("code").textContent = node.parameters.jsCode;
+  })
+  .catch((error) => {
+    document.getElementById("code").textContent = "ERROR: " + error.message;
+  });
+</script>
+</html>
