@@ -174,12 +174,12 @@ await (async function () {
   eq("BO แบบย่อ: อ่านยอด", n.records[0]?.amount, 49);
 })();
 
-/* ================= 4) reconcile: time_diff ================= */
+/* ================= 4) reconcile: time variance auto-pass ================= */
 await (async function () {
-  const r = await run([rec({ account: "SCB-1", amount: 100, sec: 3600 })], [rec({ account: "SCB-1", amount: 100, sec: 3800 })]);
-  eq("time_diff: matched=0", r.matched, 0);
-  eq("time_diff: 1 exception", r.exceptions.length, 1);
-  eq("time_diff: ชนิด", r.exceptions[0].type, "time_diff");
+  const r = await run([rec({ account: "SCB-1", amount: 100, sec: 3600, company: "MC8" })], [rec({ account: "SCB-1", amount: 100, sec: 3800, company: "MC8" })]);
+  eq("time variance: matched=1", r.matched, 1);
+  eq("time variance: ไม่เปิดเคส Audit", r.exceptions.length, 0);
+  eq("time variance: เก็บวิธีจับคู่ในหลักฐาน", r.matchEvidence[0]?.method, "account-amount-direction-time-under-60m");
 })();
 
 /* คู่ยอดตรงที่ไม่กำกวม: ผ่อนเวลาได้โดยไม่เดาคู่จากยอดซ้ำ */
@@ -194,12 +194,12 @@ await (async function () {
   eq("extended exact: ไม่สร้าง time_diff", unique.exceptions.length, 0);
 
   const ambiguous = await run(
-    [rec({ account: "EXT-2", amount: 100, sec: 3600 }), rec({ account: "EXT-2", amount: 100, sec: 3650 })],
-    [rec({ account: "EXT-2", amount: 100, sec: 3900 })],
+    [rec({ account: "EXT-2", amount: 100, sec: 3600, company: "MC8" }), rec({ account: "EXT-2", amount: 100, sec: 3650, company: "MC8" })],
+    [rec({ account: "EXT-2", amount: 100, sec: 3900, company: "MC8" })],
     extended,
   );
-  eq("extended exact: มียอดซ้ำหลายผู้สมัครไม่เดาคู่", ambiguous.matched, 0);
-  ok("extended exact: ยอดซ้ำยังส่งตรวจ", ambiguous.exceptions.some((row) => row.type === "time_diff"), JSON.stringify(ambiguous.exceptions.map((row) => row.type)));
+  eq("extended exact: ยอดซ้ำรับผ่านตามคู่เวลาที่ใกล้สุด", ambiguous.matched, 1);
+  eq("extended exact: ไม่ส่ง time_diff ให้ Audit", ambiguous.exceptions.filter((row) => row.type === "time_diff").length, 0);
 })();
 
 /* ================= 5) reconcile: amount_diff ================= */
@@ -207,6 +207,16 @@ await (async function () {
   const r = await run([rec({ account: "SCB-2", amount: 100, sec: 3600 })], [rec({ account: "SCB-2", amount: 105, sec: 3610 })]);
   eq("amount_diff: ชนิด", r.exceptions[0]?.type, "amount_diff");
   eq("amount_diff: ส่วนต่างยอด", r.exceptions[0]?.amountDiff, 5);
+})();
+
+/* Statement ที่ระบบรับเข้าและผูกบริษัทจากไฟล์แล้วเป็นแหล่งข้อมูลที่เชื่อถือได้
+   ไม่ควรถูกเปิด wrong_account เพียงเพราะทะเบียนเดิมยังไม่มีเลขบัญชี */
+await (async function () {
+  const stm = rec({ account: "5034674009", amount: 500, sec: 3600, source_file: "MR9_STM_SCB.pdf", company: "MR9" });
+  const bo = rec({ account: "5034674009", amount: 500, sec: 3605, company: "MR9" });
+  const r = await run([stm], [bo], settings, [{ id: "1998218930", bank: "KBANK", company: "MR9" }]);
+  eq("statement source: จับคู่สำเร็จ", r.matched, 1);
+  eq("statement source: ไม่สร้าง wrong_account เท็จ", r.exceptions.filter((x) => x.type === "wrong_account").length, 0);
 })();
 
 /* ================= 6) reconcile: missing_bo ================= */

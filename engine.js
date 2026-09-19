@@ -444,6 +444,11 @@ const Engine = (() => {
     const exceptions = [];
     const stmLeft = [];
     let timeDiffCount = 0;
+    const timeVarianceAutoPassCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
+    const auditCompanyOf = (r) => {
+      const raw = String(r && (r.company || r.subco) || "").trim().toUpperCase();
+      return raw === "3X" ? "3XB" : raw;
+    };
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
     const sameCompany = (s, b) => String(s.company || s.subco || "").toUpperCase() === String(b.company || b.subco || "").toUpperCase();
@@ -587,7 +592,9 @@ const Engine = (() => {
       "จับคู่ยอดตรงที่ไม่กำกวม",
     );
 
-    // pass 1c: รายการที่ยังไม่แม็ป — หา BO บัญชี+ยอด+ทิศทางเดียวกันที่ใกล้สุด (นอกเกณฑ์แต่ <1 ชม.) = ต่างเวลา
+    // pass 1c: รายการที่ยังไม่แม็ป — หากบัญชี+ยอด+ทิศทางตรงและห่างไม่เกิน 1 ชม.
+    // ถือว่าจับคู่ได้ตามนโยบาย Audit ของ 5 บริษัท เก็บหลักฐานเวลาคลาดไว้ใน match evidence
+    // แต่ไม่เปิด time_diff ให้ Audit ต้องยืนยันทีละรายการ
     await chunked(
       stmFar,
       10000,
@@ -609,7 +616,12 @@ const Engine = (() => {
         }
         if (best >= 0 && bestDt < 3600) {
           boUsed[best] = 1;
-          exceptions.push(mkException("time_diff", s, boRecords[best], bestDt));
+          const b = boRecords[best];
+          if (timeVarianceAutoPassCompanies.has(auditCompanyOf(s))) {
+            matched.push({ s, b, dt: bestDt, timeVarianceAccepted: true });
+          } else {
+            exceptions.push(mkException("time_diff", s, b, bestDt));
+          }
         } else {
           stmLeft.push(s);
         }
@@ -693,7 +705,10 @@ const Engine = (() => {
       /* ไฟล์ PM ใช้ชื่อ provider (เช่น AUTOPEER/CYBERPLUS) เป็น match key ไม่ใช่
          เลขบัญชีธนาคารบริษัท จึงห้ามนำ provider ไปเทียบกับ master account list
          มิฉะนั้นคู่ที่ยอด/เวลา/ช่องทางตรงกันจะถูกสร้าง wrong_account เท็จเกือบทั้งหมด */
-      if (masterSet.size && !truth && !m.s.isPmChannel) {
+      const sourceAssignedToCompany = !m.s.isPmChannel
+        && !!String(m.s.source_file_id || m.s.source_file || "").trim()
+        && sameCompany(m.s, m.b);
+      if (masterSet.size && !truth && !m.s.isPmChannel && !sourceAssignedToCompany) {
         exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
         return;
       }
@@ -763,7 +778,8 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : "legacy-rule",
+        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
         customer: {
           bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "" },

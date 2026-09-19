@@ -13,12 +13,14 @@
   function textOf(row){return [row?.type_name,row?.typeName,row?.detail,row?.reason].filter(Boolean).join(' ');}
   function isInformational(row){
     if(!companySet.has(companyOf(row)))return false;
-    if(typeOf(row)==='large_amount')return true;
+    /* ตามขั้นตอน Audit ของ 5 บริษัท: ยอดตรงแต่เวลาคลาดเป็นผลการจับคู่ที่ระบบ
+       รับผ่านและเก็บหลักฐานไว้ ไม่ใช่เคสที่ต้องให้ Audit ยืนยันทีละรายการ */
+    if(['large_amount','time_diff'].includes(typeOf(row)))return true;
     return /ยอดสูงผิดปกติ\s*(?:ต้องมีเอกสารกำกับ|ต้องแนบเอกสารอนุมัติ)|ต้องแนบเอกสารอนุมัติ/.test(textOf(row));
   }
   function isActionable(row){return !isInformational(row);}
   function filter(rows){return (Array.isArray(rows)?rows:[]).filter(isActionable);}
-  const api=Object.freeze({version:'xb-actionable-audit-v1',COMPANIES,companyOf,typeOf,isInformational,isActionable,filter});
+  const api=Object.freeze({version:'xb-actionable-audit-v2',COMPANIES,companyOf,typeOf,isInformational,isActionable,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
