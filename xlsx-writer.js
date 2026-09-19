@@ -112,31 +112,63 @@ const XlsxWriter = (() => {
   const safeSheetName = (n, i) => (String(n).replace(/[:\\/?*[\]]/g, " ").trim() || "Sheet" + (i + 1)).slice(0, 31);
 
   /* ---------- styles ---------- */
-  /* 0 = ปกติ, 1 = หัวตาราง (หนา พื้นฟ้า), 2 = ตัวเลขทศนิยม 2, 3 = ชื่อรายงาน, 4 = คำอธิบาย, 5 = จำนวนเต็ม */
+  /* รองรับสีสถานะทั้งแถวสำหรับเอกสาร Audit โดยยังคง style เดิม 0-5 */
   const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="#,##0"/></numFmts>
-<fonts count="4">
+<fonts count="8">
 <font><sz val="11"/><name val="Tahoma"/></font>
 <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Tahoma"/></font>
 <font><b/><sz val="14"/><color rgb="FF0F2238"/><name val="Tahoma"/></font>
 <font><sz val="10"/><color rgb="FF63748A"/><name val="Tahoma"/></font>
+<font><b/><sz val="11"/><color rgb="FF375623"/><name val="Tahoma"/></font>
+<font><sz val="11"/><color rgb="FF7F6000"/><name val="Tahoma"/></font>
+<font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Tahoma"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Tahoma"/></font>
 </fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
-<fill><patternFill patternType="solid"><fgColor rgb="FF0066CC"/><bgColor indexed="64"/></patternFill></fill></fills>
-<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>
-<border><left style="thin"><color rgb="FFD9E8F7"/></left><right style="thin"><color rgb="FFD9E8F7"/></right><top style="thin"><color rgb="FFD9E8F7"/></top><bottom style="thin"><color rgb="FFD9E8F7"/></bottom><diagonal/></border></borders>
+<fills count="7"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF0066CC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFCE4D6"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF203864"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="3"><border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFD9E8F7"/></left><right style="thin"><color rgb="FFD9E8F7"/></right><top style="thin"><color rgb="FFD9E8F7"/></top><bottom style="thin"><color rgb="FFD9E8F7"/></bottom><diagonal/></border>
+<border><left/><right/><top style="double"><color rgb="FF203864"/></top><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="6">
+<cellXfs count="19">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="165" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="164" fontId="4" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="5" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="165" fontId="5" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="164" fontId="5" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="6" fillId="5" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+<xf numFmtId="165" fontId="6" fillId="5" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="164" fontId="6" fillId="5" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="7" fillId="6" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="165" fontId="7" fillId="6" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1"/>
+<xf numFmtId="164" fontId="7" fillId="6" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1"/>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
+
+  function styleFor(value, tone) {
+    const numeric = typeof value === "number" && Number.isFinite(value);
+    const offset = numeric ? (Number.isInteger(value) ? 1 : 2) : 0;
+    if (tone === "success") return 6 + offset;
+    if (tone === "warning") return 9 + offset;
+    if (tone === "error") return 12 + offset;
+    if (tone === "total") return 15 + offset;
+    return numeric ? (Number.isInteger(value) ? 5 : 2) : 0;
+  }
 
   /* ---------- worksheet ---------- */
   function sheetXml(sheet) {
@@ -150,18 +182,30 @@ const XlsxWriter = (() => {
       push([]);
     }
     const headerRowIndex = r + 1;
-    push(sheet.headers.map((hh) => ({ v: hh, s: 1 })));
+    push(sheet.headers.map((hh) => ({ v: hh, s: sheet.headerStyle === "template" ? 18 : 1 })));
 
-    sheet.rows.forEach((row) => {
+    const dataRows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    dataRows.forEach((row, rowIndex) => {
       push(
-        row.map((v) => {
+        row.map((v, cellIndex) => {
+          const tone = sheet.cellTones?.[rowIndex]?.[cellIndex] || sheet.rowTones?.[rowIndex] || "";
           if (typeof v === "number" && Number.isFinite(v)) {
-            return { v, n: true, s: Number.isInteger(v) ? 5 : 2 };
+            return { v, n: true, s: styleFor(v, tone) };
           }
-          return { v: v ?? "" };
+          return { v: v ?? "", s: styleFor(v, tone) };
         }),
       );
     });
+    const dataLastRow = headerRowIndex + dataRows.length;
+    if (Array.isArray(sheet.footerRows) && sheet.footerRows.length) {
+      push([]);
+      sheet.footerRows.forEach((row, rowIndex) => push(row.map((v) => {
+        const tone = sheet.footerTones?.[rowIndex] || "total";
+        return typeof v === "number" && Number.isFinite(v)
+          ? { v, n: true, s: styleFor(v, tone) }
+          : { v: v ?? "", s: styleFor(v, tone) };
+      })));
+    }
 
     const body = rows
       .map((row) => {
@@ -182,8 +226,8 @@ const XlsxWriter = (() => {
     const cols = `<cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>`;
 
     const lastCol = colName(sheet.headers.length - 1);
-    const lastRow = headerRowIndex + sheet.rows.length;
-    const filter = sheet.rows.length ? `<autoFilter ref="A${headerRowIndex}:${lastCol}${lastRow}"/>` : "";
+    const lastRow = rows.length;
+    const filter = dataRows.length ? `<autoFilter ref="A${headerRowIndex}:${lastCol}${dataLastRow}"/>` : "";
     const pane = `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${headerRowIndex}" topLeftCell="A${headerRowIndex + 1}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${headerRowIndex + 1}" sqref="A${headerRowIndex + 1}"/></sheetView></sheetViews>`;
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -242,3 +286,5 @@ ${named.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openx
 
   return { build, colName };
 })();
+
+if (typeof module !== "undefined") module.exports = XlsxWriter;

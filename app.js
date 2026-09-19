@@ -861,6 +861,11 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   onDate: date => { state.filters.date = date; },
   onCase: (row,company) => { if(row) go('exceptions', {filters:{date:row.business_date,from:row.business_date,to:row.business_date,preset:'day',company:row.company||company},exFilter:{q:row.code||'',type:'ALL',severity:'ALL',status:'ALL',sla:false}}); },
   onFile: (file,date,company) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||company,date,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
+  exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
+  onExported: ({filename,company,date,rows,sheets,complete}) => {
+    logAction('export', 'audit_reconciliation_workbook', `${company}|${date}`, `Excel ${sheets} ชีต · ${rows} แถว · ${complete?'ข้อมูลรอบครบ':'ข้อมูลรอบยังไม่ครบ'}`);
+    toast(`ดาวน์โหลด ${filename} แล้ว (${sheets} ชีต · ${num(rows)} แถว)`);
+  },
 });
 function showLoginGate(message) {
   $("#appShell").hidden = true;
