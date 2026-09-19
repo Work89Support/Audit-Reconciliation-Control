@@ -103,6 +103,44 @@ const ROUTES = [
 const ROUTE_MAP = {};
 ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
+/* โครงสร้างเครือบริษัทและกฎตรวจที่ Audit อนุมัติแล้ว
+   - เครือ XB ใช้งานจริงกับ 5 บริษัท
+   - อีก 2 เครือแสดงให้เห็นขอบเขต แต่ห้ามยืมกฎ XB ไปใช้จนกว่าจะได้รับเงื่อนไข */
+const AUDIT_COMPANY_GROUPS = Object.freeze([
+  {
+    id: "XB",
+    name: "เครือ XB",
+    status: "active",
+    companies: ["3XB", "MC8", "MR9", "PS8", "UR9"],
+    rules: [
+      "จับคู่ STM / PM กับ BO ภายในบริษัท บัญชี/Provider ทิศทาง และยอดเดียวกัน โดยไม่ข้ามบริษัท",
+      "PM ฝาก: ใช้ paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime · PM ถอน: ใช้ updateTime",
+      "ยอดฝากทุก Provider ใช้ realAmount · ยอดถอน AT/M ใช้ transferredAmount · ยอดถอน AZ/CP ใช้ amount",
+      "รายการข้ามวันเปิดเป็น “ค้างรอข้อมูลข้ามวัน”; เมื่อวันถัดไปจับคู่แบบ 1:1 ได้จึงปิดงานค้างและเก็บ Audit Log",
+      "ยอดสูงและเวลาคลาดเคลื่อนที่จับคู่ได้ตามกฎเป็นสถานะแจ้งผล ไม่ส่งให้ Audit ยืนยัน; คู่ซ้ำหรือคลุมเครือจะไม่ปิดอัตโนมัติ",
+    ],
+  },
+  { id: "SYS123", name: "เครือ 123", status: "pending", companies: ["AT4", "FR8", "SK8"], rules: [] },
+  { id: "SYS7M", name: "เครือ 7M", status: "pending", companies: ["UFABET7M"], rules: [] },
+]);
+
+function auditCompanyGroupOf(company) {
+  const code = String(company || "").trim().toUpperCase();
+  return AUDIT_COMPANY_GROUPS.find((group) => group.companies.includes(code));
+}
+
+function groupedCompanyOptions(codes, selected) {
+  const available = new Set((codes || []).map((code) => String(code || "").trim().toUpperCase()).filter(Boolean));
+  const groups = AUDIT_COMPANY_GROUPS.map((group) => {
+    const members = group.companies.filter((code) => available.has(code));
+    if (!members.length) return "";
+    return `<optgroup label="${h(group.name)}${group.status === "pending" ? " · รอเงื่อนไข" : ""}">${members.map((code) => `<option value="${h(code)}" ${code === selected ? "selected" : ""}>${h(code)}</option>`).join("")}</optgroup>`;
+  }).join("");
+  const grouped = new Set(AUDIT_COMPANY_GROUPS.flatMap((group) => group.companies));
+  const ungrouped = [...available].filter((code) => !grouped.has(code)).sort((a, b) => a.localeCompare(b, "th"));
+  return groups + (ungrouped.length ? `<optgroup label="ยังไม่จัดเครือ">${ungrouped.map((code) => `<option value="${h(code)}" ${code === selected ? "selected" : ""}>${h(code)}</option>`).join("")}</optgroup>` : "");
+}
+
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
@@ -1407,6 +1445,11 @@ function renderLiveDashboard(root) {
     const groups = Array.isArray(row.missing_groups) ? row.missing_groups.flat(2) : [];
     return groups.length ? [...new Set(groups)].map((kind) => LIVE_KIND_LABEL[kind] || kind).join(", ") : "ครบ";
   };
+  const companyByCode = new Map(companies.map((company) => [String(company.company || "").toUpperCase(), company]));
+  const latestCompanyDate = (codes) => codes.reduce((latest, code) => {
+    const value = companyByCode.get(code)?.latest || "";
+    return value > latest ? value : latest;
+  }, state.filters.to || DEFAULT_WORK_DATE);
   const activeStart = liveOverviewState.settings?.operational_start_date || OPERATING_START_DATE;
   const historyCutoff = liveOverviewState.settings?.history_cutoff_date || "2026-08-26";
   const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
@@ -1490,15 +1533,25 @@ function renderLiveDashboard(root) {
       <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
     </section>
 
-    <section class="grid-2 live-main-grid">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">บริษัทและระบบ</p><h2>แยกงานตามบริษัท</h2></div><span class="health ${needsReview + waiting ? "attention" : "ok"}">${num(companies.length)} กลุ่ม</span></div>
-        <div class="company-overview-grid">
-          ${companies.map((c) => `<article class="company-overview-card action-card" data-summary-company="${h(c.company)}" data-summary-date="${h(c.latest)}" role="link" tabindex="0">
-            <div class="company-card-head"><div><strong>${h(c.company)}</strong><span>${h(c.system)}</span></div><small>ล่าสุด ${h(c.latest)}</small></div>
-            <div class="company-metrics"><span class="ok">สำเร็จ <b>${num(c.completed)}</b></span><span class="warn">ตรวจ <b>${num(c.review)}</b></span><span class="bad">รอ/พลาด <b>${num(c.waiting + c.error)}</b></span><span>ไฟล์ <b>${num(c.files)}</b></span></div>
-            <div class="kind-chips">${[...c.kinds].slice(0, 6).map((kind) => `<i>${h(LIVE_KIND_LABEL[kind] || kind)}</i>`).join("") || "<i>ยังไม่พบชนิดไฟล์</i>"}</div>
-          </article>`).join("") || `<p class="empty-box">ไม่มีข้อมูลบริษัทในช่วงที่เลือก</p>`}
+    <section class="grid-2 live-main-grid company-rule-layout">
+      <div class="panel company-group-panel">
+        <div class="panel-heading"><div><p class="eyebrow">บริษัทและระบบ</p><h2>3 เครือบริษัท · แยกบริษัทย่อย</h2><small class="head-sub">กดชื่อบริษัทเพื่อเปิดสรุปรายวันของบริษัทนั้น</small></div><span class="health ${needsReview + waiting ? "attention" : "ok"}">${num(AUDIT_COMPANY_GROUPS.length)} เครือ</span></div>
+        <div class="company-group-grid">
+          ${AUDIT_COMPANY_GROUPS.map((group) => {
+            const members = group.companies.map((code) => ({ code, data: companyByCode.get(code) }));
+            const totals = members.reduce((acc, member) => {
+              acc.completed += Number(member.data?.completed || 0);
+              acc.review += Number(member.data?.review || 0);
+              acc.waiting += Number(member.data?.waiting || 0) + Number(member.data?.error || 0);
+              return acc;
+            }, { completed: 0, review: 0, waiting: 0 });
+            return `<article class="company-group-card ${group.status === "pending" ? "pending" : "active"}">
+              <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(group.companies.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
+              <div class="company-subcompany-list">${members.map(({ code, data }) => `<button type="button" class="company-subcompany ${data ? "has-data" : ""}" data-summary-company="${h(code)}" data-summary-date="${h(data?.latest || latestCompanyDate(group.companies))}"><span><b>${h(code)}</b><small>${data ? `ล่าสุด ${h(data.latest)}` : "ยังไม่พบงานในช่วงที่เลือก"}</small></span><i>${data ? `สำเร็จ ${num(data.completed)} · ตรวจ ${num(data.review)} · รอ ${num(data.waiting + data.error)}` : "เปิดดูบริษัท"}</i></button>`).join("")}</div>
+              ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของเครือ XB</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับทั้ง 5 บริษัทเท่านั้น · หากหลักฐานไม่ครบหรือมีหลายคู่ ระบบต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของเครือ XB แทน</span></div>`}
+              <div class="company-group-totals"><span class="ok">สำเร็จ <b>${num(totals.completed)}</b></span><span class="warn">ตรวจ <b>${num(totals.review)}</b></span><span class="bad">รอ/พลาด <b>${num(totals.waiting)}</b></span></div>
+            </article>`;
+          }).join("")}
         </div>
       </div>
       <div class="panel">
@@ -2029,7 +2082,7 @@ function renderDailyCompanySummary(root) {
   const companies = dailyCompanyOptions();
   const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
   state.dailySummary.company = company;
-  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>บริษัท<select id="dailySummaryCompany">${companies.map((code) => `<option value="${h(code)}" ${code === company ? "selected" : ""}>${h(code)}</option>`).join("")}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
   if (dailyCompanyState.loading && !dailyCompanyState.batches) {
     root.innerHTML = controls + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
   } else if (dailyCompanyState.error) {

@@ -483,6 +483,44 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .company-metrics .bad { background: #fff0f0; }
 .company-card-action { display: flex; justify-content: flex-end; gap: 5px; color: var(--blue); font-size: 12px; font-weight: 700; }
 .company-overview-card:focus-visible { outline: 3px solid rgba(15,111,214,.25); outline-offset: 2px; }
+.company-rule-layout { grid-template-columns: minmax(0, 1.55fr) minmax(300px, .75fr); }
+.company-group-panel { min-width: 0; }
+.company-group-grid { display: grid; gap: 14px; }
+.company-group-card {
+  padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdff;
+  box-shadow: 0 3px 10px rgba(25, 66, 110, .05);
+}
+.company-group-card.active { border-color: #9fc8ee; background: linear-gradient(145deg, #f6fbff, #fff); }
+.company-group-card.pending { background: #f8fafc; }
+.company-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.company-group-head strong { display: block; color: #173b61; font-size: 19px; }
+.company-group-head span:not(.badge) { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.company-subcompany-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 7px; }
+.company-subcompany {
+  display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 0; padding: 9px 10px;
+  border: 1px solid var(--line-soft); border-radius: 9px; background: #fff; color: var(--text); text-align: left;
+  font: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.company-subcompany:hover { border-color: #7eb4e8; box-shadow: 0 4px 12px rgba(16, 69, 125, .1); transform: translateY(-1px); }
+.company-subcompany:focus-visible { outline: 3px solid rgba(15,111,214,.25); outline-offset: 2px; }
+.company-subcompany span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.company-subcompany b { color: #153d66; font-size: 15px; }
+.company-subcompany small { color: var(--muted); font-size: 10px; }
+.company-subcompany i { color: var(--muted); font-size: 10.5px; font-style: normal; }
+.company-subcompany.has-data { border-left: 3px solid var(--blue); }
+.company-rule-details { margin-top: 12px; border: 1px solid #c8ddf2; border-radius: 10px; background: #f4f9ff; overflow: hidden; }
+.company-rule-details summary { padding: 9px 11px; color: #174e83; font-size: 13px; font-weight: 700; cursor: pointer; }
+.company-rule-details ol { display: grid; gap: 6px; margin: 0; padding: 3px 16px 10px 32px; color: #344d66; font-size: 12px; line-height: 1.55; }
+.company-rule-details p { margin: 0; padding: 8px 11px; border-top: 1px solid #d6e6f5; background: #fff; color: #6c7e90; font-size: 11px; }
+.company-group-pending { display: grid; gap: 2px; margin-top: 10px; padding: 10px 11px; border: 1px dashed #cbd5e1; border-radius: 9px; background: #fff; }
+.company-group-pending b { color: #475569; font-size: 12px; }
+.company-group-pending span { color: var(--muted); font-size: 11px; }
+.company-group-totals { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.company-group-totals span { padding: 5px 8px; border-radius: 7px; background: #edf3f8; color: var(--muted); font-size: 10.5px; }
+.company-group-totals .ok { background: #eaf8ef; }
+.company-group-totals .warn { background: #fff5df; }
+.company-group-totals .bad { background: #fff0f0; }
+.company-group-totals b { color: var(--text); font-size: 12px; }
 .kind-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .kind-chips i { padding: 3px 7px; border-radius: 999px; background: #edf4fc; color: #315d88; font-size: 10px; font-style: normal; }
 .behavior-list { display: grid; gap: 8px; }
@@ -495,6 +533,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .exception-summary b { color: var(--text); }
 .live-table td { vertical-align: top; }
 .spark { flex: 0 0 auto; opacity: .9; }
+@media (max-width: 1120px) { .company-rule-layout { grid-template-columns: 1fr; } }
+@media (max-width: 620px) {
+  .company-subcompany-list { grid-template-columns: 1fr; }
+  .company-subcompany span { align-items: flex-start; flex-direction: column; gap: 2px; }
+}
 
 /* ---------------- pipeline ---------------- */
 .pipeline { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 10px; }
