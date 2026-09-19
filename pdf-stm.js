@@ -378,6 +378,51 @@ const PdfStm = (() => {
     return rows;
   }
 
+  // Google Drive OCR can return SCB pages in column order instead of row order:
+  // all transaction prefixes, then opening/closing balances, then descriptions.
+  // Rebuild rows only when every column has an exact one-to-one count. Any
+  // mismatch keeps the original text so the Quality Gate fails closed.
+  function reconstructScbOcrColumns(text) {
+    const source = String(text || "").replace(/\r\n?/g, "\n");
+    if (!/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(source)
+      || !/Debit\/Credit/i.test(source)
+      || !/Balance\/Baht/i.test(source)
+      || !/Description/i.test(source)) return source;
+
+    const pagePattern = /[\s\S]*?หน้า\s+\d+\s*\/\s*\d+/g;
+    const pageMatches = source.match(pagePattern);
+    if (!pageMatches || !pageMatches.length) return source;
+    const consumed = pageMatches.join("").length;
+    if (source.slice(consumed).trim()) return source;
+
+    const txPattern = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3})\s+([A-Z/]+)\s+(-?[\d,]+\.\d{2})/g;
+    const descPattern = /^(?:รับโอนจาก|โอนจาก|โอนไป|ดอกเบี้ย|ค่าธรรมเนียม|ปรับปรุง|Transfer\s+(?:from|to)\b)/i;
+    let rebuiltAny = false;
+    const rebuiltPages = pageMatches.map((page) => {
+      const normalizedLines = page.split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+      const normalized = normalizedLines.join("\n");
+      const transactions = [...normalized.matchAll(txPattern)];
+      if (!transactions.length) return page;
+
+      const firstTx = transactions[0].index;
+      const lastTx = transactions[transactions.length - 1];
+      const afterTransactions = normalized.slice(lastTx.index + lastTx[0].length);
+      const descriptionStart = afterTransactions.search(/(?:^|\n)(?:รับโอนจาก|โอนจาก|โอนไป|ดอกเบี้ย|ค่าธรรมเนียม|ปรับปรุง|Transfer\s+(?:from|to)\b)/im);
+      if (descriptionStart < 0) return page;
+
+      const balanceSegment = afterTransactions.slice(0, descriptionStart);
+      const balances = balanceSegment.match(/-?[\d,]+\.\d{2}/g) || [];
+      const descriptions = afterTransactions.slice(descriptionStart).split("\n").filter((line) => descPattern.test(line));
+      if (balances.length !== transactions.length + 1 || descriptions.length !== transactions.length) return page;
+
+      const rows = transactions.map((match, index) => `${match[1]} ${match[2]} ${match[3]} ${match[4]} ${match[5]} ${balances[index + 1]} ${descriptions[index]}`);
+      const footer = (normalized.match(/หน้า\s+\d+\s*\/\s*\d+\s*$/) || [""])[0];
+      rebuiltAny = true;
+      return [normalized.slice(0, firstTx).trim(), ...rows, footer].filter(Boolean).join("\n");
+    });
+    return rebuiltAny ? rebuiltPages.join("\f") : source;
+  }
+
   // Native n8n and OCR text share the same bank parser. Preserve explicit page
   // breaks, repair only structural line wraps; never replace ambiguous digits.
   function pagesFromText(text) {
@@ -387,7 +432,7 @@ const PdfStm = (() => {
     // boundary only at a full transaction timestamp + code + channel marker;
     // statement periods and free-text dates therefore remain untouched.
     const transactionBoundary = /([^\d\r\n\f])(?=\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}\s+(?:X[0-9B]|[A-Z]{1,3})\s+[A-Z/]+\s+)/g;
-    const normalized = String(text || "").replace(/\u0000/g, "").replace(transactionBoundary, "$1\n");
+    const normalized = reconstructScbOcrColumns(String(text || "").replace(/\u0000/g, "")).replace(transactionBoundary, "$1\n");
     return normalized.split("\f").map((page) => {
       const lines = page.split(/\r?\n/).map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
       const joined = [];
@@ -531,7 +576,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, parseText, pagesFromText, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
+  return { parse, parseText, pagesFromText, reconstructScbOcrColumns, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;

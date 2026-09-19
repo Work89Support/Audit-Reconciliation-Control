@@ -187,6 +187,29 @@ eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
 const collapsedScb = await P.parseText("3XB_STM_SCB.pdf", scbText.replace(/\n/g, " "), "2026-09-04");
 eq("SCB collapsed text: คืนขอบเขตรายการที่ n8n ยุบ", collapsedScb.records.length, 2);
 eq("SCB collapsed text: quality ผ่าน", collapsedScb.quality.complete, true);
+const columnScb = `ธนาคารไทยพาณิชย์ จำกัด (มหาชน)
+THE SIAM COMMERCIAL BANK PUBLIC COMPANY LIMITED
+Account No. 1234567890
+Debit/Credit
+Balance/Baht
+Description
+ยอดเงินคงเหลือยกมา (BALANCE BROUGHT FORWARD)
+04/09/26 10:00 X1 ENET 100.00 04/09/26 10:01 X2 ENET 50.00
+1,000.00
+1,100.00
+1,050.00
+รับโอนจาก KBANK x1111 TEST A
+โอนไป SCB x2222 TEST B
+หน้า 1 / 1`;
+const reconstructedScb = await P.parseText("3XB_STM_SCB.pdf", columnScb, "2026-09-04");
+eq("SCB column OCR: ประกอบ 3 คอลัมน์กลับเป็น 2 รายการ", reconstructedScb.records.length, 2);
+eq("SCB column OCR: quality ผ่านเมื่อจำนวนทุกคอลัมน์ตรงกัน", reconstructedScb.quality.complete, true);
+eq("SCB column OCR: คงยอดรายการแรก", reconstructedScb.records[0]?.amount, 100);
+eq("SCB column OCR: คงยอดเงินคงเหลือรายการแรก", reconstructedScb.records[0]?.balance, 1100);
+eq("SCB column OCR: ผูกคำอธิบายตามลำดับ", reconstructedScb.records[1]?.desc, "โอนไป SCB x2222 TEST B");
+const incompleteColumnScb = await P.parseText("3XB_STM_SCB.pdf", columnScb.replace("โอนไป SCB x2222 TEST B\n", ""), "2026-09-04");
+eq("SCB column OCR: จำนวนคอลัมน์ไม่ตรงต้องคงข้อความต้นฉบับ", P.reconstructScbOcrColumns(columnScb.replace("โอนไป SCB x2222 TEST B\n", "")), columnScb.replace("โอนไป SCB x2222 TEST B\n", ""));
+eq("SCB column OCR: จำนวนคอลัมน์ไม่ตรงต้องไม่ผ่าน Quality Gate", incompleteColumnScb.quality.complete, false);
 const wrappedScb = await P.parseText("SCB.pdf", scbText.replace("100.00 1,100.00", "100.00\n1,100.00"), "2026-09-04");
 eq("SCB wrapped: ต่อคอลัมน์ที่ตัดบรรทัด", wrappedScb.records.length, 2);
 eq("SCB wrapped: ยอดไม่เปลี่ยน", wrappedScb.records[0].amount, 100);
