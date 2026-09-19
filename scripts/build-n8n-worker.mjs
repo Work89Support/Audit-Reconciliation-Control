@@ -147,9 +147,12 @@ if(!stm.length){
   result=await Engine.reconcile(stm,bo,{...${settings},asOf:Date.now()},Registry.ACCOUNTS.map(a=>({id:a.account,bank:a.bank,company:a.subco,type:a.type,active:true})),null);
 }
 const matchedBoKeys=new Set(result.matchedBoKeys||[]);
-const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!(e.type==='cross_day'&&e.sourceKey&&matchedBoKeys.has(e.sourceKey)));
+const auditCompanies=new Set(['3XB','MC8','MR9','PS8','UR9']);
+const auditCompany=String(job.company||'').trim().toUpperCase()==='3X'?'3XB':String(job.company||'').trim().toUpperCase();
+const isInformationalAuditException=e=>auditCompanies.has(auditCompany)&&String(e?.type||'').trim().toLowerCase().replace(/[\\s-]+/g,'_')==='large_amount';
+const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!isInformationalAuditException(e)&&!(e.type==='cross_day'&&e.sourceKey&&matchedBoKeys.has(e.sourceKey)));
 const best=new Map();
-for(const e of (result.exceptions||[]).concat(resolvedRuleExceptions)){
+for(const e of (result.exceptions||[]).concat(resolvedRuleExceptions).filter(e=>!isInformationalAuditException(e))){
   const k=[e.type,e.account,e.time,e.systemAmount??''].join('|');
   const old=best.get(k); if(!old||(!old.detail&&e.detail)) best.set(k,e);
 }
@@ -164,7 +167,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.2-xb-provider-columns',xb_provider_column_policy:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.3-audit-visible-cases',xb_provider_column_policy:true,audit_visible_case_policy:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
