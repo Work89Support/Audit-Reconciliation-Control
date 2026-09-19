@@ -189,7 +189,7 @@
     const labels={matched:'ระบบจับคู่แล้ว',advisory:'แจ้งข้อมูล · ไม่ต้องยืนยัน',pending_next_day:'ค้างรอข้อมูลข้ามวัน',review:'รอตรวจ / ชี้แจง',closed:'ปิดเคสแล้ว'};
     function isComplete(all){
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,s=summarize(all);
-      if(!data?.complete||data?.run?.jobStatus!=='completed'||evidence<Number(data?.run?.matched||0))return false;
+      if(!data?.complete||!['completed','needs_review'].includes(data?.run?.jobStatus)||evidence<Number(data?.run?.matched||0))return false;
       if(Number.isFinite(Number(data.run.stm_count))&&s.pmCount!==Number(data.run.stm_count))return false;
       if(Number.isFinite(Number(data.run.bo_count))&&s.boCount!==Number(data.run.bo_count))return false;
       return true;
