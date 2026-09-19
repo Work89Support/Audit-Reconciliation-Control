@@ -771,7 +771,7 @@ const Engine = (() => {
         },
         boAmount: m.b.amount,
         stmAmount: m.s.amount,
-        stm: { fileId: m.s.source_file_id || null, checksum: m.s.source_checksum || null, row: m.s.rowNo ?? null, date: m.s.date, sec: m.s.noTime ? null : m.s.sec, noTime: !!m.s.noTime },
+        stm: { fileId: m.s.source_file_id || null, checksum: m.s.source_checksum || null, row: m.s.rowNo ?? null, date: m.s.date, sec: m.s.noTime ? null : m.s.sec, noTime: !!m.s.noTime, timeColumn: m.s.timeColumn || null, amountColumn: m.s.amountColumn || null },
         bo: { fileId: m.b.source_file_id || null, checksum: m.b.source_checksum || null, row: m.b.rowNo ?? null, date: m.b.date, sec: m.b.noTime ? null : m.b.sec, noTime: !!m.b.noTime },
       })),
     };

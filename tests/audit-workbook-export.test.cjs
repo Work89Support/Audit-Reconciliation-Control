@@ -17,7 +17,7 @@ const row = (overrides = {}) => ({
   bo: { user: 'bo-user', reference: 'BO-1', account: '1111', bank: 'KBANK' },
   pm: { user: 'pm-user', reference: 'PM-1', account: '1111', bank: 'KBANK' },
   boAmount: 100, pmAmount: 100, boTime: '2026-09-15 10:00:00', pmTime: '2026-09-15 10:00:10',
-  reason: 'same amount and identity', boSource: { row: 2 }, pmSource: { row: 2 },
+  reason: 'same amount and identity', boSource: { row: 2 }, pmSource: { row: 2, timeColumn: 'paymentTime', amountColumn: 'realAmount' },
   ...overrides,
 });
 
@@ -56,6 +56,11 @@ assert.equal(atDeposit.rows[0][atDeposit.headers.indexOf('requestTime')], '', 'r
 assert.equal(atDeposit.rows[0][atDeposit.headers.indexOf('paymentTime')], '2026-09-15 10:00:10');
 assert.match(atDeposit.rows[0][atDeposit.headers.indexOf('เงื่อนไขที่จับคู่')], /เวลา PM: paymentTime/);
 assert.match(atDeposit.rows[0][atDeposit.headers.indexOf('เงื่อนไขที่จับคู่')], /ยอด PM: realAmount/);
+
+const expiredDeposit = live.buildAuditExportSheets([row({pmSource:{row:3,timeColumn:'expiredTime',amountColumn:'realAmount'}})], 'PS8', '2026-09-15', true, schema).find(sheet=>sheet.name==='AT ฝ');
+assert.equal(expiredDeposit.rows[0][expiredDeposit.headers.indexOf('paymentTime')], '');
+assert.equal(expiredDeposit.rows[0][expiredDeposit.headers.indexOf('expiredTime')], '2026-09-15 10:00:10');
+assert.match(expiredDeposit.rows[0][expiredDeposit.headers.indexOf('เงื่อนไขที่จับคู่')], /เวลา PM: expiredTime/);
 
 const cpDeposit = sheets.find(sheet => sheet.name === 'CP ฝ');
 assert.equal(cpDeposit.rows[0].at(-1), 'ค้างรอข้อมูลข้ามวัน · รอข้อมูลของวันถัดไป');

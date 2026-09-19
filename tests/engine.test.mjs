@@ -358,7 +358,7 @@ await (async () => {
 })();
 
 await (async () => {
-  const s=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200});
+  const s=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200,timeColumn:'paymentTime',amountColumn:'realAmount'});
   const b=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200,via:'เติมมือ',performedBy:'Meta X8',note:'รอเอกสาร'});
   const r=await run([s],[b]);
   const review=r.exceptions.find(e=>e.type==='manual_review');
@@ -371,6 +371,8 @@ await (async () => {
   eq('pair evidence: manual is not approved',r.matchEvidence[0].manualReview,true);
   eq('pair evidence: actual BO amount',r.matchEvidence[0].boAmount,123);
   eq('pair evidence: actual STM amount',r.matchEvidence[0].stmAmount,123);
+  eq('pair evidence: PM time source retained',r.matchEvidence[0].stm.timeColumn,'paymentTime');
+  eq('pair evidence: PM amount source retained',r.matchEvidence[0].stm.amountColumn,'realAmount');
   eq('pair evidence: missing name stays empty',r.matchEvidence[0].customer.stm.name,'');
 })();
 

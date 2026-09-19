@@ -39,9 +39,9 @@ const serial = (Date.UTC(2026, 8, 6, 18, 48, 49) - Date.UTC(1899, 11, 30)) / 864
 eq("Excel serial: original date, not US formatted date", Formats.stamp(String(serial)).date, "2026-09-06");
 eq("Excel serial: preserve seconds", Formats.stamp(serial).sec, 18 * 3600 + 48 * 60 + 49);
 const serialPm = Formats.parse("3X_PM_AUTOPEER_D_2026-09-06.xlsx", [
-  ["id", "amount", "provider", "status", "requestTime", "paymentTime"],
-  ["REF-1", 100, "autopeer", "successed", serial - 420 / 86400, serial],
-  ["REF-2", 200, "autopeer", "create_failed", serial, ""],
+  ["id", "amount", "realAmount", "provider", "status", "requestTime", "paymentTime"],
+  ["REF-1", 999, 100, "autopeer", "successed", serial - 420 / 86400, serial],
+  ["REF-2", 999, 200, "autopeer", "create_failed", serial, ""],
 ], "2026-09-06");
 eq("PM raw Excel: successful row retained", serialPm.records.length, 1);
 eq("PM raw Excel: payment time retained", serialPm.records[0].sec, 18 * 3600 + 48 * 60 + 49);

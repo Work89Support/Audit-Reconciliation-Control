@@ -96,7 +96,7 @@ const Formats = (() => {
      เช่น MYPAY(id,amount,provider,status,requestTime) · ATP(วันที่,Ref,Username,ธนาคาร,สร้างฝาก,โอนจริง,Status)
           CBY(วันที่ทำรายการ,Ref Id,จำนวนเงิน,สถานะ) · CBY ถอน(...,จำนวนเงิน,ค่าธรรมเนียม,รวมหักเงิน,สถานะ)
      ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
-  const PM_DATE = ["paymenttime", "updatetime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
+  const PM_DATE = ["paymenttime", "expiredtime", "updatetime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
   const PM_STATUS = ["status", "สถานะ"];
   const PM_AMT_DEP = ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
   const PM_AMT_WIT = ["transferredamount", "p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
@@ -162,6 +162,13 @@ const Formats = (() => {
       if (v !== "") return v;
     }
     return "";
+  };
+  const firstValue = (f, r, names) => {
+    for (const name of names) {
+      const value = val(f, r, name);
+      if (value !== "") return { value, column: name };
+    }
+    return { value: "", column: names[0] || "" };
   };
   const num = (v) => {
     const n = parseFloat(String(v ?? "").replace(/[,\s฿]/g, ""));
@@ -259,9 +266,11 @@ const Formats = (() => {
   }
 
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
+  const normalizeCompany = (value) => String(value || "").trim().toUpperCase() === "3X" ? "3XB" : String(value || "").trim().toUpperCase();
+  const XB_COMPANIES = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
   function companyOf(fileName) {
-    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
-    if (known) return known[1].toUpperCase();
+    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|3X|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
+    if (known) return normalizeCompany(known[1]);
     const m = String(fileName || "").replace(/_/g, " ").match(/\b([A-Z]{2,4}\d{0,2})\b/);
     return m ? m[1].toUpperCase() : null;
   }
@@ -281,11 +290,11 @@ const Formats = (() => {
     return hit ? hit[1] : null;
   }
   function subcoOf(fileName, title) {
-    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
-    if (known) return known[1].toUpperCase();
+    const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|3X|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
+    if (known) return normalizeCompany(known[1]);
     // จากหัวเรื่องในไฟล์ก่อน (เช่น UFABET7M -> 7M) แล้วค่อยจากชื่อไฟล์
     const t = String(title || "").replace(/^ufabet/i, "").trim().toUpperCase();
-    if (t) return t;
+    if (t) return normalizeCompany(t);
     const m = String(fileName || "").match(/\b([0-9]?[A-Z]{1,3}[0-9]?)\b/);
     return m ? m[1].toUpperCase() : "";
   }
@@ -429,6 +438,8 @@ const Formats = (() => {
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
+      const subco = normalizeCompany((meta && meta.subco) || company);
+      const xbPolicy = XB_COMPANIES.has(subco) && ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"].includes(provider);
       const partial = ["partial", "success-partial"].includes(status);
       // Partial payouts are a provider rule, not a company/date exception.
       // Unsupported partials must not pass the worker's "no successful rows" gate.
@@ -438,7 +449,10 @@ const Formats = (() => {
       if (!partial && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
-      const t = stamp(valAny(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]));
+      const timeSource = xbPolicy
+        ? firstValue(f, r, dir === "deposit" ? ["paymentTime", "expiredTime"] : ["updateTime"])
+        : firstValue(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]);
+      const t = stamp(timeSource.value);
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
       // Never use the requested amount or rounded Progress as a partial payout.
       const paidRaw = valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง"]);
@@ -447,8 +461,12 @@ const Formats = (() => {
         return drop("PARTIAL ไม่มียอดจ่ายจริงที่ตรวจสอบได้"), null;
       }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
-      const amount =
-        partial ? Number(paidText) : dir === "withdraw"
+      const amountColumn = xbPolicy
+        ? dir === "deposit" ? "realAmount" : ["AUTOPEER", "MYPAY"].includes(provider) ? "transferredAmount" : "amount"
+        : dir === "withdraw" ? "transferredAmount" : "realAmount";
+      const amount = xbPolicy
+        ? num(val(f, r, amountColumn))
+        : partial ? Number(paidText) : dir === "withdraw"
           ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
           : num(valAny(f, r, ["โอนจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
@@ -473,7 +491,9 @@ const Formats = (() => {
         isPmChannel: true,
         bank: "",
         company: provider,
-        subco: (meta && meta.subco) || "",
+        subco,
+        timeColumn: timeSource.column,
+        amountColumn,
         memberCode: valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
         custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า", "bankAccountNo", "เลขบัญชี"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
