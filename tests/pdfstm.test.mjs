@@ -184,6 +184,9 @@ const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1
 const completeScb = await P.parseText("3XB_STM_SCB.pdf", scbText, "2026-09-04");
 eq("SCB text: อ่านครบ 2 รายการ", completeScb.records.length, 2);
 eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
+const collapsedScb = await P.parseText("3XB_STM_SCB.pdf", scbText.replace(/\n/g, " "), "2026-09-04");
+eq("SCB collapsed text: คืนขอบเขตรายการที่ n8n ยุบ", collapsedScb.records.length, 2);
+eq("SCB collapsed text: quality ผ่าน", collapsedScb.quality.complete, true);
 const wrappedScb = await P.parseText("SCB.pdf", scbText.replace("100.00 1,100.00", "100.00\n1,100.00"), "2026-09-04");
 eq("SCB wrapped: ต่อคอลัมน์ที่ตัดบรรทัด", wrappedScb.records.length, 2);
 eq("SCB wrapped: ยอดไม่เปลี่ยน", wrappedScb.records[0].amount, 100);

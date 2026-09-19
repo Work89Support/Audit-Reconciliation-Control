@@ -382,7 +382,13 @@ const PdfStm = (() => {
   // breaks, repair only structural line wraps; never replace ambiguous digits.
   function pagesFromText(text) {
     const start = /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/;
-    return String(text || "").replace(/\u0000/g, "").split("\f").map((page) => {
+    // n8n's Extract From PDF node can collapse native PDF rows into one long
+    // text line even though the same document keeps rows in pdf.js. Restore a
+    // boundary only at a full transaction timestamp + code + channel marker;
+    // statement periods and free-text dates therefore remain untouched.
+    const transactionBoundary = /([^\d\r\n\f])(?=\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}\s+(?:X[0-9B]|[A-Z]{1,3})\s+[A-Z/]+\s+)/g;
+    const normalized = String(text || "").replace(/\u0000/g, "").replace(transactionBoundary, "$1\n");
+    return normalized.split("\f").map((page) => {
       const lines = page.split(/\r?\n/).map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
       const joined = [];
       for (let i = 0; i < lines.length; i++) {
