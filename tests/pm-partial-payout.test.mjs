@@ -3,8 +3,10 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const context = vm.createContext({ console });
 vm.runInContext(fs.readFileSync(new URL('../formats.js', import.meta.url), 'utf8') + '\nglobalThis.F = Formats;', context);
-const header = ['id','provider','status','paymentTime','amount','transferredAmount','P2P จ่าย','Progress','customerId'];
-const parse = (provider, direction, data) => context.F.parse(`MC8_PM_${provider}_${direction}_2026-09-11.xlsx`, [header, ...data], '2026-09-11');
+const header = ['id','provider','status','updateTime','amount','transferredAmount','P2P จ่าย','Progress','customerId'];
+// This suite covers legacy partial-payout fallbacks. XB-company strict source
+// columns are covered separately in xb-provider-columns.test.mjs.
+const parse = (provider, direction, data) => context.F.parse(`AT4_PM_${provider}_${direction}_2026-09-11.xlsx`, [header, ...data], '2026-09-11');
 const row = (status, requested, paid, p2p = '', progress = '') => ['W1','autopeer',status,'2026-09-11 21:15:00',requested,paid,p2p,progress,'3win21150'];
 for (const provider of ['AUTOPEER','ATP','MYPAY']) {
   const p = parse(provider, 'W', [row('PARTIAL',550,355), row('PARTIAL',195,161), row('SUCCESSED',100,100)]);
