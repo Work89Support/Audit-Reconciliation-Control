@@ -209,6 +209,34 @@ await (async function () {
   eq("amount_diff: ส่วนต่างยอด", r.exceptions[0]?.amountDiff, 5);
 })();
 
+/* คู่ยอดซ้ำที่ identity pass กันไว้ ต้องถูกลองจับใหม่ด้วย reciprocal nearest
+   ก่อนแตกเป็น missing_bo + missing_stm โดยยังห้ามเดาคู่เมื่อเวลาเสมอกันหรือข้อมูลลูกค้าขัดกัน */
+await (async function () {
+  const s1 = rec({ account: "RESCUE-1", amount: 100, sec: 3600, company: "MC8", custAccountLast4: "3723" });
+  const s2 = rec({ account: "RESCUE-1", amount: 100, sec: 7200, company: "MC8", custAccountLast4: "3723" });
+  const b1 = rec({ account: "RESCUE-1", amount: 100, sec: 3610, company: "MC8", custAccount: "0012343723" });
+  const b2 = rec({ account: "RESCUE-1", amount: 100, sec: 7210, company: "MC8", custAccount: "0012343723" });
+  const rescued = await run([s1, s2], [b1, b2]);
+  eq("rescue: reciprocal nearest จับคู่ซ้ำได้ครบ", rescued.matched, 2);
+  eq("rescue: ไม่เหลือ missing สองฝั่ง", rescued.exceptions.filter((e) => ["missing_bo", "missing_stm"].includes(e.type)).length, 0);
+  eq("rescue: เก็บวิธีจับคู่ในหลักฐาน", rescued.matchEvidence.filter((e) => e.method === "reciprocal-nearest-rescue").length, 2);
+
+  const tied = await run(
+    [rec({ account: "RESCUE-TIE", amount: 100, sec: 3600, company: "MC8", custAccountLast4: "1111" })],
+    [
+      rec({ account: "RESCUE-TIE", amount: 100, sec: 3590, company: "MC8", custAccount: "0000001111" }),
+      rec({ account: "RESCUE-TIE", amount: 100, sec: 3610, company: "MC8", custAccount: "0000001111" }),
+    ],
+  );
+  eq("rescue: เวลาห่างเท่ากันไม่เดาคู่", tied.matched, 0);
+
+  const conflict = await run(
+    [rec({ account: "RESCUE-CONFLICT", amount: 100, sec: 3600, company: "MC8", custAccountLast4: "1111", custBank: "SCB" })],
+    [rec({ account: "RESCUE-CONFLICT", amount: 100, sec: 3610, company: "MC8", custAccount: "0000002222", custBank: "KBANK" })],
+  );
+  eq("rescue: ข้อมูลลูกค้าขัดกันยังคงไม่จับ", conflict.matched, 0);
+})();
+
 /* Statement ที่ระบบรับเข้าและผูกบริษัทจากไฟล์แล้วเป็นแหล่งข้อมูลที่เชื่อถือได้
    ไม่ควรถูกเปิด wrong_account เพียงเพราะทะเบียนเดิมยังไม่มีเลขบัญชี */
 await (async function () {

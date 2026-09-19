@@ -662,8 +662,82 @@ const Engine = (() => {
       "ตรวจยอดไม่ตรง",
     );
 
+    /* pass 2b: กู้คู่ที่เคยหลุดเป็น missing_bo + missing_stm
+       บางชุดมีข้อมูลลูกค้าซ้ำจน identity pass ตั้งใจหยุดไว้ แม้รายการที่เหลือจะมี
+       คู่เวลาใกล้ที่สุดแบบ 1:1 ชัดเจนแล้ว จึงลองจับซ้ำก่อนสร้าง exception โดย:
+       - บริษัท/บัญชีหรือ provider/ยอด/ทิศทาง/วันที่ต้องตรง
+       - ข้อมูลบัญชีหรือธนาคารลูกค้าที่มีอยู่ทั้งสองฝั่งต้องไม่ขัดกัน
+       - ต้องเป็นคู่ที่ต่างฝ่ายต่างเลือกกันเป็นเวลาที่ใกล้ที่สุดเพียงหนึ่งเดียว
+       คู่กำกวมและคู่เวลาเท่ากันยังคงส่งให้ Audit ตรวจ */
+    const rescueCustomerConflict = (s, b) => {
+      const sa = customerAccount(s), ba = customerAccount(b);
+      if (sa && ba && sa !== ba) return true;
+      if (!sa && /^\d{4}$/.test(s.custAccountLast4 || "") && ba && !ba.endsWith(s.custAccountLast4)) return true;
+      const sb = String(s.custBank || "").toUpperCase().replace("KBNK", "KBANK");
+      const bb = String(b.custBank || "").toUpperCase().replace("KBNK", "KBANK");
+      return !!(sb && bb && sb !== bb);
+    };
+    const rescueCandidates = new Map();
+    const rescuePeers = new Map();
+    const rescueGroupKey = (r) => [
+      String(r.company || r.subco || "").trim().toUpperCase(),
+      r.date || "", r.account || "", Number(r.amount || 0).toFixed(2), r.direction || "",
+    ].join("|");
+    const rescueStmGroupCount = new Map();
+    const rescueBoGroupCount = new Map();
+    stmLeft2.forEach((s) => rescueStmGroupCount.set(rescueGroupKey(s), (rescueStmGroupCount.get(rescueGroupKey(s)) || 0) + 1));
+    boRecords.forEach((b, ci) => {
+      if (!boUsed[ci]) rescueBoGroupCount.set(rescueGroupKey(b), (rescueBoGroupCount.get(rescueGroupKey(b)) || 0) + 1);
+    });
+    const rescueEligible = (s, b) => sameCompany(s, b)
+      && !!String(s.company || s.subco || "").trim()
+      && s.date === b.date && isIsoDate(s.date)
+      && !!s.direction && s.direction === b.direction
+      && s.account === b.account && s.amount === b.amount
+      && !s.noTime && !b.noTime
+      && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && timeDistance(s, b) < 3600
+      && rescueStmGroupCount.get(rescueGroupKey(s)) === rescueBoGroupCount.get(rescueGroupKey(b))
+      && !rescueCustomerConflict(s, b);
+    stmLeft2.forEach((s) => {
+      const list = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((ci) => !boUsed[ci] && rescueEligible(s, boRecords[ci]))
+        .map((ci) => ({ ci, dt: timeDistance(s, boRecords[ci]) }));
+      rescueCandidates.set(s, list);
+      list.forEach(({ ci, dt }) => {
+        let peers = rescuePeers.get(ci);
+        if (!peers) rescuePeers.set(ci, (peers = []));
+        peers.push({ s, dt });
+      });
+    });
+    const uniqueNearest = (rows, valueOf) => {
+      if (!rows.length) return null;
+      let best = rows[0], tied = false;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i].dt < best.dt) {
+          best = rows[i];
+          tied = false;
+        } else if (rows[i].dt === best.dt) tied = true;
+      }
+      return tied ? null : valueOf(best);
+    };
+    const rescuedStm = new Set();
+    stmLeft2.forEach((s) => {
+      if (rescuedStm.has(s)) return;
+      const ci = uniqueNearest(rescueCandidates.get(s) || [], (row) => row.ci);
+      if (ci == null || boUsed[ci]) return;
+      const reciprocal = uniqueNearest(rescuePeers.get(ci) || [], (row) => row.s);
+      if (reciprocal !== s) return;
+      const b = boRecords[ci];
+      boUsed[ci] = 1;
+      rescuedStm.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), rescueMatch: true });
+    });
+
     // pass 3: STM ที่เหลือ = ไม่มีฝั่ง BO
-    stmLeft2.forEach((s) => exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0)));
+    stmLeft2.forEach((s) => {
+      if (!rescuedStm.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
+    });
 
     // pass 4: BO ที่เหลือ = ไม่มีฝั่ง STM หรือเป็นรายการซ้ำ
     /* "ซ้ำ" = มีคู่ที่แม็ปไปแล้ว บัญชี+ยอด+ทิศทางเดียวกัน และเวลาใกล้กัน (ในเกณฑ์ tolerance)
@@ -778,7 +852,8 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        rescueMatched: !!m.rescueMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
         customer: {
