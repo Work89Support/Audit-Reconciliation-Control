@@ -734,6 +734,28 @@ table.matrix td:first-child { white-space: normal; }
   border: 1px solid var(--line-soft); border-radius: 8px; font-size: 13.5px;
 }
 .report-list b { font-variant-numeric: tabular-nums; }
+.recon-overview-panel { overflow: hidden; }
+.recon-group-summary { display: grid; grid-template-columns: minmax(180px,.7fr) minmax(180px,1fr); gap: 12px 22px; align-items: center; padding: 18px; border: 1px solid #b9d9fa; border-radius: 14px; background: linear-gradient(135deg,#edf7ff,#fff); }
+.recon-group-title span,.recon-group-title small { display: block; color: var(--muted); font-size: 12px; }
+.recon-group-title strong { display: block; margin: 3px 0; color: var(--blue-dark); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.recon-group-progress,.recon-company-progress { height: 9px; overflow: hidden; border-radius: 999px; background: #dce8f4; }
+.recon-group-progress i,.recon-company-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#19a260,#0f6fd6); }
+.recon-group-metrics { grid-column: 1/-1; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+.recon-group-metrics span { padding: 10px; border-radius: 9px; background: #fff; color: var(--muted); font-size: 11px; text-align: center; }
+.recon-group-metrics b { display: block; margin-top: 3px; color: var(--text); font-size: 20px; font-variant-numeric: tabular-nums; }
+.recon-group-metrics .ok { background: #eaf8ef; }.recon-group-metrics .warn { background: #fff5df; }.recon-group-metrics .bad { background: #fff0f0; }
+.recon-company-grid { display: grid; grid-template-columns: repeat(5,minmax(180px,1fr)); gap: 10px; margin-top: 14px; overflow-x: auto; padding-bottom: 3px; }
+.recon-company-card { min-width: 180px; padding: 13px; border: 1px solid var(--line); border-top: 3px solid var(--blue); border-radius: 11px; background: #fff; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.recon-company-card:hover { border-color: #79afe3; box-shadow: 0 6px 16px rgba(19,70,124,.1); transform: translateY(-1px); }
+.recon-company-card.attention { border-top-color: var(--medium); }.recon-company-card.complete { border-top-color: var(--low); }.recon-company-card.empty { border-top-color: #cbd5e1; background: #f8fafc; cursor: default; }
+.recon-company-head,.recon-company-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.recon-company-head b { color: #173b61; font-size: 20px; }.recon-company-head em { color: var(--blue-dark); font-size: 15px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.recon-company-progress { margin: 9px 0; height: 6px; }
+.recon-company-numbers { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.recon-company-numbers i { padding: 5px 6px; border-radius: 6px; background: #f2f6fa; color: var(--muted); font-size: 10px; font-style: normal; }.recon-company-numbers b { float: right; color: var(--text); font-size: 12px; }
+.recon-company-foot { display: grid; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line-soft); }.recon-company-foot small { color: var(--muted); font-size: 9.5px; }.recon-company-foot strong { color: #46627e; font-size: 10px; }
+.recon-company-table { margin-top: 14px; }.recon-company-table tfoot th { border-top: 2px solid #264f78; background: #edf5fc; }.ok-text { color: #147a48; font-weight: 700; }
+@media(max-width:900px){.recon-group-summary{grid-template-columns:1fr}.recon-group-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.recon-company-grid{grid-template-columns:repeat(5,180px)}}
 
 .hint { margin: 12px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 

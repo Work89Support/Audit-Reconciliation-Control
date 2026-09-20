@@ -4397,6 +4397,42 @@ function renderLiveReports(root) {
   const exceptionsAvailable = liveOverviewState.exceptionsReady;
   const damagesAvailable = liveOverviewState.damagesReady;
   const reportMetric = (available, value, formatter = num) => available ? formatter(value) : "—";
+  const xbGroup = AUDIT_COMPANY_GROUPS.find((group) => group.id === "XB");
+  const xbQuality = quality.filter((row) => xbGroup.companies.includes(String(row.company || "").toUpperCase()));
+  const companyReconciliation = xbGroup.companies.map((company) => {
+    const rows = xbQuality.filter((row) => String(row.company || "").toUpperCase() === company);
+    const stmCount = rows.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+    const boCount = rows.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+    const matchedCount = rows.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+    const exceptionCount = rows.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+    const latestDate = rows.reduce((latest, row) => !latest || row.business_date > latest ? row.business_date : latest, "");
+    return {
+      company,
+      rows: rows.length,
+      stmCount,
+      boCount,
+      matchedCount,
+      exceptionCount,
+      pendingCount: Math.max(0, stmCount - matchedCount),
+      rate: stmCount ? (matchedCount / stmCount) * 100 : 0,
+      completed: rows.filter((row) => row.status === "completed").length,
+      needsReview: rows.filter((row) => row.status !== "completed").length,
+      latestDate,
+    };
+  });
+  const xbTotals = companyReconciliation.reduce((total, item) => {
+    total.rows += item.rows;
+    total.stmCount += item.stmCount;
+    total.boCount += item.boCount;
+    total.matchedCount += item.matchedCount;
+    total.exceptionCount += item.exceptionCount;
+    total.pendingCount += item.pendingCount;
+    total.completed += item.completed;
+    total.needsReview += item.needsReview;
+    return total;
+  }, { rows: 0, stmCount: 0, boCount: 0, matchedCount: 0, exceptionCount: 0, pendingCount: 0, completed: 0, needsReview: 0 });
+  const xbRate = xbTotals.stmCount ? (xbTotals.matchedCount / xbTotals.stmCount) * 100 : 0;
+  const xbOverviewAvailable = qualityAvailable && xbTotals.rows > 0;
   const dateMap = new Map();
   operations.forEach((row)=>{
     const item=dateMap.get(row.business_date)||{date:row.business_date,mails:0,files:0,completed:0,review:0,waiting:0,error:0};
@@ -4416,6 +4452,39 @@ function renderLiveReports(root) {
       <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${reportMetric(damagesAvailable, totalDamage, money0)}</strong><small>${damagesAvailable ? `บาท · ${num(damages.length)} รายการ` : "กำลังรอข้อมูลจริง"} · กดดูทะเบียน</small></article>
     </section>
     <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
+    <section class="panel recon-overview-panel">
+      <div class="panel-heading"><div><p class="eyebrow">Reconciliation Overview</p><h2>ภาพรวมการกระทบยอด · เครือ XB</h2><small class="head-sub">รวมผลรันจริงของ 3XB, MC8, MR9, PS8 และ UR9 ในช่วงที่เลือก · ตัวเลขเป็นจำนวนรายการ ไม่ใช่มูลค่าเงิน</small></div><span class="health ${xbOverviewAvailable && !xbTotals.needsReview ? "ok" : "attention"}">${xbOverviewAvailable ? `${num(xbTotals.completed)} รอบสำเร็จ` : qualityAvailable ? "ยังไม่มีผลในช่วงนี้" : "รอข้อมูลจริง"}</span></div>
+      <div class="recon-group-summary">
+        <div class="recon-group-title"><span>ยอดรวมเครือ XB</span><strong>${reportMetric(xbOverviewAvailable, xbRate, (value) => `${value.toFixed(2)}%`)}</strong><small>อัตราจับคู่จาก STM / PM</small></div>
+        <div class="recon-group-progress" aria-label="อัตราจับคู่เครือ XB"><i style="width:${xbOverviewAvailable ? Math.min(100, xbRate) : 0}%"></i></div>
+        <div class="recon-group-metrics">
+          <span>STM / PM<b>${reportMetric(xbOverviewAvailable, xbTotals.stmCount)}</b></span>
+          <span>BO<b>${reportMetric(xbOverviewAvailable, xbTotals.boCount)}</b></span>
+          <span class="ok">จับคู่แล้ว<b>${reportMetric(xbOverviewAvailable, xbTotals.matchedCount)}</b></span>
+          <span class="warn">คงเหลือจากฝั่ง STM/PM<b>${reportMetric(xbOverviewAvailable, xbTotals.pendingCount)}</b></span>
+          <span class="bad">พบจากผลรัน<b>${reportMetric(xbOverviewAvailable, xbTotals.exceptionCount)}</b></span>
+        </div>
+      </div>
+      <div class="recon-company-grid">
+        ${companyReconciliation.map((item) => {
+          const available = qualityAvailable && item.rows > 0;
+          const tone = !available ? "empty" : item.needsReview || item.pendingCount ? "attention" : "complete";
+          return `<button type="button" class="recon-company-card ${tone}" data-recon-company="${h(item.company)}" data-recon-date="${h(item.latestDate)}" ${available ? "" : "disabled"}>
+            <span class="recon-company-head"><b>${h(item.company)}</b><em>${available ? `${item.rate.toFixed(2)}%` : "—"}</em></span>
+            <span class="recon-company-progress"><i style="width:${available ? Math.min(100, item.rate) : 0}%"></i></span>
+            <span class="recon-company-numbers"><i>STM/PM <b>${reportMetric(available, item.stmCount)}</b></i><i>BO <b>${reportMetric(available, item.boCount)}</b></i><i class="ok">จับคู่ <b>${reportMetric(available, item.matchedCount)}</b></i><i class="warn">คงเหลือ <b>${reportMetric(available, item.pendingCount)}</b></i></span>
+            <span class="recon-company-foot"><small>${available ? `${num(item.rows)} วัน/รอบ · ล่าสุด ${h(item.latestDate)}` : "ไม่พบผลรันในช่วงที่เลือก"}</small><strong>${available ? item.needsReview ? `ต้องติดตาม ${num(item.needsReview)} รอบ` : "กระทบยอดครบตามผลรัน" : "—"}</strong></span>
+          </button>`;
+        }).join("")}
+      </div>
+      <div class="table-wrap recon-company-table"><table><thead><tr><th>บริษัท</th><th class="right">STM / PM</th><th class="right">BO</th><th class="right">จับคู่แล้ว</th><th class="right">คงเหลือ</th><th class="right">พบจากผลรัน</th><th class="right">อัตราจับคู่</th><th>สถานะรอบ</th></tr></thead><tbody>
+        ${companyReconciliation.map((item) => {
+          const available = qualityAvailable && item.rows > 0;
+          return `<tr class="${available ? "action-row" : ""}" ${available ? `data-recon-company="${h(item.company)}" data-recon-date="${h(item.latestDate)}" role="link" tabindex="0"` : ""}><td><b>${h(item.company)}</b></td><td class="right tnum">${reportMetric(available, item.stmCount)}</td><td class="right tnum">${reportMetric(available, item.boCount)}</td><td class="right tnum ok-text">${reportMetric(available, item.matchedCount)}</td><td class="right tnum ${item.pendingCount ? "danger" : ""}">${reportMetric(available, item.pendingCount)}</td><td class="right tnum">${reportMetric(available, item.exceptionCount)}</td><td class="right tnum">${reportMetric(available, item.rate, (value) => `${value.toFixed(2)}%`)}</td><td>${available ? `<span class="badge ${item.needsReview ? "amber" : "green"}">${item.needsReview ? `ติดตาม ${num(item.needsReview)} รอบ` : `สำเร็จ ${num(item.completed)} รอบ`}</span>` : `<span class="muted">ไม่มีข้อมูล</span>`}</td></tr>`;
+        }).join("")}
+      </tbody><tfoot><tr><th>รวมเครือ XB</th><th class="right tnum">${reportMetric(xbOverviewAvailable, xbTotals.stmCount)}</th><th class="right tnum">${reportMetric(xbOverviewAvailable, xbTotals.boCount)}</th><th class="right tnum ok-text">${reportMetric(xbOverviewAvailable, xbTotals.matchedCount)}</th><th class="right tnum">${reportMetric(xbOverviewAvailable, xbTotals.pendingCount)}</th><th class="right tnum">${reportMetric(xbOverviewAvailable, xbTotals.exceptionCount)}</th><th class="right tnum">${reportMetric(xbOverviewAvailable, xbRate, (value) => `${value.toFixed(2)}%`)}</th><th>${xbOverviewAvailable ? `${num(xbTotals.completed)} สำเร็จ · ${num(xbTotals.needsReview)} ติดตาม` : "—"}</th></tr></tfoot></table></div>
+      <p class="hint">กดการ์ดหรือแถวบริษัทเพื่อเปิดสรุปของวันล่าสุดในช่วงที่เลือก · “คงเหลือ” คำนวณจาก STM/PM ลบรายการจับคู่แล้ว ส่วน “พบจากผลรัน” ใช้สำหรับดูแนวโน้มและอาจรวมสถานะแจ้งผลที่ไม่ต้องให้ Audit ยืนยัน</p>
+    </section>
     ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
       <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
@@ -4429,6 +4498,18 @@ function renderLiveReports(root) {
     const open=()=>{state.dailySummary.date=row.dataset.reportDate;go("daily-summary");};
     row.addEventListener("click",open);
     row.addEventListener("keydown",(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();open();}});
+  });
+  root.querySelectorAll("[data-recon-company]").forEach((item) => {
+    const open = () => {
+      if (!item.dataset.reconDate) return;
+      state.dailySummary.company = item.dataset.reconCompany;
+      state.dailySummary.date = item.dataset.reconDate;
+      go("daily-summary");
+    };
+    item.addEventListener("click", open);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
   });
 }
 
