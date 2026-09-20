@@ -141,6 +141,23 @@ function groupedCompanyOptions(codes, selected) {
   return groups + (ungrouped.length ? `<optgroup label="ยังไม่จัดเครือ">${ungrouped.map((code) => `<option value="${h(code)}" ${code === selected ? "selected" : ""}>${h(code)}</option>`).join("")}</optgroup>` : "");
 }
 
+function reviewCompanyGroupsMarkup(companies) {
+  const available = new Map((companies || []).map((company) => [String(company.code || "").trim().toUpperCase(), company]));
+  const configured = new Set(AUDIT_COMPANY_GROUPS.flatMap((group) => group.companies));
+  const groupCards = AUDIT_COMPANY_GROUPS.map((group) => {
+    const members = group.companies.map((code) => available.get(code)).filter(Boolean);
+    if (!members.length) return "";
+    return `<article class="company-group-card review-company-group ${group.status === "pending" ? "pending" : "active"}">
+      <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(members.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
+      <div class="company-subcompany-list">${members.map((company) => `<button type="button" class="company-subcompany" data-review-company="${h(company.code)}"><span><b>${h(company.code)}</b><small>${h(company.name || company.code)}</small></span><i>เปิดชีทของบริษัทนี้</i></button>`).join("")}</div>
+      ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของเครือ XB</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ 5 บริษัทในเครือ XB เท่านั้น · หลักฐานไม่ครบหรือมีหลายคู่ต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของเครือ XB แทน</span></div>`}
+    </article>`;
+  }).join("");
+  const ungrouped = [...available.entries()].filter(([code]) => !configured.has(code)).map(([, company]) => company);
+  const ungroupedCard = ungrouped.length ? `<article class="company-group-card review-company-group pending"><div class="company-group-head"><div><strong>ยังไม่จัดเครือ</strong><span>${num(ungrouped.length)} บริษัท</span></div><span class="badge grey">รอจัดกลุ่ม</span></div><div class="company-subcompany-list">${ungrouped.map((company) => `<button type="button" class="company-subcompany" data-review-company="${h(company.code)}"><span><b>${h(company.code)}</b><small>${h(company.name || company.code)}</small></span><i>เปิดชีทของบริษัทนี้</i></button>`).join("")}</div></article>` : "";
+  return groupCards + ungroupedCard;
+}
+
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
@@ -2804,7 +2821,8 @@ VIEWS.exceptions = (root) => {
   // A work sheet always belongs to one authorized company; ALL is a picker, not a mixed queue.
   if (state.filters.company === "ALL" || !canAccessCompany(state.filters.company)) {
     reviewQueueIds = [];
-    root.innerHTML = `<section class="panel"><h2>เลือกบริษัทที่จะตรวจ</h2><p>เปิดงานทีละบริษัท → เลือกชีทฝากหรือถอน → ตรวจ BO เทียบ STM / PM</p><div class="review-company-picker">${companyMaster().map((c) => `<button type="button" class="ghost-button" data-review-company="${h(c.code)}"><b>${h(c.code)}</b><span>${h(c.name || c.code)}</span><small>เปิดชีทของบริษัทนี้</small></button>`).join("") || "ยังไม่มีบริษัทที่คุณมีสิทธิ์ตรวจ"}</div></section>`;
+    const companies = companyMaster();
+    root.innerHTML = `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">ขอบเขตการตรวจ</p><h2>3 เครือบริษัท · เลือกบริษัทย่อย</h2><p>เปิดงานทีละบริษัท → เลือกชีทฝากหรือถอน → ตรวจ BO เทียบ STM / PM</p></div><span class="health ok">${num(AUDIT_COMPANY_GROUPS.length)} เครือ</span></div><div class="review-company-groups">${reviewCompanyGroupsMarkup(companies) || "ยังไม่มีบริษัทที่คุณมีสิทธิ์ตรวจ"}</div></section>`;
     root.querySelectorAll('[data-review-company]').forEach((button) => button.addEventListener('click', () => {
       if (!canAccessCompany(button.dataset.reviewCompany)) return;
       state.filters.company = button.dataset.reviewCompany;

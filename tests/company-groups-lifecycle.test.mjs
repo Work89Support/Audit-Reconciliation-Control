@@ -12,8 +12,12 @@ assert.match(app, /name: "เครือ 7M"[\s\S]*status: "pending"/);
 assert.match(app, /paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime/);
 assert.match(app, /ยอดถอน AT\/M ใช้ transferredAmount · ยอดถอน AZ\/CP ใช้ amount/);
 assert.match(app, /groupedCompanyOptions\(companies, company\)/);
+assert.match(app, /function reviewCompanyGroupsMarkup\(companies\)/);
+assert.match(app, /3 เครือบริษัท · เลือกบริษัทย่อย/);
+assert.match(app, /reviewCompanyGroupsMarkup\(companies\)/);
 assert.match(css, /\.company-group-grid/);
 assert.match(css, /\.company-rule-details/);
+assert.match(css, /\.review-company-groups/);
 
 assert.match(migration, /exception_carried_forward/);
 assert.match(migration, /exception_auto_closed_on_rerun/);

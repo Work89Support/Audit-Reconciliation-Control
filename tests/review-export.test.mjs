@@ -52,7 +52,8 @@ assert.ok(ctx.accountHtml.includes('บัญชีรับ–จ่ายข�
 const viewStart = app.indexOf('VIEWS.exceptions = (root) =>');
 const viewGate = app.slice(viewStart, app.indexOf('if (!ensureLiveOverview(root)) return;', viewStart));
 assert.ok(viewGate.includes('state.filters.company === "ALL"'));
-assert.ok(viewGate.includes('companyMaster().map'));
+assert.ok(viewGate.includes('const companies = companyMaster()'));
+assert.ok(viewGate.includes('reviewCompanyGroupsMarkup(companies)'));
 assert.ok(viewGate.includes('canAccessCompany(button.dataset.reviewCompany)'));
 assert.ok(viewGate.includes('state.filters.direction = "ฝาก"'));
 assert.ok(viewGate.includes('reviewQueueIds = []'));
