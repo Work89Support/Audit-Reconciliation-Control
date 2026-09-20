@@ -2375,7 +2375,24 @@ tr.on { background: #f0f7ff; }
 .audit-sheet tbody td:first-child { position:sticky; left:0; z-index:2; background:#f8fafc; min-width:170px; max-width:170px; }
 .audit-sheet tbody tr:hover td { background:#f0f7ff; }
 .audit-sheet select { font:inherit; padding:8px; max-width:220px; border:1px solid #b8cde8; border-radius:6px; background:#fff; }
-.case-mail-evidence article { border:1px solid #dce5ee; padding:12px; margin:10px 0; border-radius:8px; }
+.case-files-ready { display:grid; gap:12px; min-width:0; }
+.case-evidence-range { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:12px; border:1px solid #dce5ee; border-radius:9px; background:#fff; }
+.case-evidence-range label { display:grid; gap:5px; min-width:0; color:var(--muted); font-size:12px; }
+.case-evidence-range input { width:100%; min-height:38px; box-sizing:border-box; }
+.case-mail-open { justify-self:start; }
+.case-mail-evidence { display:grid; gap:10px; min-width:0; width:100%; padding:14px; box-sizing:border-box; border:1px solid #b9d7f5; border-radius:10px; background:#fff; }
+.case-mail-evidence h4,.case-mail-evidence>p { margin:0; }
+.case-mail-evidence>input[type=search] { width:100%; min-height:42px; box-sizing:border-box; }
+.case-mail-evidence article { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; min-width:0; padding:12px; margin:0; border:1px solid #dce5ee; border-radius:8px; background:#f9fbfd; }
+.case-mail-file { min-width:0; }
+.case-mail-file b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.case-mail-file p { margin:5px 0 0; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.case-mail-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.case-mail-evidence form { grid-column:1 / -1; display:grid; gap:8px; padding:12px; border:1px solid #e5bd61; border-radius:8px; background:#fff9e8; }
+.case-mail-evidence form label { display:grid; gap:6px; }
+.case-mail-evidence form textarea { width:100%; box-sizing:border-box; }
+.case-mail-evidence details { grid-column:1 / -1; }
+@media(max-width:720px){.case-evidence-range,.case-mail-evidence article{grid-template-columns:1fr}.case-mail-actions{justify-content:flex-start}.case-mail-actions button{flex:1}.case-mail-open{width:100%}}
 .review-overview-table td { vertical-align:top; font-size:16px; }
 .review-overview-table small { display:block; margin-top:8px; font-size:14px; line-height:1.7; overflow-wrap:anywhere; }
 .review-overview-table.audit-sheet { color:#334155; line-height:1.5; }

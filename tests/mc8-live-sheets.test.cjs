@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const {rowsOf,filter,mount,providerOf,sheetOf,summarize,summaries,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
+const {rowsOf,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
 const input={run:{id:'r1',matched:1,stm_count:999,bo_count:999,jobStatus:'needs_review',summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',amount:355,stmAmount:355,boAmount:355,bo:{fileId:'bo',date:'2026-09-16',sec:3600,row:2},stm:{fileId:'pm',date:'2026-09-16',sec:3700,row:9},customer:{bo:{reference:'ref'},stm:{reference:'ref'}}}]}},complete:true,cases:[{id:'case1',code:'EX-1',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'cross_day'},{id:'case1-warning',code:'EX-2',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'large_amount'}]};
 const before=JSON.stringify(input), rows=rowsOf(input);
 assert.equal(rows.length,2);assert.equal(rows[0].boTime,'2026-09-16 01:00:00');
@@ -15,8 +15,16 @@ const overlap=rowsOf({run:{summary:{match_evidence:[{account:'AUTOPEER',directio
 const overlapTotals=summarize(overlap);assert.equal(overlapTotals.pmCount,1);assert.equal(overlapTotals.boCount,1);assert.equal(overlapTotals.unmatchedPmCount,0);assert.equal(overlapTotals.unmatchedBoCount,0);
 assert.equal(overlap.length,1,'large_amount advisory must not be exported as an Audit action row');
 assert.equal(JSON.stringify(input),before);
+assert.equal(columnMatch('ปิดได้ทันที','ปิดได้'),true);
+assert.deepEqual(filterAndSortEntries([
+  {source:{id:'b'},values:['MC8',200]},
+  {source:{id:'a'},values:['PS8',100]},
+],{0:'8'},{index:1,direction:'asc'}).map(entry=>entry.source.id),['a','b'],'column filters and numeric sort must compose without mutating source data');
 const src=fs.readFileSync(require.resolve('../mc8-live-sheets.js'),'utf8');
 assert.ok(!/\.rpc\(|\.post\(|\.patch\(|\.saveRun\(|\.confirmAuditPairs\(/.test(src));
+assert.ok(src.includes('mc8-live-fullscreen'),'workbook must expose a full-screen table control');
+assert.ok(src.includes('data-live-column-filter'),'workbook must expose an Excel-like filter for each visible column');
+assert.ok(src.includes('data-live-column'),'workbook must expose hide/show controls for individual columns');
 const nodes=new Map();const container={innerHTML:'',querySelector(s){if(!nodes.has(s))nodes.set(s,{});return nodes.get(s);},querySelectorAll(){return [];}};
 mount(container,{signedIn:()=>false,date:'2026-09-16',onLocal(){},load(){throw Error('should never load');}});
 assert.ok(container.innerHTML.includes('กรุณาเข้าสู่ระบบจริง'));

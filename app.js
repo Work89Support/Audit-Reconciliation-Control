@@ -3287,10 +3287,12 @@ async function loadExceptionSupport(e, options = {}) {
       openException(e.id, options);
       return;
     }
+    host.className = 'case-files-ready';
     host.innerHTML = exceptionFilesMarkup(files, e);
     const mailButton=document.createElement('button');
-    mailButton.className='ghost-button'; mailButton.textContent='เลือกเอกสารชี้แจงจากเมลของบริษัทนี้';
+    mailButton.id='caseMailEvidenceButton';mailButton.className='primary-button case-mail-open'; mailButton.textContent='เลือกเอกสารชี้แจงให้เคสนี้';
     const evidenceRange=document.createElement('div');
+    evidenceRange.className='case-evidence-range';
     evidenceRange.innerHTML=`<label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
     host.append(evidenceRange,mailButton);
     mailButton.onclick=async()=>{
@@ -3316,7 +3318,7 @@ async function loadExceptionSupport(e, options = {}) {
           }
         }
         const list=document.createElement('section');list.className='case-mail-evidence';
-        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงแล้วจึงยืนยันปิดเคส ไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารวันเดียวกัน ใช้คลังไฟล์เพื่อตรวจวันอื่น หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>Preview</button><button class="ghost-button sm" data-link-mail="${h(f.id)}">ใช้เป็นหลักฐานเคสนี้</button></article>`).join('')}`;
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`).join('')}`;
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelector('h4').textContent=`เอกสารชี้แจง · ${e.company} · ${from} ถึง ${to} (${candidates.length} ไฟล์)`;
@@ -3370,6 +3372,7 @@ async function loadExceptionSupport(e, options = {}) {
         });
       }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
     };
+    if(e._openClarificationPicker){e._openClarificationPicker=false;setTimeout(()=>mailButton.click(),0);}
     bindStoredFileLinks(host);
     $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
     if (options.focusFiles) setTimeout(() => host.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
@@ -3505,7 +3508,7 @@ async function openException(id, options = {}) {
 
     <footer class="drawer-foot" id="caseActionSection">
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <details class="drawer-more-actions"><summary>เอกสารและการดำเนินการอื่น</summary><div><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>`;
 
@@ -3524,6 +3527,13 @@ async function openException(id, options = {}) {
   overlay.addEventListener("click", closeDrawer, { once: true });
   $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   $("#btnAttachQuick").addEventListener("click", () => $("#evInput")?.click());
+  $("#btnChooseClarification").addEventListener("click", () => {
+    if (!can("attach") && !can("note")) return deny("เลือกเอกสารชี้แจง");
+    $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const picker = $("#caseMailEvidenceButton");
+    if (picker) picker.click();
+    else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
+  });
   $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
   drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
     const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : $("#caseSummarySection");

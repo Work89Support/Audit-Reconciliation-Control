@@ -143,6 +143,9 @@ assert.match(app, /class="case-file-row"/, "ไฟล์ประกอบใน
 assert.ok(app.includes('data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"`'), "attribute สถานะไฟล์ต้องปิด quote ครบเพื่อไม่ให้ DOM ของรายการไฟล์เสีย");
 assert.match(app, /Sb\.exceptionFiles\(e\.runId, e\.clarificationFileId\)/, "Drawer ต้องโหลดไฟล์ที่ใช้สร้าง recon run เฉพาะตอนเปิดเคส");
 assert.match(app, /ไฟล์ประกอบของเคสนี้/, "Drawer ต้องมีส่วนไฟล์ประกอบที่เข้าใจง่าย");
+assert.match(app, /id="btnChooseClarification"/, "เคสต้องมีปุ่มเลือกเอกสารชี้แจงโดยตรง");
+assert.match(app, /id='caseMailEvidenceButton'/, "ตัวเลือกเอกสารชี้แจงต้องมีจุดเปิดที่แน่นอนหลังโหลดไฟล์เสร็จ");
+assert.match(app, /await Sb\.manualMatchClarificationFile\(b\.dataset\.linkMail,\[e\.dbId\],note\)/, "การเลือกเอกสารต้องบันทึกการผูกกับเคสจริงและไม่ใช่ปุ่มจำลอง");
 assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
 assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
 assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
