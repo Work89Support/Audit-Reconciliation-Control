@@ -119,7 +119,10 @@ const PdfStm = (() => {
       const description = /^(?:รับโอนจาก|โอนจาก|โอนไป|ดอกเบี้ย|ค่าธรรมเนียม|ปรับปรุง)/;
       lines.forEach((l) => {
         const t = l.text;
-        const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3})\s+([A-Z/]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
+        // SCB also emits counter-service codes such as C1. Keep the code
+        // generic enough for one optional digit, then derive direction from
+        // the running balance when it is not an explicit X1/X2 transaction.
+        const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3}|[A-Z][0-9])\s+([A-Z/]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
         if (!m) {
           if (description.test(t)) tokens.push({ desc: t });
           return;
@@ -439,9 +442,14 @@ const PdfStm = (() => {
       if (matchedIndex >= 0) remainingRows.splice(matchedIndex, 1);
       else unreadRows.push({ page: pageIndex + 1, line: lineIndex + 1, raw: line.text });
     }));
-    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction || r.descriptionUncertain);
+    // Counterparty text is useful evidence, but it is not a matching key.
+    // Native PDF extraction can occasionally leave that text on a separate
+    // line even though date, time, amount, balance and direction are complete.
+    // Do not reject an otherwise auditable bank row or force a lossy OCR pass
+    // solely because the optional description could not be attached.
+    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction);
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
-      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: r.descriptionUncertain ? "ยังผูกรายละเอียด SCB กับแถวรายการไม่ได้อย่างแน่นอน" : "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
+      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
 
     // ทีมใช้งานตั้งรอบจากวันที่ในหัวข้ออีเมล แต่ statement ธนาคารบางฉบับ
     // (โดยเฉพาะ KBANK) เป็นรายการของวันก่อนหน้า 1 วันทั้งฉบับ เมื่อทุกแถว
@@ -460,7 +468,6 @@ const PdfStm = (() => {
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
     rows.forEach((r, i) => {
-      if (r.descriptionUncertain) return drop("ยังผูกรายละเอียด SCB กับแถวรายการไม่ได้อย่างแน่นอน");
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
