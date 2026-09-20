@@ -137,6 +137,8 @@ assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "ห�
 assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
 assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");
 assert.match(app, /data-case-files=/, "ตาราง Exception ต้องมีปุ่มเปิดไฟล์ประกอบโดยตรง");
+assert.match(app, /มุมมองเอกสาร Excel/, "หน้า Exception ของเครือ XB ต้องเปิดดูโครงเดียวกับไฟล์ Excel ได้");
+assert.match(app, /MC8LiveSheets\.mount\(workspace/, "มุมมองเอกสารต้องใช้ข้อมูลรอบเดียวกับตัวส่งออก Excel ไม่ใช่ตารางจำลองแยกชุด");
 assert.match(app, /class="case-file-row"/, "ไฟล์ประกอบในเคสต้องแสดงเป็นรายการที่กด Preview ได้ทั้งแถว");
 assert.ok(app.includes('data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"`'), "attribute สถานะไฟล์ต้องปิด quote ครบเพื่อไม่ให้ DOM ของรายการไฟล์เสีย");
 assert.match(app, /Sb\.exceptionFiles\(e\.runId, e\.clarificationFileId\)/, "Drawer ต้องโหลดไฟล์ที่ใช้สร้าง recon run เฉพาะตอนเปิดเคส");
@@ -223,4 +225,4 @@ assert.match(app + formats, /COREPAY/, "ตัวอ่านชื่อไฟ�
 assert.match(app + formats, /CPXM/, "ตัวอ่านชื่อไฟล์ต้องรู้จัก CPXM");
 assert.match(app, /หลัง 19:00[\s\S]+ติดตามทีมออดิท/, "หน้าระบบต้องบอกขั้นตอนติดตามทีมออดิทหลังเวลาอัปโหลด");
 
-console.log("App shell QA follow-up: 90 checks passed");
+console.log("App shell QA follow-up: 92 checks passed");

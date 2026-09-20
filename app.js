@@ -197,6 +197,7 @@ const state = {
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
   reviewSheet: "normal",
+  auditDocumentView: "excel",
   exceptionView: "sheet",
   sort: { key: "time", dir: "asc" },
   page: 1,
@@ -2828,6 +2829,7 @@ VIEWS.exceptions = (root) => {
       state.filters.company = button.dataset.reviewCompany;
       state.filters.direction = "ฝาก";
       state.reviewSheet = "normal";
+      state.auditDocumentView = MC8LiveSheets.COMPANIES.includes(button.dataset.reviewCompany) ? "excel" : "review";
       state.exFilter.status = "ACTION";
       state.page = 1;
       render();
@@ -2836,7 +2838,51 @@ VIEWS.exceptions = (root) => {
   }
   if (state.dataset === "production" && Sb.signedIn()) {
     const company = state.filters.company;
-    ReviewOverview.mount(root, {
+    const supportsExcelView = MC8LiveSheets.COMPANIES.includes(company);
+    const auditView = supportsExcelView ? state.auditDocumentView : 'review';
+    root.innerHTML = `<section class="audit-view-switcher" aria-label="รูปแบบหน้ากระทบยอด">
+      <div><b>${h(company)} · ${h(state.filters.to || DEFAULT_WORK_DATE)}</b><small>ข้อมูลชุดเดียวกันทั้งหน้าจอและไฟล์ Excel</small></div>
+      <div class="audit-view-switcher-actions">
+        <button type="button" class="ghost-button" data-audit-view="companies">กลับเลือกบริษัท</button>
+        <button type="button" class="${auditView === "excel" ? "primary-button" : "ghost-button"}" data-audit-view="excel" aria-pressed="${auditView === "excel"}" ${supportsExcelView?'':'disabled title="รอเงื่อนไขของเครือบริษัทนี้"'}>มุมมองเอกสาร Excel</button>
+        <button type="button" class="${auditView === "review" ? "primary-button" : "ghost-button"}" data-audit-view="review" aria-pressed="${auditView === "review"}">ตรวจ / อนุมัติเคส</button>
+      </div>
+    </section><div id="auditViewBody"></div>`;
+    root.querySelectorAll('[data-audit-view]').forEach(button => button.addEventListener('click', () => {
+      if (button.dataset.auditView === 'companies') state.filters.company = 'ALL';
+      else state.auditDocumentView = button.dataset.auditView;
+      render();
+    }));
+    const workspace = root.querySelector('#auditViewBody');
+    if (auditView === 'excel') {
+      MC8LiveSheets.mount(workspace, {
+        date: state.filters.to || DEFAULT_WORK_DATE,
+        company,
+        companies: [company],
+        signedIn: () => state.dataset === 'production' && Sb.signedIn(),
+        load: Sb.reconciliationOverview,
+        loadFiles: runId => Sb.exceptionFiles(runId),
+        isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
+        onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
+        onCase: row => {
+          if (!row) return;
+          const item = mapLiveException(row);
+          item.id = row.id;
+          reviewQueueIds = [];
+          const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
+          if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
+          openException(item.id, {focusFiles: true});
+        },
+        onFile: (file,dateValue,companyValue) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||companyValue,date:dateValue,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
+        exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
+        onExported: ({filename,company:exportCompany,date,rows,sheets,complete}) => {
+          logAction('export', 'audit_reconciliation_workbook', `${exportCompany}|${date}`, `Excel ${sheets} ชีต · ${rows} แถว · ${complete?'ข้อมูลรอบครบ':'ข้อมูลรอบยังไม่ครบ'}`);
+          toast(`ดาวน์โหลด ${filename} แล้ว (${sheets} ชีต · ${num(rows)} แถว)`);
+        },
+      });
+      return;
+    }
+    ReviewOverview.mount(workspace, {
       company,
       date: state.filters.to || DEFAULT_WORK_DATE,
       minDate: VISIBLE_DATE_FROM,
@@ -2848,7 +2894,7 @@ VIEWS.exceptions = (root) => {
       onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
       onBatchStatus: confirmAuditStatusBatch,
       onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
-      isActive: () => state.route === "exceptions" && state.filters.company === company,
+      isActive: () => state.route === "exceptions" && state.filters.company === company && auditView === 'review',
       onCompany: () => { state.filters.company = "ALL"; render(); },
       onCase: (row, {action = 'files', onComplete = async () => {}} = {}) => {
         if (!row) return;
