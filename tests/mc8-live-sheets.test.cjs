@@ -16,6 +16,8 @@ const overlapTotals=summarize(overlap);assert.equal(overlapTotals.pmCount,1);ass
 assert.equal(overlap.length,1,'large_amount advisory must not be exported as an Audit action row');
 assert.equal(JSON.stringify(input),before);
 assert.equal(columnMatch('ปิดได้ทันที','ปิดได้'),true);
+assert.equal(columnMatch('MC8',{values:['MC8','PS8']}),true);
+assert.equal(columnMatch('UR9',{values:['MC8','PS8']}),false);
 assert.deepEqual(filterAndSortEntries([
   {source:{id:'b'},values:['MC8',200]},
   {source:{id:'a'},values:['PS8',100]},
@@ -23,7 +25,9 @@ assert.deepEqual(filterAndSortEntries([
 const src=fs.readFileSync(require.resolve('../mc8-live-sheets.js'),'utf8');
 assert.ok(!/\.rpc\(|\.post\(|\.patch\(|\.saveRun\(|\.confirmAuditPairs\(/.test(src));
 assert.ok(src.includes('mc8-live-fullscreen'),'workbook must expose a full-screen table control');
-assert.ok(src.includes('data-live-column-filter'),'workbook must expose an Excel-like filter for each visible column');
+assert.ok(src.includes('data-live-filter-menu'),'workbook must expose an Excel-like value menu in each visible column header');
+assert.ok(src.includes('เรียงน้อย → มาก'),'column menu must sort ascending like Excel');
+assert.ok(src.includes('data-live-filter-value'),'column menu must list distinct values with checkboxes');
 assert.ok(src.includes('data-live-column'),'workbook must expose hide/show controls for individual columns');
 const nodes=new Map();const container={innerHTML:'',querySelector(s){if(!nodes.has(s))nodes.set(s,{});return nodes.get(s);},querySelectorAll(){return [];}};
 mount(container,{signedIn:()=>false,date:'2026-09-16',onLocal(){},load(){throw Error('should never load');}});
