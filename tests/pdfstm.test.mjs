@@ -184,6 +184,10 @@ const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1
 const completeScb = await P.parseText("3XB_STM_SCB.pdf", scbText, "2026-09-04");
 eq("SCB text: อ่านครบ 2 รายการ", completeScb.records.length, 2);
 eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
+const scbCounter = await P.parseText("3XB_STM_SCB.pdf", scbText + "\n04/09/26 10:02 C1 TELL 200.00 1,250.00 Counter Service at 7-11", "2026-09-04");
+eq("SCB C1: อ่านรหัส Counter Service เป็นรายการ", scbCounter.records.length, 3);
+eq("SCB C1: ใช้ยอดคงเหลือยืนยันทิศทางฝาก", scbCounter.records[2]?.direction, "deposit");
+eq("SCB C1: quality ผ่านโดยไม่ส่ง OCR", scbCounter.quality.complete, true);
 const wrappedScb = await P.parseText("SCB.pdf", scbText.replace("100.00 1,100.00", "100.00\n1,100.00"), "2026-09-04");
 eq("SCB wrapped: ต่อคอลัมน์ที่ตัดบรรทัด", wrappedScb.records.length, 2);
 eq("SCB wrapped: ยอดไม่เปลี่ยน", wrappedScb.records[0].amount, 100);
@@ -241,10 +245,12 @@ for (const layout of ['inline','before','after']) {
   eq(`SCB ${layout}: explicit directions`,result.records.map(r=>r.direction).join(','),'deposit,withdraw,deposit,deposit,deposit');
 }
 const ambiguousScb=await P.parseText('SCB.pdf',scbHeader+scbRows[0]+'\n'+scbRows[1]+'\n'+scbDescriptions[1],'2026-09-08');
-eq('SCB missing description: fail closed',ambiguousScb.quality.complete,false);
-eq('SCB ambiguous identities: never match guessed rows',ambiguousScb.records.length,0);
+eq('SCB missing description: core transaction evidence still passes',ambiguousScb.quality.complete,true);
+eq('SCB ambiguous identities: retain both rows without guessing descriptions',ambiguousScb.records.length,2);
+eq('SCB ambiguous identities: description remains blank',ambiguousScb.records.every(r=>!r.desc),true);
 const pageBoundaryScb=await P.parseText('SCB.pdf',scbHeader+scbDescriptions[0]+'\f'+scbHeader+scbRows[0],'2026-09-08');
-eq('SCB never carry a description across pages',pageBoundaryScb.records.length,0);
+eq('SCB never carry a description across pages',pageBoundaryScb.records[0]?.desc,'');
+eq('SCB page boundary: core row remains reconcilable',pageBoundaryScb.records.length,1);
 const reverseScb=P.applyDirection([{code:'X1',amount:100,balance:1100},{code:'X1',amount:100,balance:1000}],'SCB');
 eq('SCB explicit X1 wins over reversed balances',reverseScb[1].direction,'deposit');
 
