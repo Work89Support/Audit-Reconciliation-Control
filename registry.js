@@ -1203,6 +1203,32 @@ const Registry = (() => {
 },
 {
 "subco": "7M",
+"provider": "COREPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "COREPAY",
+"source": "pm",
+"file": "รายการถอน COREPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "COREPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "COREPAY",
+"source": "pm",
+"file": "รายการฝาก COREPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
 "provider": "AUTOPEER",
 "bank": "",
 "account": "",
@@ -1277,6 +1303,32 @@ const Registry = (() => {
 "channel": "Mypay",
 "source": "pm",
 "file": "รายการถอน MPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "LOCALPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "LOCALPAY",
+"source": "pm",
+"file": "รายการถอน LOCALPAY PM ว/ด/ป.xlsx",
+"note": ""
+},
+{
+"subco": "7M",
+"provider": "LOCALPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "LOCALPAY",
+"source": "pm",
+"file": "รายการฝาก LOCALPAY PM ว/ด/ป.xlsx",
 "note": ""
 },
 {

@@ -351,6 +351,14 @@ const Engine = (() => {
   const SLA_OF = { critical: 4, high: 8, medium: 48, low: 72 };
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const key2 = (a, amt) => a + "|" + amt.toFixed(2);
+  const identityText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  const providerRefMatches = (statement, bo) => {
+    const ref = identityText(statement && statement.ref);
+    if (ref.length < 6) return false;
+    const boRef = identityText(bo && bo.ref);
+    const boNote = identityText(bo && bo.note);
+    return boRef === ref || boRef.includes(ref) || boNote.includes(ref);
+  };
   const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
   const canonicalDirection = (v) => (/ถอน|withdraw/i.test(String(v || "")) ? "withdraw" : /ฝาก|deposit/i.test(String(v || "")) ? "deposit" : String(v || ""));
   const recordKey = (r) =>
@@ -449,9 +457,42 @@ const Engine = (() => {
       const raw = String(r && (r.company || r.subco) || "").trim().toUpperCase();
       return raw === "3X" ? "3XB" : raw;
     };
+    const sameCompany = (s, b) => String(s.company || s.subco || "").toUpperCase() === String(b.company || b.subco || "").toUpperCase();
+
+    /* PM ของเครือ 7M ยืนยันคู่ด้วย 3 จุดจากข้อมูลจริง ไม่ผูกกับถ้อยคำรอบ Ref:
+       Ref ใน STM PM ต้องปรากฏใน Ref/โน้ต BO + User ตรง + ยอดจริงตรง
+       จึงรองรับทั้งข้อความตรง, "P2P สำเร็จจากรายการ ..." และ
+       "MyPay สำเร็จจากรายการ ..." โดยไม่ต้องแยก BOT/พนักงานเป็นคนละชีต */
+    const providerIdentityMatched = new Set();
+    const providerCandidates = new Map();
+    const providerPeers = new Map();
+    const providerIdentityCandidate = (s, b) => ['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
+      && sameCompany(s, b)
+      && s.account === b.account
+      && !!s.direction && s.direction === b.direction
+      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+      && !!identityText(s.memberCode) && identityText(s.memberCode) === identityText(b.memberCode)
+      && providerRefMatches(s, b);
+    stmRecords.forEach((s) => {
+      if (!s.isPmChannel) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || []).filter((i) => providerIdentityCandidate(s, boRecords[i]));
+      providerCandidates.set(s, rows);
+      rows.forEach((i) => {
+        let peers = providerPeers.get(i);
+        if (!peers) providerPeers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    stmRecords.forEach((s) => {
+      const rows = providerCandidates.get(s) || [];
+      if (rows.length !== 1 || (providerPeers.get(rows[0]) || []).length !== 1 || boUsed[rows[0]]) return;
+      const i = rows[0], b = boRecords[i];
+      boUsed[i] = 1;
+      providerIdentityMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), providerIdentityMatch: true });
+    });
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
-    const sameCompany = (s, b) => String(s.company || s.subco || "").toUpperCase() === String(b.company || b.subco || "").toUpperCase();
     const crossCandidate = (s, b) => {
       if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
       if (!s.direction || s.direction !== b.direction || s.account !== b.account || s.amount !== b.amount) return false;
@@ -524,6 +565,7 @@ const Engine = (() => {
       stmRecords,
       10000,
       (s) => {
+        if (providerIdentityMatched.has(s)) return;
         if (identityMatched.has(s)) return;
         const cands = exactIdx.get(key2(s.account, s.amount));
         let best = -1;
@@ -853,7 +895,8 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.providerIdentityMatch ? "provider-ref-user-amount" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        providerIdentityMatched: !!m.providerIdentityMatch,
         rescueMatched: !!m.rescueMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),

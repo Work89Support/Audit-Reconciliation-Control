@@ -175,6 +175,17 @@ for (const [token, label, direction] of [["D", "ฝาก", "deposit"], ["W", "�
   eq(`AUTOPEER ${token}: user retained`, parsed.records[0]?.memberCode, "TEST-USER");
   eq(`AUTOPEER ${token}: reference retained`, parsed.records[0]?.ref, "TEST-ORDER");
 }
+const sevenCorepayDeposit = Formats.parse('7M_COREPAY_D_2026-09-20.xlsx', [
+  ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนที่ฝาก','จำนวนที่ได้รับ','เลขบัญชีที่โอน','ธนาคารต้นทาง','สถานะ'],
+  ['2026-09-20 10:00:00','CP-REF-1','seven-user',505,500,'1234567890','SCB','SUCCESSED'],
+], '2026-09-20');
+eq('7M COREPAY deposit: received amount is matching amount',sevenCorepayDeposit.records[0]?.amount,500);
+eq('7M COREPAY deposit: amount source is preserved',sevenCorepayDeposit.records[0]?.amountColumn,'จำนวนที่ได้รับ');
+const sevenCyberDeposit = Formats.parse('7M_CYBERPLUS_D_2026-09-20.xlsx', [
+  ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนเงิน','เลขบัญชีที่โอน','ธนาคารต้นทาง','สถานะ'],
+  ['2026-09-20 10:00:00','CY-REF-1','seven-user',700,'1234567890','SCB','SUCCESSED'],
+], '2026-09-20');
+eq('7M CYBERPLUS deposit: จำนวนเงิน is supported',sevenCyberDeposit.records[0]?.amount,700);
 console.log("\nUnit tests (Formats / Rules / Charts)");
 console.log(out.join("\n"));
 console.log(`\n${passed} ผ่าน, ${failed} ล้มเหลว\n`);

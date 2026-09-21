@@ -191,7 +191,9 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.16-bangkok-localpay-statement-tabs-queue-retry'/, "worker version must identify the Bangkok time, LOCALPAY, statement-tab, and queue-retry release");
+assert.match(workerText, /worker_version:'1\.5\.17-7m-provider-identity-tmn-tabs'/, "worker version must identify the 7M provider identity and TMN split-tab release");
+assert.match(workerText, /seven_m_provider_identity_rule:true/, "worker summary must identify the 7M Ref/User/Amount rule");
+assert.match(workerText, /seven_m_tmn_split_tabs:true/, "worker summary must identify the 7M TMN split-tab layout");
 assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");

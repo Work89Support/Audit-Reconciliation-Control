@@ -98,7 +98,7 @@ const Formats = (() => {
      ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
   const PM_DATE = ["paymenttime", "expiredtime", "updatetime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
   const PM_STATUS = ["status", "สถานะ"];
-  const PM_AMT_DEP = ["โอนจริง", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
+  const PM_AMT_DEP = ["โอนจริง", "จำนวนที่ได้รับ", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
   const PM_AMT_WIT = ["transferredamount", "p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
   const anyCol = (cells, names) => names.some((n) => cells.some((c) => c === norm(n) || c.startsWith(norm(n))));
   function detectPM(rows) {
@@ -490,14 +490,17 @@ const Formats = (() => {
         return drop("PARTIAL ไม่มียอดจ่ายจริงที่ตรวจสอบได้"), null;
       }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
-      const amountColumn = xbPolicy
-        ? dir === "deposit" ? "realAmount" : ["AUTOPEER", "MYPAY"].includes(provider) ? "transferredAmount" : "amount"
-        : dir === "withdraw" ? "transferredAmount" : "realAmount";
+      const amountCandidates = dir === "withdraw"
+        ? ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]
+        : ["โอนจริง", "จำนวนที่ได้รับ", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"];
+      const xbAmountColumn = dir === "deposit" ? "realAmount" : ["AUTOPEER", "MYPAY"].includes(provider) ? "transferredAmount" : "amount";
+      const amountSource = xbPolicy
+        ? firstValue(f, r, [xbAmountColumn])
+        : firstValue(f, r, amountCandidates);
+      const amountColumn = amountSource.column || (dir === "deposit" ? "realAmount" : "transferredAmount");
       const amount = xbPolicy
-        ? num(val(f, r, amountColumn))
-        : partial ? Number(paidText) : dir === "withdraw"
-          ? num(valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]))
-          : num(valAny(f, r, ["โอนจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"]));
+        ? num(amountSource.value)
+        : partial ? Number(paidText) : num(amountSource.value);
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const requestedRaw = valAny(f, r, ["แจ้งถอน", "สร้างฝาก", "amount"]);
       const requested = num(requestedRaw) || null;

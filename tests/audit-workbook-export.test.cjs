@@ -67,6 +67,25 @@ assert.ok(threeXbSheets.some(sheet=>sheet.name==='LP ถ'),'3XB export must incl
 assert.equal(threeXbSheets.find(sheet=>sheet.name==='LP ฝ').rows.length,1);
 assert.equal(threeXbSheets.find(sheet=>sheet.name==='LP ถ').rows.length,1);
 
+const sevenMSheets = live.buildAuditExportSheets([
+  row({company:'7M',account:'AUTOPEER',direction:'withdraw',pmSource:{row:2,timeColumn:'วันที่',amountColumn:'P2P จ่าย'}}),
+  row({company:'7M',account:'COREPAY',direction:'deposit',pmSource:{row:3,timeColumn:'วันที่ทำรายการ',amountColumn:'จำนวนที่ได้รับ'}}),
+  row({company:'7M',account:'CYBERPLUS',direction:'deposit',pmSource:{row:4,timeColumn:'วันที่ทำรายการ',amountColumn:'จำนวนเงิน'}}),
+  row({company:'7M',account:'LOCALPAY',direction:'withdraw',pmSource:{row:5,timeColumn:'วันเวลาอัพเดต',amountColumn:'จำนวนเงิน'}}),
+  row({company:'7M',account:'0812792075',direction:'deposit',pm:{user:'รุ่งฟ้า',account:'0812792075',bank:'TMN'}}),
+  row({company:'7M',account:'0812792075',direction:'withdraw',pm:{user:'รุ่งฟ้า',account:'0812792075',bank:'TMN'}}),
+  row({company:'7M',account:'5034633891',direction:'deposit',pm:{user:'สมภพ',account:'5034633891',bank:'SCB'}}),
+  row({company:'7M',account:'5034633891',direction:'withdraw',pm:{user:'สมภพ',account:'5034633891',bank:'SCB'}}),
+], 'UFABET7M', '2026-09-20', true, schema);
+for(const name of ['AT ถ','AT ฝ','CP ถ','CP ฝ','CY ถ','CY ฝ','AZ ฝ','M ถ','M ฝ','LO ถ','LO ฝ'])assert.ok(sevenMSheets.some(sheet=>sheet.name===name),`7M export must include ${name}`);
+assert.ok(!sevenMSheets.some(sheet=>sheet.name==='AZ ถ'),'7M export must not invent AZ withdrawal sheet');
+assert.equal(sevenMSheets.find(sheet=>sheet.name==='AT ถ').headers[0],'วันที่');
+assert.ok(sevenMSheets.find(sheet=>sheet.name==='AT ถ').headers.includes('P2P จ่าย'));
+assert.ok(sevenMSheets.find(sheet=>sheet.name==='CP ฝ').headers.includes('จำนวนที่ได้รับ'));
+assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM SCB สมภพ D-W').rows.length,2,'normal bank deposit and withdrawal stay together');
+assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM TMN รุ่งฟ้า D').rows.length,1,'TMN deposit has a separate sheet');
+assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM TMN รุ่งฟ้า W').rows.length,1,'TMN withdrawal has a separate sheet');
+
 const atDeposit = sheets.find(sheet => sheet.name === 'AT ฝ');
 assert.deepEqual(atDeposit.headers.slice(0, schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers.length), schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers);
 assert.deepEqual(atDeposit.headers.slice(-4), ['เงื่อนไขที่จับคู่', 'ต่างเวลา', 'ผลต่างยอด', 'สถานะ Audit']);

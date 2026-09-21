@@ -441,6 +441,19 @@ await (async () => {
   eq('STM header: not customer identity',Engine.statementCustomer({desc:'Account No. 4311918665',account:'4311918665'}).custAccountLast4,undefined);
 })();
 
+await (async () => {
+  const reference='P2C-20260920-120000-ABC123';
+  const stm=rec({company:'7M',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:900,sec:60,memberCode:'seven-user',ref:reference});
+  const bo=rec({company:'7M',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:900,sec:80000,memberCode:'seven-user',ref:'',note:`P2P สำเร็จจากรายการ ${reference}`});
+  let r=await run([stm],[bo]);
+  eq('7M provider: Ref + User + Amount closes even when time is far apart',r.matched,1);
+  eq('7M provider: evidence records three-point rule',r.matchEvidence[0]?.method,'provider-ref-user-amount');
+  r=await run([stm],[{...bo,memberCode:'different-user'}]);
+  eq('7M provider: different user is not auto-matched',r.matched,0);
+  r=await run([stm],[{...bo,amount:901}]);
+  eq('7M provider: different amount is not auto-matched',r.matched,0);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));
