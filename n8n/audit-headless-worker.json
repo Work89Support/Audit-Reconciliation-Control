@@ -92,7 +92,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, rerun_requested_at: null, updated_at: DateTime.now().toISO() }) }}",
+        "jsonBody": "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, updated_at: DateTime.now().toISO() }) }}",
         "options": {
           "response": {
             "response": {}

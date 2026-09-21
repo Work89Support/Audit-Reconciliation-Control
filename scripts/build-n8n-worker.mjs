@@ -218,7 +218,10 @@ const nodes = [
     headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] },
     sendBody: true,
     specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, rerun_requested_at: null, updated_at: DateTime.now().toISO() }) }}",
+    // Keep rerun_requested_at until claim_daily_recon_jobs chooses the newest
+    // explicit request. finish_daily_recon_job/parse_only consumes it after the
+    // selected job has actually run.
+    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, updated_at: DateTime.now().toISO() }) }}",
     options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-380, 160] },

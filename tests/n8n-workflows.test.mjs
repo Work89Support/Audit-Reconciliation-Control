@@ -144,7 +144,7 @@ assert.equal(worker.connections["Supabase: คืนคิวที่สั่�
 const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่");
 assert.equal(restoreManualRerun.parameters.method, "PATCH");
 assert.match(restoreManualRerun.parameters.url, /rerun_requested_at=not\.is\.null/);
-assert.match(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "a manual request must be consumed once instead of looping forever");
+assert.doesNotMatch(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "manual rerun priority must survive until the newest request is claimed");
 assert.equal(worker.connections["รวมเป็นหนึ่งรอบ"].main[0][0].node, "Supabase: จองหนึ่งงาน");
 assert.equal(worker.connections["Supabase: ปิดงานสำเร็จ"].main[0][0].node, "จบรอบ Worker");
 assert.match(workerText, /จองหนึ่งงาน'\)\.first\(\)/, "processing must use the single claimed job");
