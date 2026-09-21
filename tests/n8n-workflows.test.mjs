@@ -152,6 +152,10 @@ assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0
 assert.equal(worker.connections["เตรียมข้อมูลผลการรัน"].main[0][0].node, "Supabase: สร้างผลการรัน");
 assert.match(workerText, /p_limit[^}]*1/, "each execution must claim exactly one unambiguous job");
 assert.match(workerText, /startOf\('month'\)/, "automatic catch-up must prioritize the current operating month");
+const queueDueJobs = worker.nodes.find((node) => node.name === "Supabase: ตรวจไฟล์และจัดคิว");
+assert.equal(queueDueJobs.retryOnFail, true, "the idempotent queue refresh must retry transient Supabase timeouts");
+assert.ok(queueDueJobs.maxTries >= 3, "the queue refresh needs enough retry attempts under load");
+assert.ok(queueDueJobs.waitBetweenTries >= 3000, "the queue refresh must pause before retrying Supabase");
 assert.equal(worker.connections["Supabase: ตรวจไฟล์และจัดคิว"].main[0][0].node, "Supabase: คืนคิวที่สั่งรันใหม่", "manual reruns must be restored after the automatic quality refresh");
 assert.equal(worker.connections["Supabase: คืนคิวที่สั่งรันใหม่"].main[0][0].node, "รวมเป็นหนึ่งรอบ", "queue RPC rows must collapse before claiming");
 const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่");
@@ -187,7 +191,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.15-bangkok-localpay-statement-tabs-rerun-retry'/, "worker version must identify the Bangkok time, LOCALPAY, statement-tab, and rerun-retry release");
+assert.match(workerText, /worker_version:'1\.5\.16-bangkok-localpay-statement-tabs-queue-retry'/, "worker version must identify the Bangkok time, LOCALPAY, statement-tab, and queue-retry release");
 assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");
