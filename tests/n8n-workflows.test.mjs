@@ -137,6 +137,10 @@ assert.ok(worker.nodes.some((node) => node.name === "Google Drive OCR: แปล
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 1);
 assert.match(workerText, /claim_daily_recon_jobs/);
 assert.match(workerText, /finish_daily_recon_job/);
+assert.match(workerText, /create_recon_run_with_timeout/, "large audit evidence must use the transaction-local timeout RPC");
+assert.ok(worker.nodes.some((node) => node.name === "เตรียมข้อมูลผลการรัน"), "large run payload must be assembled in a code node, not a complex n8n JSON expression");
+assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0][0].node, "เตรียมข้อมูลผลการรัน");
+assert.equal(worker.connections["เตรียมข้อมูลผลการรัน"].main[0][0].node, "Supabase: สร้างผลการรัน");
 assert.match(workerText, /p_limit[^}]*1/, "each execution must claim exactly one unambiguous job");
 assert.match(workerText, /startOf\('month'\)/, "automatic catch-up must prioritize the current operating month");
 assert.equal(worker.connections["Supabase: ตรวจไฟล์และจัดคิว"].main[0][0].node, "Supabase: คืนคิวที่สั่งรันใหม่", "manual reruns must be restored after the automatic quality refresh");
@@ -162,7 +166,7 @@ assert.match(workerText, /row_count:usableRows/, "row_count must contain usable 
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
 assert.equal(worker.connections["Supabase: บันทึกผลอ่านไฟล์"].main[0][0].node, "ไฟล์ผ่าน Quality Gate?");
-assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0][0].node, "Supabase: สร้างผลการรัน");
+assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0][0].node, "เตรียมข้อมูลผลการรัน");
 assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "บันทึกว่าอ่านแล้วและรอไฟล์");
 assert.match(workerText, /finish_daily_recon_parse_only/, "an incomplete file set must finish parsing without creating a reconciliation run");
 assert.match(workerText, /missing_groups/, "the reconciliation gate must require both file sides before creating a run");
@@ -171,7 +175,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.10-column-ocr-verified'/, "worker version must identify the column OCR verification release");
+assert.match(workerText, /worker_version:'1\.5\.13-column-ocr-financial-multiset'/, "worker version must identify the verified financial-multiset OCR release");
 assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");

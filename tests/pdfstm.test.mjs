@@ -249,6 +249,18 @@ const kbStructuredColumn = P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStru
 eq("KB structured OCR column-major: ยืนยันด้วยวันเวลาและยอดคงเหลือ", kbStructuredColumn?.quality.columnLayoutVerified, true);
 eq("KB structured OCR column-major: เก็บสองยอด 900", kbStructuredColumn?.records.length, 2);
 eq("KB structured OCR column-major: ปฏิเสธเมื่อยอดคงเหลือใน PDF ไม่ตรง", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows, page_count: 2 }, kbTrueColumnOcr.replace("11,517.01", "99,999.99"), "2026-09-17"), null);
+const kbDamagedTimeOcr = `KASIKORNBANK\nเลขที่บัญชีเงินฝาก 193-8-71380-0\n17-09-26 00:20\n17-09-26\nรับโอนเงิน\nรับโอนเงิน\n900.00\n900.00\n10,287.01\n11,517.01\nK PLUS\nK PLUS`;
+const kbStructuredDamagedTime = P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows, page_count: 2 }, kbDamagedTimeOcr, "2026-09-17");
+eq("KB structured OCR damaged time: ใช้ชนิดรายการครบและยอดคงเหลือครบแทนเวลา OCR ที่หลุด", kbStructuredDamagedTime?.records.length, 2);
+eq("KB structured OCR damaged time: ปฏิเสธแถวบางส่วนแม้ยอดของแถวนั้นมีใน PDF", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows.slice(0, 1), page_count: 2 }, kbDamagedTimeOcr, "2026-09-17"), null);
+const kbManyRows = Array.from({ length: 10 }, (_, index) => ({
+  date: "2026-09-17", sec: 1200 + index * 60, direction: "deposit", amount: 100 + index,
+  balance: 10000 + index, account: "1938713800", bank: "KBANK", desc: "K PLUS",
+}));
+const kbPageBoundaryOcr = `KASIKORNBANK\nเลขที่บัญชีเงินฝาก 193-8-71380-0\n${kbManyRows.map((row) => `17-09-26 ${String(Math.floor(row.sec / 3600)).padStart(2, "0")}:${String(Math.floor((row.sec % 3600) / 60)).padStart(2, "0")}`).join("\n")}\n${Array(11).fill("รับโอนเงิน").join("\n")}\n${kbManyRows.map((row) => row.balance.toFixed(2)).join("\n")}`;
+const kbPageBoundaryComplete = `${kbPageBoundaryOcr}\n${kbManyRows.map((row) => row.amount.toFixed(2)).join("\n")}`;
+eq("KB structured OCR page boundary: ยอมรับคำประเภทรายการซ้ำในคำอธิบาย", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbManyRows, page_count: 2 }, kbPageBoundaryComplete, "2026-09-17")?.records.length, 10);
+eq("KB structured OCR page boundary: ปฏิเสธถ้ายอดรายการไม่ครบ", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbManyRows, page_count: 2 }, kbPageBoundaryComplete.replace("109.00", "missing"), "2026-09-17"), null);
 
 const scbHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
 const scbRows = ['08/09/26 00:02 X1 ENET 55.00 9,529.48', '08/09/26 00:05 X2 ENET 3,500.00 6,029.48', '08/09/26 00:09 X1 ENET 99.00 6,128.48', '08/09/26 00:11 X1 ENET 80.00 6,208.48', '08/09/26 00:14 X1 ENET 70.00 6,278.48'];

@@ -490,16 +490,51 @@ const PdfStm = (() => {
         const key = value.toFixed(2);
         numberCounts.set(key, (numberCounts.get(key) || 0) + 1);
       }
-      const usedBalances = new Map();
-      let balancesOk = rows.every((row) => Number.isFinite(row.balance));
+      // Validate the complete financial multiset from the current PDF.  Amounts
+      // and balances share one counter so a single visible number cannot prove
+      // both fields when their values happen to be equal.
+      const expectedNumbers = new Map();
+      let financialValuesOk = rows.every((row) => Number.isFinite(row.balance));
       for (const row of rows) {
-        if (!Number.isFinite(row.balance)) continue;
-        const key = Number(row.balance).toFixed(2);
-        const next = (usedBalances.get(key) || 0) + 1;
-        if (next > (numberCounts.get(key) || 0)) balancesOk = false;
-        usedBalances.set(key, next);
+        for (const value of [row.amount, row.balance]) {
+          if (!Number.isFinite(value)) {
+            financialValuesOk = false;
+            continue;
+          }
+          const key = Number(value).toFixed(2);
+          expectedNumbers.set(key, (expectedNumbers.get(key) || 0) + 1);
+        }
       }
-      columnMarkersMatch = timesOk && balancesOk;
+      for (const [key, count] of expectedNumbers) {
+        if ((numberCounts.get(key) || 0) < count) financialValuesOk = false;
+      }
+      // Some OCR passes lose or split one or more timestamps even though the
+      // transaction-type column remains complete. Require the complete
+      // direction multiset plus every balance from the current PDF instead.
+      const directionCounts = new Map();
+      const directionRe = /(รับโอนเงิน|ฝากเงิน|ดอกเบี้ย|โอนเงิน|ถอนเงิน|หักบัญชี|ค่าธรรมเนียม)/g;
+      let directionToken;
+      while ((directionToken = directionRe.exec(compactFresh))) {
+        const direction = /รับโอน|ฝากเงิน|ดอกเบี้ย/.test(directionToken[1]) ? "deposit" : "withdraw";
+        directionCounts.set(direction, (directionCounts.get(direction) || 0) + 1);
+      }
+      const rowDirectionCounts = rows.reduce((counts, row) => {
+        counts.set(row.direction, (counts.get(row.direction) || 0) + 1);
+        return counts;
+      }, new Map());
+      const directionsOk = [...rowDirectionCounts.entries()].every(([direction, count]) => directionCounts.get(direction) === count)
+        && [...directionCounts.values()].reduce((sum, count) => sum + count, 0) === rows.length;
+      // Descriptions in KBANK OCR can repeat words such as “รับโอนเงิน” after
+      // the transaction-type column.  Extra tokens therefore must not reject a
+      // document whose account, business date, every amount, every balance and
+      // minimum direction counts are all verified against the current PDF.
+      const directionsCoverRows = rows.length >= 10
+        && [...rowDirectionCounts.entries()].every(([direction, count]) => (directionCounts.get(direction) || 0) >= count)
+        && [...directionCounts.values()].reduce((sum, count) => sum + count, 0) >= rows.length;
+      const businessDateVisible = compactFresh.includes(businessDate)
+        || compactFresh.includes(businessDate.split("-").reverse().join("-"))
+        || compactFresh.includes(`${businessDate.slice(8, 10)}-${businessDate.slice(5, 7)}-${businessDate.slice(2, 4)}`);
+      columnMarkersMatch = financialValuesOk && businessDateVisible && (directionsOk || directionsCoverRows);
     }
     if (!(strictMarkersMatch && markerTotal === rows.length) && !columnMarkersMatch) return null;
     const company = typeof Formats !== "undefined" ? Formats.companyOf(fileName) : null;
