@@ -2311,7 +2311,10 @@ function renderDailyCompanySummary(root) {
           normalizeLiveCompanyCode(row.company) === company &&
           !row.is_archived
         );
-        const jobId = data.checklist?.job_id || selectedOperation?.id;
+        const resolvedJob = data.checklist?.job_id || selectedOperation?.id
+          ? null
+          : await Sb.dailyJob(company, state.dailySummary.date);
+        const jobId = data.checklist?.job_id || selectedOperation?.id || resolvedJob?.id;
         if (!jobId) {
           toast("ยังไม่พบรหัสงานรายวัน กรุณาเปิดคลังไฟล์และกดรีเฟรชก่อน", "warn");
           return;

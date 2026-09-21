@@ -531,6 +531,11 @@ const Sb = (() => {
     });
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
+  async function dailyJob(company, date) {
+    if (!company || company === "ALL" || !date) return null;
+    const rows = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=id,company,business_date,status&limit=1`);
+    return rows[0] || null;
+  }
   const claimJob = (worker) => rpc("claim_daily_recon_job", { p_worker: worker || currentEmail() || "web-worker" });
   const retryJob = (jobId) => rpc("retry_daily_recon_job", { p_job_id: jobId });
   const finishJob = (jobId, runId) => rpc("finish_daily_recon_job", { p_job_id: jobId, p_run_id: runId });
@@ -966,6 +971,7 @@ const Sb = (() => {
     confirmAuditPairs,
     exceptionFiles,
     queueDueJobs,
+    dailyJob,
     claimJob,
     retryJob,
     finishJob,

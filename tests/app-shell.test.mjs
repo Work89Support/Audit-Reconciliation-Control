@@ -211,7 +211,9 @@ assert.match(app, /ประมวลผลจับคู่ใหม่/, "ร
 assert.match(app, /data\.checklist\?\.job_id \|\| selectedOperation\?\.id/, "ปุ่มจับคู่ใหม่ต้องใช้ job id จากสถานะงานเมื่อ checklist ไม่ส่ง id มา");
 assert.match(app, /row\.business_date === state\.dailySummary\.date[\s\S]+normalizeLiveCompanyCode\(row\.company\) === company[\s\S]+!row\.is_archived/, "งานที่ส่งกลับเข้าคิวต้องตรงบริษัทและวันที่ที่กำลังเปิด และไม่ใช่งานที่เก็บถาวร");
 assert.match(app, /Sb\.retryJob\(jobId\)/, "ปุ่มจับคู่ใหม่ต้องส่งงานเดิมกลับเข้าคิว Supabase");
+assert.match(app, /Sb\.dailyJob\(company, state\.dailySummary\.date\)/, "ปุ่มจับคู่ใหม่ต้องค้นงานรายวันโดยตรงเมื่อ view ไม่คืน job id");
 assert.match(sb, /const retryJob = \(jobId\) => rpc\("retry_daily_recon_job"/, "Supabase client ต้องเรียก RPC สำหรับรันงานเดิมใหม่");
+assert.match(sb, /async function dailyJob\(company, date\)/, "Supabase client ต้องค้นงานรายวันตามบริษัทและวันที่ได้");
 assert.match(app, /data-bo-preview/, "ไฟล์ที่เกี่ยวข้องต้องเปิด Preview จริงจากรายละเอียดได้");
 assert.match(app, /เปิดหน้าติดตามเคส/, "ผู้ตรวจต้องดำเนินการต่อจากรายละเอียด BO-first ได้");
 assert.match(app, /บัญชี\/Provider ที่ BO ระบุ/, "สรุป BO ต้องแสดงบัญชีหรือ Provider ที่พบจาก BO");
