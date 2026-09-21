@@ -244,6 +244,11 @@ eq("KB structured OCR: ตรวจ marker ครบก่อนใช้แถ�
 eq("KB structured OCR: เก็บรายการยอดซ้ำคนละเวลา", kbStructured?.records.length, 2);
 eq("KB structured OCR: ยอด 900 ไม่สลับกับยอดคงเหลือ", kbStructured?.records[0]?.balance, 10287.01);
 eq("KB structured OCR: ปฏิเสธชุดแถวที่ OCR ปัจจุบันมี marker ไม่ครบ", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows.slice(0, 1) }, kbColumnOcr, "2026-09-17"), null);
+const kbTrueColumnOcr = `KASIKORNBANK\nเลขที่บัญชีเงินฝาก 193-8-71380-0\n17-09-26 00:20\n17-09-26 00:22\nรับโอนเงิน\nรับโอนเงิน\n900.00\n900.00\n10,287.01\n11,517.01\nK PLUS\nK PLUS`;
+const kbStructuredColumn = P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows, page_count: 2 }, kbTrueColumnOcr, "2026-09-17");
+eq("KB structured OCR column-major: ยืนยันด้วยวันเวลาและยอดคงเหลือ", kbStructuredColumn?.quality.columnLayoutVerified, true);
+eq("KB structured OCR column-major: เก็บสองยอด 900", kbStructuredColumn?.records.length, 2);
+eq("KB structured OCR column-major: ปฏิเสธเมื่อยอดคงเหลือใน PDF ไม่ตรง", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows, page_count: 2 }, kbTrueColumnOcr.replace("11,517.01", "99,999.99"), "2026-09-17"), null);
 
 const scbHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
 const scbRows = ['08/09/26 00:02 X1 ENET 55.00 9,529.48', '08/09/26 00:05 X2 ENET 3,500.00 6,029.48', '08/09/26 00:09 X1 ENET 99.00 6,128.48', '08/09/26 00:11 X1 ENET 80.00 6,208.48', '08/09/26 00:14 X1 ENET 70.00 6,278.48'];

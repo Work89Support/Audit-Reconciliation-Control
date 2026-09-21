@@ -445,18 +445,63 @@ const PdfStm = (() => {
       return { ...row, date, sec, direction, amount: Number(row.amount), balance: row.balance === null || row.balance === "" || row.balance === undefined ? null : Number(row.balance) };
     }).filter((row) => row.date === businessDate);
     if (!rows.length) return null;
+    if (rows.some((row) => row.sec === null || !Number.isFinite(row.sec) || !Number.isFinite(row.amount) || !row.direction)) return null;
     const used = new Map();
+    let strictMarkersMatch = true;
     for (const row of rows) {
-      if (row.sec === null || !Number.isFinite(row.sec) || !Number.isFinite(row.amount) || !row.direction) return null;
       const key = `${row.date}|${row.sec}|${row.direction}`;
       const next = (used.get(key) || 0) + 1;
-      if (next > (markerCounts.get(key) || 0)) return null;
+      if (next > (markerCounts.get(key) || 0)) strictMarkersMatch = false;
       used.set(key, next);
     }
     const markerTotal = [...markerCounts.values()].reduce((sum, count) => sum + count, 0);
-    if (markerTotal !== rows.length) return null;
     const rowAccounts = new Set(rows.map((row) => digits(row.account)).filter(Boolean));
     if (rowAccounts.size > 1 || (head.account && rowAccounts.size === 1 && !rowAccounts.has(head.account))) return null;
+    const compactFresh = String(freshText).replace(/\u00a0/g, " ");
+    const visibleAccount = [...rowAccounts][0];
+    if (visibleAccount && !digits(compactFresh).includes(visibleAccount)) return null;
+    let columnMarkersMatch = false;
+    if (!strictMarkersMatch || markerTotal !== rows.length) {
+      // Google Drive OCR ของ KBANK บางไฟล์คืนข้อความเรียงตามคอลัมน์:
+      // วัน/เวลา, ประเภท, ยอด และยอดคงเหลือจึงไม่ได้อยู่บรรทัดเดียวกัน
+      // ยืนยันด้วย multiset วัน/เวลา + ยอดคงเหลือที่อ่านจาก PDF ปัจจุบันแทน
+      // (ยอดคงเหลือมีความจำเพาะสูงและป้องกันการนำ OCR เก่าของคนละไฟล์มาใช้)
+      const timeCounts = new Map();
+      const timeRe = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2})/g;
+      let time;
+      while ((time = timeRe.exec(compactFresh))) {
+        const date = isoOf(time[1]);
+        if (date !== businessDate) continue;
+        const key = `${date}|${secOf(time[2])}`;
+        timeCounts.set(key, (timeCounts.get(key) || 0) + 1);
+      }
+      const usedTimes = new Map();
+      let timesOk = [...timeCounts.values()].reduce((sum, count) => sum + count, 0) === rows.length;
+      for (const row of rows) {
+        const key = `${row.date}|${row.sec}`;
+        const next = (usedTimes.get(key) || 0) + 1;
+        if (next > (timeCounts.get(key) || 0)) timesOk = false;
+        usedTimes.set(key, next);
+      }
+      const numberCounts = new Map();
+      for (const token of compactFresh.match(/-?[\d,]+\.\d{2}/g) || []) {
+        const value = Number(token.replace(/,/g, ""));
+        if (!Number.isFinite(value)) continue;
+        const key = value.toFixed(2);
+        numberCounts.set(key, (numberCounts.get(key) || 0) + 1);
+      }
+      const usedBalances = new Map();
+      let balancesOk = rows.every((row) => Number.isFinite(row.balance));
+      for (const row of rows) {
+        if (!Number.isFinite(row.balance)) continue;
+        const key = Number(row.balance).toFixed(2);
+        const next = (usedBalances.get(key) || 0) + 1;
+        if (next > (numberCounts.get(key) || 0)) balancesOk = false;
+        usedBalances.set(key, next);
+      }
+      columnMarkersMatch = timesOk && balancesOk;
+    }
+    if (!(strictMarkersMatch && markerTotal === rows.length) && !columnMarkersMatch) return null;
     const company = typeof Formats !== "undefined" ? Formats.companyOf(fileName) : null;
     const account = head.account || [...rowAccounts][0] || "UNKNOWN";
     const bank = head.bank || rows.find((row) => row.bank)?.bank || "";
@@ -476,8 +521,8 @@ const PdfStm = (() => {
       format: { source: "stm", bank, company, headerIdx: 0, map: {}, realCode: "stm_pdf",
         realLabel: `Statement PDF ${bank} ${account}`.trim(), channels: {}, holder: head.holder, period: head.period },
       records, aux: [], dropped: {},
-      warnings: [`ใช้แถว OCR ที่ตรวจย้อนกับข้อความ PDF ปัจจุบันครบ ${rows.length} รายการ`],
-      quality: { complete: true, parsedRows: rows.length, unreadRows: [], invalidRows: [], structuredOcrVerified: true },
+      warnings: [`ใช้แถว OCR ที่ตรวจย้อนกับข้อความ PDF ปัจจุบันครบ ${rows.length} รายการ${columnMarkersMatch ? " (รูปแบบข้อความแยกคอลัมน์)" : ""}`],
+      quality: { complete: true, parsedRows: rows.length, unreadRows: [], invalidRows: [], structuredOcrVerified: true, columnLayoutVerified: columnMarkersMatch },
       pageCount: Number(evidence.page_count) || pages.length,
     };
   }
