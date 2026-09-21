@@ -209,13 +209,25 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-600, 160] },
-  http("claim", "Supabase: จองหนึ่งงาน", [-380, 160], {
+  { ...http("restore-manual-rerun", "Supabase: คืนคิวที่สั่งรันใหม่", [-600, 160], {
+    method: "PATCH",
+    url: "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?rerun_requested_at=not.is.null&status=eq.needs_review&is_archived=eq.false&business_date=gte.{{ DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() }}&business_date=lte.{{ DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }}",
+    authentication: "predefinedCredentialType",
+    nodeCredentialType: "supabaseApi",
+    sendHeaders: true,
+    headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] },
+    sendBody: true,
+    specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, rerun_requested_at: null, updated_at: DateTime.now().toISO() }) }}",
+    options: { response: { response: {} } },
+  }), alwaysOutputData: true },
+  { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-380, 160] },
+  http("claim", "Supabase: จองหนึ่งงาน", [-160, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 1 }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [-160, 160] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [60, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
@@ -281,7 +293,8 @@ const nodes = [
 const connections = {
   "ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
-  "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
+  "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "Supabase: คืนคิวที่สั่งรันใหม่", type: "main", index: 0 }]] },
+  "Supabase: คืนคิวที่สั่งรันใหม่": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
   "รวมเป็นหนึ่งรอบ": { main: [[{ node: "Supabase: จองหนึ่งงาน", type: "main", index: 0 }]] },
   "Supabase: จองหนึ่งงาน": { main: [[{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
   "มีงานในคิว?": { main: [[{ node: "Supabase: อ่านรายการไฟล์ของวัน", type: "main", index: 0 }], [{ node: "จบรอบ Worker", type: "main", index: 0 }]] },

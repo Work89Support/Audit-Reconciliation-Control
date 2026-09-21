@@ -73,6 +73,50 @@
     },
     {
       "parameters": {
+        "method": "PATCH",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?rerun_requested_at=not.is.null&status=eq.needs_review&is_archived=eq.false&business_date=gte.{{ DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() }}&business_date=lte.{{ DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, rerun_requested_at: null, updated_at: DateTime.now().toISO() }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "restore-manual-rerun",
+      "name": "Supabase: คืนคิวที่สั่งรันใหม่",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -600,
+        160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "jsCode": "return [{json:{started_at:new Date().toISOString()}}];"
       },
       "id": "single-cycle",
@@ -80,7 +124,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -600,
+        -380,
         160
       ]
     },
@@ -113,7 +157,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -380,
+        -160,
         160
       ],
       "credentials": {
@@ -153,7 +197,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -160,
+        60,
         160
       ]
     },
@@ -886,6 +930,17 @@
       ]
     },
     "Supabase: ตรวจไฟล์และจัดคิว": {
+      "main": [
+        [
+          {
+            "node": "Supabase: คืนคิวที่สั่งรันใหม่",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: คืนคิวที่สั่งรันใหม่": {
       "main": [
         [
           {
