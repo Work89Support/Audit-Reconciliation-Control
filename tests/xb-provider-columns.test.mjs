@@ -44,4 +44,7 @@ assert.equal(Formats.parse('MC8_PM_AZPAY_D_2026-09-15.xlsx',[headers,noReal],'20
 const noUpdate=[...values];noUpdate[1]='COREPAY';noUpdate[5]='';
 assert.equal(Formats.parse('UR9_PM_COREPAY_W_2026-09-15.xlsx',[headers,noUpdate],'2026-09-15').records.length,0,'other time columns cannot replace missing updateTime');
 
+const localpay=[...values];localpay[1]='LOCALPAY';
+assert.equal(Formats.parse('3XB_PM_LOCALPAY_D_2026-09-15.xlsx',[headers,localpay],'2026-09-15').records.length,0,'LOCALPAY is outside the XB AT/AZ/CP/M audit scope');
+
 console.log('XB provider column policy passed for 5 companies, 4 providers and both directions.');

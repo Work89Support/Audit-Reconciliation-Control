@@ -365,10 +365,14 @@ const Formats = (() => {
         rowNo: i + 1,
         source: "bo",
         formatCode: "bo_transaction_export",
-        date: bankT.date || boT.date,
-        sec: bankT.sec,
+        // ใช้เวลา BO "เวลา" เป็นแกนจับคู่กับ paymentTime/updateTime ของ PM
+        // ส่วน "เวลาทำรายการ" เป็นเวลาธนาคาร ใช้เพียงตรวจข้ามวัน/หลักฐานประกอบ
+        date: boT.date,
+        sec: boT.sec,
         boDate: boT.date,
         boSec: boT.sec,
+        bankDate: bankT.date,
+        bankSec: bankT.sec,
         amount: Math.round(amount * 100) / 100,
         direction: /ถอน|withdraw|payout/i.test(type) ? "withdraw" : "deposit",
         account: identity.account,
@@ -382,8 +386,8 @@ const Formats = (() => {
         username: val(f, r, "ผู้ดำเนินการ"),
         note: val(f, r, "หมายเหตุ"),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
-        lateNight: bankT.sec >= 82800,
-        minutePrecision: !bankT.secPrecision,
+        lateNight: boT.sec >= 82800,
+        minutePrecision: !boT.secPrecision,
         raw: r.join(" | "),
       };
     },
@@ -439,7 +443,11 @@ const Formats = (() => {
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
       const subco = normalizeCompany((meta && meta.subco) || company);
-      const xbPolicy = XB_COMPANIES.has(subco) && ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"].includes(provider);
+      const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
+      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider)) {
+        return drop("Provider นอกขอบเขต Audit เครือ XB (ใช้เฉพาะ AT/AZ/CP/M)"), null;
+      }
+      const xbPolicy = XB_COMPANIES.has(subco) && xbProviders.includes(provider);
       const partial = ["partial", "success-partial"].includes(status);
       // Partial payouts are a provider rule, not a company/date exception.
       // Unsupported partials must not pass the worker's "no successful rows" gate.

@@ -106,6 +106,8 @@ eq("BO ธุรกรรม: ไม่รวมเลขจากข้อค�
 eq("BO ธุรกรรม: ระบุธนาคาร", transactionBo.records[0].bank, "KBANK");
 eq("BO ธุรกรรม: เก็บชื่อเต็มจาก BO ไว้รีเช็ก", transactionBo.records[0].boIdentityRaw, "KBANK 1968766313 (นราธิป บุญอาจ)(kob-deposit)");
 eq("BO ธุรกรรม: PM ใช้ provider เป็นตัวตน", transactionBo.records[2].account, "COREPAY");
+eq("BO ธุรกรรม: ใช้เวลารายการ BO เป็นเวลาจับคู่", transactionBo.records[0].sec, 11 * 60);
+eq("BO ธุรกรรม: เก็บเวลาธนาคารแยกไว้เป็นหลักฐาน", transactionBo.records[0].bankSec, 22 * 3600 + 56 * 60);
 eq("BO ธุรกรรม: PM ไม่ใช้เลขใน P2P/QR", transactionBo.records[2].isPmChannel, true);
 
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */

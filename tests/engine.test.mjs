@@ -221,6 +221,13 @@ await (async function () {
   eq("rescue: ไม่เหลือ missing สองฝั่ง", rescued.exceptions.filter((e) => ["missing_bo", "missing_stm"].includes(e.type)).length, 0);
   eq("rescue: เก็บวิธีจับคู่ในหลักฐาน", rescued.matchEvidence.filter((e) => e.method === "reciprocal-nearest-rescue").length, 2);
 
+  const farButUnique = await run(
+    [rec({ account: "RESCUE-FAR", amount: 900, sec: 2 * 3600, company: "3XB" })],
+    [rec({ account: "RESCUE-FAR", amount: 900, sec: 14 * 3600, company: "3XB" })],
+  );
+  eq("rescue: คู่ชัดเจนปิดได้แม้ห่างเกิน 10 นาที", farButUnique.matched, 1);
+  eq("rescue: คู่ชัดเจนไกลไม่เปิด missing", farButUnique.exceptions.filter((e) => ["missing_bo", "missing_stm", "time_diff"].includes(e.type)).length, 0);
+
   const tied = await run(
     [rec({ account: "RESCUE-TIE", amount: 100, sec: 3600, company: "MC8", custAccountLast4: "1111" })],
     [

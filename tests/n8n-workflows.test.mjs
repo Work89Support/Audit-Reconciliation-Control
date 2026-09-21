@@ -165,7 +165,10 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.5-reciprocal-rescue'/, "worker version must identify reciprocal rescue matching");
+assert.match(workerText, /worker_version:'1\.5\.6-unique-pair-any-time'/, "worker version must identify unique-pair any-time matching");
+assert.match(workerText, /reciprocal_nearest_any_time:true/, "worker summary must identify any-time unique reciprocal matching");
+assert.match(workerText, /bo_transaction_time_primary:true/, "worker summary must identify BO transaction-time matching");
+assert.match(workerText, /xb_provider_scope_at_az_cp_m:true/, "worker summary must identify the XB AT/AZ/CP/M scope");
 assert.match(workerText, /xb_provider_column_policy:true/, "worker run summary must identify the XB provider column policy");
 assert.match(workerText, /audit_visible_case_policy:true/, "worker run summary must identify the Audit-visible case policy");
 assert.match(workerText, /isInformationalAuditException/, "worker must not persist informational large-amount alerts for the five XB companies");

@@ -482,7 +482,7 @@ const Engine = (() => {
       && (!s.custBank || !b.custBank || String(s.custBank).toUpperCase().replace('KBNK','KBANK') === String(b.custBank).toUpperCase().replace('KBNK','KBANK'))
       && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
       && s.sec >= 0 && s.sec < 86400 && b.sec >= 0 && b.sec < 86400
-      && timeDistance(s, b) <= 3600;
+      && (timeVarianceAutoPassCompanies.has(auditCompanyOf(s)) || timeDistance(s, b) <= 3600);
     const identityMatched = new Set();
     const identityAmbiguous = new Set();
     // Count on original inputs on BOTH sides, before consumption, to avoid order-dependent matches.
@@ -668,6 +668,7 @@ const Engine = (() => {
        - บริษัท/บัญชีหรือ provider/ยอด/ทิศทาง/วันที่ต้องตรง
        - ข้อมูลบัญชีหรือธนาคารลูกค้าที่มีอยู่ทั้งสองฝั่งต้องไม่ขัดกัน
        - ต้องเป็นคู่ที่ต่างฝ่ายต่างเลือกกันเป็นเวลาที่ใกล้ที่สุดเพียงหนึ่งเดียว
+       เวลาห่างเกิน 10 นาทีไม่ใช่เหตุเปิดเคส หากคู่ยังชัดเจนตามเงื่อนไขข้างต้น
        คู่กำกวมและคู่เวลาเท่ากันยังคงส่งให้ Audit ตรวจ */
     const rescueCustomerConflict = (s, b) => {
       const sa = customerAccount(s), ba = customerAccount(b);
@@ -696,7 +697,7 @@ const Engine = (() => {
       && s.account === b.account && s.amount === b.amount
       && !s.noTime && !b.noTime
       && Number.isFinite(s.sec) && Number.isFinite(b.sec)
-      && timeDistance(s, b) < 3600
+      && (timeVarianceAutoPassCompanies.has(auditCompanyOf(s)) || timeDistance(s, b) < 3600)
       && rescueStmGroupCount.get(rescueGroupKey(s)) === rescueBoGroupCount.get(rescueGroupKey(b))
       && !rescueCustomerConflict(s, b);
     stmLeft2.forEach((s) => {
