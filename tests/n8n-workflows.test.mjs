@@ -158,6 +158,9 @@ const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: 
 assert.equal(restoreManualRerun.parameters.method, "PATCH");
 assert.match(restoreManualRerun.parameters.url, /rerun_requested_at=not\.is\.null/);
 assert.doesNotMatch(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "manual rerun priority must survive until the newest request is claimed");
+assert.equal(restoreManualRerun.retryOnFail, true, "bulk historical reruns must retry a transient Supabase timeout");
+assert.ok(restoreManualRerun.maxTries >= 3, "manual rerun recovery needs enough retry attempts under queue load");
+assert.ok(restoreManualRerun.waitBetweenTries >= 3000, "manual rerun recovery must pause before retrying Supabase");
 assert.equal(worker.connections["รวมเป็นหนึ่งรอบ"].main[0][0].node, "Supabase: จองหนึ่งงาน");
 assert.equal(worker.connections["Supabase: ปิดงานสำเร็จ"].main[0][0].node, "จบรอบ Worker");
 assert.match(workerText, /จองหนึ่งงาน'\)\.first\(\)/, "processing must use the single claimed job");
@@ -184,7 +187,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.14-bangkok-localpay-statement-tabs'/, "worker version must identify the Bangkok time and LOCALPAY release");
+assert.match(workerText, /worker_version:'1\.5\.15-bangkok-localpay-statement-tabs-rerun-retry'/, "worker version must identify the Bangkok time, LOCALPAY, statement-tab, and rerun-retry release");
 assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");
