@@ -14,6 +14,13 @@ assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO t
 const overlap=rowsOf({run:{summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',boAmount:25,stmAmount:25,bo:{date:'2026-09-16'},stm:{date:'2026-09-16'},customer:{bo:{reference:'same-bo'},stm:{reference:'same-pm'}}}]}},cases:[{id:'warning',company:'MC8',account:'AUTOPEER',direction:'ถอน',system_amount:25,bank_amount:25,bo_date:'2026-09-16',stm_date:'2026-09-16',bo_raw:'same raw bo',stm_raw:'same raw pm',customer_details:{bo:{reference:'same-bo'},stm:{reference:'same-pm'}},ex_type:'large_amount'}]},'MC8');
 const overlapTotals=summarize(overlap);assert.equal(overlapTotals.pmCount,1);assert.equal(overlapTotals.boCount,1);assert.equal(overlapTotals.unmatchedPmCount,0);assert.equal(overlapTotals.unmatchedBoCount,0);
 assert.equal(overlap.length,1,'large_amount advisory must not be exported as an Audit action row');
+const stalePair={account:'MYPAY',company:'PS8',direction:'deposit',boAmount:900,stmAmount:900,bo:{date:'2026-09-19',sec:36000},stm:{date:'2026-09-19',sec:36000},customer:{bo:{reference:'BO-900'},stm:{bank:'SCB',name:'CUSTOMER'}}};
+const staleRows=rowsOf({run:{summary:{match_evidence:[stalePair]}},cases:[
+  {id:'old-bo',company:'PS8',account:'MYPAY',direction:'ฝาก',ex_type:'missing_stm',system_amount:900,bo_date:'2026-09-19',bo_time:'10:00:00',customer_details:{bo:{reference:'BO-900'}}},
+  {id:'old-stm',company:'PS8',account:'MYPAY',direction:'ฝาก',ex_type:'missing_bo',bank_amount:900,stm_date:'2026-09-19',stm_time:'10:00:00',customer_details:{stm:{bank:'SCB',name:'CUSTOMER'}}},
+]},'PS8');
+assert.equal(staleRows.length,1,'all-company workbook view must not repeat matched evidence as two stale cases');
+assert.equal(staleRows[0].isPair,true);
 assert.equal(JSON.stringify(input),before);
 assert.equal(columnMatch('ปิดได้ทันที','ปิดได้'),true);
 assert.equal(columnMatch('MC8',{values:['MC8','PS8']}),true);

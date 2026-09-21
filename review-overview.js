@@ -45,7 +45,7 @@ const ReviewOverview = (() => {
     const evidence = Array.isArray(data.run?.summary?.match_evidence) ? data.run.summary.match_evidence : [];
     const confirmed=new Map((data.confirmations||[]).map(c=>[c.pair_index,c]));
     const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, pairIndex:i,confirmation:confirmed.get(i),category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
-    const visibleCases=auditPolicy?auditPolicy.filter(data.cases):data.cases;
+    const visibleCases=auditPolicy?auditPolicy.filter(data.cases,evidence):data.cases;
     const cases = visibleCases.map(e => ({ id:e.id, preliminary:preliminary.has(e.id), category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) }));
     return { rows:[...pairs,...cases], evidenceCount:evidence.length, reportedMatched:Number(data.run?.matched || 0), counts:Object.fromEntries(Object.keys(labels).map(k => [k, k === 'all' ? pairs.length + cases.length : [...pairs,...cases].filter(r => r.category === k).length])) };
   }

@@ -31,7 +31,7 @@
   function rowsOf(data,fallbackCompany=''){
     const pairs=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence:[];
     const rawCases=Array.isArray(data?.cases)?data.cases:[];
-    const cases=auditPolicy?auditPolicy.filter(rawCases):rawCases;
+    const cases=auditPolicy?auditPolicy.filter(rawCases,pairs):rawCases;
     return [
       ...pairs.map((p,index)=>({key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo:p.customer?.bo||{},pm:p.customer?.stm||{},boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''})),
       ...cases.map(e=>({key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo:e.customer_details?.bo||{},pm:e.customer_details?.stm||{},boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e}))

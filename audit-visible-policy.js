@@ -11,6 +11,43 @@
   }
   function typeOf(row){return String(row?.ex_type||row?.type||row?.exType||'').trim().toLowerCase().replace(/[\s-]+/g,'_');}
   function textOf(row){return [row?.type_name,row?.typeName,row?.detail,row?.reason].filter(Boolean).join(' ');}
+  function directionOf(value){const raw=String(value||'').trim().toLowerCase();return raw==='ฝาก'?'deposit':raw==='ถอน'?'withdraw':raw;}
+  function cents(value){const n=Number(value);return Number.isFinite(n)?Math.round(n*100):null;}
+  function timeOf(date,time,sec){
+    const day=String(date||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return '';
+    if(Number.isFinite(Number(sec))&&Number(sec)>=0&&Number(sec)<86400)return `${day}|${Math.round(Number(sec))}`;
+    const hit=String(time||'').match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    return hit?`${day}|${Number(hit[1])*3600+Number(hit[2])*60+Number(hit[3]||0)}`:'';
+  }
+  function clean(value){return String(value||'').trim().toUpperCase().replace(/\s+/g,' ');}
+  function detailOf(row,side){return row?.customer_details?.[side]||row?.customer?.[side]||{};}
+  function sideOfMissing(row){const type=typeOf(row);return type==='missing_stm'?'bo':type==='missing_bo'?'stm':'';}
+  function caseFingerprint(row,side){
+    const detail=detailOf(row,side),amount=side==='bo'?row?.system_amount:row?.bank_amount;
+    const date=row?.[`${side}_date`]||row?.business_date||row?.date;
+    const time=row?.[`${side}_time`]||row?.occurred_at||row?.time;
+    return {company:companyOf(row),account:clean(row?.account),direction:directionOf(row?.direction),amount:cents(amount),stamp:timeOf(date,time),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
+  }
+  function evidenceFingerprint(pair,side){
+    const detail=detailOf(pair,side),source=pair?.[side]||{},amount=side==='bo'?(pair?.boAmount??pair?.amount):(pair?.stmAmount??pair?.amount);
+    return {company:companyOf(pair),account:clean(pair?.account),direction:directionOf(pair?.direction),amount:cents(amount),stamp:timeOf(source.date,'',source.sec),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
+  }
+  function sameIdentity(a,b){
+    const fields=['reference','customerAccount','tail','bank','name','user'];
+    for(const field of fields)if(a[field]&&b[field]&&a[field]!==b[field])return false;
+    return fields.some(field=>a[field]&&b[field]&&a[field]===b[field]);
+  }
+  function samePersistedSide(a,b){
+    if(!a.company||a.company!==b.company||!a.account||a.account!==b.account)return false;
+    if(!a.direction||a.direction!==b.direction||a.amount===null||a.amount!==b.amount)return false;
+    if(!a.stamp||a.stamp!==b.stamp)return false;
+    /* Exact date/time/account/amount is the base transaction fingerprint. When
+       either side retains customer/reference fields, at least one identity field
+       must agree and no populated field may conflict. */
+    const hasIdentity=['reference','customerAccount','tail','bank','name','user'].some(field=>a[field]||b[field]);
+    return !hasIdentity||sameIdentity(a,b);
+  }
   function isInformational(row){
     if(!companySet.has(companyOf(row)))return false;
     /* ตามขั้นตอน Audit ของ 5 บริษัท: ยอดตรงแต่เวลาคลาดเป็นผลการจับคู่ที่ระบบ
@@ -19,8 +56,25 @@
     return /ยอดสูงผิดปกติ\s*(?:ต้องมีเอกสารกำกับ|ต้องแนบเอกสารอนุมัติ)|ต้องแนบเอกสารอนุมัติ/.test(textOf(row));
   }
   function isActionable(row){return !isInformational(row);}
-  function filter(rows){return (Array.isArray(rows)?rows:[]).filter(isActionable);}
-  const api=Object.freeze({version:'xb-actionable-audit-v2',COMPANIES,companyOf,typeOf,isInformational,isActionable,filter});
+  function removeMatchedMissing(rows,evidence){
+    const source=(Array.isArray(rows)?rows:[]).filter(isActionable),pairs=Array.isArray(evidence)?evidence:[];
+    if(!pairs.length)return source;
+    const companies=[...new Set(source.map(companyOf).filter(Boolean))],fallbackCompany=companies.length===1?companies[0]:'';
+    const scopedPairs=pairs.map(pair=>companyOf(pair)||!fallbackCompany?pair:{...pair,company:fallbackCompany});
+    const available={bo:scopedPairs.map((pair,index)=>({index,fingerprint:evidenceFingerprint(pair,'bo')})),stm:scopedPairs.map((pair,index)=>({index,fingerprint:evidenceFingerprint(pair,'stm')}))};
+    const used={bo:new Set(),stm:new Set()};
+    return source.filter(row=>{
+      const side=sideOfMissing(row);
+      if(!side)return true;
+      const fingerprint=caseFingerprint(row,side);
+      const hit=available[side].find(item=>!used[side].has(item.index)&&samePersistedSide(fingerprint,item.fingerprint));
+      if(!hit)return true;
+      used[side].add(hit.index);
+      return false;
+    });
+  }
+  function filter(rows,evidence){return removeMatchedMissing(rows,evidence);}
+  const api=Object.freeze({version:'xb-actionable-audit-v3',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
