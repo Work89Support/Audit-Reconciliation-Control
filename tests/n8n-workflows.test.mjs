@@ -154,6 +154,7 @@ assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be trea
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
 assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
+assert.match(workerText, /acceptedOutOfScopePm/, "XB PM exports containing only providers outside AT\/AZ\/CP\/M must not block the quality gate");
 assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 รายการ\)/, "empty PM exports must have a clear operator message");
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
@@ -170,7 +171,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.6-unique-pair-any-time'/, "worker version must identify unique-pair any-time matching");
+assert.match(workerText, /worker_version:'1\.5\.8-xb-scope-quality-gate'/, "worker version must identify the XB scope quality-gate release");
 assert.match(workerText, /reciprocal_nearest_any_time:true/, "worker summary must identify any-time unique reciprocal matching");
 assert.match(workerText, /bo_transaction_time_primary:true/, "worker summary must identify BO transaction-time matching");
 assert.match(workerText, /xb_provider_scope_at_az_cp_m:true/, "worker summary must identify the XB AT/AZ/CP/M scope");
@@ -180,13 +181,19 @@ assert.match(workerText, /isInformationalAuditException/, "worker must not persi
 const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
 const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
 const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
-  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf};');
+  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm};');
 const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
   {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
 const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
 const zeroPm = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'ยอดเงินเป็นศูนย์':7}}, [['header'],['row']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
 assert.match(zeroPm.parseError, /ยอดเงินเป็นศูนย์ 7 รายการ/);
 assert.match(zeroPm.parseError, /ยังไม่ยืนยันว่าไม่มีธุรกรรม/);
+const outsideProviderReason = 'Provider นอกขอบเขต Audit เครือ XB (ใช้เฉพาะ AT/AZ/CP/M)';
+const localPayOnly = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{[outsideProviderReason]:12}}, [['id','provider'],['1','localpay']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
+assert.equal(localPayOnly.parseError, null, 'LocalPay-only XB exports are valid out-of-scope attachments');
+assert.equal(localPayOnly.acceptedOutOfScopePm, true);
+const mixedPmDrops = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{[outsideProviderReason]:12,'ไม่มีเวลาที่อ่านได้':1}}, [['id','provider'],['1','localpay']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
+assert.ok(mixedPmDrops.parseError, 'mixed PM parse failures must still block the quality gate');
 assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');
 assert.equal(checkEmpty([['valid header']], 'bo', boHeaderFixture).parseError, null, 'recognized header-only BO is valid');
 assert.ok(checkEmpty([['valid header'],['unreadable transaction']], 'bo', boHeaderFixture).parseError, 'dropped BO rows must not become zero activity');
