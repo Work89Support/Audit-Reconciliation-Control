@@ -454,6 +454,38 @@ await (async () => {
   eq('7M provider: different amount is not auto-matched',r.matched,0);
 })();
 
+await (async () => {
+  const base={company:'UFABET7M',account:'COREPAY',isPmChannel:true,direction:'deposit',amount:700,date:'2026-09-20'};
+  const s1=rec({...base,sec:3600,memberCode:'',ref:''});
+  const s2=rec({...base,sec:4200,memberCode:'',ref:''});
+  const b1=rec({...base,sec:3630,memberCode:'',ref:'',note:''});
+  const b2=rec({...base,sec:4230,memberCode:'',ref:'',note:''});
+  let r=await run([s1,s2],[b1,b2],{...settings,providerNearTimeTolerance:600});
+  eq('7M PM near-time: reciprocal nearest pairs close safely',r.matched,2);
+  eq('7M PM near-time: evidence records fallback method',r.matchEvidence.filter(e=>e.method==='provider-amount-reciprocal-near-time').length,2);
+
+  const tied=await run(
+    [rec({...base,sec:3600,memberCode:'',ref:''})],
+    [rec({...base,sec:3570,memberCode:'',ref:''}),rec({...base,sec:3630,memberCode:'',ref:''})],
+    {...settings,providerNearTimeTolerance:600},
+  );
+  eq('7M PM near-time: tied candidates remain open',tied.matched,0);
+
+  const conflict=await run(
+    [rec({...base,sec:3600,memberCode:'user-a',ref:'REF-123456'})],
+    [rec({...base,sec:3630,memberCode:'user-b',ref:'REF-999999',note:''})],
+    {...settings,providerNearTimeTolerance:600},
+  );
+  eq('7M PM near-time: conflicting User/Ref never auto-closes',conflict.matched,0);
+
+  const far=await run(
+    [rec({...base,sec:3600,memberCode:'',ref:''})],
+    [rec({...base,sec:4300,memberCode:'',ref:'',note:''})],
+    {...settings,providerNearTimeTolerance:600},
+  );
+  eq('7M PM near-time: more than 10 minutes remains open',far.matched,0);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));

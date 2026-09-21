@@ -464,6 +464,7 @@ const Engine = (() => {
        จึงรองรับทั้งข้อความตรง, "P2P สำเร็จจากรายการ ..." และ
        "MyPay สำเร็จจากรายการ ..." โดยไม่ต้องแยก BOT/พนักงานเป็นคนละชีต */
     const providerIdentityMatched = new Set();
+    const providerNearTimeMatched = new Set();
     const providerCandidates = new Map();
     const providerPeers = new Map();
     const providerIdentityCandidate = (s, b) => ['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
@@ -490,6 +491,68 @@ const Engine = (() => {
       boUsed[i] = 1;
       providerIdentityMatched.add(s);
       matched.push({ s, b, dt: timeDistance(s, b), providerIdentityMatch: true });
+    });
+
+    /* Fallback สำหรับ PM เครือ 7M เมื่อไฟล์ต้นทางไม่มี Ref/User ครบ:
+       ใช้ provider + ทิศทาง + วัน + ยอด + เวลาใกล้กันไม่เกิน 10 นาที
+       และต้องเป็นคู่ nearest แบบ reciprocal เพียงคู่เดียวเท่านั้น ห้ามจับเมื่อ
+       User/Ref ที่มีอยู่ขัดกัน, สถานะไม่สำเร็จ, มี partial หรือเวลาเสมอกัน */
+    const providerNearTimeTol = Math.max(0, Number(settings.providerNearTimeTolerance ?? 600));
+    const providerStatusOk = (r) => {
+      if (r && r.partial) return false;
+      const status = String(r && r.status || '').trim().toUpperCase();
+      return !/(?:PARTIAL|FAILED|PENDING|CANCELLED|CANCELED|REJECTED)/.test(status);
+    };
+    const providerIdentityConflict = (s, b) => {
+      const su = identityText(s && s.memberCode), bu = identityText(b && b.memberCode);
+      if (su && bu && su !== bu) return true;
+      const sr = identityText(s && s.ref);
+      const br = identityText(b && b.ref);
+      const bn = identityText(b && b.note);
+      return !!(sr && (br || bn) && !providerRefMatches(s, b));
+    };
+    const providerNearCandidate = (s, b) => ['7M','UFABET7M'].includes(auditCompanyOf(s))
+      && s.isPmChannel && b.isPmChannel && sameCompany(s, b)
+      && s.date === b.date && isIsoDate(s.date)
+      && s.account === b.account && !!s.direction && s.direction === b.direction
+      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+      && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && timeDistance(s, b) <= providerNearTimeTol
+      && providerStatusOk(s) && providerStatusOk(b)
+      && !providerIdentityConflict(s, b);
+    const providerNearCandidates = new Map();
+    const providerNearPeers = new Map();
+    stmRecords.forEach((s) => {
+      if (providerIdentityMatched.has(s) || !s.isPmChannel) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => !boUsed[i] && providerNearCandidate(s, boRecords[i]))
+        .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
+      providerNearCandidates.set(s, rows);
+      rows.forEach(({ i, dt }) => {
+        let peers = providerNearPeers.get(i);
+        if (!peers) providerNearPeers.set(i, (peers = []));
+        peers.push({ s, dt });
+      });
+    });
+    const uniqueProviderNearest = (rows, valueOf) => {
+      if (!rows.length) return null;
+      let best = rows[0], tied = false;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i].dt < best.dt) { best = rows[i]; tied = false; }
+        else if (rows[i].dt === best.dt) tied = true;
+      }
+      return tied ? null : valueOf(best);
+    };
+    stmRecords.forEach((s) => {
+      if (providerIdentityMatched.has(s)) return;
+      const i = uniqueProviderNearest(providerNearCandidates.get(s) || [], (row) => row.i);
+      if (i == null || boUsed[i]) return;
+      const reciprocal = uniqueProviderNearest(providerNearPeers.get(i) || [], (row) => row.s);
+      if (reciprocal !== s) return;
+      const b = boRecords[i];
+      boUsed[i] = 1;
+      providerNearTimeMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), providerNearTimeMatch: true });
     });
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
@@ -544,6 +607,11 @@ const Engine = (() => {
     }
     const dirOK = (s, b) => {
       if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
+      if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
+          && providerIdentityConflict(s, b)) return false;
+      /* คู่ PM 7M ที่ปลอดภัยถูกใช้ไปแล้วใน provider identity / reciprocal
+         near-time pass ด้านบน ที่เหลือต้องเปิดไว้ตรวจ ห้าม generic pass เดาคู่ */
+      if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel) return false;
       if (s.custAccountLast4 && customerAccount(b) && !identityCandidate(s, b)) return false;
       if (customerAccount(s) && customerAccount(b) && customerAccount(s) !== customerAccount(b)) return false;
       if (customerAccount(s) && customerAccount(b) && !identityCandidate(s, b)) return false;
@@ -566,6 +634,7 @@ const Engine = (() => {
       10000,
       (s) => {
         if (providerIdentityMatched.has(s)) return;
+        if (providerNearTimeMatched.has(s)) return;
         if (identityMatched.has(s)) return;
         const cands = exactIdx.get(key2(s.account, s.amount));
         let best = -1;
@@ -734,6 +803,7 @@ const Engine = (() => {
     });
     const rescueEligible = (s, b) => sameCompany(s, b)
       && !!String(s.company || s.subco || "").trim()
+      && !(['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel)
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction
       && s.account === b.account && s.amount === b.amount
@@ -895,8 +965,9 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.providerIdentityMatch ? "provider-ref-user-amount" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         providerIdentityMatched: !!m.providerIdentityMatch,
+        providerNearTimeMatched: !!m.providerNearTimeMatch,
         rescueMatched: !!m.rescueMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
