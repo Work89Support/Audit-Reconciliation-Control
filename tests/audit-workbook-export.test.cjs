@@ -45,6 +45,19 @@ assert.equal(sheets[0].footerRows[0][sheets[0].headers.indexOf('ผลต่า�
 assert.equal(sheets[2].rows.length, 1, 'numeric company account must appear on Statement sheet');
 assert.equal(sheets[2].rows[0].at(-1), 'ปิดเคสแล้ว');
 
+const multipleStatementAccounts = live.buildAuditExportSheets([
+  row({ key: 'stm-songkran-deposit', account: '1111111111', direction: 'deposit', pm: { user: 'สงกรานต์', account: '1111111111', bank: 'SCB' } }),
+  row({ key: 'stm-songkran-withdraw', account: '1111111111', direction: 'withdraw', pm: { user: 'สงกรานต์', account: '1111111111', bank: 'SCB' } }),
+  row({ key: 'stm-waewdao-deposit', account: '2222222222', direction: 'deposit', pm: { user: 'แววดาว', account: '2222222222', bank: 'SCB' } }),
+  row({ key: 'stm-waewdao-withdraw', account: '2222222222', direction: 'withdraw', pm: { user: 'แววดาว', account: '2222222222', bank: 'SCB' } }),
+], '3XB', '2026-09-16', true, schema);
+const songkranSheet = multipleStatementAccounts.find(sheet => sheet.name === 'STM SCB สงกรานต์ D-W');
+const waewdaoSheet = multipleStatementAccounts.find(sheet => sheet.name === 'STM SCB แววดาว D-W');
+assert.ok(songkranSheet, 'each normal statement account must receive its own named sheet');
+assert.ok(waewdaoSheet, 'a second statement account must not be merged into the first sheet');
+assert.equal(songkranSheet.rows.length, 2, 'deposit and withdrawal stay together for the same statement account');
+assert.equal(waewdaoSheet.rows.length, 2, 'deposit and withdrawal stay together for the second statement account');
+
 const threeXbSheets = live.buildAuditExportSheets([
   row({company:'3XB',account:'LOCALPAY',direction:'deposit'}),
   row({company:'3XB',account:'LOCALPAY',direction:'withdraw',pmSource:{row:2,timeColumn:'updateTime',amountColumn:'amount'}}),
