@@ -416,6 +416,72 @@ const PdfStm = (() => {
     return parse(fileName, pagesFromText(text), businessDate);
   }
 
+  /* Google Document AI เก็บทั้งข้อความ OCR และแถวตารางที่จัดโครงสร้างแล้วไว้คู่กัน
+     สำหรับ PDF ภาพสแกนแบบ KBANK ข้อความ plain text มักเรียงตามคอลัมน์ จึงไม่ควร
+     นำบรรทัดนั้นมาประกอบยอดเองถ้ามี structured rows ที่ตรวจย้อนกับ OCR ปัจจุบันได้
+     ฟังก์ชันนี้รับแถวเดิมเฉพาะเมื่อจำนวน/วัน/เวลา/ทิศทางตรงกับ marker ใน OCR ใหม่
+     ครบทุกแถว และเลขบัญชีตรงกับหัว statement เท่านั้น */
+  function parseStructuredOcr(fileName, evidence, freshText, businessDate) {
+    const sourceRows = Array.isArray(evidence?.rows) ? evidence.rows : [];
+    if (!sourceRows.length || !freshText || !businessDate) return null;
+    const pages = pagesFromText(freshText);
+    const head = header(pages);
+    const markerCounts = new Map();
+    const markerRe = /(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2})\s+(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/g;
+    let marker;
+    while ((marker = markerRe.exec(String(freshText)))) {
+      const date = isoOf(marker[1]);
+      if (date !== businessDate) continue;
+      const direction = /รับโอน|ฝากเงิน|ดอกเบี้ย/.test(marker[3]) ? "deposit" : "withdraw";
+      const key = `${date}|${secOf(marker[2])}|${direction}`;
+      markerCounts.set(key, (markerCounts.get(key) || 0) + 1);
+    }
+    const rows = sourceRows.map((row) => {
+      const rawDate = String(row.sourceDate || row.date || "");
+      const date = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : isoOf(rawDate);
+      const sec = Number.isFinite(Number(row.sec)) ? Number(row.sec) : secOf(row.time);
+      const direction = ["deposit", "ฝาก"].includes(row.direction) ? "deposit"
+        : ["withdraw", "ถอน"].includes(row.direction) ? "withdraw" : null;
+      return { ...row, date, sec, direction, amount: Number(row.amount), balance: row.balance === null || row.balance === "" || row.balance === undefined ? null : Number(row.balance) };
+    }).filter((row) => row.date === businessDate);
+    if (!rows.length) return null;
+    const used = new Map();
+    for (const row of rows) {
+      if (row.sec === null || !Number.isFinite(row.sec) || !Number.isFinite(row.amount) || !row.direction) return null;
+      const key = `${row.date}|${row.sec}|${row.direction}`;
+      const next = (used.get(key) || 0) + 1;
+      if (next > (markerCounts.get(key) || 0)) return null;
+      used.set(key, next);
+    }
+    const markerTotal = [...markerCounts.values()].reduce((sum, count) => sum + count, 0);
+    if (markerTotal !== rows.length) return null;
+    const rowAccounts = new Set(rows.map((row) => digits(row.account)).filter(Boolean));
+    if (rowAccounts.size > 1 || (head.account && rowAccounts.size === 1 && !rowAccounts.has(head.account))) return null;
+    const company = typeof Formats !== "undefined" ? Formats.companyOf(fileName) : null;
+    const account = head.account || [...rowAccounts][0] || "UNKNOWN";
+    const bank = head.bank || rows.find((row) => row.bank)?.bank || "";
+    const records = rows.map((row, index) => ({
+      rowNo: Number(row.rowNo || row.row || index + 1), source: "stm", formatCode: "stm_pdf",
+      date: businessDate, sourceDate: row.sourceDate || row.date, reportLagDays: 0,
+      sec: row.sec, amount: Math.round(row.amount * 100) / 100, balance: row.balance,
+      direction: row.direction, account, bank, channel: row.channel || bank,
+      company, username: null, ref: row.ref || null, desc: row.desc || row.descriptionOcr || row.detail || "",
+      code: row.code || (row.direction === "deposit" ? "รับโอนเงิน" : "โอนเงิน"),
+      crossDay: false, lateNight: row.sec >= 82800, minutePrecision: true, noTime: false,
+      raw: row.raw || row.rawOcr || row.desc || "",
+      page: Number(row.page) || null,
+    }));
+    return {
+      fileName, header: { ...head, bank, account },
+      format: { source: "stm", bank, company, headerIdx: 0, map: {}, realCode: "stm_pdf",
+        realLabel: `Statement PDF ${bank} ${account}`.trim(), channels: {}, holder: head.holder, period: head.period },
+      records, aux: [], dropped: {},
+      warnings: [`ใช้แถว OCR ที่ตรวจย้อนกับข้อความ PDF ปัจจุบันครบ ${rows.length} รายการ`],
+      quality: { complete: true, parsedRows: rows.length, unreadRows: [], invalidRows: [], structuredOcrVerified: true },
+      pageCount: Number(evidence.page_count) || pages.length,
+    };
+  }
+
   function isStatementPeriod(text) {
     return /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*[-–]\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$/.test(text);
   }
@@ -532,7 +598,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, parseText, pagesFromText, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
+  return { parse, parseText, parseStructuredOcr, pagesFromText, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;

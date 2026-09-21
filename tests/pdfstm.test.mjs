@@ -234,6 +234,17 @@ eq("KB annual fee: withdrawal not deposit", kbFee.records[0]?.direction, "withdr
 const kbFeeBroken = await P.parseText("KB.pdf", kbFeeText.replace("250.00", "unreadable"), "2026-09-03");
 eq("KB annual fee: missing amount must fail quality", kbFeeBroken.quality.complete, false);
 
+const kbColumnOcr = `KASIKORNBANK\nเลขที่บัญชีเงินฝาก 193-8-71380-0\n17-09-26 00:20 รับโอนเงิน\n900.00\n10,287.01 K PLUS\n17-09-26 00:22 รับโอนเงิน\n900.00\n11,517.01 K PLUS`;
+const kbStructuredRows = [
+  { date: "2026-09-17", sec: 1200, direction: "deposit", amount: 900, balance: 10287.01, account: "1938713800", bank: "KBANK", desc: "K PLUS", raw: "17-09-26 00:20 รับโอนเงิน 900.00 10,287.01 K PLUS" },
+  { date: "2026-09-17", sec: 1320, direction: "deposit", amount: 900, balance: 11517.01, account: "1938713800", bank: "KBANK", desc: "K PLUS", raw: "17-09-26 00:22 รับโอนเงิน 900.00 11,517.01 K PLUS" },
+];
+const kbStructured = P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows, page_count: 2 }, kbColumnOcr, "2026-09-17");
+eq("KB structured OCR: ตรวจ marker ครบก่อนใช้แถว", kbStructured?.quality.structuredOcrVerified, true);
+eq("KB structured OCR: เก็บรายการยอดซ้ำคนละเวลา", kbStructured?.records.length, 2);
+eq("KB structured OCR: ยอด 900 ไม่สลับกับยอดคงเหลือ", kbStructured?.records[0]?.balance, 10287.01);
+eq("KB structured OCR: ปฏิเสธชุดแถวที่ OCR ปัจจุบันมี marker ไม่ครบ", P.parseStructuredOcr("3XB_STM_KB.pdf", { rows: kbStructuredRows.slice(0, 1) }, kbColumnOcr, "2026-09-17"), null);
+
 const scbHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
 const scbRows = ['08/09/26 00:02 X1 ENET 55.00 9,529.48', '08/09/26 00:05 X2 ENET 3,500.00 6,029.48', '08/09/26 00:09 X1 ENET 99.00 6,128.48', '08/09/26 00:11 X1 ENET 80.00 6,208.48', '08/09/26 00:14 X1 ENET 70.00 6,278.48'];
 const scbDescriptions = ['รับโอนจาก KBANK x1631 TEST A', 'โอนไป BBL x0736 TEST B', 'รับโอนจาก KBANK x2621 TEST C', 'รับโอนจาก KBANK x0561 TEST D', 'รับโอนจาก SCB x2052 TEST E'];

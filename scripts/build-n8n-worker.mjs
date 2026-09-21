@@ -33,7 +33,9 @@ try{
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
   }else if(ext==='pdf'){
     extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
-    norm=await PdfStm.parseText(file.file_name,extractedText,job.business_date);
+    const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
+    norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,job.business_date)
+      || await PdfStm.parseText(file.file_name,extractedText,job.business_date);
   }else if(ext==='csv'){
     const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
     rawRows=Engine.parseCSV(text);
@@ -134,6 +136,26 @@ for(const f of files){
   if(f.format&&f.format.source==='bo') bo.push(...records);
   else stm.push(...records);
 }
+// เมลอาจแนบ statement เดิมซ้ำต่างเวลาหรือสร้าง PDF ใหม่ที่รายละเอียดต่างกัน
+// ถ้าชุดธุรกรรมทั้งไฟล์ตรงกันทุก tuple ให้เก็บเพียงฉบับแรก ไม่หักรายการจริงที่
+// บังเอิญยอด/เวลาเท่ากันเพียงบางแถว
+const statementGroups=new Map();
+for(const row of stm){
+  if(row.formatCode!=='stm_pdf'||!row.source_file_id) continue;
+  const group=statementGroups.get(row.source_file_id)||[];
+  group.push(row); statementGroups.set(row.source_file_id,group);
+}
+const duplicateStatementFileIds=new Set(), statementFingerprints=new Map();
+for(const [fileId,rows] of statementGroups){
+  const fingerprint=JSON.stringify(rows.map(r=>[r.date,r.sec,r.direction,Number(r.amount||0),r.balance===null?null:Number(r.balance),String(r.account||'')]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  if(rows.length&&statementFingerprints.has(fingerprint)) duplicateStatementFileIds.add(fileId);
+  else if(rows.length) statementFingerprints.set(fingerprint,fileId);
+}
+const duplicateStatementRowsRemoved=stm.filter(r=>duplicateStatementFileIds.has(r.source_file_id)).length;
+if(duplicateStatementRowsRemoved){
+  const unique=stm.filter(r=>!duplicateStatementFileIds.has(r.source_file_id));
+  stm.length=0; stm.push(...unique);
+}
 if(bo.some(r=>r.formatCode)){const merged=Formats.merge(bo);bo.length=0;merged.sort((a,b)=>(a.sec||0)-(b.sec||0)).forEach(r=>bo.push(r));}
 const parsed=files.filter(f=>f.format&&(f.format.source==='bo'||f.format.source==='aux')).map(f=>({records:f.format.source==='bo'?(f.records||[]):[],aux:f.aux||[]}));
 const biz=Rules.run(parsed,${settings});
@@ -177,7 +199,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.8-xb-scope-quality-gate',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker_version:'1.5.9-verified-ocr-dedupe',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
@@ -242,7 +264,7 @@ const nodes = [
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [60, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes)", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
+    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
   { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const out=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&reconKinds.has(f.kind)) out.push({json:{job,file:{...f,ext}},pairedItem:{item:0}});}} if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },

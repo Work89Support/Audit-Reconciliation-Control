@@ -171,7 +171,10 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.8-xb-scope-quality-gate'/, "worker version must identify the XB scope quality-gate release");
+assert.match(workerText, /worker_version:'1\.5\.9-verified-ocr-dedupe'/, "worker version must identify the verified OCR and duplicate-statement release");
+assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
+assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
+assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");
 assert.match(workerText, /reciprocal_nearest_any_time:true/, "worker summary must identify any-time unique reciprocal matching");
 assert.match(workerText, /bo_transaction_time_primary:true/, "worker summary must identify BO transaction-time matching");
 assert.match(workerText, /xb_provider_scope_at_az_cp_m:true/, "worker summary must identify the XB AT/AZ/CP/M scope");
