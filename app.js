@@ -2303,7 +2303,15 @@ function renderDailyCompanySummary(root) {
       $("#boFollowClose").addEventListener("click", closeModal);
       const retryButton = $("#boFollowRetry");
       if (retryButton) retryButton.addEventListener("click", async () => {
-        const jobId = data.checklist?.job_id;
+        // The checklist view can legitimately omit job_id even though the
+        // selected daily job is present in v_recon_operations. Resolve the
+        // exact company/date job from that authoritative row before retrying.
+        const selectedOperation = data.operations.find((row) =>
+          row.business_date === state.dailySummary.date &&
+          normalizeLiveCompanyCode(row.company) === company &&
+          !row.is_archived
+        );
+        const jobId = data.checklist?.job_id || selectedOperation?.id;
         if (!jobId) {
           toast("ยังไม่พบรหัสงานรายวัน กรุณาเปิดคลังไฟล์และกดรีเฟรชก่อน", "warn");
           return;

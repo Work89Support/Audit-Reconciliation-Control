@@ -208,6 +208,8 @@ assert.match(app, /รวม \$\{num\(totalRelatedFiles\)\} ไฟล์/, "ห�
 assert.match(app, /สรุปสิ่งที่ขาด/, "หน้าติดตามต้องบอกสิ่งที่ขาดก่อนรายละเอียดอื่น");
 assert.match(app, /มีไฟล์ครบแล้ว แต่ระบบจับคู่/, "กรณีมีไฟล์แต่ไม่พบบัญชีคู่ต้องบอกชัดว่าไฟล์ครบและเป็นปัญหาการจับคู่");
 assert.match(app, /ประมวลผลจับคู่ใหม่/, "รายละเอียด BO-first ต้องมีปุ่มสั่งจับคู่ใหม่ในงานเดิม");
+assert.match(app, /data\.checklist\?\.job_id \|\| selectedOperation\?\.id/, "ปุ่มจับคู่ใหม่ต้องใช้ job id จากสถานะงานเมื่อ checklist ไม่ส่ง id มา");
+assert.match(app, /row\.business_date === state\.dailySummary\.date[\s\S]+normalizeLiveCompanyCode\(row\.company\) === company[\s\S]+!row\.is_archived/, "งานที่ส่งกลับเข้าคิวต้องตรงบริษัทและวันที่ที่กำลังเปิด และไม่ใช่งานที่เก็บถาวร");
 assert.match(app, /Sb\.retryJob\(jobId\)/, "ปุ่มจับคู่ใหม่ต้องส่งงานเดิมกลับเข้าคิว Supabase");
 assert.match(sb, /const retryJob = \(jobId\) => rpc\("retry_daily_recon_job"/, "Supabase client ต้องเรียก RPC สำหรับรันงานเดิมใหม่");
 assert.match(app, /data-bo-preview/, "ไฟล์ที่เกี่ยวข้องต้องเปิด Preview จริงจากรายละเอียดได้");
