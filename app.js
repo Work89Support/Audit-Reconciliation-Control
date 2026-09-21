@@ -986,7 +986,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, informationalExceptions: [], exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 const exceptionSupportCache = new Map();
 const moreCaseState = { offset: 0, hasMore: true, loading: false, error: "" };
@@ -1004,7 +1004,7 @@ async function loadMoreCases() {
     moreCaseState.offset += rows.length;
     moreCaseState.hasMore = rows.length === 250;
     const existing = new Map(DB.exceptions.map((row) => [row.dbId || row.id, row]));
-    for (const raw of actionableAuditRows(rows)) if (!existing.has(raw.id)) existing.set(raw.id, mapLiveException(raw));
+    for (const raw of actionableAuditRows(rows,liveOverviewState.matchEvidence)) if (!existing.has(raw.id)) existing.set(raw.id, mapLiveException(raw));
     DB.exceptions = [...existing.values()];
   } catch (error) {
     if (key === liveOverviewState.key) moreCaseState.error = "โหลดเคสเพิ่มเติมไม่สำเร็จ: " + error.message;
@@ -1023,7 +1023,7 @@ async function loadLiveExceptionSearch(term) {
   liveExceptionSearch.rows = [];
   try {
     const rows = await Sb.searchExceptions({ term, from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 });
-    liveExceptionSearch.rows = actionableAuditRows(rows).map(mapLiveException);
+    liveExceptionSearch.rows = actionableAuditRows(rows,liveOverviewState.matchEvidence).map(mapLiveException);
   } catch (error) {
     liveExceptionSearch.rows = [];
     liveExceptionSearch.error = error.message || "ค้นหา Supabase ไม่สำเร็จ";
@@ -1072,8 +1072,9 @@ const businessSystemOfCompany = (value) => {
   return "ไม่ระบุระบบ";
 };
 const isLiveCompanyRow = (row) => Boolean(normalizeLiveCompanyCode(row?.company));
-const actionableAuditRows = (rows) => window.AuditVisiblePolicy ? window.AuditVisiblePolicy.filter(rows) : (Array.isArray(rows) ? rows : []);
+const actionableAuditRows = (rows, evidence) => window.AuditVisiblePolicy ? window.AuditVisiblePolicy.filter(rows, evidence) : (Array.isArray(rows) ? rows : []);
 const informationalAuditRows = (rows) => (Array.isArray(rows) ? rows : []).filter((row) => window.AuditVisiblePolicy?.isInformational(row));
+const matchedStaleAuditCount = (rows, evidence) => Math.max(0, actionableAuditRows(rows).length - actionableAuditRows(rows, evidence).length);
 
 const CHECKLIST_STATUS = {
   scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
@@ -1358,6 +1359,7 @@ async function loadLiveOverview(force = false) {
       Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
       Sb.notifications(200, VISIBLE_DATE_FROM),
       Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
+      Sb.reconciliationEvidence({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
     if (liveOverviewState.key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
@@ -1366,14 +1368,18 @@ async function loadLiveOverview(force = false) {
       return loadLiveOverview(true);
     }
     const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
-    const exceptionRows = value(0, DB.exceptions || []);
+    const rawExceptionRows = value(0, DB.exceptions || []);
+    const matchEvidence = value(5, []);
+    const exceptionRows = actionableAuditRows(rawExceptionRows,matchEvidence);
     const damageRows = value(1, liveOverviewState.damages || []);
     const logRows = value(2, liveOverviewState.logs || []);
     liveOverviewState.exceptionsReady = aux[0].status === "fulfilled";
     if (liveOverviewState.exceptionsReady) {
-      liveOverviewState.informationalExceptions = informationalAuditRows(exceptionRows);
-      moreCaseState.offset = exceptionRows.length;
-      moreCaseState.hasMore = exceptionRows.length === 250;
+      liveOverviewState.informationalExceptions = informationalAuditRows(rawExceptionRows);
+      liveOverviewState.matchEvidence = matchEvidence;
+      liveOverviewState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptionRows,matchEvidence);
+      moreCaseState.offset = rawExceptionRows.length;
+      moreCaseState.hasMore = rawExceptionRows.length === 250;
       moreCaseState.error = "";
     }
     liveOverviewState.damagesReady = aux[1].status === "fulfilled";
@@ -1426,7 +1432,7 @@ function renderLiveDashboard(root) {
   const waiting = quality.filter((x) => x.status === "waiting_files").length;
   const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
   const hiddenExceptionTotal = (liveOverviewState.informationalExceptions || []).filter(inLiveRange).length;
-  const exceptionTotal = Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal);
+  const exceptionTotal = Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal - Number(liveOverviewState.matchedStaleExceptions || 0));
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
   const dailyAvailable = Array.isArray(liveOverviewState.daily) && !hasLiveCoreError("ยอดเมลและไฟล์");
   const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
@@ -1831,7 +1837,7 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
-const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, informationalExceptions: [], damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
+const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
 
 async function loadDailyCompanySummary(force = false) {
   const date = state.dailySummary.date = visibleDate(state.dailySummary.date || PROD_TODAY);
@@ -1847,6 +1853,8 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.boFirst = null;
     dailyCompanyState.exceptions = null;
     dailyCompanyState.informationalExceptions = [];
+    dailyCompanyState.matchEvidence = [];
+    dailyCompanyState.matchedStaleExceptions = 0;
     dailyCompanyState.damages = null;
   }
   dailyCompanyState.loading = true;
@@ -1905,11 +1913,15 @@ async function loadDailyCompanySummary(force = false) {
     const details = await Promise.allSettled([
       Sb.currentExceptionsSummary({ from: date, to: date, company, limit: 250 }),
       Sb.damages({ from: date, to: date, company, limit: 500 }),
+      Sb.matchedEvidence(company,date),
     ]);
     if (requestId !== dailyCompanyState.requestId) return;
     const rawExceptions = details[0].status === "fulfilled" ? (details[0].value || []) : [];
+    const matchEvidence = details[2].status === "fulfilled" && Array.isArray(details[2].value?.summary?.match_evidence) ? details[2].value.summary.match_evidence : [];
     dailyCompanyState.informationalExceptions = informationalAuditRows(rawExceptions);
-    dailyCompanyState.exceptions = actionableAuditRows(rawExceptions).map(mapLiveException);
+    dailyCompanyState.matchEvidence = matchEvidence;
+    dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptions,matchEvidence);
+    dailyCompanyState.exceptions = actionableAuditRows(rawExceptions,matchEvidence).map(mapLiveException);
     dailyCompanyState.damages = details[1].status === "fulfilled" ? (details[1].value || []) : [];
     dailyCompanyState.detailsError = details.some((item) => item.status === "rejected") ? "รายละเอียด Exception หรือความเสียหายบางส่วนตอบกลับช้า" : null;
     dailyCompanyState.detailsLoading = false;
@@ -1943,7 +1955,7 @@ function dailyCompanyData(company) {
   const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
   const reportedExceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
   const informationalCount = (dailyCompanyState.informationalExceptions || []).filter((row) => normalizeLiveCompanyCode(row.company) === company).length;
-  const exceptionTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount);
+  const exceptionTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
   const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
   const confirmedDamage = exceptions.filter((row) => row.status === "damage");
   const resolvedTotal = checklist?.resolved_count == null ? fixed.length : Number(checklist.resolved_count || 0);
@@ -2516,7 +2528,8 @@ function renderDailyCompanySummary(root) {
       try {
         const rows = await Sb.currentExceptionsSummary({ from: state.dailySummary.date, to: state.dailySummary.date, company: state.dailySummary.company, limit: 5000 });
         dailyCompanyState.informationalExceptions = informationalAuditRows(rows);
-        dailyCompanyState.exceptions = actionableAuditRows(rows).map(mapLiveException);
+        dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rows,dailyCompanyState.matchEvidence);
+        dailyCompanyState.exceptions = actionableAuditRows(rows,dailyCompanyState.matchEvidence).map(mapLiveException);
         data = dailyCompanyData(state.dailySummary.company);
       } catch (error) {
         toast("ดึงรายละเอียดทั้งหมดไม่สำเร็จ จึง Export เฉพาะข้อมูลที่โหลดแล้ว: " + error.message, "warn");
@@ -7825,6 +7838,8 @@ async function enterProductionApp() {
   liveOverviewState.damages = null;
   liveOverviewState.logs = null;
   liveOverviewState.notifications = null;
+  liveOverviewState.matchEvidence = [];
+  liveOverviewState.matchedStaleExceptions = 0;
   liveOverviewState.exceptionsReady = false;
   liveOverviewState.damagesReady = false;
   liveOverviewState.logsReady = false;
@@ -7833,6 +7848,8 @@ async function enterProductionApp() {
   dailyCompanyState.date = "";
   dailyCompanyState.company = "";
   dailyCompanyState.batches = null;
+  dailyCompanyState.matchEvidence = [];
+  dailyCompanyState.matchedStaleExceptions = 0;
   dailyCompanyState.quality = null;
   dailyCompanyState.operations = null;
   dailyCompanyState.checklist = null;

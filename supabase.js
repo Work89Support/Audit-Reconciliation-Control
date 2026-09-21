@@ -465,6 +465,21 @@ const Sb = (() => {
     return runs[0] ? { ...runs[0], jobStatus: jobs[0].status } : null;
   }
 
+  async function reconciliationEvidence({ from, to, company } = {}) {
+    const filters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`);
+    const ids = [...new Set((jobs || []).map(row => row.last_run_id).filter(Boolean))];
+    const evidence = [];
+    for (let index = 0; index < ids.length; index += 100) {
+      const page = await json(`/rest/v1/recon_runs?id=in.(${ids.slice(index,index+100).join(",")})&select=id,summary&limit=100`);
+      for (const run of page || []) if (Array.isArray(run?.summary?.match_evidence)) evidence.push(...run.summary.match_evidence);
+    }
+    return evidence;
+  }
+
   async function reconciliationOverview(company, date) {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
@@ -967,6 +982,7 @@ const Sb = (() => {
     searchExceptions,
     exceptionDetail,
     matchedEvidence,
+    reconciliationEvidence,
     reconciliationOverview,
     confirmAuditPairs,
     exceptionFiles,
