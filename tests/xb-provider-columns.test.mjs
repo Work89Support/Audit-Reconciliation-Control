@@ -45,6 +45,18 @@ const noUpdate=[...values];noUpdate[1]='COREPAY';noUpdate[5]='';
 assert.equal(Formats.parse('UR9_PM_COREPAY_W_2026-09-15.xlsx',[headers,noUpdate],'2026-09-15').records.length,0,'other time columns cannot replace missing updateTime');
 
 const localpay=[...values];localpay[1]='LOCALPAY';
-assert.equal(Formats.parse('3XB_PM_LOCALPAY_D_2026-09-15.xlsx',[headers,localpay],'2026-09-15').records.length,0,'LOCALPAY is outside the XB AT/AZ/CP/M audit scope');
+const localpayDeposit=Formats.parse('3XB_PM_LOCALPAY_D_2026-09-15.xlsx',[headers,localpay],'2026-09-15');
+assert.equal(localpayDeposit.records.length,1,'LOCALPAY is active for 3XB');
+assert.equal(localpayDeposit.records[0].account,'LOCALPAY');
+assert.equal(localpayDeposit.records[0].amountColumn,'realAmount');
+const localpayWithdraw=Formats.parse('3XB_PM_LOCALPAY_W_2026-09-15.xlsx',[headers,localpay],'2026-09-15');
+assert.equal(localpayWithdraw.records.length,1,'LOCALPAY withdrawal is active for 3XB');
+assert.equal(localpayWithdraw.records[0].amountColumn,'amount');
+assert.equal(Formats.parse('MC8_PM_LOCALPAY_D_2026-09-15.xlsx',[headers,localpay],'2026-09-15').records.length,0,'LOCALPAY remains inactive outside 3XB');
 
-console.log('XB provider column policy passed for 5 companies, 4 providers and both directions.');
+const qpay=[...values];qpay[1]='QPAY';
+const qpayResult=Formats.parse('3XB_PM_QPAY_D_2026-09-15.xlsx',[headers,qpay],'2026-09-15');
+assert.equal(qpayResult.records.length,0,'QPAY remains inactive until admin activation');
+assert.equal(qpayResult.dropped['QPAY ยังไม่เปิดใช้โดยแอดมิน จึงไม่นำมากระทบยอด'],1);
+
+console.log('XB provider column policy passed, including 3XB LOCALPAY and inactive QPAY.');

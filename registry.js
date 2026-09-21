@@ -202,6 +202,32 @@ const Registry = (() => {
 },
 {
 "subco": "3XB",
+"provider": "LOCALPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "LOCALPAY",
+"source": "pm",
+"file": "3XB LOCALPAY ถอน ว/ด/ป.xlsx",
+"note": "เปิดใช้สำหรับ 3XB"
+},
+{
+"subco": "3XB",
+"provider": "LOCALPAY",
+"bank": "",
+"account": "",
+"accountRaw": "",
+"name": "",
+"type": "PM",
+"channel": "LOCALPAY",
+"source": "pm",
+"file": "3XB LOCALPAY ฝาก ว/ด/ป.xlsx",
+"note": "เปิดใช้สำหรับ 3XB"
+},
+{
+"subco": "3XB",
 "provider": "MYPAY",
 "bank": "",
 "account": "",
@@ -1323,7 +1349,8 @@ const Registry = (() => {
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
-                  cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY" };
+                  cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY",
+                  localpay:"LOCALPAY", locelpay:"LOCALPAY", qpay:"QPAY" };
 
   function normalizeAccount(s, bank) {
     let d = String(s || "").replace(/\D/g, "");

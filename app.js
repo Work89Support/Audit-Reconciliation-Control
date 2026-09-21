@@ -67,7 +67,7 @@ const ROUTES = [
     items: [
       { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
       { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
-      { id: "mc8-sheets", label: "ชีต Audit 5 บริษัท", icon: "reports", title: "ชีต Audit 5 บริษัท", desc: "ผลกระทบยอด STM / PM กับ BO แยก 8 หน้า พร้อมยอดรวมท้ายตาราง", filters: false },
+      { id: "mc8-sheets", label: "ชีต Audit 5 บริษัท", icon: "reports", title: "ชีต Audit 5 บริษัท", desc: "ผลกระทบยอด STM / PM กับ BO แยก PM ตาม Provider และแยก STM ธนาคารทีละบัญชี พร้อมยอดรวมท้ายตาราง", filters: false },
       { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
       { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
       { id: "exceptions", label: "ผลตรวจและเคส", icon: "exceptions", title: "ภาพรวมผลตรวจและเคส", desc: "ดูคู่สำเร็จและรายการที่ต้องตรวจ แยกบริษัท วันที่ ฝาก–ถอน และสถานะ", filters: true },
@@ -116,6 +116,7 @@ const AUDIT_COMPANY_GROUPS = Object.freeze([
       "จับคู่ STM / PM กับ BO ภายในบริษัท บัญชี/Provider ทิศทาง และยอดเดียวกัน โดยไม่ข้ามบริษัท",
       "PM ฝาก: ใช้ paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime · PM ถอน: ใช้ updateTime",
       "ยอดฝากทุก Provider ใช้ realAmount · ยอดถอน AT/M ใช้ transferredAmount · ยอดถอน AZ/CP ใช้ amount",
+      "3XB เปิดใช้ LOCALPAY ฝาก/ถอน (ฝากใช้ realAmount · ถอนใช้ amount) · QPAY รับไฟล์ไว้ได้แต่ยังไม่นำมากระทบยอดจนกว่าแอดมินเปิดใช้",
       "รายการข้ามวันเปิดเป็น “ค้างรอข้อมูลข้ามวัน”; เมื่อวันถัดไปจับคู่แบบ 1:1 ได้จึงปิดงานค้างและเก็บ Audit Log",
       "ยอดสูงและเวลาคลาดเคลื่อนที่จับคู่ได้ตามกฎเป็นสถานะแจ้งผล ไม่ส่งให้ Audit ยืนยัน; คู่ซ้ำหรือคลุมเครือจะไม่ปิดอัตโนมัติ",
     ],

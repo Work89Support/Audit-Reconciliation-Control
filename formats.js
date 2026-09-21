@@ -179,6 +179,22 @@ const Formats = (() => {
   function stamp(v) {
     const s = String(v || "").trim();
     if (!s) return null;
+    // n8n's Excel extractor serializes date cells as UTC instants.  The source
+    // reports, however, contain Bangkok wall-clock values.  Convert only values
+    // that carry an explicit zone (Z or +/-HH:mm); leave ordinary Excel/CSV text
+    // untouched so 00:37 never becomes 17:37 on the previous day.
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+      const instant = Date.parse(s);
+      if (Number.isFinite(instant)) {
+        const bangkok = new Date(instant + 7 * 3600000);
+        return {
+          date: bangkok.toISOString().slice(0, 10),
+          sec: bangkok.getUTCHours() * 3600 + bangkok.getUTCMinutes() * 60 + bangkok.getUTCSeconds(),
+          hasTime: true,
+          secPrecision: true,
+        };
+      }
+    }
     // Read Excel's underlying serial, not its locale-dependent m/d/yy display.
     // Round once to seconds to avoid floating point noise around midnight.
     if (/^\d{5}(?:\.\d+)?$/.test(s) && +s >= 20000 && +s < 80000) {
@@ -228,7 +244,7 @@ const Formats = (() => {
     return { terminal, channel: canonicalPm(s) || channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CPXM", "12PAY", "MYPAY"];
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CPXM", "12PAY", "MYPAY", "LOCALPAY", "QPAY"];
   const canonicalPm = (ch) => {
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
@@ -237,6 +253,8 @@ const Formats = (() => {
     if (/COREPAY|CPPAY/.test(s)) return "COREPAY";
     if (/CPXM/.test(s)) return "COREPAY";
     if (/MYPAY/.test(s)) return "MYPAY";
+    if (/LOCALPAY|LOCELPAY/.test(s)) return "LOCALPAY";
+    if (/QPAY/.test(s)) return "QPAY";
     if (/12PAY/.test(s)) return "12PAY";
     return "";
   };
@@ -283,7 +301,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
@@ -444,10 +462,13 @@ const Formats = (() => {
       const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
       const subco = normalizeCompany((meta && meta.subco) || company);
       const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
-      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider)) {
-        return drop("Provider นอกขอบเขต Audit เครือ XB (ใช้เฉพาะ AT/AZ/CP/M)"), null;
+      const localPayEnabled = subco === "3XB" && provider === "LOCALPAY";
+      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !localPayEnabled) {
+        return drop(provider === "QPAY"
+          ? "QPAY ยังไม่เปิดใช้โดยแอดมิน จึงไม่นำมากระทบยอด"
+          : "Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M และ LOCALPAY เฉพาะ 3XB)"), null;
       }
-      const xbPolicy = XB_COMPANIES.has(subco) && xbProviders.includes(provider);
+      const xbPolicy = XB_COMPANIES.has(subco) && (xbProviders.includes(provider) || localPayEnabled);
       const partial = ["partial", "success-partial"].includes(status);
       // Partial payouts are a provider rule, not a company/date exception.
       // Unsupported partials must not pass the worker's "no successful rows" gate.

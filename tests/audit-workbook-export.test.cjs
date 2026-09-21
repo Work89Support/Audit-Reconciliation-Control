@@ -31,7 +31,7 @@ const rows = [
 ];
 
 const sheets = live.buildAuditExportSheets(rows, 'MC8', '2026-09-15', true, schema);
-assert.deepEqual(sheets.map(sheet => sheet.name), ['ข้อมูลทั้งหมด', 'สรุป', 'Statement', 'AT ถ', 'AT ฝ', 'AZ ถ', 'AZ ฝ', 'CP ถ', 'CP ฝ', 'M ถ', 'M ฝ']);
+assert.deepEqual(sheets.map(sheet => sheet.name), ['ข้อมูลทั้งหมด', 'สรุป', 'STM KBANK pm-user D-W', 'AT ถ', 'AT ฝ', 'AZ ถ', 'AZ ฝ', 'CP ถ', 'CP ฝ', 'M ถ', 'M ฝ']);
 assert.equal(sheets[0].title, undefined, 'first sheet header must start on row 1');
 assert.equal(sheets[0].headers.at(-1), 'สถานะสำหรับเทียบทีมกระทบมือ');
 assert.deepEqual(sheets[0].rowTones, ['', '', '', 'error', 'warning', '']);
@@ -44,6 +44,15 @@ assert.equal(sheets[0].footerRows[0][sheets[0].headers.indexOf('STM/PM · ยอ
 assert.equal(sheets[0].footerRows[0][sheets[0].headers.indexOf('ผลต่างยอด')], -300);
 assert.equal(sheets[2].rows.length, 1, 'numeric company account must appear on Statement sheet');
 assert.equal(sheets[2].rows[0].at(-1), 'ปิดเคสแล้ว');
+
+const threeXbSheets = live.buildAuditExportSheets([
+  row({company:'3XB',account:'LOCALPAY',direction:'deposit'}),
+  row({company:'3XB',account:'LOCALPAY',direction:'withdraw',pmSource:{row:2,timeColumn:'updateTime',amountColumn:'amount'}}),
+], '3XB', '2026-09-17', true, schema);
+assert.ok(threeXbSheets.some(sheet=>sheet.name==='LP ฝ'),'3XB export must include LOCALPAY deposit sheet');
+assert.ok(threeXbSheets.some(sheet=>sheet.name==='LP ถ'),'3XB export must include LOCALPAY withdrawal sheet');
+assert.equal(threeXbSheets.find(sheet=>sheet.name==='LP ฝ').rows.length,1);
+assert.equal(threeXbSheets.find(sheet=>sheet.name==='LP ถ').rows.length,1);
 
 const atDeposit = sheets.find(sheet => sheet.name === 'AT ฝ');
 assert.deepEqual(atDeposit.headers.slice(0, schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers.length), schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers);

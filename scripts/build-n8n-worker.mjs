@@ -57,15 +57,15 @@ norm.format=norm.format||{source:'unknown',realCode:null};
 const detectedSource=norm.format.source||'unknown';
 const usableRows=(norm.records||[]).length+(norm.aux||[]).length;
 const nonEmptyRows=rawRows.filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')).length;
-// XB reconciliation intentionally covers only AT/AZ/CP/M. A provider export
-// containing only another provider (for example LocalPay) is a valid but
-// out-of-scope attachment, not a broken PM file. Accept it only when every
-// dropped transaction has that exact reason; mixed/unknown drops must still
-// stop the quality gate for review.
-const outsideProviderReason='Provider นอกขอบเขต Audit เครือ XB (ใช้เฉพาะ AT/AZ/CP/M)';
+// XB uses AT/AZ/CP/M for every company and LOCALPAY for 3XB. QPAY files may
+// arrive before admin activation; record them as inactive, not corrupt.
+const outsideProviderReason='Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M และ LOCALPAY เฉพาะ 3XB)';
+const inactiveQpayReason='QPAY ยังไม่เปิดใช้โดยแอดมิน จึงไม่นำมากระทบยอด';
 const dropEntries=Object.entries(norm.dropped||{}).filter(([,count])=>Number(count||0)>0);
 const outsideProviderRows=Number((norm.dropped||{})[outsideProviderReason]||0);
-const acceptedOutOfScopePm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonEmptyRows>0&&outsideProviderRows>0&&dropEntries.every(([reason])=>reason===outsideProviderReason);
+const inactiveQpayRows=Number((norm.dropped||{})[inactiveQpayReason]||0);
+const intentionallyInactiveRows=outsideProviderRows+inactiveQpayRows;
+const acceptedOutOfScopePm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonEmptyRows>0&&intentionallyInactiveRows>0&&dropEntries.every(([reason])=>reason===outsideProviderReason||reason===inactiveQpayReason);
 // BO is the daily source of truth for which accounts were actually used.
 // A header-only BO workbook is therefore valid evidence for a zero-activity day,
 // not a parser failure.  Keep rejecting a truly empty/corrupt workbook.
@@ -109,7 +109,7 @@ const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'b
 if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 if(acceptedEmptyBo) norm.warnings=[...(norm.warnings||[]),'BO ไม่มีรายการธุรกรรมที่ใช้จับคู่ (0 รายการ)'];
 if(acceptedEmptyStmPdf) norm.warnings=[...(norm.warnings||[]),'Statement ไม่มีรายการธุรกรรม (0 รายการ)'];
-if(acceptedOutOfScopePm) norm.warnings=[...(norm.warnings||[]),'ข้ามไฟล์ PM '+outsideProviderRows+' รายการ: Provider อยู่นอกขอบเขต Audit เครือ XB (ใช้เฉพาะ AT/AZ/CP/M)'];
+if(acceptedOutOfScopePm) norm.warnings=[...(norm.warnings||[]),'ข้ามไฟล์ PM '+intentionallyInactiveRows+' รายการ: Provider ยังไม่เปิดใช้สำหรับบริษัทนี้'];
 for(const r of (norm.records||[])){
   const pmKey=Formats.canonicalPm(r.channel||r.account||'');
   if(pmKey){r.account=pmKey;r.channel=pmKey;}
@@ -199,7 +199,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.5.13-column-ocr-financial-multiset',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.5.14-bangkok-localpay-statement-tabs',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });

@@ -61,6 +61,9 @@ eq("pm standard D: AZPAY/AT4", p4.match && p4.match.provider + "/" + p4.match.su
 eq("pm standard D: direction deposit", p4.direction, "deposit");
 const p5 = R.matchFile("AT4_PM_AZPAY_W_2026-08-24.xlsx");
 eq("pm standard W: direction withdraw", p5.direction, "withdraw");
+const p6 = R.matchFile("3XB_PM_LOCALPAY_D_2026-09-17.xlsx");
+eq("pm LOCALPAY: provider/subco", p6.match && p6.match.provider + "/" + p6.match.subco, "LOCALPAY/3XB");
+eq("pm LOCALPAY: direction deposit", p6.direction, "deposit");
 
 /* ---- self-match ทุกไฟล์ในทะเบียน ---- */
 let good = 0, wrong = 0, none = 0, noSub = 0;

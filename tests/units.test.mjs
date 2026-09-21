@@ -50,6 +50,12 @@ eq("stamp: ISO พ.ศ. -> ค.ศ.", Formats.stamp("2569-07-19 10:00:00").date,
 eq("stamp: ISO ค.ศ. ไม่แตะ", Formats.stamp("2026-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: DD/MM/YY พ.ศ. 2 หลัก", Formats.stamp("19/07/69 10:00").date, "2026-07-19");
 eq("stamp: เวลาถูก", Formats.stamp("2026-07-19 10:30:15").sec, 10 * 3600 + 30 * 60 + 15);
+const n8nMidnight = Formats.stamp("2026-09-16T17:37:04.000Z");
+eq("n8n UTC: คืนวัน/เวลา Bangkok ตาม PM", n8nMidnight.date, "2026-09-17");
+eq("n8n UTC: 17:37Z ต้องเป็น 00:37 Bangkok", n8nMidnight.sec, 37 * 60 + 4);
+const n8nOffset = Formats.stamp("2026-09-16T18:38:06+01:00");
+eq("timestamp with offset: normalize to Bangkok date", n8nOffset.date, "2026-09-17");
+eq("timestamp with offset: normalize to Bangkok time", n8nOffset.sec, 38 * 60 + 6);
 
 /* ---------- Formats.pm_provider: MYPAY ถอนสำเร็จบางส่วน ---------- */
 for (const [token, direction] of [["D", "deposit"], ["W", "withdraw"]]) {
