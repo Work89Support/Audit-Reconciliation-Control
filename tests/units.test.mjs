@@ -147,6 +147,7 @@ thaiDepositRows[1][2] = 0;
 eq("PM Thai deposit: zero is not a matching transaction", Formats.parse("AT4_PM_AUTOPEER_D_2026-09-03.xlsx", thaiDepositRows, "2026-09-03").records.length, 0);
 const customerHeaders = ["No.", "วันที่ทำรายการ", "วันที่ธนาคาร", "รหัสอ้างอิง", "สมาชิก", "บัญชีลูกค้า", "จำนวนเงินฝากจริง", "จำนวนเงินถอนจริง", "ชื่อธนาคาร"];
 eq("CPXM maps to COREPAY", Formats.canonicalPm("CPXM-598 : CP"), "COREPAY");
+eq("CP2 maps to COREPAY", Formats.canonicalPm("CP2 PAYMENT ถอน"), "COREPAY");
 eq("BO channel uses full bank field, not CP suffix", Formats.channelOf("CPXM-598 : CP").channel, "COREPAY");
 for (const [token,dep,wit,direction] of [["D",100,0,"deposit"],["W",0,100,"withdraw"]]) {
   const r = Formats.parse(`FR8_BO_${token}_2026-09-07.xlsx`, [customerHeaders,[1,"2026-09-07 12:00:00","2026-09-07 12:00:00","ref","user","1262976366 | ชาญชัย ตนเล็ก",dep,wit,"CPXM-598 : CP"]],"2026-09-07").records[0];
@@ -181,6 +182,20 @@ const sevenCorepayDeposit = Formats.parse('7M_COREPAY_D_2026-09-20.xlsx', [
 ], '2026-09-20');
 eq('7M COREPAY deposit: received amount is matching amount',sevenCorepayDeposit.records[0]?.amount,500);
 eq('7M COREPAY deposit: amount source is preserved',sevenCorepayDeposit.records[0]?.amountColumn,'จำนวนที่ได้รับ');
+const sevenCorepayGenericFile = Formats.parse('20-09-26 7MPM.xlsx', [
+  ['UFABET7M'],
+  ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนที่ได้รับ','สถานะ'],
+  ['2026-09-20 10:00:00','260920-TEST-CP','seven-user',500,'SUCCESSED'],
+], '2026-09-20');
+eq('7M generic PM: Ref ending -CP infers COREPAY',sevenCorepayGenericFile.records[0]?.account,'COREPAY');
+
+const sharedSplitRef = Formats.merge([
+  { formatCode:'bo_transaction_export', ref:'PARENT-REF', amount:300, rowNo:1 },
+  { formatCode:'bo_transaction_export', ref:'PARENT-REF', amount:600, rowNo:2 },
+]);
+eq('BO split payout: rows sharing parent Ref are preserved',sharedSplitRef.length,2);
+eq('BO split payout: first amount is preserved',sharedSplitRef[0]?.amount,300);
+eq('BO split payout: second amount is preserved',sharedSplitRef[1]?.amount,600);
 const sevenCyberDeposit = Formats.parse('7M_CYBERPLUS_D_2026-09-20.xlsx', [
   ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนเงิน','เลขบัญชีที่โอน','ธนาคารต้นทาง','สถานะ'],
   ['2026-09-20 10:00:00','CY-REF-1','seven-user',700,'1234567890','SCB','SUCCESSED'],

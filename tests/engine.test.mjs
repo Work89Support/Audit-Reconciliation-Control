@@ -91,6 +91,16 @@ const run = (stm, bo, s = settings, masterAccounts = []) => Engine.reconcile(stm
   eq("normalize: ทิศทางถอน", n.records[1].direction, "withdraw");
   eq("normalize: บัญชี", n.records[0].account, "SCB-1");
   ok("normalize: กรองรายการคนละวันออก", n.dropped["วันที่ไม่ตรงกับวันที่ตรวจ"] === 1, JSON.stringify(n.dropped));
+
+  const signed = Engine.normalize("tmn_statement.csv", [
+    ["วันที่", "เวลา", "ฝาก", "ถอน", "เลขที่บัญชี", "รายละเอียด"],
+    ["2026-08-01", "04:00:00", "", "-900", "TMN-1", "ถอนเงินลูกค้า"],
+    ["2026-08-01", "04:01:00", "", "-10", "TMN-1", "fee_p2p_receive"],
+  ], st, "2026-08-01");
+  eq("normalize: STM withdrawal signed amount becomes positive", signed.records[0]?.amount, 900);
+  eq("normalize: STM withdrawal direction remains withdraw", signed.records[0]?.direction, "withdraw");
+  eq("normalize: fee_p2p_receive is excluded", signed.records.length, 1);
+  eq("normalize: fee filter reason is auditable", signed.dropped["กรองค่าธรรมเนียมรับ P2P ซึ่งไม่ใช่รายการลูกค้า"], 1);
 })();
 
 /* ================= 3) reconcile: exact match ================= */

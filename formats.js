@@ -244,13 +244,13 @@ const Formats = (() => {
     return { terminal, channel: canonicalPm(s) || channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CPXM", "12PAY", "MYPAY", "LOCALPAY", "QPAY"];
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "MYPAY", "LOCALPAY", "QPAY"];
   const canonicalPm = (ch) => {
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
     if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
     if (/AZPAY|^AZ$/.test(s)) return "AZPAY";
-    if (/COREPAY|CPPAY/.test(s)) return "COREPAY";
+    if (/COREPAY|CPPAY|CP2/.test(s)) return "COREPAY";
     if (/CPXM/.test(s)) return "COREPAY";
     if (/MYPAY/.test(s)) return "MYPAY";
     if (/LOCALPAY|LOCELPAY/.test(s)) return "LOCALPAY";
@@ -301,7 +301,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
@@ -459,7 +459,10 @@ const Formats = (() => {
       const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
-      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || (provRaw ? provRaw.toUpperCase() : "PM");
+      // ไฟล์รวมของ 7M บางรอบไม่มีคอลัมน์ provider แต่ Ref Id ของ COREPAY ลงท้าย -CP
+      // จึงอนุมานเฉพาะ pattern ที่ระบุผู้ให้บริการได้แน่นอน แทนการปล่อยเป็น PM ทั่วไป
+      const providerFromRef = /(?:^|[-_])CP$/i.test(id) ? "COREPAY" : "";
+      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || providerFromRef || (provRaw ? provRaw.toUpperCase() : "PM");
       const subco = normalizeCompany((meta && meta.subco) || company);
       const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
       const localPayEnabled = subco === "3XB" && provider === "LOCALPAY";
@@ -767,6 +770,9 @@ const Formats = (() => {
     const byRef = new Map();
     const noRef = [];
     records.forEach((r) => {
+      // ยุบเฉพาะรายงานคู่ที่ออกแบบมาให้ใช้ UUID เดียวกันเท่านั้น
+      // BO transaction export อาจมีหลายยอดแบ่งจ่ายภายใต้ Ref แม่เดียวกันและต้องคงทุกแถวไว้
+      if (!Object.prototype.hasOwnProperty.call(RANK, r.formatCode)) return noRef.push(r);
       const ref = String(r.ref || "").trim();
       if (!ref) return noRef.push(r);
       const prev = byRef.get(ref);

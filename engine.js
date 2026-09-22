@@ -229,6 +229,10 @@ const Engine = (() => {
         drop("กรองบรรทัดรอบวันที่");
         continue;
       }
+      if (fmt.source !== "bo" && /fee[_\s-]*p2p[_\s-]*receive/i.test(joined)) {
+        drop("กรองค่าธรรมเนียมรับ P2P ซึ่งไม่ใช่รายการลูกค้า");
+        continue;
+      }
 
       // วันที่และเวลา
       const dateVal = map.datetime !== undefined ? r[map.datetime] : r[map.date];
@@ -263,6 +267,9 @@ const Engine = (() => {
         drop("ไม่มียอดเงิน");
         continue;
       }
+      // Statement บางแหล่งส่งยอดถอนเป็นค่าติดลบ แต่ direction แยกไว้อยู่แล้ว
+      // การจับคู่ต้องเทียบมูลค่าเงินจริงกับ BO ซึ่งเก็บเป็นค่าบวก
+      amount = Math.abs(amount);
 
       // กฎรายธนาคาร: ตีความ direction จาก marker (ใช้เฉพาะฝั่งธนาคาร)
       const account0 = String(r[map.account] ?? "").trim();
