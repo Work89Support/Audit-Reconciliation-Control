@@ -408,7 +408,7 @@ const Sb = (() => {
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
       "responded_by", "responded_at", "approved_by", "approved_at",
-      "bo_date", "bo_time", "stm_date", "stm_time", "customer_details",
+      "bo_date", "bo_time", "stm_date", "stm_time", "customer_details", "superseded_by_exception_id",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
        เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
@@ -422,7 +422,7 @@ const Sb = (() => {
     if (!runIds.length) return [];
     const runFilter = `run_id=in.(${runIds.join(",")})`;
     const fetchPage = async (offset) => {
-      const filters = [`select=${columns}`, runFilter, "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
+      const filters = [`select=${columns}`, runFilter, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
