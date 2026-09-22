@@ -492,7 +492,7 @@ const Sb = (() => {
     } catch(error) { confirmationError=error.message; }
     const cases = [];
     for (let offset = 0; offset < 20000; offset += 500) {
-      const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&select=*&order=id.asc&limit=500&offset=${offset}`);
+      const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
       if (page.length < 500) return { run, cases, complete: true, confirmations, confirmationError };
     }
