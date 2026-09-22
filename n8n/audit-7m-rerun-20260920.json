@@ -1,0 +1,113 @@
+{
+  "name": "Audit - 7M Rerun 2026-09-20",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual",
+      "name": "เริ่มรัน 7M วันที่ 20",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-620, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?select=id,business_date,company,status,is_archived&business_date=eq.2026-09-20&company=eq.UFABET7M&is_archived=eq.false",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "list-job",
+      "name": "Supabase: อ่านงาน UFABET7M วันที่ 20",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-380, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=$input.all().map(item=>item.json); const rows=raw.flatMap(value=>Array.isArray(value)?value:Array.isArray(value?.data)?value.data:[value]).filter(row=>row?.id&&!row.is_archived); if(rows.length!==1) throw new Error(`ต้องพบงาน UFABET7M วันที่ 2026-09-20 เพียง 1 งาน แต่พบ ${rows.length}`); return [{json:{job_id:rows[0].id,business_date:rows[0].business_date,company:rows[0].company,previous_status:rows[0].status}}];"
+      },
+      "id": "prepare-job",
+      "name": "ยืนยันขอบเขตงานเดียว",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-140, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/retry_daily_recon_job",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job_id: $json.job_id }) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "retry-job",
+      "name": "Supabase: ส่งงาน 7M เข้าคิวใหม่",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [120, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row=$input.first().json; if(!row?.id) throw new Error('ไม่สามารถส่งงานเข้าคิวได้'); return [{json:{queued:1,id:row.id,business_date:row.business_date,company:row.company,status:row.status,rerun_requested_at:row.rerun_requested_at}}];"
+      },
+      "id": "summary",
+      "name": "ยืนยันงานเข้าคิว",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 120]
+    }
+  ],
+  "connections": {
+    "เริ่มรัน 7M วันที่ 20": {
+      "main": [[{"node": "Supabase: อ่านงาน UFABET7M วันที่ 20", "type": "main", "index": 0}]]
+    },
+    "Supabase: อ่านงาน UFABET7M วันที่ 20": {
+      "main": [[{"node": "ยืนยันขอบเขตงานเดียว", "type": "main", "index": 0}]]
+    },
+    "ยืนยันขอบเขตงานเดียว": {
+      "main": [[{"node": "Supabase: ส่งงาน 7M เข้าคิวใหม่", "type": "main", "index": 0}]]
+    },
+    "Supabase: ส่งงาน 7M เข้าคิวใหม่": {
+      "main": [[{"node": "ยืนยันงานเข้าคิว", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
