@@ -86,6 +86,13 @@ assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM SCB สมภพ D-W').r
 assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM TMN รุ่งฟ้า D').rows.length,1,'TMN deposit has a separate sheet');
 assert.equal(sevenMSheets.find(sheet=>sheet.name==='STM TMN รุ่งฟ้า W').rows.length,1,'TMN withdrawal has a separate sheet');
 
+const sevenMCp2Sheets = live.buildAuditExportSheets([
+  row({company:'UFABET7M',account:'CP2 PAYMENT ถอน 000000CP2',direction:'withdraw',pmSource:{row:2,timeColumn:'วันเวลาอัพเดต',amountColumn:'จำนวนเงิน'}}),
+  row({company:'UFABET7M',account:'CP2 PAYMENT ฝาก 000000CP2',direction:'deposit',pmSource:{row:3,timeColumn:'วันที่ทำรายการ',amountColumn:'จำนวนที่ได้รับ'}}),
+], 'UFABET7M', '2026-09-20', true, schema);
+assert.equal(sevenMCp2Sheets.find(sheet=>sheet.name==='CP ถ').rows.length,1,'CP2 withdrawal must be exported under COREPAY/CP');
+assert.equal(sevenMCp2Sheets.find(sheet=>sheet.name==='CP ฝ').rows.length,1,'CP2 deposit must be exported under COREPAY/CP');
+
 const atDeposit = sheets.find(sheet => sheet.name === 'AT ฝ');
 assert.deepEqual(atDeposit.headers.slice(0, schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers.length), schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers);
 assert.deepEqual(atDeposit.headers.slice(-4), ['เงื่อนไขที่จับคู่', 'ต่างเวลา', 'ผลต่างยอด', 'สถานะ Audit']);

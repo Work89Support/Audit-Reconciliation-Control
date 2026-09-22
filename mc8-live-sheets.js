@@ -37,7 +37,7 @@
     const s=String(value||'').trim().toUpperCase();
     if(/AUTOPEER|\bATP\b/.test(s))return 'AT';
     if(/AZPAY|\bAZP?\b/.test(s))return 'AZ';
-    if(/COREPAY|CPPAY|CPXM|\bCP\b/.test(s))return 'CP';
+    if(/COREPAY|CPPAY|CP2|CPXM|\bCP\b/.test(s))return 'CP';
     if(/CYBERPLUS|CYNERPLUS|\bCBY\b|\bCY\b/.test(s))return 'CY';
     if(/MYPAY|\bM24\b|MYPAYS24/.test(s))return 'M';
     if(/LOCALPAY|LOCELPAY|\bLP\b/.test(s))return 'LP';
