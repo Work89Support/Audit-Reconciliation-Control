@@ -188,6 +188,14 @@ const sevenCorepayGenericFile = Formats.parse('20-09-26 7MPM.xlsx', [
   ['2026-09-20 10:00:00','260920-TEST-CP','seven-user',500,'SUCCESSED'],
 ], '2026-09-20');
 eq('7M generic PM: Ref ending -CP infers COREPAY',sevenCorepayGenericFile.records[0]?.account,'COREPAY');
+const sevenAutopeerPartialGenericFile = Formats.parse('20-09-26 7MPM.xlsx', [
+  ['วันที่','Ref','Username','ธนาคาร','เลขบัญชี','ชื่อ - นามสกุล ผู้รับ','แจ้งถอน','P2P จ่าย','Progress','Status'],
+  ['20/09/2026 23:39','P2C-20260920-233935-TVA7VJ','seven-user','KBANK','2082779178','ทดสอบ',500,493,'493/500','SUCCESS-PARTIAL'],
+], '2026-09-20');
+eq('7M generic PM: 7MPM filename sets UFABET7M subcompany',sevenAutopeerPartialGenericFile.records[0]?.subco,'UFABET7M');
+eq('7M generic PM: P2C/BO account infers AUTOPEER',sevenAutopeerPartialGenericFile.records[0]?.account,'AUTOPEER');
+eq('7M generic PM: partial uses P2P paid amount',sevenAutopeerPartialGenericFile.records[0]?.amount,493);
+eq('7M generic PM: partial status is retained',sevenAutopeerPartialGenericFile.records[0]?.partial,true);
 
 const sharedSplitRef = Formats.merge([
   { formatCode:'bo_transaction_export', ref:'PARENT-REF', amount:300, rowNo:1 },

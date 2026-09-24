@@ -122,7 +122,17 @@ const AUDIT_COMPANY_GROUPS = Object.freeze([
     ],
   },
   { id: "SYS123", name: "เครือ 123", status: "pending", companies: ["AT4", "FR8", "SK8"], rules: [] },
-  { id: "SYS7M", name: "เครือ 7M", status: "pending", companies: ["UFABET7M"], rules: [] },
+  { id: "SYS7M", name: "เครือ 7M", status: "active", companies: ["UFABET7M"], rules: [
+    "PM ฝากและถอนต้องจับคู่ 3 จุด: Ref/Ref Id ใน STM PM กับ Note ของ BO, User/Username กับ User ใน BO และยอดตามช่องเงินจริงของ Provider กับยอด BO",
+    "ATP ฝากใช้ยอด โอนจริง · ATP ถอนใช้ยอด P2P จ่าย",
+    "COREPAY และ CYBERPLUS ฝากใช้ จำนวนที่ได้รับ · ถอนใช้ จำนวนเงิน",
+    "AZPAY ฝากใช้ จำนวนเงิน · MYPAY และ LOCALPAY ฝาก/ถอนใช้ จำนวนเงินตามช่องรายการ",
+    "Note ของ BO อาจมีคำอธิบาย เช่น P2P สำเร็จจากรายการ P2C หรือ MyPay สำเร็จจากรายการ ระบบต้องค้นหา Ref ภายในข้อความ ไม่เทียบทั้งช่องแบบตรงตัว",
+    "เวลาเป็นข้อมูลประกอบ ไม่ใช่คีย์หลัก ถ้า Ref + User + ยอดเงินตรงกันให้ปิดได้ แม้เวลาต่างกัน; ถ้า User ไม่ครบ ใช้ Ref + ยอดเงินได้เมื่อเป็นคู่เดียวที่ไม่ซ้ำ",
+    "ค้นหาคู่ข้ามแถว/ข้ามชีตได้ แต่คู่ซ้ำหรือคลุมเครือจะคงไว้ให้ตรวจเพิ่ม ไม่ปิดจากเวลาใกล้เคียงเพียงอย่างเดียว",
+    "STM ธนาคารปกติจับคู่ด้วยยอดเงินและฝาก/ถอนภายในบัญชีเดียวกัน รองรับ BO/STM เรียงแถวไม่ตรงกัน โดยใช้เวลาที่ใกล้ที่สุดช่วยเลือกคู่",
+    "TMN แยกชีตฝากและถอนเมื่อ STM ไม่ครบหรือมาจากเอกสาร Word; แสดงสถานะ วิธีจับคู่ เหตุผล และยอดรวมท้ายชีต"
+  ] },
 ]);
 
 function auditCompanyGroupOf(company) {
@@ -151,7 +161,7 @@ function reviewCompanyGroupsMarkup(companies) {
     return `<article class="company-group-card review-company-group ${group.status === "pending" ? "pending" : "active"}">
       <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(members.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
       <div class="company-subcompany-list">${members.map((company) => `<button type="button" class="company-subcompany" data-review-company="${h(company.code)}"><span><b>${h(company.code)}</b><small>${h(company.name || company.code)}</small></span><i>เปิดชีทของบริษัทนี้</i></button>`).join("")}</div>
-      ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของเครือ XB</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ 5 บริษัทในเครือ XB เท่านั้น · หลักฐานไม่ครบหรือมีหลายคู่ต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของเครือ XB แทน</span></div>`}
+      ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของ${h(group.name)}</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ ${num(members.length)} บริษัทในกลุ่มนี้ · หลักฐานไม่ครบหรือมีหลายคู่ต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของกลุ่มอื่นแทน</span></div>`}
     </article>`;
   }).join("");
   const ungrouped = [...available.entries()].filter(([code]) => !configured.has(code)).map(([, company]) => company);
@@ -1573,7 +1583,7 @@ function renderLiveDashboard(root) {
             return `<article class="company-group-card ${group.status === "pending" ? "pending" : "active"}">
               <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(group.companies.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
               <div class="company-subcompany-list">${members.map(({ code, data }) => `<button type="button" class="company-subcompany ${data ? "has-data" : ""}" data-summary-company="${h(code)}" data-summary-date="${h(data?.latest || latestCompanyDate(group.companies))}"><span><b>${h(code)}</b><small>${data ? `ล่าสุด ${h(data.latest)}` : "ยังไม่พบงานในช่วงที่เลือก"}</small></span><i>${data ? `สำเร็จ ${num(data.completed)} · ตรวจ ${num(data.review)} · รอ ${num(data.waiting + data.error)}` : "เปิดดูบริษัท"}</i></button>`).join("")}</div>
-              ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของเครือ XB</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับทั้ง 5 บริษัทเท่านั้น · หากหลักฐานไม่ครบหรือมีหลายคู่ ระบบต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของเครือ XB แทน</span></div>`}
+              ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของ${h(group.name)}</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ ${num(group.companies.length)} บริษัทในกลุ่มนี้ · หากหลักฐานไม่ครบหรือมีหลายคู่ ระบบต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของกลุ่มอื่นแทน</span></div>`}
               <div class="company-group-totals"><span class="ok">สำเร็จ <b>${num(totals.completed)}</b></span><span class="warn">ตรวจ <b>${num(totals.review)}</b></span><span class="bad">รอ/พลาด <b>${num(totals.waiting)}</b></span></div>
             </article>`;
           }).join("")}

@@ -462,6 +462,11 @@ await (async () => {
   eq('7M provider: different user is not auto-matched',r.matched,0);
   r=await run([stm],[{...bo,amount:901}]);
   eq('7M provider: different amount is not auto-matched',r.matched,0);
+  r=await run(
+    [{...stm,company:'AUTOPEER',subco:'UFABET7M'}],
+    [{...bo,company:'UFABET7M',subco:undefined}],
+  );
+  eq('7M provider: parsed provider company uses subco scope',r.matched,1);
 })();
 
 await (async () => {

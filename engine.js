@@ -461,10 +461,11 @@ const Engine = (() => {
     let timeDiffCount = 0;
     const timeVarianceAutoPassCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const auditCompanyOf = (r) => {
-      const raw = String(r && (r.company || r.subco) || "").trim().toUpperCase();
+      /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
+      const raw = String(r && (r.subco || r.company) || "").trim().toUpperCase();
       return raw === "3X" ? "3XB" : raw;
     };
-    const sameCompany = (s, b) => String(s.company || s.subco || "").toUpperCase() === String(b.company || b.subco || "").toUpperCase();
+    const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase();
 
     /* PM ของเครือ 7M ยืนยันคู่ด้วย 3 จุดจากข้อมูลจริง ไม่ผูกกับถ้อยคำรอบ Ref:
        Ref ใน STM PM ต้องปรากฏใน Ref/โน้ต BO + User ตรง + ยอดจริงตรง

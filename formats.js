@@ -310,6 +310,10 @@ const Formats = (() => {
   function subcoOf(fileName, title) {
     const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|3X|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
     if (known) return normalizeCompany(known[1]);
+    /* ไฟล์ Audit รวมของ 7M ใช้ชื่ออย่าง "20-09-26 7MPM.xlsx" ซึ่งไม่มี
+       delimiter หลัง 7M ตามรูปแบบชื่อไฟล์ปกติ จึงต้องยืนยันเครือจาก token นี้
+       ก่อน fallback ทั่วไป มิฉะนั้นกฎ Ref/User/Amount ของ 7M จะไม่ทำงาน */
+    if (/(?:^|[^A-Z0-9])(?:UFA(?:BET)?)?7M(?:PM)?(?:[^A-Z0-9]|$)/i.test(String(fileName || ''))) return "UFABET7M";
     // จากหัวเรื่องในไฟล์ก่อน (เช่น UFABET7M -> 7M) แล้วค่อยจากชื่อไฟล์
     const t = String(title || "").replace(/^ufabet/i, "").trim().toUpperCase();
     if (t) return normalizeCompany(t);
@@ -343,7 +347,13 @@ const Formats = (() => {
       : /(?:^|[_\-\s])D(?:[_\-\s.]|$)|ฝาก|deposit|payin/i.test(fileName)
         ? "deposit"
         : null;
-    const pmMeta = { dir: fileDir, provider: pmProviderOf(fileName), subco: subcoOf(fileName, f.title) };
+    const pmHeaderKeys = new Set(Object.keys(f.idx || {}));
+    const hasPmHeader = (...names) => names.some((name) => pmHeaderKeys.has(norm(name)));
+    const inferredPmDir = hasPmHeader("P2P จ่าย", "แจ้งถอน")
+      || (hasPmHeader("วันเวลาอัพเดต") && hasPmHeader("ค่าธรรมเนียม"))
+      ? "withdraw"
+      : hasPmHeader("โอนจริง", "จำนวนที่ได้รับ", "สร้างฝาก", "user ที่ฝาก") ? "deposit" : null;
+    const pmMeta = { dir: fileDir || inferredPmDir, provider: pmProviderOf(fileName), subco: subcoOf(fileName, f.title) };
     if (f.spec.code === "pm_provider" && pmMeta.subco) out.company = pmMeta.subco;
 
     for (let i = f.headerIdx + 1; i < rows.length; i++) {
@@ -461,8 +471,15 @@ const Formats = (() => {
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       // ไฟล์รวมของ 7M บางรอบไม่มีคอลัมน์ provider แต่ Ref Id ของ COREPAY ลงท้าย -CP
       // จึงอนุมานเฉพาะ pattern ที่ระบุผู้ให้บริการได้แน่นอน แทนการปล่อยเป็น PM ทั่วไป
-      const providerFromRef = /(?:^|[-_])CP$/i.test(id) ? "COREPAY" : "";
-      const provider = (meta && meta.provider) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1] || providerFromRef || (provRaw ? provRaw.toUpperCase() : "PM");
+      const providerFromBoAccount = canonicalPm(valAny(f, r, ["บัญชีบริษัท"]));
+      const providerFromRef = /^P2C-/i.test(id)
+        ? "AUTOPEER"
+        : /(?:^|[-_])CP$/i.test(id) ? "COREPAY" : "";
+      const provider = (meta && meta.provider)
+        || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1]
+        || providerFromBoAccount
+        || providerFromRef
+        || (provRaw ? provRaw.toUpperCase() : "PM");
       const subco = normalizeCompany((meta && meta.subco) || company);
       const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
       const localPayEnabled = subco === "3XB" && provider === "LOCALPAY";
