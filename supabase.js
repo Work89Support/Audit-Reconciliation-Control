@@ -301,11 +301,37 @@ const Sb = (() => {
   }
 
   async function boFirstCoverage({ from, to, company, limit = 5000 } = {}) {
-    const filters = ["select=*", "order=business_date.desc,created_at.desc", `limit=${limit}`];
-    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-    return json(`/rest/v1/v_bo_first_daily_coverage?${filters.join("&")}`);
+    /* อ่านเฉพาะผลรันที่ daily_recon_jobs ยืนยันว่าเป็นรันล่าสุด
+       view เดิมอ่าน bo_first JSON ของรันเก่าทั้งหมดก่อนกรอง จึง timeout
+       เมื่อมีการรันย้อนหลังหลายครั้งและทำให้หน้าเว็บดูเหมือนข้อมูลไม่ครบ */
+    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", `limit=${Math.min(1000, limit)}`];
+    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
+    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
+    if (!runIds.length) return [];
+    const rows = [];
+    for (let index = 0; index < runIds.length; index += 50) {
+      const page = await json(`/rest/v1/recon_runs?id=in.(${runIds.slice(index, index + 50).join(",")})&select=id,business_date,company,created_at,summary&order=business_date.desc,created_at.desc&limit=50`);
+      for (const run of page || []) {
+        const coverage = run?.summary?.bo_first;
+        if (!coverage) continue;
+        rows.push({
+          run_id: run.id,
+          business_date: run.business_date,
+          company: String(run.company || "").toUpperCase(),
+          created_at: run.created_at,
+          method: coverage.method || "BO_FIRST",
+          required: Array.isArray(coverage.required) ? coverage.required : [],
+          received: Array.isArray(coverage.received) ? coverage.received : [],
+          missing: Array.isArray(coverage.missing) ? coverage.missing : [],
+          complete: coverage.complete === true,
+          registry_source: coverage.registry_source || null,
+        });
+      }
+    }
+    return rows.slice(0, limit);
   }
 
   const runtimeSettings = () => json("/rest/v1/audit_runtime_settings?select=*&id=eq.true&limit=1");
@@ -381,13 +407,17 @@ const Sb = (() => {
   }
 
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
+    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
+    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
+    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
+    if (!runIds.length) return [];
     const pageSize = 1000;
     const fetchPage = async (offset) => {
-      const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
-      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-      return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
@@ -413,7 +443,9 @@ const Sb = (() => {
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
        เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
        (View เดิม timeout บ่อยเมื่อเครื่องฐานข้อมูลมีโหลดสูง) */
-    const jobFilters = ["select=last_run_id", "status=eq.completed", "last_run_id=not.is.null", "limit=1000"];
+    // needs_review ยังเป็นผลรันล่าสุดที่ Audit ต้องเห็น ห้ามซ่อนเคสเพียงเพราะ
+    // quality gate รอเอกสารบางไฟล์อยู่
+    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
     if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
@@ -442,11 +474,15 @@ const Sb = (() => {
     // in the rows it has already loaded.
     const fields = ["code", "company", "bank", "account", "direction", "member_code", "ex_type", "type_name", "employee", "cause"];
     const or = `(${fields.map((field) => `${field}.ilike.*${clean}*`).join(",")})`;
-    const filters = ["select=*", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
-    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-    return json(`/rest/v1/v_current_exceptions?${filters.join("&")}`);
+    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
+    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
+    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
+    if (!runIds.length) return [];
+    const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
+    return json(`/rest/v1/exceptions?${filters.join("&")}`);
   }
 
   /* โหลดรายละเอียดหนักเฉพาะตอนผู้ตรวจเปิดเคส ไม่ดึง raw evidence ทุกแถวในหน้ารวม */
