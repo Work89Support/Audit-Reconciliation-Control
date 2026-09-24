@@ -192,6 +192,15 @@ const scbOcrMissingColumns = await P.parseText(
 eq("SCB OCR: อ่านแถวที่ Code/Channel หายได้", scbOcrMissingColumns.records.length, 3);
 eq("SCB OCR: ใช้ยอดคงเหลือต่อเนื่องระบุทิศทาง", scbOcrMissingColumns.records.map((r) => r.direction).join(","), "withdraw,withdraw,deposit");
 eq("SCB OCR: continuity ครบจึงผ่าน quality", scbOcrMissingColumns.quality.complete, true);
+const scbFlattenedColumns = await P.parseText(
+  "UFABET7M_STM_SCB_สมภพ_DW_2026-09-23.pdf",
+  "SIAM COMMERCIAL BANK\nAccount No. 5034633891\nยอดเงินคงเหลือยกมา (BALANCE BROUGHT FORWARD)\n22/09/26 23:25 X1 ENET 50.00 23/09/26 02:14 X2 ENET 437.00 23/09/26 03:35 X2 ENET 235.00\n2,749.40\n2,804.40\n2,367.40\n2,132.40\nรับโอนจาก KBANK x8766 TEST\nโอนไป BAY x9718 TEST\nโอนไป KBANK x9993 TEST",
+  "2026-09-23",
+);
+eq("SCB OCR flattened: อ่านหลายธุรกรรมในบรรทัดเดียว", scbFlattenedColumns.quality.parsedRows, 3);
+eq("SCB OCR flattened: เก็บเฉพาะวันที่ตรวจ", scbFlattenedColumns.records.length, 2);
+eq("SCB OCR flattened: ใช้ X1/X2 ยืนยันทิศทาง", scbFlattenedColumns.records.map((r) => r.direction).join(","), "withdraw,withdraw");
+eq("SCB OCR flattened: ไม่แจ้งบรรทัดเดิมว่าอ่านไม่สำเร็จ", scbFlattenedColumns.quality.complete, true);
 const scbOcrGap = await P.parseText(
   "UFABET7M_STM_SCB.pdf",
   "SIAM COMMERCIAL BANK\nAccount No. 5034633891\n23/09/26 02:14 437.00 2,934.40 โอนไป BAY\n23/09/26 12:17 200.00 3,500.00 รับโอนจาก KTB",

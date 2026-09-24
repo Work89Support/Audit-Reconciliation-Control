@@ -119,10 +119,40 @@ const PdfStm = (() => {
       const description = /^(?:รับโอนจาก|โอนจาก|โอนไป|ดอกเบี้ย|ค่าธรรมเนียม|ปรับปรุง)/;
       lines.forEach((l) => {
         const t = l.text;
+        // Google Drive OCR can flatten SCB's transaction columns so several
+        // complete tuples land on one physical text line while balances and
+        // descriptions are emitted in later column blocks.  Read every exact
+        // date/time/code/channel/amount tuple.  X1/X2 is explicit bank
+        // evidence for direction, so a balance is optional in this layout.
+        const exactRe = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3}|[A-Z][0-9])\s+([A-Z/]+)\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?/g;
+        const exactMatches = [...t.matchAll(exactRe)];
+        if (exactMatches.length) {
+          exactMatches.forEach((match) => {
+            const inline = exactMatches.length === 1 ? t.slice(match.index + match[0].length).trim() : "";
+            const row = {
+              date: isoOf(match[1]),
+              sec: secOf(match[2]),
+              code: match[3],
+              channel: match[4],
+              amount: numOf(match[5]),
+              balance: match[6] ? numOf(match[6]) : null,
+              desc: inline,
+              // Keep the complete source line so the quality scan can prove
+              // that a flattened line was consumed without reporting it as
+              // unread after the individual tuples have been recovered.
+              raw: t,
+              descriptionUncertain: !inline && /^X[12]$/.test(match[3]),
+              ocrColumnSeparated: !match[6] || exactMatches.length > 1,
+            };
+            rows.push(row);
+            tokens.push({ row, inline: !!inline });
+          });
+          return;
+        }
         // SCB also emits counter-service codes such as C1. Keep the code
         // generic enough for one optional digit, then derive direction from
         // the running balance when it is not an explicit X1/X2 transaction.
-        const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3}|[A-Z][0-9])\s+([A-Z/]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
+        const m = null;
         // Google Drive OCR ของ statement SCB แบบภาพบางฉบับอ่านคอลัมน์
         // Code/Channel ไม่ครบ แต่ยังอ่านวันที่ เวลา ยอดรายการ และยอดคงเหลือ
         // ต่อเนื่องกันครบได้ ให้รับรูปแบบนี้ไว้ก่อน แล้วตรวจ continuity ทั้งไฟล์
