@@ -83,6 +83,16 @@ eq("LBK: รายการแรก เป็น withdraw", lbkRows[0] && lbkRo
 eq("LBK: รายการสอง ยอด = 7000", lbkRows[1] && lbkRows[1].amount, 7000);
 eq("LBK: รายการสอง เป็น deposit (รับโอนเงิน)", lbkRows[1] && lbkRows[1].direction, "deposit");
 
+const TMN_FUNDOUT = `
+ใบแสดงรายการ / Statement of Account
+เงินเข้า เงินออก ยอดคงเหลือ
+20/09/2026 17:50:23 เงินออก -7,000.00 promptpay_bay_fundout 39,082.75 32,082.75
+`;
+const tmnFundout = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_FUNDOUT, "2026-09-20");
+eq("TMN fundout: เก็บขาโยกเงินไว้จับคู่", tmnFundout.records.length, 1);
+eq("TMN fundout: ระบุ internalTransferHint", tmnFundout.records[0]?.internalTransferHint, true);
+eq("TMN fundout: ยังเป็นรายการถอน", tmnFundout.records[0]?.direction, "withdraw");
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0

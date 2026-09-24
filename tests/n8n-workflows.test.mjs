@@ -197,10 +197,13 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.22-signed-amount-boundary'/, "worker version must identify signed amount normalization at the reconciliation boundary");
+assert.match(workerText, /worker_version:'1\.5\.23-seven-m-internal-transfer'/, "worker version must identify the 7M internal-transfer release");
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");
+assert.match(workerText, /seven_m_internal_transfer_reciprocal:true/, "worker summary must identify reciprocal 7M internal-transfer matching");
+assert.match(workerText, /tmn_fundout_preserved:true/, "worker summary must identify preserved TMN fundout evidence");
+assert.match(workerText, /internal_transfer_tolerance_sec:300/, "worker summary must record the internal-transfer time window");
 assert.match(workerText, /bo_split_rows_preserved:true/, "worker summary must identify BO split payout preservation");
 assert.match(workerText, /seven_m_provider_identity_rule:true/, "worker summary must identify the 7M Ref/User/Amount rule");
 assert.match(workerText, /seven_m_pm_near_time_safe_close:true/, "worker summary must identify the safe 7M PM amount/time fallback");

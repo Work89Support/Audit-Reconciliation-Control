@@ -122,6 +122,33 @@ await (async function () {
   eq("signed withdrawal: หลักฐานเก็บยอดเป็นค่าบวก", r.matchEvidence[0]?.stmAmount, 1020);
 })();
 
+await (async function () {
+  const common = { date: "2026-09-20", company: "UFABET7M", subco: "UFABET7M", amount: 7000 };
+  const stm = [
+    rec({ ...common, account: "1953583301", sec: 17 * 3600 + 50 * 60, direction: "deposit", raw: "รับโอนเงิน 7,000 Rungfa Saeta" }),
+    rec({ ...common, account: "0812792075", sec: 17 * 3600 + 50 * 60 + 23, direction: "withdraw", raw: "เงินออก -7,000 promptpay_bay_fundout", internalTransferHint: true }),
+  ];
+  const bo = [
+    rec({ ...common, account: "1953583301", sec: 17 * 3600 + 50 * 60, direction: "withdraw", raw: "โยกเงินเข้า | รับยอด TMN รุ่งฟ้า 7000" }),
+    rec({ ...common, account: "0812792075", sec: 17 * 3600 + 50 * 60, direction: "deposit", raw: "โยกเงินออก | โยกเข้า KB กิตติ 7000" }),
+  ];
+  const r = await run(stm, bo, { ...settings, internalTransferTolerance: 300 });
+  eq("7M internal transfer: ปิดคู่ KB +7,000 / TMN -7,000 ครบสองฝั่ง", r.matched, 2);
+  eq("7M internal transfer: ไม่สร้าง Exception ซ้ำ", r.exceptions.length, 0);
+  eq("7M internal transfer: นับหลักฐาน internal transfer", r.internalTransferMatched, 2);
+  ok("7M internal transfer: เก็บวิธีจับคู่ใน Audit Log",
+    r.matchEvidence.every((e) => e.method === "seven-m-internal-transfer-reciprocal" && e.internalTransferMatched));
+})();
+
+await (async function () {
+  const common = { date: "2026-09-20", company: "UFABET7M", subco: "UFABET7M", amount: 7000, account: "1953583301", sec: 17 * 3600 + 50 * 60 };
+  const r = await run(
+    [rec({ ...common, direction: "deposit", raw: "รับโอน 7,000" })],
+    [rec({ ...common, direction: "withdraw", raw: "โยกเงินเข้า 7,000" })],
+  );
+  eq("7M internal transfer safety: ไม่ปิดจากยอดเดียวเมื่อไม่มีขา statement ตอบกลับ", r.matched, 0);
+})();
+
 /* รายการก่อน/หลังเที่ยงคืนต้องเทียบ timestamp จริง ไม่ใช่ลบเฉพาะวินาทีในวัน */
 await (async function () {
   const r = await run(

@@ -472,6 +472,61 @@ const Engine = (() => {
     };
     const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase();
 
+    /* 7M internal transfers are recorded twice on each source: money leaves one
+       company account and reaches another.  BO labels these rows as โยกเงิน/รับยอด,
+       while TMN uses promptpay_*_fundout.  They are not customer transactions.
+       Close them only when the complete reciprocal statement evidence exists;
+       amount-only or text-only matches remain open for Audit review. */
+    const internalTransferTol = Math.max(60, Number(settings.internalTransferTolerance ?? 300));
+    const internalText = (r) => [r && r.note, r && r.desc, r && r.raw, r && r.ref, r && r.via]
+      .filter(Boolean).join(" ");
+    const internalBoHint = (r) => /(?:โยก(?:เงิน)?(?:เข้า|ออก)?|รับยอด|ย้ายเงิน|internal\s*transfer)/i.test(internalText(r));
+    const internalStmHint = (r) => !!(r && r.internalTransferHint)
+      || /(?:fundout|โยก(?:เงิน)?(?:เข้า|ออก)?|รับยอด|ย้ายเงิน)/i.test(internalText(r));
+    const oppositeDirection = (a, b) => !!a && !!b && a !== b
+      && [a, b].every((d) => d === "deposit" || d === "withdraw");
+    const reciprocalStatementLegs = new Map();
+    stmRecords.forEach((s) => {
+      if (!['7M', 'UFABET7M'].includes(auditCompanyOf(s)) || s.isPmChannel) return;
+      const peers = stmRecords.filter((other) => other !== s
+        && !other.isPmChannel && sameCompany(s, other)
+        && s.date === other.date && s.account !== other.account
+        && s.amount === other.amount && oppositeDirection(s.direction, other.direction)
+        && timeDistance(s, other) <= internalTransferTol
+        && (internalStmHint(s) || internalStmHint(other)));
+      reciprocalStatementLegs.set(s, peers);
+    });
+    const internalTransferCandidate = (s, b) => ['7M', 'UFABET7M'].includes(auditCompanyOf(s))
+      && !s.isPmChannel && !b.isPmChannel && sameCompany(s, b)
+      && s.date === b.date && isIsoDate(s.date)
+      && s.account === b.account && s.amount > 0 && s.amount === b.amount
+      && oppositeDirection(s.direction, b.direction)
+      && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && timeDistance(s, b) <= internalTransferTol
+      && internalBoHint(b)
+      && (reciprocalStatementLegs.get(s) || []).length === 1;
+    const internalTransferCandidates = new Map();
+    const internalTransferPeers = new Map();
+    stmRecords.forEach((s) => {
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => internalTransferCandidate(s, boRecords[i]));
+      internalTransferCandidates.set(s, rows);
+      rows.forEach((i) => {
+        let peers = internalTransferPeers.get(i);
+        if (!peers) internalTransferPeers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    const internalTransferMatched = new Set();
+    stmRecords.forEach((s) => {
+      const rows = internalTransferCandidates.get(s) || [];
+      if (rows.length !== 1 || (internalTransferPeers.get(rows[0]) || []).length !== 1 || boUsed[rows[0]]) return;
+      const i = rows[0], b = boRecords[i];
+      boUsed[i] = 1;
+      internalTransferMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), internalTransferMatch: true });
+    });
+
     /* PM ของเครือ 7M ยืนยันคู่ด้วย 3 จุดจากข้อมูลจริง ไม่ผูกกับถ้อยคำรอบ Ref:
        Ref ใน STM PM ต้องปรากฏใน Ref/โน้ต BO + User ตรง + ยอดจริงตรง
        จึงรองรับทั้งข้อความตรง, "P2P สำเร็จจากรายการ ..." และ
@@ -646,6 +701,7 @@ const Engine = (() => {
       stmRecords,
       10000,
       (s) => {
+        if (internalTransferMatched.has(s)) return;
         if (providerIdentityMatched.has(s)) return;
         if (providerNearTimeMatched.has(s)) return;
         if (identityMatched.has(s)) return;
@@ -953,6 +1009,7 @@ const Engine = (() => {
     const elapsed = Math.round(performance.now() - t0);
     return {
       matched: matched.length,
+      internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       exceptions,
       stmCount: stmRecords.length,
@@ -978,7 +1035,8 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        internalTransferMatched: !!m.internalTransferMatch,
         providerIdentityMatched: !!m.providerIdentityMatch,
         providerNearTimeMatched: !!m.providerNearTimeMatch,
         rescueMatched: !!m.rescueMatch,

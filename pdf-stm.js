@@ -242,7 +242,12 @@ const PdfStm = (() => {
      03/06/2026 13:50:45 | เงินเข้า | 10.00 | 0952178672 | 34,210.07 | 34,220.07
      03/06/2026 13:50:46 | เงินออก | -0.29 | fee_p2p_receive | 34,220.07 | 34,219.78
      คอลัมน์: วันที่+เวลา · ประเภท · ยอด(±) · รายละเอียด(เบอร์/โค้ด) · ยอดก่อน · ยอดหลัง   */
-  const TMN_FEE = /^(fee_|.*_fee$|promptpay_.*_fundout$|.*_fundout$)/i;
+  /* fundout is not a fee: it is the TMN leg of a transfer to a bank account.
+     Keep it in the evidence set so the reconciliation engine can pair it with
+     the receiving bank leg.  Dropping it here creates two false one-sided
+     exceptions (for example TMN -7,000 / KBANK +7,000). */
+  const TMN_FEE = /^(fee_|.*_fee$)/i;
+  const TMN_INTERNAL_TRANSFER = /(?:^|_)promptpay_.*_fundout$|(?:^|_).*_fundout$/i;
   function parseTMN(pages) {
     const rows = [];
     const re = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(เงินเข้า|เงินออก)\s+(-?[\d,]+\.\d{2})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/;
@@ -259,7 +264,8 @@ const PdfStm = (() => {
           amount: Math.abs(numOf(m[4])),
           balance: numOf(m[7]),
           desc: detail,
-          isFee: TMN_FEE.test(detail), // ค่าธรรมเนียม/โยกเงินออกธนาคาร ไม่ใช่รายการลูกค้า
+          isFee: TMN_FEE.test(detail),
+          internalTransferHint: TMN_INTERNAL_TRANSFER.test(detail),
           raw: l.text,
         });
       });
@@ -664,7 +670,7 @@ const PdfStm = (() => {
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
-      if (r.isFee) return drop("ค่าธรรมเนียม/โยกเงินออกธนาคาร TrueMoney (ไม่ใช่รายการลูกค้า)");
+      if (r.isFee) return drop("ค่าธรรมเนียม TrueMoney (ไม่ใช่รายการลูกค้า)");
       if (businessDate && r.date && r.date !== businessDate && !previousDayReport) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       records.push({
         rowNo: i + 1,
@@ -689,6 +695,7 @@ const PdfStm = (() => {
         lateNight: r.sec >= 82800,
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
+        internalTransferHint: !!r.internalTransferHint,
         raw: r.raw,
       });
     });
