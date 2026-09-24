@@ -119,6 +119,8 @@ const pdfHeader = 'SIAM COMMERCIAL BANK\nAccount No. 1234567890\n';
 const validPdfText = pdfHeader + '04/09/26 10:00 X1 ENET 100.00 1100.00\nรับโอนจาก KBANK x1234 TEST CUSTOMER';
 assert.equal((await probe({text:validPdfText},metaForPdf))[0].json.pdf_readable, true);
 assert.equal((await probe({text:pdfHeader+'04/09/26 10:00 X1 ENET 100.00 1100.00'},metaForPdf))[0].json.pdf_readable, true, 'optional SCB counterparty text must not force a complete core transaction through OCR');
+const sevenMScanMeta = () => ({item:{json:{file:{file_name:'UFABET7M_STM_SCB_สมภพ_DW_2026-09-23.pdf',kind:'stm_pdf'},job:{business_date:'2026-09-23'}}}});
+assert.equal((await probe({text:validPdfText},sevenMScanMeta))[0].json.pdf_readable, false, '7M bank-statement scans must use the full OCR route');
 const testedPdfParser = (await readFile(new URL('../pdf-stm.js', import.meta.url), 'utf8')).trim();
 for (const workflow of [worker, await load('audit-round-worker.json')]) {
   for (const node of workflow.nodes.filter(n => n.parameters?.jsCode?.includes('const PdfStm'))) {
@@ -172,6 +174,7 @@ assert.match(workerText, /pairedItem/, "code nodes must preserve n8n item linkin
 assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file references must not fall back to the first loop item");
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
 assert.match(workerText, /healthyNames/, "a healthy later copy must supersede an unreadable file with the same name");
+assert.match(workerText, /created_at/, "duplicate attachments must prefer the newest source copy");
 assert.match(workerText, /const seen=new Set\(\)/, "identical parsed files from duplicate mail batches must be reconciled only once");
 assert.match(workerText, /Number\(f\.size_bytes\|\|0\)/, "duplicate file identity must include the source size when checksums are unavailable");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
