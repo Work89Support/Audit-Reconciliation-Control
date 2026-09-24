@@ -565,7 +565,34 @@ await (async () => {
   eq('123 AZPAY withdrawal: unsupported direction is not generic auto-closed',r.matched,0);
 
   r=await run([stm],[bo,{...bo,rowNo:bo.rowNo+100,sec:79000}]);
-  eq('123 PM: duplicate candidate remains open',r.matched,0);
+  eq('123 PM: duplicate candidates outside safe time window remain open',r.matched,0);
+
+  const repeatedStm=[
+    rec({...stm,sec:3600,rowNo:1001}),
+    rec({...stm,sec:4200,rowNo:1002}),
+  ];
+  const repeatedBo=[
+    rec({...bo,sec:3660,rowNo:2001}),
+    rec({...bo,sec:4260,rowNo:2002}),
+  ];
+  r=await run(repeatedStm,repeatedBo);
+  eq('123 PM: repeated identity closes by reciprocal nearest time',r.matched,2);
+  eq('123 PM: repeated identity leaves no false missing cases',r.exceptions.length,0);
+  ok('123 PM: repeated identity records auditable method',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-reciprocal-nearest'));
+
+  const tiedStm=rec({...stm,sec:3600,rowNo:3001});
+  r=await run([tiedStm],[
+    rec({...bo,sec:3540,rowNo:3002}),
+    rec({...bo,sec:3660,rowNo:3003}),
+  ]);
+  eq('123 PM: equal-distance tie remains open',r.matched,0);
+
+  r=await run([rec({...stm,sec:3600,rowNo:4001})],[
+    rec({...bo,sec:3660,rowNo:4002}),
+    rec({...bo,sec:8000,rowNo:4003}),
+  ]);
+  eq('123 PM: unique near row closes while distant duplicate remains open',r.matched,1);
+  eq('123 PM: unmatched duplicate remains visible for Audit',r.exceptions.filter(e=>e.type==='missing_stm').length,1);
 })();
 
 /* ---------------- report ---------------- */

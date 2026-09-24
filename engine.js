@@ -628,7 +628,9 @@ const Engine = (() => {
        - AUTOPEER / COREPAY / LOCALPAY ฝาก-ถอน และ AZPAY ฝาก:
          รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดเงินจริง
        - CYBERPLUS ฝากใช้ 3 จุดเหมือนกัน ส่วนถอนใช้รหัสสมาชิก + ยอด
-       ทุกกรณีต้องเป็นบริษัท/Provider/ทิศทางเดียวกัน และเป็นคู่ 1:1 เท่านั้น */
+       ทุกกรณีต้องเป็นบริษัท/Provider/ทิศทางเดียวกัน
+       ถ้าตัวตน+ยอดซ้ำ ให้จับคู่เวลาที่ใกล้ที่สุดแบบ reciprocal 1:1 ภายใน 60 นาที;
+       คู่เสมอหรือไม่มีเวลายังคงเป็นเคส */
     const sys123Companies = new Set(["AT4", "FR8", "SK8"]);
     const sys123Directions = new Map([
       ["AUTOPEER", new Set(["deposit", "withdraw"])],
@@ -681,6 +683,60 @@ const Engine = (() => {
           : "sys123-member-account-amount",
       });
     });
+
+    /* รายการ 123 มักมียอดกลมๆ ของสมาชิก/บัญชีเดิมซ้ำกันหลายครั้ง
+       กฎเดิมจะปฏิเสธทั้งกลุ่มเมื่อไม่ใช่ 1:1 ทำให้เกิด missing_bo/missing_stm
+       เท็จจำนวนมาก ขั้นนี้จึงลองจับซ้ำด้วยเวลาใกล้สุดเฉพาะคู่ที่:
+       - อยู่วันเดียวกัน มี timestamp จริง และไม่เกินกรอบที่กำหนด
+       - เป็น nearest ที่ไม่เสมอกันทั้งสองทิศ (STM -> BO และ BO -> STM)
+       วนซ้ำหลังจับแต่ละชุด เพื่อให้คู่ที่เหลือถูกประเมินจากสถานะล่าสุด */
+    const sys123DuplicateTimeTol = Math.max(0, Number(settings.sys123DuplicateTimeTolerance ?? 3600));
+    const sys123TimedCandidate = (s, b) => sys123ProviderCandidate(s, b)
+      && s.date === b.date && isIsoDate(s.date)
+      && !s.noTime && !b.noTime
+      && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && timeDistance(s, b) <= sys123DuplicateTimeTol;
+    let sys123Progress = true;
+    while (sys123Progress) {
+      sys123Progress = false;
+      const candidates = new Map();
+      const peers = new Map();
+      stmRecords.forEach((s) => {
+        if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+        const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+          .filter((i) => !boUsed[i] && sys123TimedCandidate(s, boRecords[i]))
+          .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
+        candidates.set(s, rows);
+        rows.forEach(({ i, dt }) => {
+          let list = peers.get(i);
+          if (!list) peers.set(i, (list = []));
+          list.push({ s, dt });
+        });
+      });
+      const proposals = [];
+      candidates.forEach((rows, s) => {
+        const i = uniqueProviderNearest(rows, (row) => row.i);
+        if (i == null || boUsed[i]) return;
+        if (uniqueProviderNearest(peers.get(i) || [], (row) => row.s) !== s) return;
+        proposals.push({ s, i });
+      });
+      proposals.forEach(({ s, i }) => {
+        if (sys123ProviderMatched.has(s) || boUsed[i]) return;
+        const b = boRecords[i];
+        boUsed[i] = 1;
+        sys123ProviderMatched.add(s);
+        matched.push({
+          s,
+          b,
+          dt: timeDistance(s, b),
+          sys123ProviderMatch: true,
+          sys123MatchMethod: s.account === "CYBERPLUS" && s.direction === "withdraw"
+            ? "sys123-member-amount-reciprocal-nearest"
+            : "sys123-member-account-amount-reciprocal-nearest",
+        });
+        sys123Progress = true;
+      });
+    }
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
     const crossCandidate = (s, b) => {
