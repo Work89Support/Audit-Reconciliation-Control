@@ -169,6 +169,29 @@ function reviewCompanyGroupsMarkup(companies) {
   return groupCards + ungroupedCard;
 }
 
+function auditRuleBookMarkup(selectedCompany = "") {
+  const selectedGroup = auditCompanyGroupOf(selectedCompany);
+  const activeGroups = AUDIT_COMPANY_GROUPS.filter((group) => group.status === "active");
+  return `<section class="panel audit-rule-book" aria-label="เงื่อนไขการกระทบยอดที่ระบบใช้จริง">
+    <div class="panel-heading"><div><p class="eyebrow">กติกาที่ระบบใช้จริง</p><h2>เงื่อนไขกระทบยอด XB และ 7M</h2><small class="head-sub">แสดงกฎที่เปิดใช้งานแล้วเท่านั้น · คู่ซ้ำ หลักฐานไม่ครบ หรือข้อมูลขัดกันจะไม่ถูกปิดอัตโนมัติ</small></div><span class="health ok">${num(activeGroups.length)} เครือเปิดใช้</span></div>
+    <div class="audit-rule-book-grid">
+      ${activeGroups.map((group) => `<article class="audit-rule-book-card ${selectedGroup?.id === group.id ? "selected" : ""}">
+        <header><div><strong>${h(group.name)}</strong><small>${h(group.companies.join(" · "))}</small></div><span class="badge green">ใช้กฎแล้ว</span></header>
+        <ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol>
+      </article>`).join("")}
+    </div>
+    <div class="cross-day-rule-flow">
+      <strong>วงจรรายการข้ามวัน</strong>
+      <span><b>1</b> วันแรก: ค้างรอข้อมูลข้ามวันและแจ้ง Audit</span>
+      <i>→</i>
+      <span><b>2</b> วันถัดไป: ค้นหาคู่เดิมด้วยบัญชี/Provider ทิศทาง ยอด และหลักฐานอ้างอิง</span>
+      <i>→</i>
+      <span><b>3</b> พบคู่เดียว: ปิดรายการค้าง นำออกจากคิว และเก็บประวัติใน Audit Log</span>
+      <em>ไม่พบคู่หรือพบหลายคู่: คงไว้ให้ Audit ตรวจ ไม่บังคับปิด</em>
+    </div>
+  </section>`;
+}
+
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
@@ -2124,10 +2147,11 @@ function renderDailyCompanySummary(root) {
   const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
   state.dailySummary.company = company;
   const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  const rulesPanel = auditRuleBookMarkup(company);
   if (dailyCompanyState.loading && !dailyCompanyState.batches) {
-    root.innerHTML = controls + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
+    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
   } else if (dailyCompanyState.error) {
-    root.innerHTML = controls + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
+    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
   } else {
     const data = dailyCompanyData(company);
     const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
@@ -2408,7 +2432,7 @@ function renderDailyCompanySummary(root) {
           }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
         </tbody></table></div>
       </section>`;
-    root.innerHTML = controls + `
+    root.innerHTML = controls + rulesPanel + `
       ${auditSheetHtml}
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}

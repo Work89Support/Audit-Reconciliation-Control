@@ -15,9 +15,15 @@ assert.match(app, /groupedCompanyOptions\(companies, company\)/);
 assert.match(app, /function reviewCompanyGroupsMarkup\(companies\)/);
 assert.match(app, /3 เครือบริษัท · เลือกบริษัทย่อย/);
 assert.match(app, /reviewCompanyGroupsMarkup\(companies\)/);
+assert.match(app, /function auditRuleBookMarkup\(selectedCompany = ""\)/);
+assert.match(app, /กติกาที่ระบบใช้จริง/);
+assert.match(app, /วงจรรายการข้ามวัน/);
+assert.match(app, /root\.innerHTML = controls \+ rulesPanel/);
 assert.match(css, /\.company-group-grid/);
 assert.match(css, /\.company-rule-details/);
 assert.match(css, /\.review-company-groups/);
+assert.match(css, /\.audit-rule-book-grid/);
+assert.match(css, /\.cross-day-rule-flow/);
 
 assert.match(migration, /exception_carried_forward/);
 assert.match(migration, /exception_auto_closed_on_rerun/);
