@@ -112,6 +112,16 @@ await (async function () {
   eq("exact: ส่ง key ของ BO ที่จับสำเร็จให้ Worker", r.matchedBoKeys.length, 1);
 })();
 
+await (async function () {
+  const r = await run(
+    [rec({ account: "TMN-1", amount: -1020, sec: 3600, direction: "withdraw", company: "UFABET7M" })],
+    [rec({ account: "TMN-1", amount: 1020, sec: 3630, direction: "withdraw", company: "UFABET7M" })],
+  );
+  eq("signed withdrawal: STM -1,020 จับกับ BO 1,020", r.matched, 1);
+  eq("signed withdrawal: ไม่สร้างยอดต่างเท็จ", r.exceptions.length, 0);
+  eq("signed withdrawal: หลักฐานเก็บยอดเป็นค่าบวก", r.matchEvidence[0]?.stmAmount, 1020);
+})();
+
 /* รายการก่อน/หลังเที่ยงคืนต้องเทียบ timestamp จริง ไม่ใช่ลบเฉพาะวินาทีในวัน */
 await (async function () {
   const r = await run(

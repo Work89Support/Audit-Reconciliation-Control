@@ -400,7 +400,12 @@ const Engine = (() => {
   }
 
   async function reconcile(stmRecords, boRecords, settings, masterAccounts, onProgress) {
-    stmRecords = stmRecords.map(statementCustomer);
+    /* ตัวอ่านไฟล์บางชนิด (โดยเฉพาะ statement ถอน/TMN) ส่งยอดถอนเป็นค่าติดลบ
+       เข้ามาที่ reconcile โดยตรงโดยไม่ผ่าน Engine.normalize จึงต้อง canonicalize
+       อีกชั้นตรงขอบเขตนี้ เพื่อให้ -1,020 ฝั่ง STM จับกับ 1,020 ฝั่ง BO ได้จริง */
+    const absoluteAmount = (row) => ({ ...row, amount: Math.abs(Number(row && row.amount) || 0) });
+    stmRecords = stmRecords.map(absoluteAmount).map(statementCustomer);
+    boRecords = boRecords.map(absoluteAmount);
     const t0 = performance.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
