@@ -161,7 +161,7 @@ assert.equal(worker.connections["Supabase: คืนคิวที่สั่�
 const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่");
 assert.equal(restoreManualRerun.parameters.method, "PATCH");
 assert.match(restoreManualRerun.parameters.url, /rerun_requested_at=not\.is\.null/);
-assert.doesNotMatch(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "manual rerun priority must survive until the newest request is claimed");
+assert.match(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "consumed rerun requests must not be restored on every worker tick");
 assert.equal(restoreManualRerun.retryOnFail, true, "bulk historical reruns must retry a transient Supabase timeout");
 assert.ok(restoreManualRerun.maxTries >= 3, "manual rerun recovery needs enough retry attempts under queue load");
 assert.ok(restoreManualRerun.waitBetweenTries >= 3000, "manual rerun recovery must pause before retrying Supabase");
@@ -172,6 +172,8 @@ assert.match(workerText, /pairedItem/, "code nodes must preserve n8n item linkin
 assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file references must not fall back to the first loop item");
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
 assert.match(workerText, /healthyNames/, "a healthy later copy must supersede an unreadable file with the same name");
+assert.match(workerText, /const seen=new Set\(\)/, "identical parsed files from duplicate mail batches must be reconciled only once");
+assert.match(workerText, /Number\(f\.size_bytes\|\|0\)/, "duplicate file identity must include the source size when checksums are unavailable");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
 assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
@@ -192,7 +194,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.20-7m-cp2-pending'/, "worker version must identify the 7M CP2 pending-deposit release");
+assert.match(workerText, /worker_version:'1\.5\.21-deduplicate-source-files'/, "worker version must identify the duplicate-source-file release");
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");
