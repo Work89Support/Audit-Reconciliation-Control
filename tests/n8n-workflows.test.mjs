@@ -171,6 +171,7 @@ assert.match(workerText, /จองหนึ่งงาน'\)\.first\(\)/, "pro
 assert.match(workerText, /pairedItem/, "code nodes must preserve n8n item linking through nested loops");
 assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file references must not fall back to the first loop item");
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
+assert.match(workerText, /healthyNames/, "a healthy later copy must supersede an unreadable file with the same name");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
 assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
@@ -191,7 +192,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.5\.19-audit-manual-parity'/, "worker version must identify the Audit manual parity release");
+assert.match(workerText, /worker_version:'1\.5\.20-7m-cp2-pending'/, "worker version must identify the 7M CP2 pending-deposit release");
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");

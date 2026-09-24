@@ -182,6 +182,15 @@ const sevenCorepayDeposit = Formats.parse('7M_COREPAY_D_2026-09-20.xlsx', [
 ], '2026-09-20');
 eq('7M COREPAY deposit: received amount is matching amount',sevenCorepayDeposit.records[0]?.amount,500);
 eq('7M COREPAY deposit: amount source is preserved',sevenCorepayDeposit.records[0]?.amountColumn,'จำนวนที่ได้รับ');
+const sevenCorepayPendingDeposit = Formats.parse('UFABET7M_PM_CP2_D_2026-09-21.xlsx', [
+  ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนที่ฝาก','จำนวนที่ได้รับ','เลขบัญชีที่โอน','ธนาคารต้นทาง','สถานะ'],
+  ['2026-09-21 17:52:37','260921175236-06354025-CP','ufpyo7mm110058',200,200,'0682590900','SCB','pending'],
+  ['2026-09-21 17:50:54','260921175053-21523366-CP','ufpyo7mm104192',5000,5000,'4070193308','SCB','pending'],
+  ['2026-09-21 17:50:36','260921175034-93622497-CP','ufpyo7mm138387',5000,5000,'0618073246','KBANK','pending'],
+], '2026-09-21');
+eq('7M COREPAY deposit: pending rows remain eligible for reconciliation',sevenCorepayPendingDeposit.records.length,3);
+eq('7M COREPAY deposit: pending received amount is used',sevenCorepayPendingDeposit.records[1]?.amount,5000);
+eq('7M COREPAY deposit: pending Ref Id is retained',sevenCorepayPendingDeposit.records[2]?.ref,'260921175034-93622497-CP');
 const sevenCorepayGenericFile = Formats.parse('20-09-26 7MPM.xlsx', [
   ['UFABET7M'],
   ['วันที่ทำรายการ','Ref Id','user ที่ฝาก','จำนวนที่ได้รับ','สถานะ'],

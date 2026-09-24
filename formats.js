@@ -495,7 +495,15 @@ const Formats = (() => {
       if (partial && (dir !== "withdraw" || !["AUTOPEER", "MYPAY"].includes(provider))) {
         return drop("PARTIAL ต้องตรวจรูปแบบ Provider/ประเภทก่อน"), null;
       }
-      if (!partial && !["success", "successed", "สำเร็จ"].includes(status)) {
+      // COREPAY/CP2 deposit exports used by 7M keep newly received rows as
+      // `pending` even though those rows are already present in BO and must be
+      // reconciled by Ref + user + received amount.  Do not apply this waiver
+      // to withdrawals or to any other provider/company.
+      const sevenMCorepayPendingDeposit = subco === "UFABET7M"
+        && provider === "COREPAY"
+        && dir === "deposit"
+        && status === "pending";
+      if (!partial && !sevenMCorepayPendingDeposit && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       const timeSource = xbPolicy
