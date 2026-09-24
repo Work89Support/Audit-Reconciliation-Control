@@ -123,21 +123,28 @@ const PdfStm = (() => {
         // generic enough for one optional digit, then derive direction from
         // the running balance when it is not an explicit X1/X2 transaction.
         const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})\s+(X[0-9B]|[A-Z]{1,3}|[A-Z][0-9])\s+([A-Z/]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
-        if (!m) {
+        // Google Drive OCR ของ statement SCB แบบภาพบางฉบับอ่านคอลัมน์
+        // Code/Channel ไม่ครบ แต่ยังอ่านวันที่ เวลา ยอดรายการ และยอดคงเหลือ
+        // ต่อเนื่องกันครบได้ ให้รับรูปแบบนี้ไว้ก่อน แล้วตรวจ continuity ทั้งไฟล์
+        // ด้านล่างอีกชั้นเพื่อไม่ให้แถวที่ OCR ตกหล่นผ่าน Quality Gate.
+        const fallback = !m && t.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2})(?:\s+(X[0-9B]|[A-Z]{1,3}|[A-Z][0-9]))?(?:\s+([A-Z/]+))?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
+        const rowMatch = m || fallback;
+        if (!rowMatch) {
           if (description.test(t)) tokens.push({ desc: t });
           return;
         }
-        const inline = t.slice(m[0].length).trim();
+        const inline = t.slice(rowMatch[0].length).trim();
         const row = {
-          date: isoOf(m[1]),
-          sec: secOf(m[2]),
-          code: m[3],
-          channel: m[4],
-          amount: numOf(m[5]),
-          balance: numOf(m[6]),
+          date: isoOf(rowMatch[1]),
+          sec: secOf(rowMatch[2]),
+          code: rowMatch[3] || "",
+          channel: rowMatch[4] || "",
+          amount: numOf(rowMatch[5]),
+          balance: numOf(rowMatch[6]),
           desc: inline,
           raw: t,
-          descriptionUncertain: !inline && /^X[12]$/.test(m[3]),
+          descriptionUncertain: !inline && /^X[12]$/.test(rowMatch[3] || ""),
+          ocrMissingColumns: !!fallback,
         };
         rows.push(row);
         tokens.push({ row, inline: !!inline });
@@ -594,6 +601,16 @@ const PdfStm = (() => {
     // Do not reject an otherwise auditable bank row or force a lossy OCR pass
     // solely because the optional description could not be attached.
     const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction);
+    if (head.bank === "SCB" && rows.some((r) => r.ocrMissingColumns)) {
+      for (let i = 1; i < rows.length; i++) {
+        const prev = rows[i - 1];
+        const row = rows[i];
+        if (!Number.isFinite(prev.balance) || !Number.isFinite(row.balance) || !Number.isFinite(row.amount)) continue;
+        if (Math.abs(Math.abs(row.balance - prev.balance) - row.amount) >= 0.01) {
+          invalidRows.push({ ...row, raw: row.raw, continuityError: true });
+        }
+      }
+    }
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
       unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
 

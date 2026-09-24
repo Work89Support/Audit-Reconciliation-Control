@@ -184,6 +184,20 @@ const scbText = `SIAM COMMERCIAL BANK\nAccount No. 1234567890\n04/09/26 10:00 X1
 const completeScb = await P.parseText("3XB_STM_SCB.pdf", scbText, "2026-09-04");
 eq("SCB text: อ่านครบ 2 รายการ", completeScb.records.length, 2);
 eq("SCB text: quality ผ่าน", completeScb.quality.complete, true);
+const scbOcrMissingColumns = await P.parseText(
+  "UFABET7M_STM_SCB.pdf",
+  "SIAM COMMERCIAL BANK\nAccount No. 5034633891\n23/09/26 02:14 437.00 2,934.40 โอนไป BAY\n23/09/26 03:35 235.00 2,699.40 โอนไป KBANK\n23/09/26 12:17 200.00 2,899.40 รับโอนจาก KTB",
+  "2026-09-23",
+);
+eq("SCB OCR: อ่านแถวที่ Code/Channel หายได้", scbOcrMissingColumns.records.length, 3);
+eq("SCB OCR: ใช้ยอดคงเหลือต่อเนื่องระบุทิศทาง", scbOcrMissingColumns.records.map((r) => r.direction).join(","), "withdraw,withdraw,deposit");
+eq("SCB OCR: continuity ครบจึงผ่าน quality", scbOcrMissingColumns.quality.complete, true);
+const scbOcrGap = await P.parseText(
+  "UFABET7M_STM_SCB.pdf",
+  "SIAM COMMERCIAL BANK\nAccount No. 5034633891\n23/09/26 02:14 437.00 2,934.40 โอนไป BAY\n23/09/26 12:17 200.00 3,500.00 รับโอนจาก KTB",
+  "2026-09-23",
+);
+eq("SCB OCR: ยอดคงเหลือขาดช่วงต้องไม่ผ่าน", scbOcrGap.quality.complete, false);
 const scbCounter = await P.parseText("3XB_STM_SCB.pdf", scbText + "\n04/09/26 10:02 C1 TELL 200.00 1,250.00 Counter Service at 7-11", "2026-09-04");
 eq("SCB C1: อ่านรหัส Counter Service เป็นรายการ", scbCounter.records.length, 3);
 eq("SCB C1: ใช้ยอดคงเหลือยืนยันทิศทางฝาก", scbCounter.records[2]?.direction, "deposit");
