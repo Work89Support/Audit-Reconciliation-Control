@@ -533,6 +533,7 @@ const Engine = (() => {
        "MyPay สำเร็จจากรายการ ..." โดยไม่ต้องแยก BOT/พนักงานเป็นคนละชีต */
     const providerIdentityMatched = new Set();
     const providerNearTimeMatched = new Set();
+    const sys123ProviderMatched = new Set();
     const providerCandidates = new Map();
     const providerPeers = new Map();
     const providerIdentityCandidate = (s, b) => ['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
@@ -623,6 +624,64 @@ const Engine = (() => {
       matched.push({ s, b, dt: timeDistance(s, b), providerNearTimeMatch: true });
     });
 
+    /* PM เครือ 123 ใช้ตัวตนลูกค้าแทน Ref/เวลาเป็นคีย์หลัก:
+       - AUTOPEER / COREPAY / LOCALPAY ฝาก-ถอน และ AZPAY ฝาก:
+         รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดเงินจริง
+       - CYBERPLUS ฝากใช้ 3 จุดเหมือนกัน ส่วนถอนใช้รหัสสมาชิก + ยอด
+       ทุกกรณีต้องเป็นบริษัท/Provider/ทิศทางเดียวกัน และเป็นคู่ 1:1 เท่านั้น */
+    const sys123Companies = new Set(["AT4", "FR8", "SK8"]);
+    const sys123Directions = new Map([
+      ["AUTOPEER", new Set(["deposit", "withdraw"])],
+      ["AZPAY", new Set(["deposit"])],
+      ["COREPAY", new Set(["deposit", "withdraw"])],
+      ["CYBERPLUS", new Set(["deposit", "withdraw"])],
+      ["LOCALPAY", new Set(["deposit", "withdraw"])],
+    ]);
+    const accountIdentity = (value) => String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "");
+    const isSys123PmPair = (s, b) => sys123Companies.has(auditCompanyOf(s))
+      && sys123Companies.has(auditCompanyOf(b)) && s.isPmChannel && b.isPmChannel;
+    const sys123ProviderCandidate = (s, b) => {
+      if (!isSys123PmPair(s, b) || !sameCompany(s, b)) return false;
+      const provider = String(s.account || "").trim().toUpperCase();
+      if (provider !== String(b.account || "").trim().toUpperCase()) return false;
+      if (!sys123Directions.get(provider)?.has(s.direction) || s.direction !== b.direction) return false;
+      if (!Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
+      const stmMember = identityText(s.memberCode), boMember = identityText(b.memberCode);
+      if (!stmMember || stmMember !== boMember) return false;
+      if (provider === "CYBERPLUS" && s.direction === "withdraw") return true;
+      const stmAccount = accountIdentity(s.custAccount), boAccount = accountIdentity(b.custAccount);
+      return !!stmAccount && stmAccount === boAccount;
+    };
+    const sys123Candidates = new Map();
+    const sys123Peers = new Map();
+    stmRecords.forEach((s) => {
+      if (!sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => !boUsed[i] && sys123ProviderCandidate(s, boRecords[i]));
+      sys123Candidates.set(s, rows);
+      rows.forEach((i) => {
+        let peers = sys123Peers.get(i);
+        if (!peers) sys123Peers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    stmRecords.forEach((s) => {
+      const rows = sys123Candidates.get(s) || [];
+      if (rows.length !== 1 || (sys123Peers.get(rows[0]) || []).length !== 1 || boUsed[rows[0]]) return;
+      const i = rows[0], b = boRecords[i];
+      boUsed[i] = 1;
+      sys123ProviderMatched.add(s);
+      matched.push({
+        s,
+        b,
+        dt: timeDistance(s, b),
+        sys123ProviderMatch: true,
+        sys123MatchMethod: s.account === "CYBERPLUS" && s.direction === "withdraw"
+          ? "sys123-member-amount"
+          : "sys123-member-account-amount",
+      });
+    });
+
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
     const crossCandidate = (s, b) => {
       if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
@@ -645,6 +704,7 @@ const Engine = (() => {
       return /^\d{5,}$/.test(value) ? value : "";
     };
     const identityCandidate = (s, b) => sameCompany(s, b) && !!String(s.company || s.subco || "").trim()
+      && !isSys123PmPair(s, b)
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction && s.account === b.account
       && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
@@ -680,6 +740,9 @@ const Engine = (() => {
       /* คู่ PM 7M ที่ปลอดภัยถูกใช้ไปแล้วใน provider identity / reciprocal
          near-time pass ด้านบน ที่เหลือต้องเปิดไว้ตรวจ ห้าม generic pass เดาคู่ */
       if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel) return false;
+      /* PM เครือ 123 ที่ไม่ผ่านกฎเฉพาะด้านบนต้องคงเป็นเคส ห้าม generic pass
+         ลดหลักฐานเหลือเพียงยอด/เวลาแล้วปิดแทน */
+      if (isSys123PmPair(s, b)) return false;
       if (s.custAccountLast4 && customerAccount(b) && !identityCandidate(s, b)) return false;
       if (customerAccount(s) && customerAccount(b) && customerAccount(s) !== customerAccount(b)) return false;
       if (customerAccount(s) && customerAccount(b) && !identityCandidate(s, b)) return false;
@@ -704,6 +767,7 @@ const Engine = (() => {
         if (internalTransferMatched.has(s)) return;
         if (providerIdentityMatched.has(s)) return;
         if (providerNearTimeMatched.has(s)) return;
+        if (sys123ProviderMatched.has(s)) return;
         if (identityMatched.has(s)) return;
         const cands = exactIdx.get(key2(s.account, s.amount));
         let best = -1;
@@ -873,6 +937,7 @@ const Engine = (() => {
     const rescueEligible = (s, b) => sameCompany(s, b)
       && !!String(s.company || s.subco || "").trim()
       && !(['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel)
+      && !isSys123PmPair(s, b)
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction
       && s.account === b.account && s.amount === b.amount
@@ -1011,6 +1076,7 @@ const Engine = (() => {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
+      sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
       stmCount: stmRecords.length,
       boCount: boRecords.length,
@@ -1035,10 +1101,11 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         internalTransferMatched: !!m.internalTransferMatch,
         providerIdentityMatched: !!m.providerIdentityMatch,
         providerNearTimeMatched: !!m.providerNearTimeMatch,
+        sys123ProviderMatched: !!m.sys123ProviderMatch,
         rescueMatched: !!m.rescueMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),

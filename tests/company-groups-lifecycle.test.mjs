@@ -7,7 +7,9 @@ const migration = fs.readFileSync(new URL('../supabase/20260919_exception_lifecy
 
 assert.match(app, /const AUDIT_COMPANY_GROUPS/);
 assert.match(app, /companies: \["3XB", "MC8", "MR9", "PS8", "UR9"\]/);
-assert.match(app, /name: "เครือ 123"[\s\S]*status: "pending"/);
+assert.match(app, /name: "เครือ 123"[\s\S]*status: "active"/);
+assert.match(app, /CYBERPLUS ถอนใช้ 2 จุดคือรหัสสมาชิกและจำนวนเงินถอนจริง/);
+assert.match(app, /BBL ที่ไม่มีเวลาใช้บัญชี\+วัน\+ทิศทาง\+ยอด/);
 assert.match(app, /name: "เครือ 7M"[\s\S]*status: "active"/);
 assert.match(app, /paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime/);
 assert.match(app, /ยอดถอน AT\/M ใช้ transferredAmount · ยอดถอน AZ\/CP ใช้ amount/);
@@ -17,6 +19,7 @@ assert.match(app, /3 เครือบริษัท · เลือกบร�
 assert.match(app, /reviewCompanyGroupsMarkup\(companies\)/);
 assert.match(app, /function auditRuleBookMarkup\(selectedCompany = ""\)/);
 assert.match(app, /กติกาที่ระบบใช้จริง/);
+assert.match(app, /เงื่อนไขกระทบยอด XB · 123 · 7M/);
 assert.match(app, /วงจรรายการข้ามวัน/);
 assert.match(app, /root\.innerHTML = controls \+ rulesPanel/);
 assert.match(css, /\.company-group-grid/);

@@ -104,8 +104,7 @@ const ROUTE_MAP = {};
 ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
 
 /* โครงสร้างเครือบริษัทและกฎตรวจที่ Audit อนุมัติแล้ว
-   - เครือ XB ใช้งานจริงกับ 5 บริษัท
-   - อีก 2 เครือแสดงให้เห็นขอบเขต แต่ห้ามยืมกฎ XB ไปใช้จนกว่าจะได้รับเงื่อนไข */
+   แต่ละเครือใช้กฎของตัวเอง ห้ามยืมกฎข้ามเครือ */
 const AUDIT_COMPANY_GROUPS = Object.freeze([
   {
     id: "XB",
@@ -121,7 +120,15 @@ const AUDIT_COMPANY_GROUPS = Object.freeze([
       "ยอดสูงและเวลาคลาดเคลื่อนที่จับคู่ได้ตามกฎเป็นสถานะแจ้งผล ไม่ส่งให้ Audit ยืนยัน; คู่ซ้ำหรือคลุมเครือจะไม่ปิดอัตโนมัติ",
     ],
   },
-  { id: "SYS123", name: "เครือ 123", status: "pending", companies: ["AT4", "FR8", "SK8"], rules: [] },
+  { id: "SYS123", name: "เครือ 123", status: "active", companies: ["AT4", "FR8", "SK8"], rules: [
+    "AUTOPEER ฝาก/ถอน: รหัสสมาชิก ↔ สมาชิก BO, เลขบัญชีสมาชิก ↔ บัญชีลูกค้า BO และยอดฝาก/ถอน ↔ จำนวนเงินฝาก/จำนวนเงินถอนจริง BO",
+    "AZPAY ฝาก: รหัสสมาชิก + เลขบัญชีสมาชิก + จำนวนเงินฝาก ต้องตรงกับ สมาชิก + บัญชีลูกค้า + จำนวนเงินฝาก BO (ยังไม่เปิดกฎถอน)",
+    "COREPAY ฝาก/ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก/ถอน ต้องตรงกับสมาชิก + บัญชีลูกค้า + ยอดจริงฝั่ง BO",
+    "CYBERPLUS ฝากใช้ 3 จุดเหมือน COREPAY; CYBERPLUS ถอนใช้ 2 จุดคือรหัสสมาชิกและจำนวนเงินถอนจริง โดยไม่บังคับเลขบัญชีสมาชิก",
+    "LOCALPAY ฝาก/ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก/ถอน ต้องตรงกับสมาชิก + บัญชีลูกค้า + ยอดจริงฝั่ง BO",
+    "ทุกคู่ต้องอยู่บริษัท Provider และทิศทางเดียวกัน และเป็นคู่ 1:1 ที่ไม่ซ้ำ; หลักฐานขาด ขัดกัน หรือมีหลายคู่จะคงไว้ให้ Audit ตรวจ",
+    "STM ธนาคารปกติแยกชีตตามบัญชีและแยกฝาก (D) / ถอน (W); BBL ที่ไม่มีเวลาใช้บัญชี+วัน+ทิศทาง+ยอด ส่วน KTB และธนาคารที่มีเวลาใช้เวลา+ยอด",
+  ] },
   { id: "SYS7M", name: "เครือ 7M", status: "active", companies: ["UFABET7M"], rules: [
     "PM ฝากและถอนต้องจับคู่ 3 จุด: Ref/Ref Id ใน STM PM กับ Note ของ BO, User/Username กับ User ใน BO และยอดตามช่องเงินจริงของ Provider กับยอด BO",
     "ATP ฝากใช้ยอด โอนจริง · ATP ถอนใช้ยอด P2P จ่าย",
@@ -173,7 +180,7 @@ function auditRuleBookMarkup(selectedCompany = "") {
   const selectedGroup = auditCompanyGroupOf(selectedCompany);
   const activeGroups = AUDIT_COMPANY_GROUPS.filter((group) => group.status === "active");
   return `<section class="panel audit-rule-book" aria-label="เงื่อนไขการกระทบยอดที่ระบบใช้จริง">
-    <div class="panel-heading"><div><p class="eyebrow">กติกาที่ระบบใช้จริง</p><h2>เงื่อนไขกระทบยอด XB และ 7M</h2><small class="head-sub">แสดงกฎที่เปิดใช้งานแล้วเท่านั้น · คู่ซ้ำ หลักฐานไม่ครบ หรือข้อมูลขัดกันจะไม่ถูกปิดอัตโนมัติ</small></div><span class="health ok">${num(activeGroups.length)} เครือเปิดใช้</span></div>
+    <div class="panel-heading"><div><p class="eyebrow">กติกาที่ระบบใช้จริง</p><h2>เงื่อนไขกระทบยอด XB · 123 · 7M</h2><small class="head-sub">แสดงกฎที่เปิดใช้งานแล้วเท่านั้น · คู่ซ้ำ หลักฐานไม่ครบ หรือข้อมูลขัดกันจะไม่ถูกปิดอัตโนมัติ</small></div><span class="health ok">${num(activeGroups.length)} เครือเปิดใช้</span></div>
     <div class="audit-rule-book-grid">
       ${activeGroups.map((group) => `<article class="audit-rule-book-card ${selectedGroup?.id === group.id ? "selected" : ""}">
         <header><div><strong>${h(group.name)}</strong><small>${h(group.companies.join(" · "))}</small></div><span class="badge green">ใช้กฎแล้ว</span></header>

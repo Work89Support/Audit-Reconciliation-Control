@@ -538,6 +538,36 @@ await (async () => {
   eq('7M PM near-time: more than 10 minutes remains open',far.matched,0);
 })();
 
+await (async () => {
+  const base={company:'AT4',subco:'AT4',isPmChannel:true,date:'2026-09-20'};
+  const stm=rec({...base,account:'AUTOPEER',direction:'deposit',amount:900,sec:60,memberCode:'member-123',custAccount:'001-234-5678'});
+  const bo=rec({...base,account:'AUTOPEER',direction:'deposit',amount:900,sec:80000,memberCode:'member-123',custAccount:'0012345678'});
+  let r=await run([stm],[bo]);
+  eq('123 AUTOPEER: member + account + deposit amount closes despite time difference',r.matched,1);
+  eq('123 AUTOPEER: evidence records three-point method',r.matchEvidence[0]?.method,'sys123-member-account-amount');
+  eq('123 AUTOPEER: dedicated match counter',r.sys123ProviderMatched,1);
+
+  r=await run([stm],[{...bo,custAccount:'9999999999'}]);
+  eq('123 AUTOPEER: conflicting customer account stays open',r.matched,0);
+  r=await run([stm],[{...bo,memberCode:'different-member'}]);
+  eq('123 AUTOPEER: conflicting member stays open',r.matched,0);
+
+  const cyberStm=rec({...base,account:'CYBERPLUS',direction:'withdraw',amount:750,sec:60,memberCode:'cy-user',custAccount:''});
+  const cyberBo=rec({...base,account:'CYBERPLUS',direction:'withdraw',amount:750,sec:70000,memberCode:'cy-user',custAccount:'9999999999'});
+  r=await run([cyberStm],[cyberBo]);
+  eq('123 CYBERPLUS withdrawal: member + amount closes without account',r.matched,1);
+  eq('123 CYBERPLUS withdrawal: evidence records two-point method',r.matchEvidence[0]?.method,'sys123-member-amount');
+  r=await run([cyberStm],[{...cyberBo,memberCode:'other-user'}]);
+  eq('123 CYBERPLUS withdrawal: member mismatch stays open',r.matched,0);
+
+  const azWithdraw=rec({...base,account:'AZPAY',direction:'withdraw',amount:500,sec:100,memberCode:'az-user',custAccount:'1234567890'});
+  r=await run([azWithdraw],[{...azWithdraw,sec:101}]);
+  eq('123 AZPAY withdrawal: unsupported direction is not generic auto-closed',r.matched,0);
+
+  r=await run([stm],[bo,{...bo,rowNo:bo.rowNo+100,sec:79000}]);
+  eq('123 PM: duplicate candidate remains open',r.matched,0);
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));

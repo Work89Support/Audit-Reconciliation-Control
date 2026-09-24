@@ -8,7 +8,7 @@ assert.equal(rows[1].pmAmount,null);assert.equal(rows[1].kind,'review');
 assert.equal(filter(rows,'COREPAY','deposit','review').length,1);
 assert.equal(filter(rows,'AUTOPEER','deposit','all').length,0);
 assert.equal(providerOf('ATP / Autopeer'),'AT');assert.equal(providerOf('CPXM'),'CP');assert.equal(providerOf('M24'),'M');assert.equal(providerOf('LOCALPAY'),'LP');
-assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
+assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
 const totals=summarize(rows);assert.equal(totals.pmCount,1);assert.equal(totals.pmCents,35500);assert.equal(totals.boCount,2);assert.equal(totals.boCents,50500);assert.equal(totals.crossDayCount,1);assert.equal(totals.crossDayBoCents,15000);assert.equal(totals.diffBeforeCents,0);assert.equal(totals.diffAfterCents,-15000);
 assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO transaction must be deduplicated');
 const overlap=rowsOf({run:{summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',boAmount:25,stmAmount:25,bo:{date:'2026-09-16'},stm:{date:'2026-09-16'},customer:{bo:{reference:'same-bo'},stm:{reference:'same-pm'}}}]}},cases:[{id:'warning',company:'MC8',account:'AUTOPEER',direction:'ถอน',system_amount:25,bank_amount:25,bo_date:'2026-09-16',stm_date:'2026-09-16',bo_raw:'same raw bo',stm_raw:'same raw pm',customer_details:{bo:{reference:'same-bo'},stm:{reference:'same-pm'}},ex_type:'large_amount'}]},'MC8');

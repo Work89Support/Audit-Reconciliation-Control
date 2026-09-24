@@ -58,6 +58,21 @@ assert.ok(waewdaoSheet, 'a second statement account must not be merged into the 
 assert.equal(songkranSheet.rows.length, 2, 'deposit and withdrawal stay together for the same statement account');
 assert.equal(waewdaoSheet.rows.length, 2, 'deposit and withdrawal stay together for the second statement account');
 
+const sys123Sheets = live.buildAuditExportSheets([
+  row({company:'AT4',account:'AUTOPEER',direction:'deposit',pm:{user:'mem-1',account:'0012345678'},pmSource:{row:2,timeColumn:'วันที่ทำรายการ',amountColumn:'จำนวนเงินฝาก'}}),
+  row({company:'AT4',account:'CYBERPLUS',direction:'withdraw',pm:{user:'mem-2'},pmSource:{row:3,timeColumn:'วันที่ทำรายการ',amountColumn:'จำนวนเงินถอน'}}),
+  row({company:'AT4',account:'1111111111',direction:'deposit',pm:{user:'จิรภัทร์',account:'1111111111',bank:'KBANK'}}),
+  row({company:'AT4',account:'1111111111',direction:'withdraw',pm:{user:'จิรภัทร์',account:'1111111111',bank:'KBANK'}}),
+], 'AT4', '2026-09-20', true, schema);
+for(const name of ['AT ถ','AT ฝ','AZ ฝ','CP ถ','CP ฝ','CY ถ','CY ฝ','LP ถ','LP ฝ'])assert.ok(sys123Sheets.some(sheet=>sheet.name===name),`123 export must include ${name}`);
+assert.ok(!sys123Sheets.some(sheet=>sheet.name==='AZ ถ'),'123 export must not invent AZPAY withdrawal sheet');
+assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('รหัสสมาชิก'));
+assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('เลขบัญชีสมาชิก'));
+assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('จำนวนเงินฝาก'));
+assert.ok(!sys123Sheets.find(sheet=>sheet.name==='CY ถ').headers.includes('เลขบัญชีสมาชิก'),'123 CYBERPLUS withdrawal uses only member and amount');
+assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ D').rows.length,1,'123 normal-bank deposit must have a separate account sheet');
+assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ W').rows.length,1,'123 normal-bank withdrawal must have a separate account sheet');
+
 const threeXbSheets = live.buildAuditExportSheets([
   row({company:'3XB',account:'LOCALPAY',direction:'deposit'}),
   row({company:'3XB',account:'LOCALPAY',direction:'withdraw',pmSource:{row:2,timeColumn:'updateTime',amountColumn:'amount'}}),
@@ -92,6 +107,12 @@ const sevenMCp2Sheets = live.buildAuditExportSheets([
 ], 'UFABET7M', '2026-09-20', true, schema);
 assert.equal(sevenMCp2Sheets.find(sheet=>sheet.name==='CP ถ').rows.length,1,'CP2 withdrawal must be exported under COREPAY/CP');
 assert.equal(sevenMCp2Sheets.find(sheet=>sheet.name==='CP ฝ').rows.length,1,'CP2 deposit must be exported under COREPAY/CP');
+
+const numericCorepaySheets = live.buildAuditExportSheets([
+  row({company:'UFABET7M',account:'6608660006',direction:'deposit',pm:{reference:'260919033016-81682672-CP'},pmSource:{row:2,timeColumn:'paymentTime',amountColumn:'realAmount'}}),
+], 'UFABET7M', '2026-09-19', true, schema);
+assert.equal(numericCorepaySheets.find(sheet=>sheet.name==='CP ฝ').rows.length,1,'numeric COREPAY merchant account must remain on the CP deposit sheet');
+assert.ok(!numericCorepaySheets.some(sheet=>sheet.name.startsWith('STM STM')),'numeric COREPAY merchant account must not create a bogus Statement sheet');
 
 const atDeposit = sheets.find(sheet => sheet.name === 'AT ฝ');
 assert.deepEqual(atDeposit.headers.slice(0, schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers.length), schema.sheets.find(sheet => sheet.name === 'AT ฝ').headers);
