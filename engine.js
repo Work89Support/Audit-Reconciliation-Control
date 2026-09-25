@@ -464,7 +464,7 @@ const Engine = (() => {
     const exceptions = [];
     const stmLeft = [];
     let timeDiffCount = 0;
-    const timeVarianceAutoPassCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
+    const timeVarianceAutoPassCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9", "AT4", "FR8", "SK8"]);
     const auditCompanyOf = (r) => {
       /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
       const raw = String(r && (r.subco || r.company) || "").trim().toUpperCase();
@@ -639,7 +639,15 @@ const Engine = (() => {
       ["CYBERPLUS", new Set(["deposit", "withdraw"])],
       ["LOCALPAY", new Set(["deposit", "withdraw"])],
     ]);
-    const accountIdentity = (value) => String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "");
+    const accountIdentity = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9ก-๙]+/g, "");
+    const accountIdentityMatches = (left, right) => {
+      const a = accountIdentity(left), b = accountIdentity(right);
+      if (!a || !b) return false;
+      if (a === b) return true;
+      /* ไฟล์ 123 บางแหล่งส่งเลขบัญชีเต็ม แต่อีกแหล่งส่งเฉพาะ 4 หลักท้าย
+         อนุญาตรูปแบบนี้ได้เมื่อกฎยังบังคับสมาชิก/ยอด/Provider เดียวกัน */
+      return Math.min(a.length, b.length) >= 4 && (a.endsWith(b) || b.endsWith(a));
+    };
     const isSys123PmPair = (s, b) => sys123Companies.has(auditCompanyOf(s))
       && sys123Companies.has(auditCompanyOf(b)) && s.isPmChannel && b.isPmChannel;
     const sys123ProviderCandidate = (s, b) => {
@@ -651,8 +659,7 @@ const Engine = (() => {
       const stmMember = identityText(s.memberCode), boMember = identityText(b.memberCode);
       if (!stmMember || stmMember !== boMember) return false;
       if (provider === "CYBERPLUS" && s.direction === "withdraw") return true;
-      const stmAccount = accountIdentity(s.custAccount), boAccount = accountIdentity(b.custAccount);
-      return !!stmAccount && stmAccount === boAccount;
+      return accountIdentityMatches(s.custAccount || s.custAccountLast4, b.custAccount || b.custAccountLast4);
     };
     const sys123Candidates = new Map();
     const sys123Peers = new Map();
@@ -692,7 +699,7 @@ const Engine = (() => {
        วนซ้ำหลังจับแต่ละชุด เพื่อให้คู่ที่เหลือถูกประเมินจากสถานะล่าสุด */
     const sys123DuplicateTimeTol = Math.max(0, Number(settings.sys123DuplicateTimeTolerance ?? 3600));
     const sys123TimedCandidate = (s, b) => sys123ProviderCandidate(s, b)
-      && s.date === b.date && isIsoDate(s.date)
+      && isIsoDate(s.date) && isIsoDate(b.date)
       && !s.noTime && !b.noTime
       && Number.isFinite(s.sec) && Number.isFinite(b.sec)
       && timeDistance(s, b) <= sys123DuplicateTimeTol;
@@ -737,6 +744,68 @@ const Engine = (() => {
         sys123Progress = true;
       });
     }
+
+    /* Fallback ที่ปลอดภัยสำหรับ PM เครือ 123 เมื่อไฟล์ต้นทางเว้นสมาชิกหรือ
+       เลขบัญชีไว้หนึ่งฝั่ง: ยังต้องตรงบริษัท Provider ทิศทางและยอด และต้องมี
+       identity อย่างน้อยหนึ่งจุดที่ตรงจริง โดยข้อมูลที่มีอยู่ห้ามขัดกัน
+       จากนั้นเลือกเฉพาะคู่เวลาใกล้ที่สุดแบบ reciprocal 1:1 เท่านั้น
+       รองรับคู่ก่อน/หลังเที่ยงคืนจาก timestamp จริง แต่ไม่เดาคู่จากยอดล้วน */
+    const sys123FallbackTimeTol = Math.max(0, Number(settings.sys123FallbackTimeTolerance ?? 600));
+    const sys123IdentityState = (s, b) => {
+      const sm = identityText(s && s.memberCode), bm = identityText(b && b.memberCode);
+      const memberMatch = !!sm && !!bm && sm === bm;
+      const memberConflict = !!sm && !!bm && sm !== bm;
+      const provider = String(s && s.account || "").trim().toUpperCase();
+      const accountIgnored = provider === "CYBERPLUS" && s.direction === "withdraw";
+      const sa = accountIdentity(s && (s.custAccount || s.custAccountLast4));
+      const ba = accountIdentity(b && (b.custAccount || b.custAccountLast4));
+      const accountMatch = !accountIgnored && accountIdentityMatches(sa, ba);
+      const accountConflict = !accountIgnored && !!sa && !!ba && !accountMatch;
+      return { memberMatch, memberConflict, accountMatch, accountConflict, accountIgnored };
+    };
+    const sys123FallbackCandidate = (s, b) => {
+      if (!isSys123PmPair(s, b) || !sameCompany(s, b)) return false;
+      const provider = String(s.account || "").trim().toUpperCase();
+      if (provider !== String(b.account || "").trim().toUpperCase()) return false;
+      if (!sys123Directions.get(provider)?.has(s.direction) || s.direction !== b.direction) return false;
+      if (!Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
+      if (!providerStatusOk(s) || !providerStatusOk(b)) return false;
+      if (s.noTime || b.noTime || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)) return false;
+      if (!isIsoDate(s.date) || !isIsoDate(b.date) || timeDistance(s, b) > sys123FallbackTimeTol) return false;
+      const identity = sys123IdentityState(s, b);
+      if (identity.memberConflict || identity.accountConflict) return false;
+      return identity.memberMatch || identity.accountMatch;
+    };
+    const sys123FallbackCandidates = new Map();
+    const sys123FallbackPeers = new Map();
+    stmRecords.forEach((s) => {
+      if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => !boUsed[i] && sys123FallbackCandidate(s, boRecords[i]))
+        .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
+      sys123FallbackCandidates.set(s, rows);
+      rows.forEach(({ i, dt }) => {
+        let peers = sys123FallbackPeers.get(i);
+        if (!peers) sys123FallbackPeers.set(i, (peers = []));
+        peers.push({ s, dt });
+      });
+    });
+    stmRecords.forEach((s) => {
+      if (sys123ProviderMatched.has(s)) return;
+      const i = uniqueProviderNearest(sys123FallbackCandidates.get(s) || [], (row) => row.i);
+      if (i == null || boUsed[i]) return;
+      if (uniqueProviderNearest(sys123FallbackPeers.get(i) || [], (row) => row.s) !== s) return;
+      const b = boRecords[i];
+      boUsed[i] = 1;
+      sys123ProviderMatched.add(s);
+      matched.push({
+        s,
+        b,
+        dt: timeDistance(s, b),
+        sys123ProviderMatch: true,
+        sys123MatchMethod: "sys123-partial-identity-reciprocal-near-time",
+      });
+    });
 
     /* ทิศทางต้องตรงกัน (ฝากจับคู่ฝาก / ถอนจับคู่ถอน) — ถ้าฝั่งใดไม่มี direction ให้ผ่าน (กันรายการที่ระบุทิศไม่ได้) */
     const crossCandidate = (s, b) => {

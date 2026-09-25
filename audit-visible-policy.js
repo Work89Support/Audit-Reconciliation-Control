@@ -3,7 +3,7 @@
    become an Audit action row or inflate the visible/exported case totals. */
 (function(root){
   'use strict';
-  const COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9']);
+  const COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8']);
   const companySet=new Set(COMPANIES);
   function companyOf(row){
     const raw=String(row?.company||row?.subco||'').trim().toUpperCase();
@@ -74,7 +74,7 @@
     });
   }
   function filter(rows,evidence){return removeMatchedMissing(rows,evidence);}
-  const api=Object.freeze({version:'xb-actionable-audit-v3',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
+  const api=Object.freeze({version:'actionable-audit-v4',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

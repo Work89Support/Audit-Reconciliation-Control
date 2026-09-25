@@ -584,10 +584,14 @@ const Formats = (() => {
         source: "bo",
         formatCode: "bo_main",
         boIdentityRaw: val(f, r, "ชื่อธนาคาร"),
-        date: bankT.date || boT.date,
-        sec: bankT.sec,
+        // เวลาในหน้า BO เป็นแกนกระทบยอดตามขั้นตอน Audit; เวลาธนาคารเก็บไว้
+        // สำหรับหลักฐานข้ามวันเท่านั้น เพื่อไม่ให้คู่ปกติหลุดเพราะธนาคารลงเวลาช้า
+        date: boT.date,
+        sec: boT.sec,
         boDate: boT.date,
         boSec: boT.sec,
+        bankDate: bankT.date,
+        bankSec: bankT.sec,
         amount: Math.round(amount * 100) / 100,
         direction: dep ? "deposit" : "withdraw",
         account: canonicalPm(ch.channel) || ch.terminal || "UNKNOWN",
@@ -610,8 +614,8 @@ const Formats = (() => {
         username: val(f, r, "ทำรายการโดย") || val(f, r, "สร้างโดย") || "",
         note: val(f, r, "หมายเหตุ"),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
-        lateNight: bankT.sec >= 82800,
-        minutePrecision: !bankT.secPrecision,
+        lateNight: boT.sec >= 82800,
+        minutePrecision: !boT.secPrecision,
         raw: r.join(" | "),
       };
     },

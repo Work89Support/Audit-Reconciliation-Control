@@ -157,6 +157,14 @@ for (const [token,dep,wit,direction] of [["D",100,0,"deposit"],["W",0,100,"withd
   eq(`CPXM ${token}: date`,r?.date,"2026-09-07");
   eq(`CPXM ${token}: original label`,r?.boIdentityRaw,"CPXM-598 : CP");
 }
+{
+  const r = Formats.parse("FR8_BO_D_2026-09-07.xlsx", [customerHeaders,
+    [1,"2026-09-07 23:58:00","2026-09-08 00:03:00","ref","user","1262976366 | ชาญชัย ตนเล็ก",100,0,"4311918665 : Manual"]], "2026-09-07").records[0];
+  eq("BO main: reconciliation date uses transaction date", r?.date, "2026-09-07");
+  eq("BO main: reconciliation time uses transaction time", r?.sec, 23 * 3600 + 58 * 60);
+  eq("BO main: bank date remains available for cross-day evidence", r?.bankDate, "2026-09-08");
+  eq("BO main: different bank date marks cross-day evidence", r?.crossDay, true);
+}
 for (const [raw, tail] of [["1262976366 | ชาญชัย ตนเล็ก", "6366"], ["0012345678 | ตัวอย่าง", "5678"], [" | ตัวอย่าง", null], ["xxx6366 | ตัวอย่าง", null]]) {
   const row = Formats.parse("FR8_BO_W_2026-09-07.xlsx", [customerHeaders, [1, "2026-09-07 23:57:45", "2026-09-07 23:59:11", "test-ref", "เจมส์ | FAZ330483", raw, 0, 800, "4311918665 : Manual"]], "2026-09-07").records[0];
   eq("BO customer: combined text preserved " + raw, row?.custAccountRaw, raw.trim());

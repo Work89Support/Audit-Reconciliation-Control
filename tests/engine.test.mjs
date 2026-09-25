@@ -593,6 +593,44 @@ await (async () => {
   ]);
   eq('123 PM: unique near row closes while distant duplicate remains open',r.matched,1);
   eq('123 PM: unmatched duplicate remains visible for Audit',r.exceptions.filter(e=>e.type==='missing_stm').length,1);
+
+  const tailStm=rec({...stm,rowNo:5001,custAccount:'5678',sec:5000});
+  const fullBo=rec({...bo,rowNo:5002,custAccount:'0012345678',sec:70000});
+  r=await run([tailStm],[fullBo]);
+  eq('123 PM: full customer account matches statement last four with member + amount',r.matched,1);
+  eq('123 PM: account-tail match keeps the strict three-point method',r.matchEvidence[0]?.method,'sys123-member-account-amount');
+
+  const missingAccountStm=rec({...stm,rowNo:5101,custAccount:'',sec:7200});
+  const nearBo=rec({...bo,rowNo:5102,custAccount:'0012345678',sec:7350});
+  r=await run([missingAccountStm],[nearBo],{...settings,sys123FallbackTimeTolerance:600});
+  eq('123 PM: one missing identity field closes by reciprocal near time',r.matched,1);
+  eq('123 PM: partial identity fallback is auditable',r.matchEvidence[0]?.method,'sys123-partial-identity-reciprocal-near-time');
+
+  r=await run(
+    [rec({...missingAccountStm,rowNo:5201,memberCode:'member-a'})],
+    [rec({...nearBo,rowNo:5202,memberCode:'member-b'})],
+    {...settings,sys123FallbackTimeTolerance:600},
+  );
+  eq('123 PM: conflicting populated member never closes through fallback',r.matched,0);
+
+  const crossStm=[
+    rec({...stm,rowNo:5301,date:'2026-09-21',sec:60}),
+    rec({...stm,rowNo:5302,date:'2026-09-21',sec:180}),
+  ];
+  const crossBo=[
+    rec({...bo,rowNo:5303,date:'2026-09-20',sec:86340}),
+    rec({...bo,rowNo:5304,date:'2026-09-21',sec:240}),
+  ];
+  r=await run(crossStm,crossBo,{...settings,sys123DuplicateTimeTolerance:3600});
+  eq('123 PM: repeated identities around midnight close by reciprocal nearest',r.matched,2);
+  eq('123 PM: cross-day reciprocal evidence is retained',r.matchEvidence.filter(e=>e.crossDay).length,1);
+
+  r=await run(
+    [rec({company:'FR8',subco:'FR8',account:'4311918665',direction:'deposit',amount:100,date:'2026-09-20',sec:3600})],
+    [rec({company:'FR8',subco:'FR8',account:'4311918665',direction:'deposit',amount:100,date:'2026-09-20',sec:5400})],
+  );
+  eq('123 bank statement: unique same-account amount within one hour closes without Audit time case',r.matched,1);
+  eq('123 bank statement: time variance is evidence only',r.exceptions.length,0);
 })();
 
 /* ---------------- report ---------------- */

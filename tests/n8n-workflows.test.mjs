@@ -197,7 +197,7 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.7\.0-sys123-reciprocal-nearest'/, "worker version must identify the 123 reciprocal-nearest release");
+assert.match(workerText, /worker_version:'1\.8\.0-sys123-safe-fallback'/, "worker version must identify the 123 safe-fallback release");
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");
@@ -207,6 +207,8 @@ assert.match(workerText, /internal_transfer_tolerance_sec:300/, "worker summary 
 assert.match(workerText, /bo_split_rows_preserved:true/, "worker summary must identify BO split payout preservation");
 assert.match(workerText, /seven_m_provider_identity_rule:true/, "worker summary must identify the 7M Ref/User/Amount rule");
 assert.match(workerText, /sys123_provider_identity_rule:true/, "worker summary must identify the 123 member/account/amount rule");
+assert.match(workerText, /sys123_account_tail_fallback:true/, "worker summary must identify the 123 account-tail fallback");
+assert.match(workerText, /sys123_partial_identity_reciprocal_near_time:true/, "worker summary must identify the 123 partial-identity reciprocal fallback");
 assert.match(workerText, /sys123_cyber_withdraw_two_point:true/, "worker summary must identify the 123 Cyberplus withdrawal exception");
 assert.match(workerText, /sys123_duplicate_reciprocal_nearest:true/, "worker summary must identify the safe duplicate matcher");
 assert.match(workerText, /sys123_duplicate_time_tolerance_sec:3600/, "worker summary must expose the duplicate time window");

@@ -9,10 +9,12 @@ const historical=[
   {id:'time-other',company:'AT4',ex_type:'time_diff',type_name:'เวลาเกิน tolerance',status:'open',direction:'ถอน'},
   {id:'other-company',company:'AT4',ex_type:'large_amount',type_name:'ยอดสูงผิดปกติ ต้องมีเอกสารกำกับ',status:'open',direction:'ถอน'},
 ];
-assert.deepEqual(policy.filter(historical).map(row=>row.id),['missing','time-other','other-company']);
+assert.deepEqual(policy.filter(historical).map(row=>row.id),['missing']);
 assert.equal(policy.isInformational({company:'PS8',type:'large-amount'}),true);
 assert.equal(policy.isInformational({company:'UR9',type_name:'ต้องแนบเอกสารอนุมัติ'}),true);
 assert.equal(policy.isInformational({company:'3XB',ex_type:'time_diff'}),true);
+assert.equal(policy.isInformational({company:'AT4',ex_type:'time_diff'}),true);
+assert.equal(policy.isInformational({company:'FR8',type:'large-amount'}),true);
 assert.equal(policy.isInformational({company:'MC8',ex_type:'missing_stm',system_amount:200000}),false,'ยอดสูงต้องไม่ซ่อนเคส missing_stm จริง');
 
 const matchedPair={company:'MC8',account:'1998545397',direction:'deposit',boAmount:100,stmAmount:100,
@@ -27,6 +29,6 @@ assert.deepEqual(policy.filter(staleMatchedCases,[matchedPair]).map(row=>row.id)
 assert.deepEqual(policy.filter(staleMatchedCases,[{...matchedPair,company:''}]).map(row=>row.id),['real-missing'],'older evidence without company must use the single-company workspace scope');
 
 const view=ReviewOverview.model({run:{matched:0,summary:{match_evidence:[]}},cases:historical,confirmations:[]});
-assert.deepEqual(view.rows.map(row=>row.id),['missing','time-other','other-company']);
-assert.equal(view.counts.review,3);
-console.log('Audit visible policy: five XB companies hide informational large-amount and time-variance rows');
+assert.deepEqual(view.rows.map(row=>row.id),['missing']);
+assert.equal(view.counts.review,1);
+console.log('Audit visible policy: XB and 123 companies hide informational large-amount and time-variance rows');
