@@ -203,7 +203,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.21-xb-no-stale-duplicate'/, "worker version must identify the stale duplicate prevention release");
+assert.match(workerText, /worker_version:'1\.9\.22-xb-sapan-all-case-close'/, "worker version must identify exact Sapan closure across stale exception classes");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
 assert.doesNotMatch(workerText, /exceptions\?business_date=eq\.[^\"']*company=eq\./, "historic labels must not prevent exact Sapan evidence from closing a stale case");
@@ -216,7 +216,7 @@ assert.match(workerText, /strictCovered\.length===sides\.length/, "non-time-diff
 assert.match(workerText, /currentExactTimePair=clean\(row\.ex_type\)==='time_diff'&&equalAmount&&sameAmountCovered\.length>0/, "an equal-amount legacy time_diff must close when the new run proves an exact provider-id and amount despite corrupted legacy metadata");
 assert.match(workerText, /\['3x','3xb','3xbet'\]\.includes\(c\)\?'3xb':c/, "Sapan lifecycle must normalize equivalent 3XB company labels before closing a matched legacy case");
 assert.match(workerText, /select=id,company,direction,ex_type,system_amount,bank_amount/, "Sapan lifecycle must load exception type before applying the time-diff closure rule");
-assert.match(workerText, /ex_type=eq\.time_diff/, "Sapan lifecycle history query must stay below the API row cap by loading only stale time-difference cases");
+assert.match(workerText, /ex_type=in\.\(time_diff,missing_stm,missing_bo,cross_day,amount_diff\)/, "exact Sapan lifecycle closure must cover every reconciliation exception class that can represent the same provider transaction");
 assert.match(workerText, /onError\":\"continueRegularOutput\"/, "an audit-log write failure must not leave the daily reconciliation job running");
 assert.match(workerText, /xb_provider_id_raw_recovery:true/, "worker summary must identify raw XB provider-id recovery");
 assert.match(workerText, /xb_provider_signed_amount_close:true/, "worker summary must identify exact Sapan matching across signed BO amounts");
