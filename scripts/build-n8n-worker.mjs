@@ -220,6 +220,10 @@ const deployedReconcileCode = reconcileCode
     "1.9.23-xb-sapan-company-scope",
   )
   .replace(
+    "1.9.23-xb-sapan-company-scope",
+    "1.9.24-xb-sapan-type-pagination",
+  )
+  .replace(
     "xb_provider_signed_amount_close:true,",
     "xb_provider_signed_amount_close:true,xb_provider_duplicate_rows_suppressed:result.xbProviderDuplicateRowsSuppressed||0,",
   );
@@ -336,10 +340,11 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
-  { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2190, 20], {
-    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;const aliases=['3XB','3X','3xbet','3xb'];const company=aliases.includes(String(j.company||'').trim())?'&company=in.('+aliases.map(encodeURIComponent).join(',')+')':'&company=eq.'+encodeURIComponent(j.company);return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+run+company+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=in.(time_diff,missing_stm,missing_bo,cross_day,amount_diff)&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
+  { parameters: { jsCode: "const run=$('เตรียมบันทึก Exception').first().json.run_id; return ['time_diff','missing_stm','missing_bo','cross_day','amount_diff'].map(ex_type=>({json:{ex_type,run_id:run},pairedItem:{item:0}}));" }, id: "prepare-read-previous-sapan-types", name: "แบ่งอ่านเคส Sapan ตามประเภท", type: "n8n-nodes-base.code", typeVersion: 2, position: [2190, 20] },
+  { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2300, 20], {
+    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const aliases=['3XB','3X','3xbet','3xb'];const company=aliases.includes(String(j.company||'').trim())?'&company=in.('+aliases.map(encodeURIComponent).join(',')+')':'&company=eq.'+encodeURIComponent(j.company);return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+encodeURIComponent($json.run_id)+company+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=eq.'+encodeURIComponent($json.ex_type)+'&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
     authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
-  }), executeOnce: true, alwaysOutputData: true },
+  }), alwaysOutputData: true },
   { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;
 const runId=$('เตรียมบันทึก Exception').first().json.run_id;
 const evidence=(source.result?.summary?.match_evidence||[]);
@@ -443,7 +448,8 @@ const connections = {
   "เตรียมข้อมูลผลการรัน": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: อ่านเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "แบ่งอ่านเคส Sapan ตามประเภท", type: "main", index: 0 }]] },
+  "แบ่งอ่านเคส Sapan ตามประเภท": { main: [[{ node: "Supabase: อ่านเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
   "Supabase: อ่านเคส Sapan รอบก่อน": { main: [[{ node: "เตรียมปิดเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
   "เตรียมปิดเคส Sapan รอบก่อน": { main: [[{ node: "มีเคส Sapan ต้องปิด?", type: "main", index: 0 }]] },
   "มีเคส Sapan ต้องปิด?": { main: [[{ node: "Supabase: ปิดเคส Sapan รอบก่อน", type: "main", index: 0 }], [{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },

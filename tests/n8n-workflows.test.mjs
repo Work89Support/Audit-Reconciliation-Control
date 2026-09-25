@@ -192,7 +192,8 @@ assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0
 assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "บันทึกว่าอ่านแล้วและรอไฟล์");
 assert.match(workerText, /finish_daily_recon_parse_only/, "an incomplete file set must finish parsing without creating a reconciliation run");
 assert.match(workerText, /missing_groups/, "the reconciliation gate must require both file sides before creating a run");
-assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: อ่านเคส Sapan รอบก่อน");
+assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "แบ่งอ่านเคส Sapan ตามประเภท");
+assert.equal(worker.connections["แบ่งอ่านเคส Sapan ตามประเภท"].main[0][0].node, "Supabase: อ่านเคส Sapan รอบก่อน");
 assert.equal(worker.connections["Supabase: อ่านเคส Sapan รอบก่อน"].main[0][0].node, "เตรียมปิดเคส Sapan รอบก่อน");
 assert.equal(worker.connections["เตรียมปิดเคส Sapan รอบก่อน"].main[0][0].node, "มีเคส Sapan ต้องปิด?");
 assert.equal(worker.connections["Supabase: ปิดเคส Sapan รอบก่อน"].main[0][0].node, "Supabase: บันทึก Audit ปิด Sapan");
@@ -203,7 +204,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.23-xb-sapan-company-scope'/, "worker version must identify company-scoped exact Sapan closure");
+assert.match(workerText, /worker_version:'1\.9\.24-xb-sapan-type-pagination'/, "worker version must identify per-type Sapan pagination");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
 assert.match(workerText, /company=in\.\(/, "3XB Sapan history query must include equivalent legacy company labels without consuming the API row cap on unrelated companies");
@@ -216,7 +217,8 @@ assert.match(workerText, /strictCovered\.length===sides\.length/, "non-time-diff
 assert.match(workerText, /currentExactTimePair=clean\(row\.ex_type\)==='time_diff'&&equalAmount&&sameAmountCovered\.length>0/, "an equal-amount legacy time_diff must close when the new run proves an exact provider-id and amount despite corrupted legacy metadata");
 assert.match(workerText, /\['3x','3xb','3xbet'\]\.includes\(c\)\?'3xb':c/, "Sapan lifecycle must normalize equivalent 3XB company labels before closing a matched legacy case");
 assert.match(workerText, /select=id,company,direction,ex_type,system_amount,bank_amount/, "Sapan lifecycle must load exception type before applying the time-diff closure rule");
-assert.match(workerText, /ex_type=in\.\(time_diff,missing_stm,missing_bo,cross_day,amount_diff\)/, "exact Sapan lifecycle closure must cover every reconciliation exception class that can represent the same provider transaction");
+assert.match(workerText, /\['time_diff','missing_stm','missing_bo','cross_day','amount_diff'\]\.map/, "exact Sapan lifecycle closure must split reads by exception class so no class is hidden by the API row cap");
+assert.match(workerText, /ex_type=eq\.'\+encodeURIComponent\(\$json\.ex_type\)/, "each Sapan history request must read one exception class at a time");
 assert.match(workerText, /onError\":\"continueRegularOutput\"/, "an audit-log write failure must not leave the daily reconciliation job running");
 assert.match(workerText, /xb_provider_id_raw_recovery:true/, "worker summary must identify raw XB provider-id recovery");
 assert.match(workerText, /xb_provider_signed_amount_close:true/, "worker summary must identify exact Sapan matching across signed BO amounts");
