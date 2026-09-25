@@ -244,7 +244,7 @@ const nodes = [
   }), retryOnFail: true, maxTries: 3, waitBetweenTries: 3000 },
   { ...http("restore-manual-rerun", "Supabase: คืนคิวที่สั่งรันใหม่", [-600, 160], {
     method: "PATCH",
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?rerun_requested_at=not.is.null&status=eq.needs_review&is_archived=eq.false&business_date=gte.{{ DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() }}&business_date=lte.{{ DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }}",
+    url: "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?rerun_requested_at=not.is.null&status=in.(queued,needs_review,error,waiting_files,completed)&is_archived=eq.false&business_date=gte.{{ DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() }}&business_date=lte.{{ DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }}",
     authentication: "predefinedCredentialType",
     nodeCredentialType: "supabaseApi",
     sendHeaders: true,
