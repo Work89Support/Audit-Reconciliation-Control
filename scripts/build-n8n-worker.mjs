@@ -199,13 +199,18 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.2-xb-sapan-raw-id-recovery',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.20-xb-sapan-history-close',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
-const deployedReconcileCode = reconcileCode.replace(
-  "1.9.2-xb-sapan-raw-id-recovery",
-  "1.9.8-xb-sapan-evidence-lifecycle",
-);
+const deployedReconcileCode = reconcileCode
+  .replace(
+    "1.9.2-xb-sapan-raw-id-recovery",
+    "1.9.20-xb-sapan-history-close",
+  )
+  .replace(
+    "xb_provider_signed_amount_close:true,",
+    "xb_provider_signed_amount_close:true,xb_provider_duplicate_rows_suppressed:result.xbProviderDuplicateRowsSuppressed||0,",
+  );
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
 const driveHttp = (id, name, position, parameters) => ({
@@ -320,7 +325,7 @@ const nodes = [
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2190, 20], {
-    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&company=eq.'+encodeURIComponent(j.company)+'&run_id=neq.'+run+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&select=id,company,direction,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
+    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+run+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=eq.time_diff&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
     authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }), executeOnce: true, alwaysOutputData: true },
   { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;
@@ -329,6 +334,7 @@ const evidence=(source.result?.summary?.match_evidence||[]);
 const exact=/\\b6aa[a-f0-9]{21}\\b/ig;
 const clean=v=>String(v||'').trim().toLowerCase();
 const dir=v=>/ถอน|withdraw/i.test(String(v||''))?'withdraw':/ฝาก|deposit/i.test(String(v||''))?'deposit':clean(v);
+const companyKey=v=>{const c=clean(v).replace(/[^a-z0-9]/g,'');return ['3x','3xb','3xbet'].includes(c)?'3xb':c;};
 const byId=new Map();
 for(const e of evidence){
   const stm=clean(e?.customer?.stm?.providerReference),bo=clean(e?.customer?.bo?.providerReference);
@@ -351,14 +357,22 @@ const closing=[];
 for(const row of oldRows){
   const stmIds=String(row.stm_raw||'').toLowerCase().match(exact)||[];
   const boIds=String(row.bo_raw||'').toLowerCase().match(exact)||[];
-  const ids=[...new Set([...stmIds,...boIds])];
-  const amount=Number(row.bank_amount??row.system_amount??0);
-  const matches=[];
-  for(const id of ids) for(const ev of (byId.get(id)||[])){
-    if(ev.direction===dir(row.direction)&&ev.amount===amount&&(!row.company||!ev.company||ev.company===clean(row.company))) matches.push(ev);
-  }
-  const unique=[...new Map(matches.map(x=>[x.id+'|'+x.direction+'|'+x.amount,x])).values()];
-  if(unique.length===1) closing.push({id:row.id,provider_id:unique[0].id,run_id:runId});
+  const sides=[];
+  for(const id of new Set(stmIds)) sides.push({id,amount:Number(row.bank_amount)});
+  for(const id of new Set(boIds)) sides.push({id,amount:Number(row.system_amount)});
+  const strictCovered=sides.filter(side=>Number.isFinite(side.amount)&&(byId.get(side.id)||[]).some(ev=>
+    ev.direction===dir(row.direction)&&ev.amount===side.amount&&(!row.company||!ev.company||companyKey(ev.company)===companyKey(row.company))
+  ));
+  const sameAmountCovered=sides.filter(side=>Number.isFinite(side.amount)&&(byId.get(side.id)||[]).some(ev=>
+    ev.amount===side.amount
+  ));
+  const equalAmount=Number.isFinite(Number(row.bank_amount))&&Number(row.bank_amount)===Number(row.system_amount);
+  // Older time_diff rows can contain a corrupted cross-pair in one raw side.
+  // When the new run proves an exact provider-id pair at the same equal amount,
+  // the stale warning must close even if the unrelated legacy side is not covered.
+  const currentExactTimePair=clean(row.ex_type)==='time_diff'&&equalAmount&&sameAmountCovered.length>0;
+  const closureEvidence=currentExactTimePair?sameAmountCovered:strictCovered;
+  if(sides.length&&(strictCovered.length===sides.length||currentExactTimePair)) closing.push({id:row.id,provider_id:closureEvidence[0].id,provider_ids:[...new Set(closureEvidence.map(x=>x.id))],run_id:runId});
 }
 return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{skip:true,run_id:runId},pairedItem:{item:0}}];` }, id: "prepare-close-previous-sapan", name: "เตรียมปิดเคส Sapan รอบก่อน", type: "n8n-nodes-base.code", typeVersion: 2, position: [2300, 20] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-sapan-closure", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-close-previous-sapan", name: "มีเคส Sapan ต้องปิด?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [2410, 20] },

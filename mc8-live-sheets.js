@@ -67,15 +67,32 @@
   function sheetOf(row){let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
   function stamp(t){return t?.date?`${t.date} ${Number.isFinite(t.sec)&&t.sec>=0&&t.sec<86400?new Date(t.sec*1000).toISOString().slice(11,19):''}`.trim():'';}
   function realRaw(value){const s=String(value||'').trim();return s&&!/^[—–-]|^ไม่พบรายการ|^รอข้อมูล|^ไม่มีข้อมูล/i.test(s)?s:'';}
+  function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);return hit?hit[1].toLowerCase():'';}
+  function normalizedBo(bo,raw=''){
+    const source=bo&&typeof bo==='object'?bo:{};
+    const providerReference=String(source.providerReference||'').trim().toLowerCase()||sapanProviderId(source.note)||sapanProviderId(raw);
+    return providerReference?{...source,providerReference,note:providerReference}:source;
+  }
+  function uniqueProviderId(value){
+    const ids=[...new Set(String(value??'').toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g)||[])];
+    return ids.length===1?ids[0]:'';
+  }
+  function normalizedPm(pm,raw='',fallbackProviderReference=''){
+    const source=pm&&typeof pm==='object'?pm:{};
+    const providerReference=String(source.providerReference||'').trim().toLowerCase()||uniqueProviderId(raw)||String(fallbackProviderReference||'').trim().toLowerCase();
+    if(!providerReference)return source;
+    const firstCell=String(raw||'').split(/\s*\|\s*/)[0]?.trim()||'';
+    const sourceId=source.sourceId||source.transactionReference||(/^P2C-/i.test(firstCell)?firstCell:'');
+    return {...source,providerReference,...(sourceId?{sourceId}:{} )};
+  }
 
   function rowsOf(data,fallbackCompany=''){
     const pairs=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence:[];
     const rawCases=Array.isArray(data?.cases)?data.cases:[];
     const cases=auditPolicy?auditPolicy.filter(rawCases,pairs):rawCases;
-    return [
-      ...pairs.map((p,index)=>({key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo:p.customer?.bo||{},pm:p.customer?.stm||{},boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''})),
-      ...cases.map(e=>({key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo:e.customer_details?.bo||{},pm:e.customer_details?.stm||{},boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e}))
-    ];
+    const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
+    const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw);return {key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e};});
+    return [...pairRows,...caseRows];
   }
   function hasSide(row,side){return cents(row[`${side}Amount`])!==null&&(row.isPair||!!(realRaw(row[`${side}Raw`])||row[`${side}Date`]||Object.values(row[side]||{}).some(Boolean)));}
   function sideKey(row,side){
@@ -191,7 +208,8 @@
     const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pm||{};
     const state=row.kind==='closed'?'ปิดเคสแล้ว':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':row.kind==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
     const sources=sourceColumns(row);
-    return [row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',row.boRaw||bo.note||'',row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`BO ${row.boSource?.row??''}`,`PM ${row.pmSource?.row??''}`,`เวลา ${sources.time}`,`ยอด ${sources.amount}`].filter(v=>!v.endsWith(' ')).join(' · '),amountDiff(row),status];
+    const boNote=bo.providerReference||sapanProviderId(bo.note)||sapanProviderId(row.boRaw)||row.boRaw||bo.note||'';
+    return [row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`BO ${row.boSource?.row??''}`,`PM ${row.pmSource?.row??''}`,`เวลา ${sources.time}`,`ยอด ${sources.amount}`].filter(v=>!v.endsWith(' ')).join(' · '),amountDiff(row),status];
   }
   function leftExportValue(header,row){
     const pm=row.pm||{},provider=providerOf(row.account),code=(provider==='AT'?'autopeer':provider==='AZ'?'azpay':provider==='CP'?'corepay':provider==='LP'?'localpay':'mypays24');
@@ -205,9 +223,9 @@
   function boStartOf(template){return Number.isInteger(template?.boStart)?template.boStart:(template?.headers||[]).indexOf('รหัส');}
   function providerExportRow(template,row,complete){
     const headers=template.headers||[],boStart=boStartOf(template),values=headers.map((header,index)=>index<boStart?leftExportValue(header,row):'');
-    const bo=row.bo||{},boValues=[bo.reference||row.code,row.boTime||'',thaiDirection(row),bo.origin||'ออโต้',bo.user||'',bo.bank||row.account||'',numeric(row.boAmount)??'',row.direction==='deposit'?(numeric(row.boAmount)??''):0,'',row.boTime||'',bo.note||row.reason||'',bo.performedBy||''];
+    const bo=row.bo||{},boNote=bo.providerReference||sapanProviderId(bo.note)||sapanProviderId(row.boRaw)||bo.note||row.reason||'',boValues=[bo.reference||row.code,row.boTime||'',thaiDirection(row),bo.origin||'ออโต้',bo.user||'',bo.bank||row.account||'',numeric(row.boAmount)??'',row.direction==='deposit'?(numeric(row.boAmount)??''):0,'',row.boTime||'',boNote,bo.performedBy||''];
     BO_HEADERS.forEach((header,index)=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=boValues[index];});
-    const compact={เวลา:row.boTime||'',ประเภท:thaiDirection(row),'ยูสเซอร์':bo.user||'','บัญชี':bo.account||bo.name||'','บัญชีบริษัท':row.account||'','ยอดเงิน':numeric(row.boAmount)??'',โบนัส:0,'โน้ต':bo.note||bo.reference||row.reason||'','ผู้ดำเนินการ':bo.performedBy||'','แก้ไข':''};
+    const compact={เวลา:row.boTime||'',ประเภท:thaiDirection(row),'ยูสเซอร์':bo.user||'','บัญชี':bo.account||bo.name||'','บัญชีบริษัท':row.account||'','ยอดเงิน':numeric(row.boAmount)??'',โบนัส:0,'โน้ต':boNote||bo.reference||row.reason||'','ผู้ดำเนินการ':bo.performedBy||'','แก้ไข':''};
     BO_COMPACT_HEADERS.forEach(header=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=compact[header];});
     return [...values,sourceCondition(row),secondsBetween(row),amountDiff(row),auditStatus(row,complete)];
   }

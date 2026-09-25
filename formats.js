@@ -21,6 +21,10 @@ const Formats = (() => {
   // index only by `norm()` those two columns collapse and `_id` incorrectly
   // resolves to column A.
   const exactHeader = (s) => String(s ?? "").replace(/​/g, "").trim().toLowerCase();
+  const sapanProviderId = (value) => {
+    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);
+    return hit ? hit[1].toLowerCase() : "";
+  };
 
   const HEADER_ALIASES = {
     "รหัส": ["รหัส", "transactionid", "id"],
@@ -404,6 +408,7 @@ const Formats = (() => {
       const type = val(f, r, "ประเภท");
       const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
       const identity = boAccountOf(boIdentityRaw);
+      const note = val(f, r, "หมายเหตุ");
       return {
         rowNo: i + 1,
         source: "bo",
@@ -427,7 +432,8 @@ const Formats = (() => {
         memberCode: val(f, r, "ยูสเซอร์"),
         ref: val(f, r, "รหัส"),
         username: val(f, r, "ผู้ดำเนินการ"),
-        note: val(f, r, "หมายเหตุ"),
+        note,
+        providerRef: sapanProviderId(note),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
         lateNight: boT.sec >= 82800,
         minutePrecision: !boT.secPrecision,
@@ -468,6 +474,7 @@ const Formats = (() => {
         ref,
         username: val(f, r, "ผู้ดำเนินการ"),
         note,
+        providerRef: sapanProviderId(note),
         crossDay: false,
         lateNight: t.sec >= 82800,
         minutePrecision: !t.secPrecision,
@@ -484,6 +491,10 @@ const Formats = (() => {
       const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
       const sourceId = valExact(f, r, "id") || id;
       const transactionRef = valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]);
+      // AUTOPEER keeps the short BO transaction key (for example 10495821)
+      // in a separate column. Preserve it independently from column A `id`
+      // and provider `_id` so a missing Excel `_id` can be recovered safely.
+      const transactionId = valAny(f, r, ["transactionId", "tranId"]);
       // `_id` is the provider record id (for example 6aa...). It is distinct
       // from column A `id` (for AUTOPEER withdrawals this is P2C...). BO stores
       // the provider id inside a longer note such as `Sapan: 6aa... | ...`.
@@ -591,6 +602,7 @@ const Formats = (() => {
         ref: transactionRef,
         sourceId,
         transactionRef,
+        transactionId,
         providerRef,
         status,
         partial,
@@ -612,6 +624,7 @@ const Formats = (() => {
       const ch = channelOf(val(f, r, "ชื่อธนาคาร"));
       const mem = pipe(val(f, r, "สมาชิก"));
       const cust = pipe(val(f, r, "บัญชีลูกค้า"));
+      const note = val(f, r, "หมายเหตุ");
       return {
         rowNo: i + 1,
         source: "bo",
@@ -645,7 +658,8 @@ const Formats = (() => {
         via: val(f, r, "เกิดโดย"),
         performedBy: val(f, r, "ทำรายการโดย"),
         username: val(f, r, "ทำรายการโดย") || val(f, r, "สร้างโดย") || "",
-        note: val(f, r, "หมายเหตุ"),
+        note,
+        providerRef: sapanProviderId(note),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
         lateNight: boT.sec >= 82800,
         minutePrecision: !boT.secPrecision,

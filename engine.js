@@ -22,7 +22,7 @@ const Engine = (() => {
     return { account: row.custAccount || '', last4: row.custAccountLast4 || '',
       bank: row.custBank || '', name: row.custName || '', user: row.memberCode || '',
       reference: row.ref || '', transactionReference: row.transactionRef || row.ref || '',
-      providerReference: row.providerRef || '', sourceId: row.sourceId || '',
+      transactionId: row.transactionId || '', providerReference: row.providerRef || '', sourceId: row.sourceId || '',
       description: row.customerDescription || '',
       identitySource: row.customerIdentitySource || '' };
   }
@@ -366,7 +366,11 @@ const Engine = (() => {
   // Treat the colon as a Text-to-Columns boundary and retain only the exact
   // provider `_id`; surrounding words and payout details are not identity.
   const sapanProviderId = (value) => {
-    const hit = String(value ?? "").match(/sapan\s*:\s*(6aa[a-f0-9]{21})\b/i);
+    // Historical BO exports are not perfectly consistent: most rows use
+    // `Sapan: 6aa...`, while some omit the colon or spell the label `Spean`.
+    // The label is only a boundary marker.  Return the exact 24-character
+    // provider id and never include payout/refund text that follows it.
+    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);
     return hit ? hit[1].toLowerCase() : "";
   };
   const referenceInBo = (reference, bo) => {
@@ -433,6 +437,26 @@ const Engine = (() => {
     const absoluteAmount = (row) => ({ ...row, amount: Math.abs(Number(row && row.amount) || 0) });
     stmRecords = stmRecords.map(absoluteAmount).map(statementCustomer);
     boRecords = boRecords.map(absoluteAmount);
+    /* Provider exports can be attached more than once while carrying the same
+       immutable `_id`. If those duplicate rows enter the matcher together,
+       the 1:1 guard rejects the real Sapan pair and a later generic time pass
+       can create a false `time_diff`. Collapse only rows whose exact provider
+       id and normalized amount agree. Conflicting amounts stay visible. */
+    const providerSeen = new Map();
+    let xbProviderDuplicateRowsSuppressed = 0;
+    stmRecords = stmRecords.filter((row) => {
+      const id = providerIdOf(row);
+      if (!id) return true;
+      const amount = Math.abs(Number(row && row.amount) || 0);
+      const prior = providerSeen.get(id);
+      if (!prior) {
+        providerSeen.set(id, { amount });
+        return true;
+      }
+      if (prior.amount !== amount) return true;
+      xbProviderDuplicateRowsSuppressed++;
+      return false;
+    });
     const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -563,18 +587,29 @@ const Engine = (() => {
        เท่านั้น `_id` 24 ตัวเป็นตัวตนธุรกรรมหลัก จึงไม่ให้ metadata บริษัทที่
        upstream ตั้งชื่อไม่ตรงกันขวางคู่จริง และยังไม่สลับกับยอดซ้ำรายการอื่น */
     const xbProviderRefMatched = new Set();
-    const xbProviderRefCandidate = (s, b) => xbCompanies.has(auditCompanyOf(s))
-      && s.isPmChannel
-      && !!s.direction && s.direction === b.direction
-      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+    // An exact Sapan/Spean provider id is stronger than inconsistent upstream
+    // company/provider labels (for example `3xbet` instead of `3XB`).
+    const xbProviderRefCandidate = (s, b) => Number.isFinite(s.amount) && Math.abs(s.amount) > 0
+      // The 24-character provider `_id` is the transaction identity. Some BO
+      // exports keep withdrawals as a signed amount or classify their type
+      // inconsistently, so compare the absolute amount and do not let those
+      // presentation fields override an otherwise exact id match.
+      && Number.isFinite(b.amount) && Math.abs(s.amount) === Math.abs(b.amount)
       && providerIdOf(s).length >= 6 && referenceInBo(providerIdOf(s), b);
-    const xbProviderRefConflict = (s, b) => xbCompanies.has(auditCompanyOf(s))
-      && s.isPmChannel && b.isPmChannel && providerIdOf(s).length >= 6
-      && !!(sapanProviderId(b.note) || sapanProviderId(b.raw))
-      && !referenceInBo(providerIdOf(s), b);
+    // A different explicit Sapan id is a hard conflict. Never let the generic
+    // amount/time passes cross-pair two provider transactions.
+    const xbProviderRefConflict = (s, b) => {
+      const boProviderId = sapanProviderId(b.note) || sapanProviderId(b.raw);
+      if (!boProviderId) return false;
+      // A BO row carrying Sapan evidence is reserved for that exact provider
+      // transaction. A statement row with a missing `_id` must not consume it
+      // through the legacy amount/time rule before the correct row is examined.
+      return providerIdOf(s) !== boProviderId;
+    };
     const xbRefCandidates = new Map();
     const xbRefPeers = new Map();
     const xbBoByProviderRef = new Map();
+    const xbBoByTransactionId = new Map();
     boRecords.forEach((b, i) => {
       const ids = [...new Set([
         sapanProviderId(b && b.note),
@@ -586,11 +621,35 @@ const Engine = (() => {
         if (!rows) xbBoByProviderRef.set(id, (rows = []));
         rows.push(i);
       });
+      const boProviderId = sapanProviderId(b && b.note) || sapanProviderId(b && b.raw);
+      const boTransactionId = identityText(b && b.ref);
+      // Only index a BO transaction id when that BO row also carries explicit
+      // Sapan/Spean evidence. This prevents an ordinary numeric BO reference
+      // from being used as a provider-id recovery hint.
+      if (boProviderId && boTransactionId.length >= 6) {
+        let rows = xbBoByTransactionId.get(boTransactionId);
+        if (!rows) xbBoByTransactionId.set(boTransactionId, (rows = []));
+        rows.push(i);
+      }
     });
     stmRecords.forEach((s) => {
-      if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !providerIdOf(s)) return;
-      const rows = (xbBoByProviderRef.get(providerIdOf(s)) || [])
-        .filter((i) => !boUsed[i] && xbProviderRefCandidate(s, boRecords[i]));
+      const providerId = providerIdOf(s);
+      const transactionId = identityText(s && s.transactionId);
+      const canRecover = !providerId && xbCompanies.has(auditCompanyOf(s)) && s.isPmChannel && transactionId.length >= 6;
+      if (!providerId && !canRecover) return;
+      const sourceRows = providerId
+        ? (xbBoByProviderRef.get(providerId) || [])
+        : (xbBoByTransactionId.get(transactionId) || []);
+      const rows = sourceRows.filter((i) => {
+        if (boUsed[i]) return false;
+        const b = boRecords[i];
+        if (providerId) return xbProviderRefCandidate(s, b);
+        const boProviderId = sapanProviderId(b && b.note) || sapanProviderId(b && b.raw);
+        return !!boProviderId
+          && identityText(b && b.ref) === transactionId
+          && Number.isFinite(s.amount) && Math.abs(s.amount) > 0
+          && Number.isFinite(b.amount) && Math.abs(s.amount) === Math.abs(b.amount);
+      });
       xbRefCandidates.set(s, rows);
       rows.forEach((i) => {
         let peers = xbRefPeers.get(i);
@@ -602,9 +661,18 @@ const Engine = (() => {
       const rows = xbRefCandidates.get(s) || [];
       if (rows.length !== 1 || (xbRefPeers.get(rows[0]) || []).length !== 1 || boUsed[rows[0]]) return;
       const i = rows[0], b = boRecords[i];
+      const recoveredProviderId = !providerIdOf(s)
+        ? (sapanProviderId(b && b.note) || sapanProviderId(b && b.raw))
+        : '';
+      if (recoveredProviderId) s.providerRef = recoveredProviderId;
       boUsed[i] = 1;
       xbProviderRefMatched.add(s);
-      matched.push({ s, b, dt: timeDistance(s, b), xbProviderRefMatch: true });
+      matched.push({
+        s, b, dt: timeDistance(s, b), xbProviderRefMatch: true,
+        providerSignedAmountNormalized: s.amount !== b.amount,
+        providerDirectionMetadataIgnored: !!s.direction && !!b.direction && s.direction !== b.direction,
+        providerRefRecoveredFromTransactionId: !!recoveredProviderId,
+      });
     });
 
     /* PM ของเครือ 7M ยืนยันคู่ด้วย 3 จุดจากข้อมูลจริง ไม่ผูกกับถ้อยคำรอบ Ref:
@@ -1286,6 +1354,7 @@ const Engine = (() => {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
       xbProviderRefMatched: matched.filter(m => m.xbProviderRefMatch).length,
+      xbProviderDuplicateRowsSuppressed,
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
@@ -1315,6 +1384,9 @@ const Engine = (() => {
         method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         internalTransferMatched: !!m.internalTransferMatch,
         xbProviderRefMatched: !!m.xbProviderRefMatch,
+        providerSignedAmountNormalized: !!m.providerSignedAmountNormalized,
+        providerDirectionMetadataIgnored: !!m.providerDirectionMetadataIgnored,
+        providerRefRecoveredFromTransactionId: !!m.providerRefRecoveredFromTransactionId,
         providerIdentityMatched: !!m.providerIdentityMatch,
         providerNearTimeMatched: !!m.providerNearTimeMatch,
         sys123ProviderMatched: !!m.sys123ProviderMatch,

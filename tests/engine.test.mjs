@@ -497,10 +497,18 @@ await (async () => {
   eq('XB provider: evidence records _id/Sapan method',r.matchEvidence[0]?.method,'xb-provider-_id-note-amount');
   eq('XB provider: evidence preserves P2C transaction id',r.matchEvidence[0]?.customer?.stm?.transactionReference,'P2C-20260916-233303-UIHHCL');
   eq('XB provider: evidence preserves 6aa provider _id',r.matchEvidence[0]?.customer?.stm?.providerReference,providerRef);
+  r=await run([stm],[{...bo,note:`sapan ${providerRef} | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01`}]);
+  eq('XB provider: legacy Sapan note without colon keeps only exact provider id',r.matched,1);
+  eq('XB provider: legacy note evidence excludes payout suffix',r.matchEvidence[0]?.customer?.bo?.note,providerRef);
+  r=await run([stm],[{...bo,note:`Spean: ${providerRef} | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01`}]);
+  eq('XB provider: Spean spelling variant closes by exact provider id',r.matched,1);
   r=await run([stm],[{...bo,note:'Sapan: 6aaac4bfed5cd6e1fd9d67ff | ข้อความอื่น'}]);
   eq('XB provider: different Sapan _id stays open',r.matched,0);
   r=await run([stm],[{...bo,amount:2201}]);
   eq('XB provider: same _id but different amount stays open',r.matched,0);
+  r=await run([stm],[{...bo,amount:-2200,direction:'deposit'}]);
+  eq('XB provider: exact _id closes signed BO amount despite wrong direction metadata',r.matched,1);
+  eq('XB provider: ignored direction metadata is auditable',r.matchEvidence[0]?.providerDirectionMetadataIgnored,true);
 
   const rawOnly={...stm,providerRef:'',raw:`${stm.ref} | 2200 | autopeer | SENDED | ${providerRef} | P2P`};
   r=await run([rawOnly],[bo]);
@@ -516,6 +524,17 @@ await (async () => {
   eq('XB provider: BO evidence exposes normalized provider reference',r.matchEvidence[0]?.customer?.bo?.providerReference,providerRef);
   r=await run([rawOnly],[{...rawBo,company:'3XBET'}]);
   eq('XB provider: exact unique Sapan id overrides inconsistent BO company metadata',r.matched,1);
+  r=await run([{...rawOnly,subco:'3XBET'}],[{...rawBo,company:'3XBET'}]);
+  eq('XB provider: exact unique Sapan id overrides inconsistent STM and BO company metadata',r.matched,1);
+  r=await run([{...rawOnly,subco:'3XBET',isPmChannel:false}],[{...rawBo,company:'3XBET'}]);
+  eq('XB provider: exact Sapan id survives a lost PM-channel classification',r.matched,1);
+  const mismatchedLegacyBo={...rawBo,company:'3XBET',note:'',raw:'ช่องอื่น | Sapan: 6aaac4bfed5cd6e1fd9d67ff | โอนจริง 2200'};
+  r=await run([{...rawOnly,subco:'3XBET',isPmChannel:false}],[mismatchedLegacyBo]);
+  eq('XB provider: different Sapan ids never fall through to legacy amount/time matching',r.matched,0);
+  const missingIdCompetitor={...rawOnly,providerRef:'',raw:'P2C-WITHOUT-PROVIDER-ID | 2200 | autopeer',sec:bo.sec};
+  r=await run([missingIdCompetitor,rawOnly],[bo]);
+  eq('XB provider: PM row without _id cannot consume a Sapan-reserved BO row',r.matched,1);
+  eq('XB provider: Sapan-reserved BO row remains for exact _id',r.matchEvidence[0]?.customer?.bo?.providerReference,providerRef);
   const ambiguousRaw={...rawOnly,raw:`${rawOnly.raw} | 6aaac4bfed5cd6e1fd9d67ff`};
   r=await run([ambiguousRaw],[bo]);
   eq('XB provider: ambiguous raw 6aa ids do not use Sapan rule',r.matchEvidence.filter(e=>e.method==='xb-provider-_id-note-amount').length,0);
@@ -533,6 +552,27 @@ await (async () => {
   eq('XB provider: duplicate amounts close both rows by _id before time matching',r.matched,2);
   eq('XB provider: duplicate amount rows both use provider id rule',r.matchEvidence.filter(e=>e.method==='xb-provider-_id-note-amount').length,2);
   eq('XB provider: duplicate amount rows leave no false exception',r.exceptions.length,0);
+
+  const duplicatedProviderRow={...duplicateAmountStm[1],raw:`P2C-SECOND | 500 | ${secondRef}`};
+  r=await run([duplicateAmountStm[1],duplicatedProviderRow],[duplicateAmountBo[0]]);
+  eq('XB provider: duplicate attachment row with same _id is counted once',r.stmCount,1);
+  eq('XB provider: duplicate attachment row does not block exact Sapan match',r.matched,1);
+  eq('XB provider: duplicate attachment row creates no false time_diff',r.exceptions.length,0);
+  eq('XB provider: duplicate attachment suppression is auditable',r.xbProviderDuplicateRowsSuppressed,1);
+
+  const missingIdStm=rec({company:'AUTOPEER',subco:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:100,sec:21*3600+35*60,ref:'P2C-20260915-213500-TEST03',transactionRef:'P2C-20260915-213500-TEST03',transactionId:'10495821',providerRef:''});
+  const recoveredIdBo=rec({company:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:-100,sec:8*3600+49*60,ref:'10495821',note:`Sapan: ${secondRef} | โอนจริง 100 สำเร็จ 100 คืน 0`});
+  r=await run([missingIdStm],[recoveredIdBo]);
+  eq('XB provider: missing _id recovers through exact transactionId + amount + Sapan',r.matched,1);
+  eq('XB provider: recovered row uses provider id rule',r.matchEvidence[0]?.method,'xb-provider-_id-note-amount');
+  eq('XB provider: recovered 6aa is written to PM evidence',r.matchEvidence[0]?.customer?.stm?.providerReference,secondRef);
+  eq('XB provider: transactionId recovery is auditable',r.matchEvidence[0]?.providerRefRecoveredFromTransactionId,true);
+  r=await run([{...missingIdStm,transactionId:'10495822'}],[recoveredIdBo]);
+  eq('XB provider: different transactionId does not recover _id',r.matched,0);
+  r=await run([missingIdStm],[{...recoveredIdBo,note:'โอนจริง 100 สำเร็จ 100'}]);
+  eq('XB provider: transactionId without Sapan evidence never uses id recovery',r.matchEvidence.filter(e=>e.providerRefRecoveredFromTransactionId).length,0);
+  r=await run([missingIdStm],[recoveredIdBo,{...recoveredIdBo,note:`Sapan: 6aa8a28b6f7ddd65ebf16ce8`}]);
+  eq('XB provider: ambiguous BO transactionId remains open',r.matched,0);
 })();
 
 await (async () => {

@@ -52,12 +52,19 @@ const xbAutopeerIds = Formats.parse("MC8_PM_AUTOPEER_W_2026-09-16.xlsx", [
 ], "2026-09-16");
 eq("XB AUTOPEER: column A id remains P2C", xbAutopeerIds.records[0]?.sourceId, "P2C-20260916-233303-UIHHCL");
 eq("XB AUTOPEER: transaction reference remains P2C", xbAutopeerIds.records[0]?.transactionRef, "P2C-20260916-233303-UIHHCL");
+eq("XB AUTOPEER: transactionId is preserved separately", xbAutopeerIds.records[0]?.transactionId, "2718608");
 eq("XB AUTOPEER: exact _id column is not collapsed into id", xbAutopeerIds.records[0]?.providerRef, "6aaac4bfed5cd6e1fd9d67a6");
 const xbAutopeerLostHeader = Formats.parse("3XB_PM_AUTOPEER_W_2026-09-15.xlsx", [
   ["id", "amount", "provider", "status", "requestTime", "fee", "transactionId", "bankCode", "bankAccountNo", "bankAccountName", "updateTime", "gatewayId", "site", "transferredAmount", "providerRecord", "submitStatus"],
   ["P2C-20260915-212400-TEST01", 500, "autopeer", "SUCCESS", "2026-09-15 21:24:00", 0, "1049001", "SCB", "1234567890", "ตัวอย่าง", "2026-09-15 21:24:32", "3xbet_autopeer", "3xbet", 500, "6aa95a5bed5cd6e1fd9d25ce", "SENDED"],
 ], "2026-09-15");
 eq("XB AUTOPEER: recover one 6aa provider id when n8n loses _id header", xbAutopeerLostHeader.records[0]?.providerRef, "6aa95a5bed5cd6e1fd9d25ce");
+const xbAutopeerMissingIdCell = Formats.parse("3XB_PM_AUTOPEER_W_2026-09-15.xlsx", [
+  ["id", "amount", "provider", "status", "requestTime", "transactionId", "updateTime", "transferredAmount", "_id"],
+  ["P2C-20260915-213500-TEST03", 100, "autopeer", "SUCCESS", "2026-09-15 21:35:00", "10495821", "2026-09-15 21:35:27", 100, ""],
+], "2026-09-15");
+eq("XB AUTOPEER: blank _id still preserves transactionId for safe recovery", xbAutopeerMissingIdCell.records[0]?.transactionId, "10495821");
+eq("XB AUTOPEER: blank _id is not fabricated during parsing", xbAutopeerMissingIdCell.records[0]?.providerRef, "");
 const xbAutopeerAmbiguousIds = Formats.parse("3XB_PM_AUTOPEER_W_2026-09-15.xlsx", [
   ["id", "amount", "provider", "status", "requestTime", "updateTime", "transferredAmount", "providerRecord", "otherRecord"],
   ["P2C-20260915-212400-TEST02", 100, "autopeer", "SUCCESS", "2026-09-15 21:35:00", "2026-09-15 21:35:27", 100, "6aa95f3e6f7ddd65ebf18744", "6aa95a5bed5cd6e1fd9d25ce"],
@@ -132,6 +139,12 @@ eq("BO ธุรกรรม: PM ใช้ provider เป็นตัวตน"
 eq("BO ธุรกรรม: ใช้เวลารายการ BO เป็นเวลาจับคู่", transactionBo.records[0].sec, 11 * 60);
 eq("BO ธุรกรรม: เก็บเวลาธนาคารแยกไว้เป็นหลักฐาน", transactionBo.records[0].bankSec, 22 * 3600 + 56 * 60);
 eq("BO ธุรกรรม: PM ไม่ใช้เลขใน P2P/QR", transactionBo.records[2].isPmChannel, true);
+const sapanBo = Formats.parse("3X_BO_2026-09-15.xlsx", [
+  transactionBoRows[0],
+  ["1049603", "2026-09-15 21:35", "ถอน", "ถอน", "3xb-user", "พร้อมเพย์-ATP(autopeer)(P2P)", "100", "0", "0", "2026-09-15 21:35", "sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01", "Admin"],
+], "2026-09-15");
+eq("BO Sapan: แยก provider id หลัง colon เท่านั้น", sapanBo.records[0].providerRef, "6aa8a28b6f7ddd65ebf16ce8");
+eq("BO Sapan: เก็บหมายเหตุต้นฉบับไว้เป็นหลักฐาน", sapanBo.records[0].note, "sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01");
 
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
 const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
