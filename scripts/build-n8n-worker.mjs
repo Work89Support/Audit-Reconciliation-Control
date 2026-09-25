@@ -204,7 +204,7 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode.replace(
   "1.9.2-xb-sapan-raw-id-recovery",
-  "1.9.6-xb-sapan-exact-id-lifecycle",
+  "1.9.7-xb-sapan-orphan-lifecycle",
 );
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
@@ -320,7 +320,7 @@ const nodes = [
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2190, 20], {
-    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const old=j.last_run_id||'00000000-0000-0000-0000-000000000000';return $vars.SUPABASE_URL+'/rest/v1/exceptions?run_id=eq.'+old+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&select=id,company,direction,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
+    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&company=eq.'+encodeURIComponent(j.company)+'&run_id=neq.'+run+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&select=id,company,direction,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
     authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }), executeOnce: true, alwaysOutputData: true },
   { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;
