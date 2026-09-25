@@ -122,7 +122,7 @@ for(const r of (norm.records||[])){
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
 return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
 
-const reconcileCode = `const performance={now:()=>Date.now()};\n${formats}\n\n${rules}\n\n${registry}\n\n${engine}
+const reconcileCode = `${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
 if(!files.length) throw new Error('ไม่พบไฟล์ที่อ่านได้ในงานนี้');
 const job=files[0].job;
@@ -199,9 +199,13 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.1-xb-provider-id-recovery',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.2-xb-sapan-raw-id-recovery',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
+const deployedReconcileCode = reconcileCode.replace(
+  "1.9.2-xb-sapan-raw-id-recovery",
+  "1.9.6-xb-sapan-exact-id-lifecycle",
+);
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
 const driveHttp = (id, name, position, parameters) => ({
@@ -296,7 +300,7 @@ const nodes = [
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: true, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520], onError: "continueRegularOutput" },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
-  { parameters: { jsCode: reconcileCode }, id: "reconcile", name: "กระทบยอดและสร้าง Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [980, 80] },
+  { parameters: { jsCode: deployedReconcileCode }, id: "reconcile", name: "กระทบยอดและสร้าง Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [980, 80] },
   http("record-parse-results", "Supabase: บันทึกผลอ่านไฟล์", [1200, 80], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/record_source_file_parse_results", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
@@ -314,6 +318,52 @@ const nodes = [
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
+  }), alwaysOutputData: true },
+  { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2190, 20], {
+    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const old=j.last_run_id||'00000000-0000-0000-0000-000000000000';return $vars.SUPABASE_URL+'/rest/v1/exceptions?run_id=eq.'+old+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&select=id,company,direction,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
+    authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
+  }), executeOnce: true, alwaysOutputData: true },
+  { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;
+const runId=$('เตรียมบันทึก Exception').first().json.run_id;
+const evidence=(source.result?.summary?.match_evidence||[]).filter(e=>e?.method==='xb-provider-_id-note-amount');
+const exact=/\\b6aa[a-f0-9]{21}\\b/ig;
+const clean=v=>String(v||'').trim().toLowerCase();
+const dir=v=>/ถอน|withdraw/i.test(String(v||''))?'withdraw':/ฝาก|deposit/i.test(String(v||''))?'deposit':clean(v);
+const byId=new Map();
+for(const e of evidence){
+  const stm=clean(e?.customer?.stm?.providerReference),bo=clean(e?.customer?.bo?.providerReference);
+  const ids=[stm,bo].filter(id=>/^6aa[a-f0-9]{21}$/.test(id));
+  for(const id of new Set(ids)){
+    const rows=byId.get(id)||[];
+    rows.push({id,company:clean(e.company),direction:dir(e.direction),amount:Number(e.amount)});
+    byId.set(id,rows);
+  }
+}
+const oldRows=$input.all().flatMap(x=>Array.isArray(x.json)?x.json:[x.json]).filter(x=>x&&x.id);
+const closing=[];
+for(const row of oldRows){
+  const stmIds=String(row.stm_raw||'').toLowerCase().match(exact)||[];
+  const boIds=String(row.bo_raw||'').toLowerCase().match(exact)||[];
+  const ids=[...new Set([...stmIds,...boIds])];
+  const amount=Number(row.bank_amount??row.system_amount??0);
+  const matches=[];
+  for(const id of ids) for(const ev of (byId.get(id)||[])){
+    if(ev.direction===dir(row.direction)&&ev.amount===amount&&(!row.company||!ev.company||ev.company===clean(row.company))) matches.push(ev);
+  }
+  const unique=[...new Map(matches.map(x=>[x.id+'|'+x.direction+'|'+x.amount,x])).values()];
+  if(unique.length===1) closing.push({id:row.id,provider_id:unique[0].id,run_id:runId});
+}
+return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{skip:true,run_id:runId},pairedItem:{item:0}}];` }, id: "prepare-close-previous-sapan", name: "เตรียมปิดเคส Sapan รอบก่อน", type: "n8n-nodes-base.code", typeVersion: 2, position: [2300, 20] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-sapan-closure", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-close-previous-sapan", name: "มีเคส Sapan ต้องปิด?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [2410, 20] },
+  http("close-previous-sapan", "Supabase: ปิดเคส Sapan รอบก่อน", [2520, -40], {
+    method: "PATCH", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions?id=eq.{{ $json.id }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({status:'closed',auto_closed:true,resolved_at:DateTime.now().toISO(),resolved_by:'system:xb-sapan-id-v1',closing_run_id:$json.run_id,closure_rule:'xb-exact-sapan-provider-id',resolution_note:'ปิดอัตโนมัติเมื่อรอบใหม่จับคู่ด้วยรหัส Provider หลัง Sapan: ตรงกันแบบ exact พร้อมทิศทางและยอดตรงกัน',updated_at:DateTime.now().toISO()}) }}", options: { response: { response: {} } },
+  }),
+  { ...http("audit-close-previous-sapan", "Supabase: บันทึก Audit ปิด Sapan", [2630, -40], {
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/audit_log", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:$json.id,detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id,provider_id:$('เตรียมปิดเคส Sapan รอบก่อน').item.json.provider_id,rule:'xb-exact-sapan-provider-id'}}) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -360,7 +410,12 @@ const connections = {
   "เตรียมข้อมูลผลการรัน": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: อ่านเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
+  "Supabase: อ่านเคส Sapan รอบก่อน": { main: [[{ node: "เตรียมปิดเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
+  "เตรียมปิดเคส Sapan รอบก่อน": { main: [[{ node: "มีเคส Sapan ต้องปิด?", type: "main", index: 0 }]] },
+  "มีเคส Sapan ต้องปิด?": { main: [[{ node: "Supabase: ปิดเคส Sapan รอบก่อน", type: "main", index: 0 }], [{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
+  "Supabase: ปิดเคส Sapan รอบก่อน": { main: [[{ node: "Supabase: บันทึก Audit ปิด Sapan", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Audit ปิด Sapan": { main: [[{ node: "Supabase: ปิดงานสำเร็จ", type: "main", index: 0 }]] },
   "Supabase: ปิดงานสำเร็จ": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
   "บันทึกว่าอ่านแล้วและรอไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };

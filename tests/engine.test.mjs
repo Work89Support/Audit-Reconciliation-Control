@@ -502,6 +502,24 @@ await (async () => {
   r=await run([stm],[{...bo,amount:2201}]);
   eq('XB provider: same _id but different amount stays open',r.matched,0);
 
+  const rawOnly={...stm,providerRef:'',raw:`${stm.ref} | 2200 | autopeer | SENDED | ${providerRef} | P2P`};
+  r=await run([rawOnly],[bo]);
+  eq('XB provider: recover one raw 6aa id at matcher boundary',r.matched,1);
+  eq('XB provider: raw 6aa recovery still records Sapan method',r.matchEvidence[0]?.method,'xb-provider-_id-note-amount');
+  r=await run([rawOnly],[{...bo,account:'LEGACY-RULE',channel:'',isPmChannel:false}]);
+  eq('XB provider: exact Sapan id closes even when BO provider label is legacy',r.matched,1);
+  eq('XB provider: legacy BO still records Sapan method',r.matchEvidence[0]?.method,'xb-provider-_id-note-amount');
+  const rawBo={...bo,account:'LEGACY-RULE',channel:'',isPmChannel:false,note:'',raw:`ช่องอื่น | Sapan: ${providerRef} | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01`};
+  r=await run([rawOnly],[rawBo]);
+  eq('XB provider: Sapan id recovered from raw BO row closes',r.matched,1);
+  eq('XB provider: displayed BO note keeps only provider id after colon',r.matchEvidence[0]?.customer?.bo?.note,providerRef);
+  eq('XB provider: BO evidence exposes normalized provider reference',r.matchEvidence[0]?.customer?.bo?.providerReference,providerRef);
+  r=await run([rawOnly],[{...rawBo,company:'3XBET'}]);
+  eq('XB provider: exact unique Sapan id overrides inconsistent BO company metadata',r.matched,1);
+  const ambiguousRaw={...rawOnly,raw:`${rawOnly.raw} | 6aaac4bfed5cd6e1fd9d67ff`};
+  r=await run([ambiguousRaw],[bo]);
+  eq('XB provider: ambiguous raw 6aa ids do not use Sapan rule',r.matchEvidence.filter(e=>e.method==='xb-provider-_id-note-amount').length,0);
+
   const firstRef='6aa95a5bed5cd6e1fd9d25ce',secondRef='6aa95f3e6f7ddd65ebf18744';
   const duplicateAmountStm=[
     rec({company:'AUTOPEER',subco:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:500,sec:8*3600,ref:'P2C-FIRST',providerRef:firstRef}),

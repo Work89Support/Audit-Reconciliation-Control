@@ -361,15 +361,35 @@ const Engine = (() => {
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const key2 = (a, amt) => a + "|" + amt.toFixed(2);
   const identityText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  // BO can contain a long note such as
+  // `Sapan: 6aa... | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01`.
+  // Treat the colon as a Text-to-Columns boundary and retain only the exact
+  // provider `_id`; surrounding words and payout details are not identity.
+  const sapanProviderId = (value) => {
+    const hit = String(value ?? "").match(/sapan\s*:\s*(6aa[a-f0-9]{21})\b/i);
+    return hit ? hit[1].toLowerCase() : "";
+  };
   const referenceInBo = (reference, bo) => {
     const ref = identityText(reference);
     if (ref.length < 6) return false;
     const boRef = identityText(bo && bo.ref);
     const boNote = identityText(bo && bo.note);
-    return boRef === ref || boRef.includes(ref) || boNote.includes(ref);
+    const boProviderId = sapanProviderId(bo && bo.note) || sapanProviderId(bo && bo.raw);
+    return boRef === ref || boRef.includes(ref) || boNote.includes(ref) || boProviderId === ref;
+  };
+  // Keep matching resilient when an upstream Excel node preserves the 6aa value
+  // in the raw row but drops or renames the `_id` header. The parser normally
+  // populates providerRef; this last-mile recovery prevents a valid Sapan pair
+  // from becoming two false exceptions in production.
+  const providerIdOf = (statement) => {
+    const explicit = identityText(statement && statement.providerRef);
+    if (/^6aa[a-f0-9]{21}$/.test(explicit)) return explicit;
+    const rawIds = [...new Set(String(statement && statement.raw || "")
+      .toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g) || [])];
+    return rawIds.length === 1 ? rawIds[0] : "";
   };
   const providerRefMatches = (statement, bo) => {
-    const references = [statement && statement.providerRef, statement && statement.ref]
+    const references = [providerIdOf(statement), statement && statement.providerRef, statement && statement.ref]
       .map(identityText).filter((value, index, rows) => value.length >= 6 && rows.indexOf(value) === index);
     return references.some((ref) => referenceInBo(ref, bo));
   };
@@ -413,7 +433,7 @@ const Engine = (() => {
     const absoluteAmount = (row) => ({ ...row, amount: Math.abs(Number(row && row.amount) || 0) });
     stmRecords = stmRecords.map(absoluteAmount).map(statementCustomer);
     boRecords = boRecords.map(absoluteAmount);
-    const t0 = performance.now();
+    const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
     /* กรอบผ่อนปรนสำหรับคู่ exact ที่ไม่กำกวม: ใช้เมื่อ account/provider + ยอด +
@@ -539,23 +559,37 @@ const Engine = (() => {
        - `id`/Ref ธุรกรรม เช่น P2C... (คอลัมน์ A)
        - `_id` ของรายการ Provider เช่น 6aa... (คอลัมน์ O/P/Q ตามแบบไฟล์)
        BO ใส่ `_id` ไว้ภายในหมายเหตุ `Sapan: 6aa...` และอาจมีข้อความอื่นต่อท้าย
-       จับคู่จาก Provider + ทิศทาง + ยอดจริง + `_id` ที่พบในหมายเหตุ โดยต้อง
-       เป็นคู่ 1:1 เท่านั้น จึงปิดได้แม้เวลาห่างและไม่สลับกับยอดซ้ำรายการอื่น */
+       จับคู่จากทิศทาง + ยอดจริง + `_id` ที่พบในหมายเหตุ โดยต้องเป็นคู่ 1:1
+       เท่านั้น `_id` 24 ตัวเป็นตัวตนธุรกรรมหลัก จึงไม่ให้ metadata บริษัทที่
+       upstream ตั้งชื่อไม่ตรงกันขวางคู่จริง และยังไม่สลับกับยอดซ้ำรายการอื่น */
     const xbProviderRefMatched = new Set();
     const xbProviderRefCandidate = (s, b) => xbCompanies.has(auditCompanyOf(s))
-      && s.isPmChannel && b.isPmChannel && sameCompany(s, b)
-      && s.account === b.account && !!s.direction && s.direction === b.direction
+      && s.isPmChannel
+      && !!s.direction && s.direction === b.direction
       && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
-      && identityText(s.providerRef).length >= 6 && referenceInBo(s.providerRef, b);
+      && providerIdOf(s).length >= 6 && referenceInBo(providerIdOf(s), b);
     const xbProviderRefConflict = (s, b) => xbCompanies.has(auditCompanyOf(s))
-      && s.isPmChannel && b.isPmChannel && identityText(s.providerRef).length >= 6
-      && /sapan\s*:\s*[a-f0-9]{24}\b/i.test(String(b.note || ""))
-      && !referenceInBo(s.providerRef, b);
+      && s.isPmChannel && b.isPmChannel && providerIdOf(s).length >= 6
+      && !!(sapanProviderId(b.note) || sapanProviderId(b.raw))
+      && !referenceInBo(providerIdOf(s), b);
     const xbRefCandidates = new Map();
     const xbRefPeers = new Map();
+    const xbBoByProviderRef = new Map();
+    boRecords.forEach((b, i) => {
+      const ids = [...new Set([
+        sapanProviderId(b && b.note),
+        sapanProviderId(b && b.raw),
+        ...(`${b && b.ref || ''}`.toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g) || []),
+      ].filter(Boolean))];
+      ids.forEach((id) => {
+        let rows = xbBoByProviderRef.get(id);
+        if (!rows) xbBoByProviderRef.set(id, (rows = []));
+        rows.push(i);
+      });
+    });
     stmRecords.forEach((s) => {
-      if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !s.providerRef) return;
-      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+      if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !providerIdOf(s)) return;
+      const rows = (xbBoByProviderRef.get(providerIdOf(s)) || [])
         .filter((i) => !boUsed[i] && xbProviderRefCandidate(s, boRecords[i]));
       xbRefCandidates.set(s, rows);
       rows.forEach((i) => {
@@ -1247,7 +1281,7 @@ const Engine = (() => {
     exceptions.sort((a, b) => a.sortSec - b.sortSec);
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
-    const elapsed = Math.round(performance.now() - t0);
+    const elapsed = Math.round(Date.now() - t0);
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
@@ -1288,7 +1322,7 @@ const Engine = (() => {
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
         customer: {
-          bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "" },
+          bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "", providerReference: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw), note: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw) || m.b.note || "" },
           stm: customerEvidence(m.s),
         },
         boAmount: m.b.amount,
@@ -1346,7 +1380,7 @@ const Engine = (() => {
         shift: shiftOf(hour),
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
         customerDetails: {
-          bo: b ? { user: b.memberCode || "", account: b.custAccount || "", name: b.custName || "", reference: b.ref || "", origin: b.via || "", performedBy: b.performedBy || "", note: b.note || "" } : null,
+          bo: b ? { user: b.memberCode || "", account: b.custAccount || "", name: b.custName || "", reference: b.ref || "", providerReference: sapanProviderId(b.note) || sapanProviderId(b.raw), origin: b.via || "", performedBy: b.performedBy || "", note: sapanProviderId(b.note) || sapanProviderId(b.raw) || b.note || "" } : null,
           stm: s ? customerEvidence(s) : null,
         },
         assignee: "audit_som",
