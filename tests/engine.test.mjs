@@ -501,6 +501,20 @@ await (async () => {
   eq('XB provider: different Sapan _id stays open',r.matched,0);
   r=await run([stm],[{...bo,amount:2201}]);
   eq('XB provider: same _id but different amount stays open',r.matched,0);
+
+  const firstRef='6aa95a5bed5cd6e1fd9d25ce',secondRef='6aa95f3e6f7ddd65ebf18744';
+  const duplicateAmountStm=[
+    rec({company:'AUTOPEER',subco:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:500,sec:8*3600,ref:'P2C-FIRST',providerRef:firstRef}),
+    rec({company:'AUTOPEER',subco:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:500,sec:21*3600,ref:'P2C-SECOND',providerRef:secondRef}),
+  ];
+  const duplicateAmountBo=[
+    rec({company:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:500,sec:8*3600+10,note:`Sapan: ${secondRef}`}),
+    rec({company:'3XB',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:500,sec:21*3600+10,note:`Sapan: ${firstRef}`}),
+  ];
+  r=await run(duplicateAmountStm,duplicateAmountBo);
+  eq('XB provider: duplicate amounts close both rows by _id before time matching',r.matched,2);
+  eq('XB provider: duplicate amount rows both use provider id rule',r.matchEvidence.filter(e=>e.method==='xb-provider-_id-note-amount').length,2);
+  eq('XB provider: duplicate amount rows leave no false exception',r.exceptions.length,0);
 })();
 
 await (async () => {

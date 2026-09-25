@@ -197,7 +197,8 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.9\.0-xb-provider-id-note'/, "worker version must identify the XB provider-id/note release");
+assert.match(workerText, /worker_version:'1\.9\.1-xb-provider-id-recovery'/, "worker version must identify the XB provider-id recovery release");
+assert.match(workerText, /xb_provider_id_raw_recovery:true/, "worker summary must identify raw XB provider-id recovery");
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");

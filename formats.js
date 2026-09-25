@@ -487,7 +487,16 @@ const Formats = (() => {
       // `_id` is the provider record id (for example 6aa...). It is distinct
       // from column A `id` (for AUTOPEER withdrawals this is P2C...). BO stores
       // the provider id inside a longer note such as `Sapan: 6aa... | ...`.
-      const providerRef = valExact(f, r, "_id");
+      const exactProviderRef = valExact(f, r, "_id");
+      // n8n's Excel extractor can occasionally return a row without the
+      // original `_id` header even though the cell value is still present.
+      // Recover only a single unambiguous Mongo-style provider id.  Never use
+      // column A `id` (P2C...) as a substitute because that creates false
+      // Sapan matches and leaves the real BO row unmatched.
+      const rawProviderRefs = [...new Set(r.flatMap((cell) =>
+        String(cell ?? "").match(/\b6aa[a-f0-9]{21}\b/gi) || []
+      ))];
+      const providerRef = exactProviderRef || (rawProviderRefs.length === 1 ? rawProviderRefs[0] : "");
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       // ไฟล์รวมของ 7M บางรอบไม่มีคอลัมน์ provider แต่ Ref Id ของ COREPAY ลงท้าย -CP

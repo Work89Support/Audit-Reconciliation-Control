@@ -53,6 +53,16 @@ const xbAutopeerIds = Formats.parse("MC8_PM_AUTOPEER_W_2026-09-16.xlsx", [
 eq("XB AUTOPEER: column A id remains P2C", xbAutopeerIds.records[0]?.sourceId, "P2C-20260916-233303-UIHHCL");
 eq("XB AUTOPEER: transaction reference remains P2C", xbAutopeerIds.records[0]?.transactionRef, "P2C-20260916-233303-UIHHCL");
 eq("XB AUTOPEER: exact _id column is not collapsed into id", xbAutopeerIds.records[0]?.providerRef, "6aaac4bfed5cd6e1fd9d67a6");
+const xbAutopeerLostHeader = Formats.parse("3XB_PM_AUTOPEER_W_2026-09-15.xlsx", [
+  ["id", "amount", "provider", "status", "requestTime", "fee", "transactionId", "bankCode", "bankAccountNo", "bankAccountName", "updateTime", "gatewayId", "site", "transferredAmount", "providerRecord", "submitStatus"],
+  ["P2C-20260915-212400-TEST01", 500, "autopeer", "SUCCESS", "2026-09-15 21:24:00", 0, "1049001", "SCB", "1234567890", "ตัวอย่าง", "2026-09-15 21:24:32", "3xbet_autopeer", "3xbet", 500, "6aa95a5bed5cd6e1fd9d25ce", "SENDED"],
+], "2026-09-15");
+eq("XB AUTOPEER: recover one 6aa provider id when n8n loses _id header", xbAutopeerLostHeader.records[0]?.providerRef, "6aa95a5bed5cd6e1fd9d25ce");
+const xbAutopeerAmbiguousIds = Formats.parse("3XB_PM_AUTOPEER_W_2026-09-15.xlsx", [
+  ["id", "amount", "provider", "status", "requestTime", "updateTime", "transferredAmount", "providerRecord", "otherRecord"],
+  ["P2C-20260915-212400-TEST02", 100, "autopeer", "SUCCESS", "2026-09-15 21:35:00", "2026-09-15 21:35:27", 100, "6aa95f3e6f7ddd65ebf18744", "6aa95a5bed5cd6e1fd9d25ce"],
+], "2026-09-15");
+eq("XB AUTOPEER: ambiguous raw 6aa values do not auto-select", xbAutopeerAmbiguousIds.records[0]?.providerRef, "");
 eq("stamp: ISO พ.ศ. -> ค.ศ.", Formats.stamp("2569-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: ISO ค.ศ. ไม่แตะ", Formats.stamp("2026-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: DD/MM/YY พ.ศ. 2 หลัก", Formats.stamp("19/07/69 10:00").date, "2026-07-19");
