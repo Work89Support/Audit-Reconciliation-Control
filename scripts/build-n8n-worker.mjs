@@ -204,7 +204,7 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode.replace(
   "1.9.2-xb-sapan-raw-id-recovery",
-  "1.9.7-xb-sapan-orphan-lifecycle",
+  "1.9.8-xb-sapan-evidence-lifecycle",
 );
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
@@ -325,14 +325,21 @@ const nodes = [
   }), executeOnce: true, alwaysOutputData: true },
   { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;
 const runId=$('เตรียมบันทึก Exception').first().json.run_id;
-const evidence=(source.result?.summary?.match_evidence||[]).filter(e=>e?.method==='xb-provider-_id-note-amount');
+const evidence=(source.result?.summary?.match_evidence||[]);
 const exact=/\\b6aa[a-f0-9]{21}\\b/ig;
 const clean=v=>String(v||'').trim().toLowerCase();
 const dir=v=>/ถอน|withdraw/i.test(String(v||''))?'withdraw':/ฝาก|deposit/i.test(String(v||''))?'deposit':clean(v);
 const byId=new Map();
 for(const e of evidence){
   const stm=clean(e?.customer?.stm?.providerReference),bo=clean(e?.customer?.bo?.providerReference);
-  const ids=[stm,bo].filter(id=>/^6aa[a-f0-9]{21}$/.test(id));
+  // The pair may have been selected earlier by another deterministic rule
+  // (for example a unique amount/time pair).  Lifecycle closure must depend on
+  // the evidence itself, not on the label of the matcher that happened to win.
+  // Require the exact provider id on both sides, except for pairs explicitly
+  // produced by the dedicated XB provider-id matcher.
+  const exactPair=/^6aa[a-f0-9]{21}$/.test(stm)&&stm===bo;
+  const ids=exactPair?[stm]:(e?.method==='xb-provider-_id-note-amount'||e?.xbProviderRefMatched)
+    ?[stm,bo].filter(id=>/^6aa[a-f0-9]{21}$/.test(id)):[];
   for(const id of new Set(ids)){
     const rows=byId.get(id)||[];
     rows.push({id,company:clean(e.company),direction:dir(e.direction),amount:Number(e.amount)});
@@ -363,8 +370,8 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
   { ...http("audit-close-previous-sapan", "Supabase: บันทึก Audit ปิด Sapan", [2630, -40], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/audit_log", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:String($json.id),detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id||null,rule:'xb-exact-sapan-provider-id'}}) }}", options: { response: { response: {} } },
-  }), alwaysOutputData: true },
+    jsonBody: "={{ (()=>{const run=$('เตรียมบันทึก Exception').first().json.run_id;return JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:String($json.id||''),detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:run,rule:'xb-exact-sapan-provider-id'}});})() }}", options: { response: { response: {} } },
+  }), alwaysOutputData: true, onError: "continueRegularOutput" },
   { ...http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
