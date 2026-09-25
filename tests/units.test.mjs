@@ -46,6 +46,13 @@ const serialPm = Formats.parse("3X_PM_AUTOPEER_D_2026-09-06.xlsx", [
 eq("PM raw Excel: successful row retained", serialPm.records.length, 1);
 eq("PM raw Excel: payment time retained", serialPm.records[0].sec, 18 * 3600 + 48 * 60 + 49);
 eq("PM raw Excel: failed payment excluded", serialPm.dropped["รายการไม่สำเร็จ (PM: create_failed)"], 1);
+const xbAutopeerIds = Formats.parse("MC8_PM_AUTOPEER_W_2026-09-16.xlsx", [
+  ["id", "amount", "provider", "status", "requestTime", "fee", "transactionId", "bankCode", "bankAccountNo", "bankAccountName", "updateTime", "gatewayId", "site", "transferredAmount", "_id", "submitStatus"],
+  ["P2C-20260916-233303-UIHHCL", 2500, "autopeer", "PARTIAL", "2026-09-16 23:33:03", 25, "2718608", "KBANK", "5732081463", "ตัวอย่าง", "2026-09-16 23:53:38", "3xwin_autopeer", "3xwin", 2200, "6aaac4bfed5cd6e1fd9d67a6", "SENDED"],
+], "2026-09-16");
+eq("XB AUTOPEER: column A id remains P2C", xbAutopeerIds.records[0]?.sourceId, "P2C-20260916-233303-UIHHCL");
+eq("XB AUTOPEER: transaction reference remains P2C", xbAutopeerIds.records[0]?.transactionRef, "P2C-20260916-233303-UIHHCL");
+eq("XB AUTOPEER: exact _id column is not collapsed into id", xbAutopeerIds.records[0]?.providerRef, "6aaac4bfed5cd6e1fd9d67a6");
 eq("stamp: ISO พ.ศ. -> ค.ศ.", Formats.stamp("2569-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: ISO ค.ศ. ไม่แตะ", Formats.stamp("2026-07-19 10:00:00").date, "2026-07-19");
 eq("stamp: DD/MM/YY พ.ศ. 2 หลัก", Formats.stamp("19/07/69 10:00").date, "2026-07-19");

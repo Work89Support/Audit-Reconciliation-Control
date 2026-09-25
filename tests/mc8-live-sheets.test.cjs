@@ -1,6 +1,8 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const {rowsOf,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
+const schema=require('../mc8-sheet-schema.js');
+delete globalThis.MC8SheetSchema;
+const {rowsOf,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,tableView,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
 const input={run:{id:'r1',matched:1,stm_count:999,bo_count:999,jobStatus:'needs_review',summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',amount:355,stmAmount:355,boAmount:355,bo:{fileId:'bo',date:'2026-09-16',sec:3600,row:2},stm:{fileId:'pm',date:'2026-09-16',sec:3700,row:9},customer:{bo:{reference:'ref'},stm:{reference:'ref'}}}]}},complete:true,cases:[{id:'case1',code:'EX-1',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'cross_day'},{id:'case1-warning',code:'EX-2',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'large_amount'}]};
 const before=JSON.stringify(input), rows=rowsOf(input);
 assert.equal(rows.length,2);assert.equal(rows[0].boTime,'2026-09-16 01:00:00');
@@ -21,6 +23,9 @@ const staleRows=rowsOf({run:{summary:{match_evidence:[stalePair]}},cases:[
 ]},'PS8');
 assert.equal(staleRows.length,1,'all-company workbook view must not repeat matched evidence as two stale cases');
 assert.equal(staleRows[0].isPair,true);
+const xbIdView=tableView(rowsOf({run:{summary:{match_evidence:[{company:'MC8',account:'AUTOPEER',direction:'withdraw',boAmount:2200,stmAmount:2200,bo:{date:'2026-09-16',sec:80000},stm:{date:'2026-09-16',sec:100,timeColumn:'updateTime',amountColumn:'transferredAmount'},customer:{bo:{reference:'2718608',note:'Sapan: 6aaac4bfed5cd6e1fd9d67a6'},stm:{reference:'P2C-20260916-233303-UIHHCL',transactionReference:'P2C-20260916-233303-UIHHCL',sourceId:'P2C-20260916-233303-UIHHCL',providerReference:'6aaac4bfed5cd6e1fd9d67a6'}}}] }},cases:[]},'MC8'),'MC8','2026-09-16',true,'AT ถ',schema);
+assert.equal(xbIdView.rows[0][xbIdView.headers.indexOf('id')],'P2C-20260916-233303-UIHHCL','XB AT column A id must show P2C');
+assert.equal(xbIdView.rows[0][xbIdView.headers.indexOf('_id')],'6aaac4bfed5cd6e1fd9d67a6','XB AT _id must show provider 6aa id');
 assert.equal(JSON.stringify(input),before);
 assert.equal(columnMatch('ปิดได้ทันที','ปิดได้'),true);
 assert.equal(columnMatch('MC8',{values:['MC8','PS8']}),true);

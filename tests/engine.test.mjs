@@ -489,6 +489,21 @@ await (async () => {
 })();
 
 await (async () => {
+  const providerRef='6aaac4bfed5cd6e1fd9d67a6';
+  const stm=rec({company:'AUTOPEER',subco:'MC8',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:2200,sec:100,ref:'P2C-20260916-233303-UIHHCL',transactionRef:'P2C-20260916-233303-UIHHCL',sourceId:'P2C-20260916-233303-UIHHCL',providerRef});
+  const bo=rec({company:'MC8',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:2200,sec:80000,ref:'2718608',note:`ตรวจแล้ว Sapan: ${providerRef} | โอนจริง 2500 สำเร็จ 2200 คืน 300`});
+  let r=await run([stm],[bo]);
+  eq('XB provider: _id inside longer Sapan note closes despite time difference',r.matched,1);
+  eq('XB provider: evidence records _id/Sapan method',r.matchEvidence[0]?.method,'xb-provider-_id-note-amount');
+  eq('XB provider: evidence preserves P2C transaction id',r.matchEvidence[0]?.customer?.stm?.transactionReference,'P2C-20260916-233303-UIHHCL');
+  eq('XB provider: evidence preserves 6aa provider _id',r.matchEvidence[0]?.customer?.stm?.providerReference,providerRef);
+  r=await run([stm],[{...bo,note:'Sapan: 6aaac4bfed5cd6e1fd9d67ff | ข้อความอื่น'}]);
+  eq('XB provider: different Sapan _id stays open',r.matched,0);
+  r=await run([stm],[{...bo,amount:2201}]);
+  eq('XB provider: same _id but different amount stays open',r.matched,0);
+})();
+
+await (async () => {
   const reference='P2C-20260920-120000-ABC123';
   const stm=rec({company:'7M',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:900,sec:60,memberCode:'seven-user',ref:reference});
   const bo=rec({company:'7M',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:900,sec:80000,memberCode:'seven-user',ref:'',note:`P2P สำเร็จจากรายการ ${reference}`});

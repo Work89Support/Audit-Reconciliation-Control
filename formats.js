@@ -16,6 +16,11 @@ const Formats = (() => {
       .replace(/[\s_./\\:()\[\]-]+/g, "")
       .trim()
       .toLowerCase();
+  // Keep a second, exact header key because `norm()` intentionally removes
+  // underscores. Provider exports commonly contain both `id` and `_id`; if we
+  // index only by `norm()` those two columns collapse and `_id` incorrectly
+  // resolves to column A.
+  const exactHeader = (s) => String(s ?? "").replace(/​/g, "").trim().toLowerCase();
 
   const HEADER_ALIASES = {
     "รหัส": ["รหัส", "transactionid", "id"],
@@ -107,9 +112,12 @@ const Formats = (() => {
       if (cells.length < 3) continue;
       if (anyCol(cells, PM_DATE) && anyCol(cells, PM_STATUS) && anyCol(cells, [...PM_AMT_DEP, ...PM_AMT_WIT])) {
         const idx = {};
+        const exactIdx = {};
         (rows[i] || []).forEach((raw, j) => {
           const k = norm(raw);
           if (k && idx[k] === undefined) idx[k] = j;
+          const exact = exactHeader(raw);
+          if (exact && exactIdx[exact] === undefined) exactIdx[exact] = j;
         });
         // ชื่อบริษัทย่อยจากแถวหัวเรื่องด้านบน (เช่น UFABET7M)
         let title = "";
@@ -119,7 +127,7 @@ const Formats = (() => {
         }
         // รายงานจาก Provider คือ statement ฝั่ง PM ที่ต้องนำไปชนกับ BO
         // ไม่ใช่ BO เอง มิฉะนั้นระบบจะเอารายงานทั้งสองฝั่งไปรวมกันและแจ้ง missing ผิดจำนวนมาก
-        return { spec: { code: "pm_provider", label: "รายการ PM (payment gateway)", side: "stm" }, headerIdx: i, idx, title };
+        return { spec: { code: "pm_provider", label: "รายการ PM (payment gateway)", side: "stm" }, headerIdx: i, idx, exactIdx, title };
       }
     }
     return null;
@@ -133,11 +141,14 @@ const Formats = (() => {
       for (const spec of SPECS) {
         if (spec.need.every((w) => hasHeader(cells, w))) {
           const idx = {};
+          const exactIdx = {};
           (rows[i] || []).forEach((raw, j) => {
             const k = norm(raw);
             if (k && idx[k] === undefined) idx[k] = j;
+            const exact = exactHeader(raw);
+            if (exact && exactIdx[exact] === undefined) exactIdx[exact] = j;
           });
-          return { spec, headerIdx: i, idx };
+          return { spec, headerIdx: i, idx, exactIdx };
         }
       }
     }
@@ -153,6 +164,10 @@ const Formats = (() => {
   };
   const val = (f, r, name) => {
     const c = col(f, name);
+    return c === undefined ? "" : String(r[c] ?? "").trim();
+  };
+  const valExact = (f, r, name) => {
+    const c = f.exactIdx && f.exactIdx[exactHeader(name)];
     return c === undefined ? "" : String(r[c] ?? "").trim();
   };
   // อ่านค่าจากคอลัมน์แรกที่เจอในรายชื่อ (สำหรับไฟล์ PM ที่แต่ละเจ้าตั้งชื่อคอลัมน์ต่างกัน)
@@ -467,6 +482,12 @@ const Formats = (() => {
       const status = valAny(f, r, ["status", "สถานะ"]).toLowerCase();
       const submitStatus = valAny(f, r, ["submitStatus", "สถานะส่งจ่าย"]).toLowerCase();
       const id = valAny(f, r, ["id", "OrderId", "Ref Id", "Ref", "reference"]);
+      const sourceId = valExact(f, r, "id") || id;
+      const transactionRef = valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]);
+      // `_id` is the provider record id (for example 6aa...). It is distinct
+      // from column A `id` (for AUTOPEER withdrawals this is P2C...). BO stores
+      // the provider id inside a longer note such as `Sapan: 6aa... | ...`.
+      const providerRef = valExact(f, r, "_id");
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
       const provRaw = valAny(f, r, ["provider"]).toLowerCase();
       // ไฟล์รวมของ 7M บางรอบไม่มีคอลัมน์ provider แต่ Ref Id ของ COREPAY ลงท้าย -CP
@@ -558,7 +579,10 @@ const Formats = (() => {
         custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า", "bankAccountNo", "เลขบัญชี"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
         custBank: valAny(f, r, ["ชื่อธนาคารสมาชิก", "ธนาคารลูกค้า", "ธนาคาร", "ธนาคารต้นทาง"]),
-        ref: valAny(f, r, ["OrderId", "Ref", "Ref Id", "reference", "id"]),
+        ref: transactionRef,
+        sourceId,
+        transactionRef,
+        providerRef,
         status,
         partial,
         submitStatus,

@@ -21,7 +21,9 @@ const Engine = (() => {
   function customerEvidence(row) {
     return { account: row.custAccount || '', last4: row.custAccountLast4 || '',
       bank: row.custBank || '', name: row.custName || '', user: row.memberCode || '',
-      reference: row.ref || '', description: row.customerDescription || '',
+      reference: row.ref || '', transactionReference: row.transactionRef || row.ref || '',
+      providerReference: row.providerRef || '', sourceId: row.sourceId || '',
+      description: row.customerDescription || '',
       identitySource: row.customerIdentitySource || '' };
   }
   /* ---------------- CSV parser (รองรับ quote และ \r\n) ---------------- */
@@ -359,12 +361,17 @@ const Engine = (() => {
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const key2 = (a, amt) => a + "|" + amt.toFixed(2);
   const identityText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
-  const providerRefMatches = (statement, bo) => {
-    const ref = identityText(statement && statement.ref);
+  const referenceInBo = (reference, bo) => {
+    const ref = identityText(reference);
     if (ref.length < 6) return false;
     const boRef = identityText(bo && bo.ref);
     const boNote = identityText(bo && bo.note);
     return boRef === ref || boRef.includes(ref) || boNote.includes(ref);
+  };
+  const providerRefMatches = (statement, bo) => {
+    const references = [statement && statement.providerRef, statement && statement.ref]
+      .map(identityText).filter((value, index, rows) => value.length >= 6 && rows.indexOf(value) === index);
+    return references.some((ref) => referenceInBo(ref, bo));
   };
   const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
   const canonicalDirection = (v) => (/ถอน|withdraw/i.test(String(v || "")) ? "withdraw" : /ฝาก|deposit/i.test(String(v || "")) ? "deposit" : String(v || ""));
@@ -464,7 +471,8 @@ const Engine = (() => {
     const exceptions = [];
     const stmLeft = [];
     let timeDiffCount = 0;
-    const timeVarianceAutoPassCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9", "AT4", "FR8", "SK8"]);
+    const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
+    const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
     const auditCompanyOf = (r) => {
       /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
       const raw = String(r && (r.subco || r.company) || "").trim().toUpperCase();
@@ -525,6 +533,44 @@ const Engine = (() => {
       boUsed[i] = 1;
       internalTransferMatched.add(s);
       matched.push({ s, b, dt: timeDistance(s, b), internalTransferMatch: true });
+    });
+
+    /* PM เครือ XB โดยเฉพาะฝั่งถอนเก็บตัวตนธุรกรรมสองค่าแยกกัน:
+       - `id`/Ref ธุรกรรม เช่น P2C... (คอลัมน์ A)
+       - `_id` ของรายการ Provider เช่น 6aa... (คอลัมน์ O/P/Q ตามแบบไฟล์)
+       BO ใส่ `_id` ไว้ภายในหมายเหตุ `Sapan: 6aa...` และอาจมีข้อความอื่นต่อท้าย
+       จับคู่จาก Provider + ทิศทาง + ยอดจริง + `_id` ที่พบในหมายเหตุ โดยต้อง
+       เป็นคู่ 1:1 เท่านั้น จึงปิดได้แม้เวลาห่างและไม่สลับกับยอดซ้ำรายการอื่น */
+    const xbProviderRefMatched = new Set();
+    const xbProviderRefCandidate = (s, b) => xbCompanies.has(auditCompanyOf(s))
+      && s.isPmChannel && b.isPmChannel && sameCompany(s, b)
+      && s.account === b.account && !!s.direction && s.direction === b.direction
+      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+      && identityText(s.providerRef).length >= 6 && referenceInBo(s.providerRef, b);
+    const xbProviderRefConflict = (s, b) => xbCompanies.has(auditCompanyOf(s))
+      && s.isPmChannel && b.isPmChannel && identityText(s.providerRef).length >= 6
+      && /sapan\s*:\s*[a-f0-9]{24}\b/i.test(String(b.note || ""))
+      && !referenceInBo(s.providerRef, b);
+    const xbRefCandidates = new Map();
+    const xbRefPeers = new Map();
+    stmRecords.forEach((s) => {
+      if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !s.providerRef) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => !boUsed[i] && xbProviderRefCandidate(s, boRecords[i]));
+      xbRefCandidates.set(s, rows);
+      rows.forEach((i) => {
+        let peers = xbRefPeers.get(i);
+        if (!peers) xbRefPeers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    stmRecords.forEach((s) => {
+      const rows = xbRefCandidates.get(s) || [];
+      if (rows.length !== 1 || (xbRefPeers.get(rows[0]) || []).length !== 1 || boUsed[rows[0]]) return;
+      const i = rows[0], b = boRecords[i];
+      boUsed[i] = 1;
+      xbProviderRefMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), xbProviderRefMatch: true });
     });
 
     /* PM ของเครือ 7M ยืนยันคู่ด้วย 3 จุดจากข้อมูลจริง ไม่ผูกกับถ้อยคำรอบ Ref:
@@ -830,6 +876,7 @@ const Engine = (() => {
     };
     const identityCandidate = (s, b) => sameCompany(s, b) && !!String(s.company || s.subco || "").trim()
       && !isSys123PmPair(s, b)
+      && !xbProviderRefConflict(s, b)
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction && s.account === b.account
       && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
@@ -844,6 +891,7 @@ const Engine = (() => {
     const identityAmbiguous = new Set();
     // Count on original inputs on BOTH sides, before consumption, to avoid order-dependent matches.
     for (const s of stmRecords) {
+      if (xbProviderRefMatched.has(s)) continue;
       const candidates = (exactIdx.get(key2(s.account, s.amount)) || []).filter(i => identityCandidate(s, boRecords[i]));
       if (!candidates.length) continue;
       const i = candidates[0], b = boRecords[i];
@@ -860,6 +908,7 @@ const Engine = (() => {
     }
     const dirOK = (s, b) => {
       if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
+      if (xbProviderRefConflict(s, b)) return false;
       if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
           && providerIdentityConflict(s, b)) return false;
       /* คู่ PM 7M ที่ปลอดภัยถูกใช้ไปแล้วใน provider identity / reciprocal
@@ -890,6 +939,7 @@ const Engine = (() => {
       10000,
       (s) => {
         if (internalTransferMatched.has(s)) return;
+        if (xbProviderRefMatched.has(s)) return;
         if (providerIdentityMatched.has(s)) return;
         if (providerNearTimeMatched.has(s)) return;
         if (sys123ProviderMatched.has(s)) return;
@@ -1061,6 +1111,7 @@ const Engine = (() => {
     });
     const rescueEligible = (s, b) => sameCompany(s, b)
       && !!String(s.company || s.subco || "").trim()
+      && !xbProviderRefConflict(s, b)
       && !(['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel)
       && !isSys123PmPair(s, b)
       && s.date === b.date && isIsoDate(s.date)
@@ -1200,6 +1251,7 @@ const Engine = (() => {
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
+      xbProviderRefMatched: matched.filter(m => m.xbProviderRefMatch).length,
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
@@ -1226,8 +1278,9 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         internalTransferMatched: !!m.internalTransferMatch,
+        xbProviderRefMatched: !!m.xbProviderRefMatch,
         providerIdentityMatched: !!m.providerIdentityMatch,
         providerNearTimeMatched: !!m.providerNearTimeMatch,
         sys123ProviderMatched: !!m.sys123ProviderMatch,
