@@ -363,7 +363,7 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
   { ...http("audit-close-previous-sapan", "Supabase: บันทึก Audit ปิด Sapan", [2630, -40], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/audit_log", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:$json.id,detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id,provider_id:$('เตรียมปิดเคส Sapan รอบก่อน').item.json.provider_id,rule:'xb-exact-sapan-provider-id'}}) }}", options: { response: { response: {} } },
+    jsonBody: "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:String($json.id),detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id||null,rule:'xb-exact-sapan-provider-id'}}) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("finish", "Supabase: ปิดงานสำเร็จ", [2300, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_daily_recon_job", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",

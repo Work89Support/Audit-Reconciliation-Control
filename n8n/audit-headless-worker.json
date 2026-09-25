@@ -972,7 +972,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:$json.id,detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id,provider_id:$('เตรียมปิดเคส Sapan รอบก่อน').item.json.provider_id,rule:'xb-exact-sapan-provider-id'}}) }}",
+        "jsonBody": "={{ JSON.stringify({actor:'system:xb-sapan-id-v1',action:'exception_auto_closed_by_exact_provider_id',entity:'exception',target:String($json.id),detail:'รอบใหม่จับคู่ exact Sapan provider id จึงปิดเคสเดิมโดยเก็บประวัติ',meta:{closing_run_id:$json.closing_run_id||null,rule:'xb-exact-sapan-provider-id'}}) }}",
         "options": {
           "response": {
             "response": {}
