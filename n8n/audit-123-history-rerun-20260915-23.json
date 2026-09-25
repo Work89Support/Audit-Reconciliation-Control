@@ -1,0 +1,86 @@
+{
+  "name": "Audit - 123 Historical Rerun 2026-09-15 to 23",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual",
+      "name": "เริ่มรันย้อนหลัง 123",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-620, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?select=id,business_date,company,status,is_archived&business_date=gte.2026-09-15&business_date=lte.2026-09-23&company=in.(AT4,FR8,SK8)&is_archived=eq.false&order=business_date.asc,company.asc",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": { "response": { "response": {} } }
+      },
+      "id": "list-jobs",
+      "name": "Supabase: อ่านงานย้อนหลัง 123",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-380, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=$input.all().map(item=>item.json); const rows=raw.flatMap(value=>Array.isArray(value)?value:Array.isArray(value?.data)?value.data:[value]).filter(row=>row?.id&&!row.is_archived); if(!rows.length) throw new Error('ไม่พบงาน AT4/FR8/SK8 วันที่ 2026-09-15 ถึง 2026-09-23'); return rows.map(row=>({json:{job_id:row.id,business_date:row.business_date,company:row.company,previous_status:row.status}}));"
+      },
+      "id": "prepare-jobs",
+      "name": "เตรียมงาน 123 ทีละบริษัทและวัน",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-140, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/retry_daily_recon_job",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_job_id: $json.job_id }) }}",
+        "options": { "response": { "response": {} } }
+      },
+      "id": "retry-jobs",
+      "name": "Supabase: ส่งงาน 123 เข้าคิวใหม่",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [120, 120],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.all().map(item=>item.json).filter(row=>row?.id); return [{json:{queued:rows.length,date_from:'2026-09-15',date_to:'2026-09-23',companies:['AT4','FR8','SK8'],jobs:rows.map(row=>({id:row.id,business_date:row.business_date,company:row.company,status:row.status,rerun_requested_at:row.rerun_requested_at}))}}];"
+      },
+      "id": "summary",
+      "name": "สรุปงาน 123 ที่เข้าคิว",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 120]
+    }
+  ],
+  "connections": {
+    "เริ่มรันย้อนหลัง 123": { "main": [[{ "node": "Supabase: อ่านงานย้อนหลัง 123", "type": "main", "index": 0 }]] },
+    "Supabase: อ่านงานย้อนหลัง 123": { "main": [[{ "node": "เตรียมงาน 123 ทีละบริษัทและวัน", "type": "main", "index": 0 }]] },
+    "เตรียมงาน 123 ทีละบริษัทและวัน": { "main": [[{ "node": "Supabase: ส่งงาน 123 เข้าคิวใหม่", "type": "main", "index": 0 }]] },
+    "Supabase: ส่งงาน 123 เข้าคิวใหม่": { "main": [[{ "node": "สรุปงาน 123 ที่เข้าคิว", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true }
+}
