@@ -216,6 +216,10 @@ const deployedReconcileCode = reconcileCode
     "1.9.22-xb-sapan-all-case-close",
   )
   .replace(
+    "1.9.22-xb-sapan-all-case-close",
+    "1.9.23-xb-sapan-company-scope",
+  )
+  .replace(
     "xb_provider_signed_amount_close:true,",
     "xb_provider_signed_amount_close:true,xb_provider_duplicate_rows_suppressed:result.xbProviderDuplicateRowsSuppressed||0,",
   );
@@ -333,7 +337,7 @@ const nodes = [
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
   }), alwaysOutputData: true },
   { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2190, 20], {
-    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+run+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=in.(time_diff,missing_stm,missing_bo,cross_day,amount_diff)&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
+    url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const run=$('เตรียมบันทึก Exception').first().json.run_id;const aliases=['3XB','3X','3xbet','3xb'];const company=aliases.includes(String(j.company||'').trim())?'&company=in.('+aliases.map(encodeURIComponent).join(',')+')':'&company=eq.'+encodeURIComponent(j.company);return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+run+company+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=in.(time_diff,missing_stm,missing_bo,cross_day,amount_diff)&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
     authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }), executeOnce: true, alwaysOutputData: true },
   { parameters: { jsCode: `const source=$('กระทบยอดและสร้าง Exception').first().json;

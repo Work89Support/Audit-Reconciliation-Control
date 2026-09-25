@@ -203,10 +203,10 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.22-xb-sapan-all-case-close'/, "worker version must identify exact Sapan closure across stale exception classes");
+assert.match(workerText, /worker_version:'1\.9\.23-xb-sapan-company-scope'/, "worker version must identify company-scoped exact Sapan closure");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
-assert.doesNotMatch(workerText, /exceptions\?business_date=eq\.[^\"']*company=eq\./, "historic labels must not prevent exact Sapan evidence from closing a stale case");
+assert.match(workerText, /company=in\.\(/, "3XB Sapan history query must include equivalent legacy company labels without consuming the API row cap on unrelated companies");
 assert.match(workerText, /run_id=neq\./, "Sapan lifecycle must include orphan cases from failed prior runs while excluding the current run");
 assert.doesNotMatch(workerText, /exceptions\?run_id=eq\.'\+old/, "Sapan lifecycle must not be limited to job.last_run_id");
 assert.match(workerText, /xb-exact-sapan-provider-id/, "worker must close prior false-open cases using the exact Sapan provider id rule");
