@@ -201,7 +201,9 @@ assert.ok(!worker.nodes.some((node) => node.name === "Supabase: ทำเคร�
 assert.match(workerText, /n8n-cloud-worker/);
 assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions for BO rows already matched by the engine");
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
-assert.match(workerText, /worker_version:'1\.9\.20-xb-sapan-history-close'/, "worker version must identify the XB Sapan historic-case closure release");
+assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
+assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
+assert.match(workerText, /worker_version:'1\.9\.21-xb-no-stale-duplicate'/, "worker version must identify the stale duplicate prevention release");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
 assert.doesNotMatch(workerText, /exceptions\?business_date=eq\.[^\"']*company=eq\./, "historic labels must not prevent exact Sapan evidence from closing a stale case");

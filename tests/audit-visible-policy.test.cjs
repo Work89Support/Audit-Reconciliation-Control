@@ -28,6 +28,14 @@ const staleMatchedCases=[
 assert.deepEqual(policy.filter(staleMatchedCases,[matchedPair]).map(row=>row.id),['real-missing'],'stored matched evidence must suppress both stale missing halves only');
 assert.deepEqual(policy.filter(staleMatchedCases,[{...matchedPair,company:''}]).map(row=>row.id),['real-missing'],'older evidence without company must use the single-company workspace scope');
 
+const sapanPair={company:'3XB',account:'AUTOPEER',direction:'withdraw',boAmount:100,stmAmount:100,
+  bo:{date:'2026-09-15',sec:79750},stm:{date:'2026-09-15',sec:79750},
+  customer:{bo:{note:'Sapan: 6aa95f3e6f7ddd65ebf18744'},stm:{providerReference:'6aa95f3e6f7ddd65ebf18744'}}};
+const staleWrongTime={id:'stale-sapan',company:'3XB',account:'AUTOPEER',direction:'ถอน',ex_type:'missing_stm',system_amount:100,
+  bo_date:'2026-09-15',bo_time:'21:35:00',bo_raw:'Sapan: 6aa95f3e6f7ddd65ebf18744 | โอนจริง 100 สำเร็จ 100',
+  customer_details:{bo:{note:'Sapan: 6aa95f3e6f7ddd65ebf18744 | โอนจริง 100 สำเร็จ 100'}}};
+assert.deepEqual(policy.filter([staleWrongTime],[sapanPair]),[],'exact XB provider id and amount must suppress a stale case even when its old time differs');
+
 const view=ReviewOverview.model({run:{matched:0,summary:{match_evidence:[]}},cases:historical,confirmations:[]});
 assert.deepEqual(view.rows.map(row=>row.id),['missing']);
 assert.equal(view.counts.review,1);

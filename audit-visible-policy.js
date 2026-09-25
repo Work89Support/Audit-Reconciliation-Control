@@ -21,17 +21,21 @@
     return hit?`${day}|${Number(hit[1])*3600+Number(hit[2])*60+Number(hit[3]||0)}`:'';
   }
   function clean(value){return String(value||'').trim().toUpperCase().replace(/\s+/g,' ');}
+  function providerReference(value){
+    const hit=String(value||'').match(/\b6aa[a-f0-9]{21}\b/i);
+    return hit?hit[0].toUpperCase():'';
+  }
   function detailOf(row,side){return row?.customer_details?.[side]||row?.customer?.[side]||{};}
   function sideOfMissing(row){const type=typeOf(row);return type==='missing_stm'?'bo':type==='missing_bo'?'stm':'';}
   function caseFingerprint(row,side){
     const detail=detailOf(row,side),amount=side==='bo'?row?.system_amount:row?.bank_amount;
     const date=row?.[`${side}_date`]||row?.business_date||row?.date;
     const time=row?.[`${side}_time`]||row?.occurred_at||row?.time;
-    return {company:companyOf(row),account:clean(row?.account),direction:directionOf(row?.direction),amount:cents(amount),stamp:timeOf(date,time),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
+    return {company:companyOf(row),account:clean(row?.account),direction:directionOf(row?.direction),amount:cents(amount),stamp:timeOf(date,time),providerReference:providerReference(detail.providerReference||detail.note||row?.bo_raw||row?.stm_raw),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
   }
   function evidenceFingerprint(pair,side){
     const detail=detailOf(pair,side),source=pair?.[side]||{},amount=side==='bo'?(pair?.boAmount??pair?.amount):(pair?.stmAmount??pair?.amount);
-    return {company:companyOf(pair),account:clean(pair?.account),direction:directionOf(pair?.direction),amount:cents(amount),stamp:timeOf(source.date,'',source.sec),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
+    return {company:companyOf(pair),account:clean(pair?.account),direction:directionOf(pair?.direction),amount:cents(amount),stamp:timeOf(source.date,'',source.sec),providerReference:providerReference(detail.providerReference||detail.note||source.raw),reference:clean(detail.reference),customerAccount:clean(detail.account),tail:clean(detail.tail||detail.last4),bank:clean(detail.bank),name:clean(detail.name),user:clean(detail.user)};
   }
   function sameIdentity(a,b){
     const fields=['reference','customerAccount','tail','bank','name','user'];
@@ -41,6 +45,10 @@
   function samePersistedSide(a,b){
     if(!a.company||a.company!==b.company||!a.account||a.account!==b.account)return false;
     if(!a.direction||a.direction!==b.direction||a.amount===null||a.amount!==b.amount)return false;
+    // The XB provider id is the authoritative identity. It remains valid even
+    // when a legacy case stored the wrong BO time, which is the exact failure
+    // mode that previously left matched Sapan rows open in the UI/export.
+    if(a.providerReference&&b.providerReference)return a.providerReference===b.providerReference;
     if(!a.stamp||a.stamp!==b.stamp)return false;
     /* Exact date/time/account/amount is the base transaction fingerprint. When
        either side retains customer/reference fields, at least one identity field
@@ -74,7 +82,7 @@
     });
   }
   function filter(rows,evidence){return removeMatchedMissing(rows,evidence);}
-  const api=Object.freeze({version:'actionable-audit-v4',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
+  const api=Object.freeze({version:'actionable-audit-v5',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
