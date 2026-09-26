@@ -80,6 +80,10 @@ assert.ok(src.includes("await opts.onCase(liveCase,company)"),'real-case buttons
 assert.ok(src.includes('onCaseError'),'real-case buttons must surface load or permission failures');
 assert.ok(!src.includes('entries.slice(page*50'),'live workbook must keep every filtered row in one scrollable table');
 assert.ok(src.includes('แสดงครบ ${shown.length}'),'screen must explain that all filtered rows are shown on one page');
+assert.ok(src.includes('id="mc8-live-wrap-text"'),'workbook must expose a show-all-text control');
+assert.ok(src.includes('data-live-text-cell'),'long cells must be individually expandable');
+assert.ok(src.includes('ช่อง “หมายเหตุ/โน้ต” อ่านจากช่องหมายเหตุในไฟล์ BO ต้นทาง'),'screen must explain BO note provenance');
+assert.ok(!src.includes("'โน้ต':boNote||bo.reference||row.reason||''"),'empty BO notes must not be replaced by reference or system reason');
 const nodes=new Map();const container={innerHTML:'',querySelector(s){if(!nodes.has(s))nodes.set(s,{});return nodes.get(s);},querySelectorAll(){return [];}};
 mount(container,{signedIn:()=>false,date:'2026-09-16',onLocal(){},load(){throw Error('should never load');}});
 assert.ok(container.innerHTML.includes('กรุณาเข้าสู่ระบบจริง'));
