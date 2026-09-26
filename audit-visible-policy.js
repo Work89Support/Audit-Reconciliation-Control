@@ -81,8 +81,29 @@
       return false;
     });
   }
-  function filter(rows,evidence){return removeMatchedMissing(rows,evidence);}
-  const api=Object.freeze({version:'actionable-audit-v5',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,filter});
+  function stableTransactionReference(row,side){
+    const detail=detailOf(row,side);
+    const value=detail.reference||row?.[`${side}_reference`]||row?.[`${side}_ref`]||'';
+    const text=clean(value);
+    return text&&!/^EX-/i.test(text)?text:'';
+  }
+  function removeDuplicateTransactions(rows){
+    const seen=new Set();
+    return (Array.isArray(rows)?rows:[]).filter(row=>{
+      // Closed history remains auditable. Only collapse repeated active projections
+      // of the same persisted BO/STM transaction.
+      if(String(row?.status||'').toLowerCase()==='closed')return true;
+      const boRef=stableTransactionReference(row,'bo'),stmRef=stableTransactionReference(row,'stm');
+      const ref=boRef?`BO|${boRef}`:stmRef?`STM|${stmRef}`:'';
+      if(!ref)return true;
+      const key=[companyOf(row),clean(row?.account),directionOf(row?.direction),ref].join('|');
+      if(seen.has(key))return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  function filter(rows,evidence){return removeDuplicateTransactions(removeMatchedMissing(rows,evidence));}
+  const api=Object.freeze({version:'actionable-audit-v6',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,removeDuplicateTransactions,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

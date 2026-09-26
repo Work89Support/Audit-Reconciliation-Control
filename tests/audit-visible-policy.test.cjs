@@ -36,6 +36,16 @@ const staleWrongTime={id:'stale-sapan',company:'3XB',account:'AUTOPEER',directio
   customer_details:{bo:{note:'Sapan: 6aa95f3e6f7ddd65ebf18744 | โอนจริง 100 สำเร็จ 100'}}};
 assert.deepEqual(policy.filter([staleWrongTime],[sapanPair]),[],'exact XB provider id and amount must suppress a stale case even when its old time differs');
 
+const duplicatedTransactions=[
+  {id:'bo-current',company:'3XB',account:'AZPAY',direction:'ถอน',status:'open',ex_type:'missing_stm',system_amount:150000,customer_details:{bo:{reference:'10494631'}}},
+  {id:'bo-old-projection',company:'3XB',account:'AZPAY',direction:'ถอน',status:'open',ex_type:'missing_stm',system_amount:150000,customer_details:{bo:{reference:'10494631'}}},
+  {id:'stm-current',company:'3XB',account:'LOCALPAY',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:300,customer_details:{stm:{reference:'e4093fb2-cac7-45d3-8015-b48086d7a973'}}},
+  {id:'stm-old-projection',company:'3XB',account:'LOCALPAY',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:300,customer_details:{stm:{reference:'e4093fb2-cac7-45d3-8015-b48086d7a973'}}},
+  {id:'no-reference-1',company:'3XB',account:'5034632277',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:100},
+  {id:'no-reference-2',company:'3XB',account:'5034632277',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:100},
+];
+assert.deepEqual(policy.filter(duplicatedTransactions).map(row=>row.id),['bo-current','stm-current','no-reference-1','no-reference-2'],'active case projections with the same persisted reference must appear once; unreferenced rows remain separate');
+
 const view=ReviewOverview.model({run:{matched:0,summary:{match_evidence:[]}},cases:historical,confirmations:[]});
 assert.deepEqual(view.rows.map(row=>row.id),['missing']);
 assert.equal(view.counts.review,1);
