@@ -14,7 +14,7 @@ assert.match(app, /คู่เวลาใกล้ที่สุดไม่�
 assert.match(app, /BBL ที่ไม่มีเวลาใช้บัญชี\+วัน\+ทิศทาง\+ยอด/);
 assert.match(app, /name: "เครือ 7M"[\s\S]*status: "active"/);
 assert.match(app, /paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime/);
-assert.match(app, /ยอดถอน AT\/M ใช้ transferredAmount · ยอดถอน AZ\/CP ใช้ amount/);
+assert.match(app, /ยอดถอน AT\/M ใช้ transferredAmount · ยอดถอน AZ\/CP\/LP ใช้ amount/);
 assert.match(app, /groupedCompanyOptions\(companies, company\)/);
 assert.match(app, /function reviewCompanyGroupsMarkup\(companies\)/);
 assert.match(app, /3 เครือบริษัท · เลือกบริษัทย่อย/);

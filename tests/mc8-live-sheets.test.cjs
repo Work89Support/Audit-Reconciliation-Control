@@ -75,6 +75,9 @@ assert.ok(src.includes('data-live-filter-menu'),'workbook must expose an Excel-l
 assert.ok(src.includes('เรียงน้อย → มาก'),'column menu must sort ascending like Excel');
 assert.ok(src.includes('data-live-filter-value'),'column menu must list distinct values with checkboxes');
 assert.ok(src.includes('data-live-column'),'workbook must expose hide/show controls for individual columns');
+assert.ok(src.includes("liveCase?.id"),'real-case buttons must validate and forward the persisted exception UUID');
+assert.ok(src.includes("await opts.onCase(liveCase,company)"),'real-case buttons must await the detail loader instead of silently navigating by display code');
+assert.ok(src.includes('onCaseError'),'real-case buttons must surface load or permission failures');
 assert.ok(!src.includes('entries.slice(page*50'),'live workbook must keep every filtered row in one scrollable table');
 assert.ok(src.includes('แสดงครบ ${shown.length}'),'screen must explain that all filtered rows are shown on one page');
 const nodes=new Map();const container={innerHTML:'',querySelector(s){if(!nodes.has(s))nodes.set(s,{});return nodes.get(s);},querySelectorAll(){return [];}};

@@ -409,7 +409,16 @@
       for(const key of ['pm','direction','status'])container.querySelector(`#mc8-live-${key}`).onchange=e=>{if(key==='pm')pm=e.target.value;else if(key==='direction')direction=e.target.value;else status=e.target.value;page=0;draw();};
       container.querySelectorAll('[data-live-sheet]').forEach(b=>b.onclick=()=>{sheet=b.dataset.liveSheet;page=0;draw();});
       const prev=container.querySelector('#mc8-live-prev'),next=container.querySelector('#mc8-live-next');if(prev)prev.onclick=()=>{page--;draw();};if(next)next.onclick=()=>{page++;draw();};
-      container.querySelectorAll('[data-live-case]').forEach(b=>b.onclick=()=>opts.onCase?.(all.find(r=>r.key===b.dataset.liveCase)?.case,company));
+      container.querySelectorAll('[data-live-case]').forEach(b=>b.onclick=async()=>{
+        const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case;
+        if(!liveCase?.id){opts.onCaseError?.(new Error('ไม่พบ UUID ของเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่'),null,company);return;}
+        const original=b.textContent;b.disabled=true;b.textContent='กำลังเปิด…';
+        try{
+          if(typeof opts.onCase!=='function')throw new Error('หน้านี้ยังไม่ได้เชื่อมตัวเปิดเคสจริง');
+          await opts.onCase(liveCase,company);
+        }catch(error){opts.onCaseError?.(error,liveCase,company);}
+        finally{if(document.body?.contains?.(b)){b.disabled=false;b.textContent=original;}}
+      });
       container.querySelectorAll('[data-live-file]').forEach(b=>b.onclick=()=>opts.onFile?.(files.find(f=>f.id===b.dataset.liveFile),date,company));
     }
     async function load(){

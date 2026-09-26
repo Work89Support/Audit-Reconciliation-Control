@@ -963,7 +963,11 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   onLocal: () => MC8Sheets.render(root),
   onCompany: company => { state.dailySummary.company = company; },
   onDate: date => { state.filters.date = date; },
-  onCase: (row,company) => { if(row) go('exceptions', {filters:{date:row.business_date,from:row.business_date,to:row.business_date,preset:'day',company:row.company||company},exFilter:{q:row.code||'',type:'ALL',severity:'ALL',status:'ALL',sla:false}}); },
+  onCase: async (row) => {
+    if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
+    await openEvidenceRelatedCase(row.id);
+  },
+  onCaseError: (error) => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
   onFile: (file,date,company) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||company,date,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
   exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
   onExported: ({filename,company,date,rows,sheets,complete}) => {
@@ -2935,15 +2939,11 @@ VIEWS.exceptions = (root) => {
         loadFiles: runId => Sb.exceptionFiles(runId),
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
-        onCase: row => {
-          if (!row) return;
-          const item = mapLiveException(row);
-          item.id = row.id;
-          reviewQueueIds = [];
-          const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
-          if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
-          openException(item.id, {focusFiles: true});
+        onCase: async row => {
+          if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
+          await openEvidenceRelatedCase(row.id, {focusFiles: true});
         },
+        onCaseError: error => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
         onFile: (file,dateValue,companyValue) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||companyValue,date:dateValue,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
         exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
         onExported: ({filename,company:exportCompany,date,rows,sheets,complete}) => {
@@ -3454,7 +3454,7 @@ async function loadExceptionSupport(e, options = {}) {
   }
 }
 
-async function openEvidenceRelatedCase(id) {
+async function openEvidenceRelatedCase(id, options = {}) {
   const row = await Sb.exceptionDetail(id);
   if (!row || !canAccessCompany(row.company)) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์เข้าถึงบริษัทนี้');
   const item = mapLiveException(row);
@@ -3463,11 +3463,12 @@ async function openEvidenceRelatedCase(id) {
   if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
   reviewQueueIds = [];
   closeModal();
-  openException(item.id);
+  await openException(item.id, options);
 }
 async function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
-  if (!e || !canAccessCompany(e.company)) return;
+  if (!e) return toast('ไม่พบรายละเอียดเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
+  if (!canAccessCompany(e.company)) return toast('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท ' + e.company, 'warn');
   state.selected = id;
   if (state.dataset === "production" && e.dbId) {
     try {
@@ -3523,7 +3524,7 @@ async function openException(id, options = {}) {
       </div>
       <details class="case-meta-more"><summary>กำหนดส่งและผู้รับผิดชอบ</summary><div><span>พนักงาน <b>${h(e.employee || "ไม่ระบุ")}</b></span><span>SLA <b class="${e.overSla ? "danger" : ""}">${e.ageHours} ชม. / ${e.slaHours} ชม.</b></span><span>สายชี้แจง <b>${h(trackMeta(e.track).short)}${e.systemUnassigned ? " (ยังไม่กำหนดระบบ)" : ""}</b></span><span>กำหนดส่งคืน <b class="${e.overSla ? "danger" : ""}">${h(dueOf(e).short)}</b></span></div><p>${h(dueOf(e).detail)}</p></details>
       ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
-      ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}</span></div>` : ""}
+      ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}<br>${e.status === "damage" ? "ผู้ตรวจยืนยันเป็นความเสียหายแล้ว" : "มีคำชี้แจงแล้ว — ยังไม่นับเป็นความเสียหาย จนกว่า Audit จะยืนยันและบันทึกเข้าทะเบียน"}</span></div>` : ""}
 
       <section class="case-source-section" id="caseFilesSection">
         <div class="case-section-head"><div><p class="eyebrow">ไฟล์ที่ใช้กระทบยอด</p><h3>ไฟล์ประกอบของเคสนี้</h3></div><button class="ghost-button sm" id="caseOpenAllFiles">ดูไฟล์ทั้งหมดของบริษัท/วัน</button></div>

@@ -10,7 +10,10 @@ assert.doesNotMatch(app, /บริษัทปิดงาน|ครบแล�
 assert.match(app, /ยังไม่ใช่การยืนยันจาก Audit/);
 assert.match(app, /เคสที่ระบบตรวจพบ/);
 assert.match(app, /reviewQueueIds = sorted\.map/);
-assert.match(app, /if \(!e \|\| !canAccessCompany\(e.company\)\) return/);
+assert.match(app, /if \(!e\) return toast\('ไม่พบรายละเอียดเคสจริง/);
+assert.match(app, /if \(!canAccessCompany\(e.company\)\) return toast\('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท/);
+assert.match(app, /await openEvidenceRelatedCase\(row\.id, \{focusFiles: true\}\)/, "ปุ่มในตารางต้องโหลดเคสจริงจาก UUID ก่อนเปิด drawer");
+assert.match(app, /ยังไม่นับเป็นความเสียหาย จนกว่า Audit จะยืนยันและบันทึกเข้าทะเบียน/, "ไฟล์ชี้แจงต้องไม่ถูกนับเป็นความเสียหายโดยอัตโนมัติ");
 assert.match(app, /มี Note ที่ยังไม่บันทึก/);
 assert.match(app, /การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส/);
 assert.match(app, /data-review-status="answered"/);
