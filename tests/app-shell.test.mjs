@@ -5,6 +5,12 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(join(root, "app.js"), "utf8");
+const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
+const normalizeEvidenceSearch = extractFunction("normalizeEvidenceSearch");
+const evidenceAmountLabel = extractFunction("evidenceAmountLabel");
+assert.equal(normalizeEvidenceSearch("ยอด ๑๕๐,๐๐๐.00 บาท"), "ยอด 150000.00 บาท");
+assert.equal(normalizeEvidenceSearch("150,000"), "150000");
+assert.equal(evidenceAmountLabel("150000"), "ยอด 150,000.00 บาท");
 assert.match(app, /completed: \{ label: "ระบบประมวลผลเสร็จ"/);
 assert.doesNotMatch(app, /บริษัทปิดงาน|ครบและปิดงาน|งานในช่วงนี้เรียบร้อย/);
 assert.match(app, /ยังไม่ใช่การยืนยันจาก Audit/);
@@ -17,7 +23,6 @@ assert.match(app, /ยังไม่นับเป็นความเสี�
 assert.match(app, /มี Note ที่ยังไม่บันทึก/);
 assert.match(app, /การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส/);
 assert.match(app, /data-review-status="answered"/);
-const extractFunction = (name) => new Function(`${app.match(new RegExp(`function ${name}\\([^]*?\\n}`))[0]}; return ${name};`)();
 const hasLiveCoreError = extractFunction('hasLiveCoreError');
 assert.equal(hasLiveCoreError('ผลกระทบยอด', ['ผลกระทบยอด: canceling statement due to statement timeout']), true);
 assert.equal(hasLiveCoreError('ผลกระทบยอด', ['ผลกระทบยอด']), true);

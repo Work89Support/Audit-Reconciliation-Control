@@ -12,6 +12,20 @@ const h = (s) =>
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money0 = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
 const num = (n) => Number(n || 0).toLocaleString("th-TH");
+function normalizeEvidenceSearch(value) {
+  const thaiDigits = { "๐": "0", "๑": "1", "๒": "2", "๓": "3", "๔": "4", "๕": "5", "๖": "6", "๗": "7", "๘": "8", "๙": "9" };
+  return String(value ?? "").toLocaleLowerCase("th-TH")
+    .replace(/[๐-๙]/g, (digit) => thaiDigits[digit])
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function evidenceAmountLabel(value) {
+  const amount = Number(String(value ?? "").replace(/,/g, ""));
+  return Number.isFinite(amount) && amount > 0
+    ? `ยอด ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`
+    : "";
+}
 const nowStamp = () => {
   const d = new Date();
   const p = (x) => String(x).padStart(2, "0");
@@ -3374,7 +3388,7 @@ async function loadExceptionSupport(e, options = {}) {
         const candidates=(await Sb.evidenceFiles({from,to,company:e.company})).filter(f=>(f.company||f.batch_company)===e.company);
         // Only exact, current-case recommendation links; never browse every company's evidence.
         const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
-        const recommended=new Map();
+        const recommended=new Map(),recommendedAmounts=new Map();
         for(const link of linked){
           const r=link.evidence_recommendations, c=link.exceptions;
           if(link.exception_id!==e.dbId || c?.run_id!==e.runId || c?.company!==e.company || c?.business_date!==e.date
@@ -3386,17 +3400,18 @@ async function loadExceptionSupport(e, options = {}) {
             if(f.id!==r.source_file_id || f.kind!=='doc_clarify')continue;
             if(!candidates.some(x=>x.id===f.id))candidates.push(f);
             recommended.set(f.id,r.id);
+            if(Number.isFinite(Number(r.amount)))recommendedAmounts.set(f.id,Number(r.amount));
           }
         }
         const list=document.createElement('section');list.className='case-mail-evidence';
-        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>`<article><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`).join('')}`;
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabel=evidenceAmountLabel(recommendedAmounts.get(f.id));const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,amountLabel].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}${amountLabel?`<br><span class="badge blue">${h(amountLabel)}</span>`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelector('h4').textContent=`เอกสารชี้แจง · ${e.company} · ${from} ถึง ${to} (${candidates.length} ไฟล์)`;
-        list.querySelector('p').textContent='ค้นหาชื่อไฟล์ หัวข้อเมล หรือผู้ส่งได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส การผูกไฟล์ไม่ใช่การปิดเคส';
+        list.querySelector('p').textContent='แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
         if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
-        const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง');list.querySelector('h4').after(search);
-        search.oninput=()=>{const q=search.value.trim().toLowerCase();list.querySelectorAll('article').forEach(article=>{article.hidden=!article.textContent.toLowerCase().includes(q);});};
+        const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
+        search.oninput=()=>{const q=normalizeEvidenceSearch(search.value);list.querySelectorAll('article').forEach(article=>{article.hidden=!!q&&!String(article.dataset.evidenceSearch||normalizeEvidenceSearch(article.textContent)).includes(q);});};
         list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent='ใช้กับเคสนี้แล้ว';button.disabled=true;}});
         try {
           const uses=await Sb.evidenceUsage(candidates.filter(f=>(f.company||f.batch_company)===e.company).map(f=>f.id),e.company);
@@ -3441,6 +3456,7 @@ async function loadExceptionSupport(e, options = {}) {
             finally{saving=false;submit.disabled=false;cancel.disabled=false;input.disabled=false;}
           };
         });
+        mailButton.disabled=false;mailButton.textContent='ค้นหาใหม่ตามช่วงวันที่';
       }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
     };
     if(e._openClarificationPicker){e._openClarificationPicker=false;setTimeout(()=>mailButton.click(),0);}
