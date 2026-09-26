@@ -605,10 +605,14 @@ const Sb = (() => {
     p_note: note || "Audit จับคู่ไฟล์ชี้แจงกับเคสที่เลือก",
   });
 
-  const evidenceRecommendations = ({fileId, date} = {}) => {
-    const filters = ['select=*', 'order=created_at.desc', 'limit=501'];
+  const evidenceRecommendations = ({fileId, date, from, to, company, limit = 2000} = {}) => {
+    const maximum = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 5000) : 2000;
+    const filters = ['select=*', 'order=created_at.desc', `limit=${maximum}`];
     if (fileId) filters.push(`source_file_id=eq.${encodeURIComponent(fileId)}`);
     if (date) filters.push(`business_date=eq.${encodeURIComponent(date)}`);
+    if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+    if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+    if (company) filters.push(`or=${encodeURIComponent(`(company.eq.${company},payer_company.eq.${company})`)}`);
     return json(`/rest/v1/evidence_recommendations?${filters.join('&')}`);
   };
   async function evidenceCaseRecommendations({runId,caseId,recommendationId} = {}) {

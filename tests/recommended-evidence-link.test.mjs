@@ -3,13 +3,13 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const app=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const sql=fs.readFileSync(new URL('../supabase/20260917_link_recommended_case_evidence.sql',import.meta.url),'utf8');
-const start=app.indexOf('const candidates=(await Sb.evidenceFiles');
+const start=app.indexOf('const [candidateFiles,amountRecommendations]');
 const code=app.slice(start,app.indexOf("const list=document.createElement('section')",start));
 const e={dbId:'case',runId:'run',date:'2026-09-15',company:'MC8'};
 const valid={exception_id:'case',exceptions:{run_id:'run',company:'MC8',business_date:e.date},evidence_recommendations:{id:'rec',source_file_id:'file',status:'pending_audit',business_date:e.date,company:'SK8',payer_company:'MC8'}};
 async function check(link,access=true){
   let reads=0;
-  const ctx=vm.createContext({e,from:'2026-09-01',to:'2026-09-30',canAccessCompany:()=>access,Sb:{evidenceFiles:async()=>[],evidenceCaseRecommendations:async()=>[link],exceptionFiles:async()=>{reads++;return [{id:'file',kind:'doc_clarify'}];}}});
+  const ctx=vm.createContext({e,from:'2026-09-01',to:'2026-09-30',canAccessCompany:()=>access,Sb:{evidenceFiles:async()=>[],evidenceRecommendations:async()=>[],evidenceCaseRecommendations:async()=>[link],exceptionFiles:async()=>{reads++;return [{id:'file',kind:'doc_clarify'}];}}});
   const result=await vm.runInContext(`(async()=>{${code};return {n:candidates.length,id:recommended.get('file')};})()`,ctx);
   return {...result,reads};
 }

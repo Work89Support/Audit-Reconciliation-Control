@@ -3385,10 +3385,22 @@ async function loadExceptionSupport(e, options = {}) {
       try {
         const [from,to]=[...evidenceRange.querySelectorAll('input')].map(input=>input.value);
         if(!from||!to||from>to)throw new Error('กรุณาเลือกช่วงวันที่เอกสารให้ถูกต้อง');
-        const candidates=(await Sb.evidenceFiles({from,to,company:e.company})).filter(f=>(f.company||f.batch_company)===e.company);
+        const [candidateFiles,amountRecommendations]=await Promise.all([
+          Sb.evidenceFiles({from,to,company:e.company}),
+          Sb.evidenceRecommendations({from,to,company:e.company,limit:2000}),
+        ]);
+        const candidates=candidateFiles.filter(f=>(f.company||f.batch_company)===e.company);
+        const amountsByFile=new Map();
+        const rememberAmount=(fileId,value)=>{
+          const amount=Number(value);if(!fileId||!Number.isFinite(amount)||amount<=0)return;
+          const values=amountsByFile.get(fileId)||[];
+          if(!values.includes(amount))values.push(amount);
+          amountsByFile.set(fileId,values);
+        };
+        for(const recommendation of amountRecommendations||[])rememberAmount(recommendation.source_file_id,recommendation.amount);
         // Only exact, current-case recommendation links; never browse every company's evidence.
         const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
-        const recommended=new Map(),recommendedAmounts=new Map();
+        const recommended=new Map();
         for(const link of linked){
           const r=link.evidence_recommendations, c=link.exceptions;
           if(link.exception_id!==e.dbId || c?.run_id!==e.runId || c?.company!==e.company || c?.business_date!==e.date
@@ -3400,11 +3412,11 @@ async function loadExceptionSupport(e, options = {}) {
             if(f.id!==r.source_file_id || f.kind!=='doc_clarify')continue;
             if(!candidates.some(x=>x.id===f.id))candidates.push(f);
             recommended.set(f.id,r.id);
-            if(Number.isFinite(Number(r.amount)))recommendedAmounts.set(f.id,Number(r.amount));
+            rememberAmount(f.id,r.amount);
           }
         }
         const list=document.createElement('section');list.className='case-mail-evidence';
-        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabel=evidenceAmountLabel(recommendedAmounts.get(f.id));const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,amountLabel].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}${amountLabel?`<br><span class="badge blue">${h(amountLabel)}</span>`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelector('h4').textContent=`เอกสารชี้แจง · ${e.company} · ${from} ถึง ${to} (${candidates.length} ไฟล์)`;
