@@ -139,6 +139,13 @@ eq("BO ธุรกรรม: PM ใช้ provider เป็นตัวตน"
 eq("BO ธุรกรรม: ใช้เวลารายการ BO เป็นเวลาจับคู่", transactionBo.records[0].sec, 11 * 60);
 eq("BO ธุรกรรม: เก็บเวลาธนาคารแยกไว้เป็นหลักฐาน", transactionBo.records[0].bankSec, 22 * 3600 + 56 * 60);
 eq("BO ธุรกรรม: PM ไม่ใช้เลขใน P2P/QR", transactionBo.records[2].isPmChannel, true);
+const localpayBo = Formats.parse("3XB_BO_2026-09-15.xlsx", [
+  transactionBoRows[0],
+  ["10492981", "2026-09-15 00:52", "ฝาก", "ฝาก", "3fx140844", "พร้อมเพย์-lcp(localpay)(QR)", "100", "100", "1.5", "2026-09-15 12:59", "", "น้องแอล x1"],
+], "2026-09-15").records[0];
+eq("BO LOCALPAY: ใช้เวลาทำรายการจับกับ paymentTime", localpayBo.sec, 12 * 3600 + 59 * 60);
+eq("BO LOCALPAY: เก็บเวลาสร้าง BO ไว้ตรวจสอบ", localpayBo.boSec, 52 * 60);
+eq("BO LOCALPAY: ระบุแหล่งเวลาจับคู่", localpayBo.matchTimeColumn, "เวลาทำรายการ");
 const sapanBo = Formats.parse("3X_BO_2026-09-15.xlsx", [
   transactionBoRows[0],
   ["1049603", "2026-09-15 21:35", "ถอน", "ถอน", "3xb-user", "พร้อมเพย์-ATP(autopeer)(P2P)", "100", "0", "0", "2026-09-15 21:35", "sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01", "Admin"],

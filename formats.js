@@ -409,18 +409,23 @@ const Formats = (() => {
       const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
       const identity = boAccountOf(boIdentityRaw);
       const note = val(f, r, "หมายเหตุ");
+      /* LOCALPAY ฝากใน BO มีเวลา 2 ช่อง:
+         - `เวลา` คือเวลาที่รายการถูกสร้างใน BO
+         - `เวลาทำรายการ` คือเวลาที่ Provider ทำรายการจริง และตรงกับ paymentTime ใน PM
+         ใช้เวลาทำรายการเป็นแกนจับคู่เฉพาะ LOCALPAY เมื่ออ่านได้ เพื่อไม่ให้คู่
+         User+ยอดเดียวกันถูกเปิดเป็น missing จากเวลาสร้างที่คลาดหลายชั่วโมง */
+      const matchT = identity.channel === "LOCALPAY" && bankT ? bankT : boT;
       return {
         rowNo: i + 1,
         source: "bo",
         formatCode: "bo_transaction_export",
-        // ใช้เวลา BO "เวลา" เป็นแกนจับคู่กับ paymentTime/updateTime ของ PM
-        // ส่วน "เวลาทำรายการ" เป็นเวลาธนาคาร ใช้เพียงตรวจข้ามวัน/หลักฐานประกอบ
-        date: boT.date,
-        sec: boT.sec,
+        date: matchT.date,
+        sec: matchT.sec,
         boDate: boT.date,
         boSec: boT.sec,
         bankDate: bankT.date,
         bankSec: bankT.sec,
+        matchTimeColumn: identity.channel === "LOCALPAY" && bankT ? "เวลาทำรายการ" : "เวลา",
         amount: Math.round(amount * 100) / 100,
         direction: /ถอน|withdraw|payout/i.test(type) ? "withdraw" : "deposit",
         account: identity.account,

@@ -221,6 +221,23 @@ await (async function () {
   eq("BO แบบย่อ: อ่านยอด", n.records[0]?.amount, 49);
 })();
 
+/* LOCALPAY ฝากต้องเทียบ PM paymentTime กับ BO เวลาทำรายการ ไม่ใช่เวลาสร้าง BO */
+await (async function () {
+  const boRows = [
+    ["รหัส", "เวลา", "ประเภท", "ประเภทดำเนินการ", "ยูสเซอร์", "ธนาคาร", "จำนวน", "จำนวนที่ได้รับ", "ค่าธรรรมเนียม", "เวลาทำรายการ", "หมายเหตุ", "ผู้ดำเนินการ"],
+    ["10492981", "2026-09-15 00:52", "ฝาก", "ฝาก", "3fx140844", "พร้อมเพย์-lcp(localpay)(QR)", "100", "100", "1.5", "2026-09-15 12:59", "", "น้องแอล x1"],
+  ];
+  const pmRows = [
+    ["id", "amount", "provider", "status", "requestTime", "fee", "reference", "merchantRef", "customerId", "_id", "gatewayId", "site", "paymentMethods", "gateway.name", "gateway.id", "systemRef", "systemOrderNo", "realAmount", "payee", "paymentTime"],
+    ["80db86c9-282f-4dbd-9325-362bd7cb128d", 100, "localpay", "successed", "2026-09-15 00:53", 2, "80db86c9-282f-4dbd-9325-362bd7cb128d", "LCP6aa83479c1c374d060c464013X", "3fx140844", "6aa83479c1c374d060c464013", "localpay", "3xbet", "SENDED", "localpay", "localpay", "80db86c9-282f-4dbd-9325-362bd7cb128d", "80db86c9-282f-4dbd-9325-362bd7cb128d", 100, "วรรณา บาตรโพธิ์", "2026-09-15 12:58:33"],
+  ];
+  const bo = Engine.normalize("3XB_BO_2026-09-15.xlsx", boRows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-09-15");
+  const pm = Engine.normalize("3XB_PM_LOCALPAY_D_2026-09-15.xlsx", pmRows, { rules: { filterCarryForward: true, pmSuccessOnly: true } }, "2026-09-15");
+  const r = await Engine.reconcile(pm.records, bo.records, settings, []);
+  eq("LOCALPAY transaction time: จับคู่ได้", r.matched, 1);
+  eq("LOCALPAY transaction time: ไม่เปิดเคส", r.exceptions.length, 0);
+})();
+
 /* ================= 4) reconcile: time variance auto-pass ================= */
 await (async function () {
   const r = await run([rec({ account: "SCB-1", amount: 100, sec: 3600, company: "MC8" })], [rec({ account: "SCB-1", amount: 100, sec: 3800, company: "MC8" })]);
