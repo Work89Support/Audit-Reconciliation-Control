@@ -26,6 +26,13 @@ assert.equal(staleRows[0].isPair,true);
 const xbIdView=tableView(rowsOf({run:{summary:{match_evidence:[{company:'MC8',account:'AUTOPEER',direction:'withdraw',boAmount:2200,stmAmount:2200,bo:{date:'2026-09-16',sec:80000},stm:{date:'2026-09-16',sec:100,timeColumn:'updateTime',amountColumn:'transferredAmount'},customer:{bo:{reference:'2718608',note:'Sapan: 6aaac4bfed5cd6e1fd9d67a6'},stm:{reference:'P2C-20260916-233303-UIHHCL',transactionReference:'P2C-20260916-233303-UIHHCL',sourceId:'P2C-20260916-233303-UIHHCL',providerReference:'6aaac4bfed5cd6e1fd9d67a6'}}}] }},cases:[]},'MC8'),'MC8','2026-09-16',true,'AT ถ',schema);
 assert.equal(xbIdView.rows[0][xbIdView.headers.indexOf('id')],'P2C-20260916-233303-UIHHCL','XB AT column A id must show P2C');
 assert.equal(xbIdView.rows[0][xbIdView.headers.indexOf('_id')],'6aaac4bfed5cd6e1fd9d67a6','XB AT _id must show provider 6aa id');
+for(const [account,sheet] of [['AZPAY','AZ ถ'],['COREPAY','CP ถ'],['MYPAY','M ถ'],['LOCALPAY','LP ถ']]){
+  const providerRows=rowsOf({run:{summary:{match_evidence:[{company:'3XB',account,direction:'withdraw',amount:100,bo:{date:'2026-09-16',sec:100},stm:{date:'2026-09-16',sec:110},method:'legacy-rule',customer:{bo:{reference:'BO-1'},stm:{sourceId:`${account}-1`,providerReference:'6aaac4bfed5cd6e1fd9d67a6'}}}] }},cases:[]},'3XB');
+  const view=tableView(providerRows,'3XB','2026-09-16',true,sheet,schema);
+  assert.equal(view.rows[0][view.headers.indexOf('_id')],'6aaac4bfed5cd6e1fd9d67a6',`${account} must display its own PM _id`);
+  assert.equal(view.rows[0][view.headers.indexOf('หมายเหตุ')],'',`${account} BO note must stay blank when BO has no Sapan note`);
+  assert.match(view.rows[0][view.headers.indexOf('เงื่อนไขที่จับคู่')],/legacy-rule/,`${account} matcher label belongs only in the condition column`);
+}
 const legacySapanRows=rowsOf({run:{summary:{match_evidence:[]}},cases:[{id:'legacy-sapan',company:'3XB',account:'AUTOPEER',direction:'ถอน',status:'open',system_amount:1300,bank_amount:1300,bo_date:'2026-09-15',stm_date:'2026-09-15',bo_raw:'1049603 | sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01',customer_details:{bo:{note:'sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01'},stm:{providerReference:'6aa8a28b6f7ddd65ebf16ce8'}}}]},'3XB');
 assert.equal(legacySapanRows[0].bo.note,'6aa8a28b6f7ddd65ebf16ce8','legacy BO note must display only the Sapan provider id');
 assert.equal(legacySapanRows[0].bo.providerReference,'6aa8a28b6f7ddd65ebf16ce8','legacy BO provider reference must be recovered from raw note');
