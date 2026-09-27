@@ -186,10 +186,10 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.35-empty-pm-template'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.37-outside-day-source-control'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.35-empty-pm-template'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.37-outside-day-source-control'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
@@ -214,7 +214,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.29-seven-m-source-parity'/, "worker version must identify the 7M source-parity release");
+assert.match(workerText, /worker_version:'1\.9\.37-outside-day-source-control'/, "worker version must identify the deployed parser/control release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /sys123_pending_evidence:true/, "worker summary must record the System 123 pending-evidence policy");
@@ -284,7 +284,7 @@ assert.match(workerText, /isInformationalAuditException/, "worker must not persi
 const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
 const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
 const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
-  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyStructuredPm, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm, acceptedNonSuccessPm};');
+  "const job={business_date:'2026-09-26'}; const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyStructuredPm, acceptedOutsideDayPm, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutsideDayStmPdf, acceptedOutOfScopePm, acceptedNonSuccessPm};');
 const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
   {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
 const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
@@ -315,6 +315,26 @@ const unreadablePmBody = qualityGate(
   [['UFABET123'],['Ref Id','User','จำนวนเงิน','สถานะ'],['bad','member','100','success']],
   {kind:'pm_statement'},'',null,'xlsx',false,{detect:()=>null});
 assert.ok(unreadablePmBody.parseError, 'PM template with a body row that cannot be parsed must still fail');
+const outsideDayPm = qualityGate(
+  {format:{source:'stm',realCode:'pm_provider',headerIdx:0},records:[],aux:[],dropped:{'วันที่ไม่ตรงกับวันที่ตรวจ':50,'รายการไม่สำเร็จ (PM: create_failed)':4}},
+  [['requestTime','status','amount'],['2026-09-25 23:08:15','successed','200']],
+  {kind:'pm_statement'},'',null,'csv',false,{detect:()=>null});
+assert.equal(outsideDayPm.parseError, null, 'structured PM rows from an adjacent date are readable zero activity for the current job');
+assert.equal(outsideDayPm.acceptedOutsideDayPm, true);
+const outsideDayWithParserFailure = qualityGate(
+  {format:{source:'stm',realCode:'pm_provider',headerIdx:0},records:[],aux:[],dropped:{'วันที่ไม่ตรงกับวันที่ตรวจ':50,'ไม่มีเวลาที่อ่านได้':1}},
+  [['requestTime','status','amount'],['bad','successed','200']],
+  {kind:'pm_statement'},'',null,'csv',false,{detect:()=>null});
+assert.ok(outsideDayWithParserFailure.parseError, 'outside-day control must not hide an unreadable PM row');
+const outsideDayStmPdf = qualityGate(
+  {format:{source:'stm',realCode:'bbl_pdf'},records:[],aux:[],warnings:[],dropped:{'วันที่ไม่ตรงกับวันที่ตรวจ':79},quality:{complete:true,unreadRows:[],invalidRows:[]}},
+  [],{kind:'stm_pdf'},'Statement SCB account 1234 25/09/2026 12:30 รายการ 100.00 balance 900.00',null,'pdf',false,{detect:()=>null});
+assert.equal(outsideDayStmPdf.parseError, null, 'fully parsed adjacent-day statement PDF is readable zero activity for the current job');
+assert.equal(outsideDayStmPdf.acceptedOutsideDayStmPdf, true);
+const outsideDayStmPdfIncomplete = qualityGate(
+  {format:{source:'stm',realCode:'bbl_pdf'},records:[],aux:[],warnings:[],dropped:{'วันที่ไม่ตรงกับวันที่ตรวจ':79},quality:{complete:false,unreadRows:['bad'],invalidRows:[]}},
+  [],{kind:'stm_pdf'},'Statement SCB account 1234 25/09/2026 12:30 รายการ 100.00 balance 900.00',null,'pdf',false,{detect:()=>null});
+assert.ok(outsideDayStmPdfIncomplete.parseError, 'outside-day statement control must not hide incomplete PDF extraction');
 const failedPmMixed = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'รายการไม่สำเร็จ (PM: fail)':1,'ไม่มีเวลาที่อ่านได้':1}}, [['วันเวลา','สถานะ'],['bad','Fail']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
 assert.ok(failedPmMixed.parseError, 'failed rows mixed with parser errors must still block the quality gate');
 assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');

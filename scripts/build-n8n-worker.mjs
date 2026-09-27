@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.35-empty-pm-template";
-const PARSER_VERSION = "1.9.35-empty-pm-template";
+const WORKER_VERSION = "1.9.37-outside-day-source-control";
+const PARSER_VERSION = "1.9.37-outside-day-source-control";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -78,6 +78,16 @@ const nonSuccessPmRows=dropEntries
   .filter(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'))
   .reduce((sum,[,count])=>sum+Number(count||0),0);
 const acceptedNonSuccessPm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonSuccessPmRows>0&&dropEntries.every(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'));
+const outsideDayPmRows=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
+// A correctly structured PM export can be attached to the next operating-day
+// mail even though every eligible transaction belongs to the adjacent day.
+// Treat it as readable zero activity for this job, but only when every dropped
+// row is either outside the job date or a non-success PM status.  Parser errors
+// and malformed rows remain blocking quality errors.
+const acceptedOutsideDayPm=file.kind==='pm_statement'&&detectedSource==='stm'&&norm.format.realCode==='pm_provider'&&usableRows===0&&outsideDayPmRows>0&&dropEntries.every(([reason])=>{
+  const value=String(reason);
+  return value==='วันที่ไม่ตรงกับวันที่ตรวจ'||value.startsWith('รายการไม่สำเร็จ (PM:');
+});
 // Provider exports are often generated from a fixed Excel template even when
 // the provider had no activity.  Accept zero rows only when the parser positively
 // identified the PM-provider header and there are no non-empty rows below it.
@@ -100,6 +110,12 @@ const pdfEvidence=extractedText.replace(/\\s+/g,' ').trim();
 const explicitNoActivity=/(ไม่มีรายการเคลื่อนไหว|ไม่มีรายการธุรกรรม|ไม่พบรายการเคลื่อนไหว|no transactions|no activity)/i.test(pdfEvidence);
 const hasTransactionTimestamp=/\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\s+\\d{1,2}:\\d{2}/.test(pdfEvidence);
 const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.length>=40&&explicitNoActivity&&!hasTransactionTimestamp;
+// A statement from an adjacent day can be attached to the current batch.  If
+// the PDF parser positively read transaction rows and every row was rejected
+// only because its date is outside this job, record the file as readable zero
+// activity.  Do not use this exception when OCR/PDF quality is incomplete or
+// when any row has another parse/drop reason.
+const acceptedOutsideDayStmPdf=file.kind==='stm_pdf'&&detectedSource==='stm'&&usableRows===0&&outsideDayPmRows>0&&pdfEvidence.length>=40&&hasTransactionTimestamp&&norm.quality?.complete!==false&&dropEntries.every(([reason])=>String(reason)==='วันที่ไม่ตรงกับวันที่ตรวจ');
 // Some parsers reject a valid header-only workbook before the generic quality
 // checks below run.  A BO/statement with clear evidence but zero transactions is
 // still a valid daily control file, so clear semantic "no usable rows" errors.
@@ -107,12 +123,13 @@ const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.len
 const fatalReadError=/^อ่านไฟล์ไม่สำเร็จ|^ไม่พบข้อความใน PDF|^ไฟล์ตารางว่าง/.test(String(parseError||''));
 if(acceptedEmptyBo&&!fatalReadError) parseError=null;
 if(acceptedEmptyStmPdf&&!fatalReadError) parseError=null;
+if(acceptedOutsideDayStmPdf&&!fatalReadError) parseError=null;
 if(acceptedEmptyStructuredPm&&!fatalReadError) parseError=null;
 if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedOutsideDayPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutsideDayStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
   const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
   const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
   parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
@@ -129,7 +146,9 @@ const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'b
 if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 if(acceptedEmptyBo) norm.warnings=[...(norm.warnings||[]),'BO ไม่มีรายการธุรกรรมที่ใช้จับคู่ (0 รายการ)'];
 if(acceptedEmptyStructuredPm) norm.warnings=[...(norm.warnings||[]),'PM Provider เป็นแม่แบบที่อ่านหัวตารางได้และไม่มีรายการธุรกรรม (0 รายการ)'];
+if(acceptedOutsideDayPm) norm.warnings=[...(norm.warnings||[]),'อ่านไฟล์ PM สำเร็จ แต่ไม่นำ '+outsideDayPmRows+' รายการคนละวันที่มาปนกับรอบ '+job.business_date];
 if(acceptedEmptyStmPdf) norm.warnings=[...(norm.warnings||[]),'Statement ไม่มีรายการธุรกรรม (0 รายการ)'];
+if(acceptedOutsideDayStmPdf) norm.warnings=[...(norm.warnings||[]),'อ่าน Statement สำเร็จ แต่ไม่นำ '+outsideDayPmRows+' รายการคนละวันที่มาปนกับรอบ '+job.business_date];
 if(acceptedOutOfScopePm) norm.warnings=[...(norm.warnings||[]),'ข้ามไฟล์ PM '+intentionallyInactiveRows+' รายการ: Provider ยังไม่เปิดใช้สำหรับบริษัทนี้'];
 if(acceptedNonSuccessPm) norm.warnings=[...(norm.warnings||[]),'อ่านไฟล์ PM สำเร็จ แต่ไม่นำรายการสถานะไม่สำเร็จ '+nonSuccessPmRows+' รายการมากระทบยอด'];
 for(const r of (norm.records||[])){
@@ -265,6 +284,10 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
+  .replace(
+    "worker_version:'1.9.29-seven-m-source-parity'",
+    `worker_version:'${WORKER_VERSION}'`,
+  )
   .replace(
     "1.9.2-xb-sapan-raw-id-recovery",
     "1.9.21-xb-no-stale-duplicate",
