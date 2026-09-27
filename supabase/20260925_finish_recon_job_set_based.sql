@@ -19,6 +19,8 @@ as $$
 declare
   v_job public.daily_recon_jobs%rowtype;
   v_old_run_id uuid;
+  v_expected_exceptions integer;
+  v_saved_exceptions integer;
 begin
   select * into v_job
   from public.daily_recon_jobs
@@ -37,6 +39,18 @@ begin
       and upper(coalesce(r.company,''))=upper(coalesce(v_job.company,''))
   ) then
     raise exception 'ผลรันไม่ตรงบริษัทหรือวันที่ของงาน';
+  end if;
+
+  select r.exception_count,count(e.id)::integer
+    into v_expected_exceptions,v_saved_exceptions
+  from public.recon_runs r
+  left join public.exceptions e on e.run_id=r.id
+  where r.id=p_run_id
+  group by r.exception_count;
+
+  if v_saved_exceptions<>v_expected_exceptions then
+    raise exception 'บันทึก Exception ไม่ครบ: run % คำนวณ % แถว แต่บันทึกได้ % แถว',
+      p_run_id,v_expected_exceptions,v_saved_exceptions;
   end if;
 
   v_old_run_id := v_job.last_run_id;

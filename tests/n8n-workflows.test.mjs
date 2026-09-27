@@ -11,6 +11,7 @@ const clarification = await load("audit-clarification-matcher.json");
 const telegram = await load("audit-telegram-notifications.json");
 const clarificationSql = await readFile(new URL("../supabase/20260823_clarification_auto_match.sql", import.meta.url), "utf8");
 const parserQualitySql = await readFile(new URL("../supabase/20260823_parser_quality_gate.sql", import.meta.url), "utf8");
+const persistenceGuardSql = await readFile(new URL("../supabase/20260927_recon_persistence_guard.sql", import.meta.url), "utf8");
 const reclassifySql = await readFile(new URL("../supabase/20260825_manual_file_reclassify.sql", import.meta.url), "utf8");
 const replacementSql = await readFile(new URL("../supabase/20260830_source_file_replacement.sql", import.meta.url), "utf8");
 const directionSql = await readFile(new URL("../supabase/20260827_filename_direction_detection.sql", import.meta.url), "utf8");
@@ -185,6 +186,11 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
+assert.match(workerText, /parser_version:'1\.9\.30-tmn-non-customer'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
+assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.30-parser-persistence-guard'/,
+  "the auditable BO-first summary must identify the complete workflow build");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
 assert.equal(worker.connections["Supabase: บันทึกผลอ่านไฟล์"].main[0][0].node, "ไฟล์ผ่าน Quality Gate?");
@@ -192,7 +198,11 @@ assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[0
 assert.equal(worker.connections["ไฟล์ผ่าน Quality Gate?"].main[1][0].node, "บันทึกว่าอ่านแล้วและรอไฟล์");
 assert.match(workerText, /finish_daily_recon_parse_only/, "an incomplete file set must finish parsing without creating a reconciliation run");
 assert.match(workerText, /missing_groups/, "the reconciliation gate must require both file sides before creating a run");
-assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "แบ่งอ่านเคส Sapan ตามประเภท");
+assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ตรวจว่า Exception บันทึกครบ");
+assert.equal(worker.connections["Supabase: ตรวจว่า Exception บันทึกครบ"].main[0][0].node, "แบ่งอ่านเคส Sapan ตามประเภท");
+assert.match(workerText, /verify_recon_run_exception_count/, "the worker must verify native exception persistence before lifecycle carry-forward");
+assert.equal(worker.nodes.find(node => node.name === "Supabase: บันทึก Exception").alwaysOutputData, undefined,
+  "an exception insert failure must stop the run instead of being treated as an empty success");
 assert.equal(worker.connections["แบ่งอ่านเคส Sapan ตามประเภท"].main[0][0].node, "Supabase: อ่านเคส Sapan รอบก่อน");
 assert.equal(worker.connections["Supabase: อ่านเคส Sapan รอบก่อน"].main[0][0].node, "เตรียมปิดเคส Sapan รอบก่อน");
 assert.equal(worker.connections["เตรียมปิดเคส Sapan รอบก่อน"].main[0][0].node, "มีเคส Sapan ต้องปิด?");
@@ -232,6 +242,10 @@ assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identif
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");
 assert.match(workerText, /tmn_non_customer_rows_filtered:true/, "worker summary must identify TMN fee and balance-row filtering");
+assert.match(persistenceGuardSql, /v_saved<>v_expected/, "the persistence guard must reject a partial exception batch");
+assert.match(persistenceGuardSql, /and e\.previous_exception_id is null/,
+  "current exception totals must exclude every lifecycle-only carry copy without deleting history");
+assert.doesNotMatch(persistenceGuardSql, /delete\s+from\s+public\.exceptions/i);
 assert.match(workerText, /seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed/, "worker summary must expose excluded unconfirmed 7M COREPAY pending rows");
 assert.match(workerText, /const pendingExact=\(s,b\)=>/, "worker must validate pending COREPAY deposits against BO before including them");
 assert.match(workerText, /replace\(\/\\\\s\+\/g,' '\)/, "pending COREPAY Ref comparison must normalize whitespace in the deployed worker");

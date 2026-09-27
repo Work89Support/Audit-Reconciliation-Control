@@ -4,6 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
+const WORKER_VERSION = "1.9.30-parser-persistence-guard";
+const PARSER_VERSION = "1.9.30-tmn-non-customer";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -131,14 +133,15 @@ for(const r of (norm.records||[])){
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{}},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
 
 const reconcileCode = `${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
 if(!files.length) throw new Error('ไม่พบไฟล์ที่อ่านได้ในงานนี้');
 const job=files[0].job;
-const qualityErrors=files.filter(f=>f.parse_error).map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:f.parse_error,row_count:f.row_count||0}));
-const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error,row_count:f.row_count||0,parse_error:f.parse_error||null}));
+const parserVersionErrors=files.filter(f=>f.parser_version!=='${PARSER_VERSION}').map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:'เวอร์ชันตัวอ่านไฟล์ไม่ตรงกับ Worker: ได้ '+String(f.parser_version||'ไม่ระบุ')+' ต้องเป็น ${PARSER_VERSION}',row_count:f.row_count||0}));
+const qualityErrors=files.filter(f=>f.parse_error).map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:f.parse_error,row_count:f.row_count||0})).concat(parserVersionErrors);
+const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error&&f.parser_version==='${PARSER_VERSION}',row_count:f.row_count||0,parse_error:f.parse_error||null,parser_version:f.parser_version||null,dropped:f.dropped||{}}));
 if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:parseResults,quality_errors:qualityErrors},pairedItem:{item:0}}];
 const stm=[],bo=[];
 for(const f of files){
@@ -212,6 +215,9 @@ const boFirstCoverage=(()=>{
   const required=collect(bo),received=collect(stm),have=new Set(received.map(x=>x.key)),missing=required.filter(x=>!have.has(x.key));
   return{method:'BO_FIRST',registry_source:'https://docs.google.com/spreadsheets/d/1PlxeE2CIH9uh93xFJ0LHmo-9TI931chDJxdckBzfaME',required,received,missing,complete:required.length>0&&missing.length===0};
 })();
+boFirstCoverage.parser_version='${PARSER_VERSION}';
+boFirstCoverage.worker_version='${WORKER_VERSION}';
+boFirstCoverage.source_parse=parseResults.map(f=>({id:f.id,file_name:f.file_name,row_count:f.row_count,parser_version:f.parser_version,dropped:f.dropped}));
 let result;
 const started=Date.now();
 if(!stm.length){
@@ -385,7 +391,12 @@ const nodes = [
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
-  }), alwaysOutputData: true },
+  }) },
+  { ...http("verify-exception-count", "Supabase: ตรวจว่า Exception บันทึกครบ", [2190, 20], {
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/verify_recon_run_exception_count", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({p_run_id:$('เตรียมบันทึก Exception').first().json.run_id}) }}", options: { response: { response: {} } },
+  }), executeOnce: true },
   { parameters: { jsCode: "const run=$('เตรียมบันทึก Exception').first().json.run_id; return ['time_diff','missing_stm','missing_bo','cross_day','amount_diff'].map(ex_type=>({json:{ex_type,run_id:run},pairedItem:{item:0}}));" }, id: "prepare-read-previous-sapan-types", name: "แบ่งอ่านเคส Sapan ตามประเภท", type: "n8n-nodes-base.code", typeVersion: 2, position: [2190, 20] },
   { ...http("read-previous-sapan-exceptions", "Supabase: อ่านเคส Sapan รอบก่อน", [2300, 20], {
     url: "={{ (()=>{const j=$('กระทบยอดและสร้าง Exception').first().json.job;const aliases=['3XB','3X','3xbet','3xb'];const company=aliases.includes(String(j.company||'').trim())?'&company=in.('+aliases.map(encodeURIComponent).join(',')+')':'&company=eq.'+encodeURIComponent(j.company);return $vars.SUPABASE_URL+'/rest/v1/exceptions?business_date=eq.'+encodeURIComponent(j.business_date)+'&run_id=neq.'+encodeURIComponent($json.run_id)+company+'&status=in.(open,clarifying,answered)&superseded_by_exception_id=is.null&ex_type=eq.'+encodeURIComponent($json.ex_type)+'&select=id,company,direction,ex_type,system_amount,bank_amount,stm_raw,bo_raw';})() }}",
@@ -494,7 +505,8 @@ const connections = {
   "เตรียมข้อมูลผลการรัน": { main: [[{ node: "Supabase: สร้างผลการรัน", type: "main", index: 0 }]] },
   "Supabase: สร้างผลการรัน": { main: [[{ node: "เตรียมบันทึก Exception", type: "main", index: 0 }]] },
   "เตรียมบันทึก Exception": { main: [[{ node: "Supabase: บันทึก Exception", type: "main", index: 0 }]] },
-  "Supabase: บันทึก Exception": { main: [[{ node: "แบ่งอ่านเคส Sapan ตามประเภท", type: "main", index: 0 }]] },
+  "Supabase: บันทึก Exception": { main: [[{ node: "Supabase: ตรวจว่า Exception บันทึกครบ", type: "main", index: 0 }]] },
+  "Supabase: ตรวจว่า Exception บันทึกครบ": { main: [[{ node: "แบ่งอ่านเคส Sapan ตามประเภท", type: "main", index: 0 }]] },
   "แบ่งอ่านเคส Sapan ตามประเภท": { main: [[{ node: "Supabase: อ่านเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
   "Supabase: อ่านเคส Sapan รอบก่อน": { main: [[{ node: "เตรียมปิดเคส Sapan รอบก่อน", type: "main", index: 0 }]] },
   "เตรียมปิดเคส Sapan รอบก่อน": { main: [[{ node: "มีเคส Sapan ต้องปิด?", type: "main", index: 0 }]] },
