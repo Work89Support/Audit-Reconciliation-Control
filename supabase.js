@@ -416,7 +416,7 @@ const Sb = (() => {
     if (!runIds.length) return [];
     const pageSize = 1000;
     const fetchPage = async (offset) => {
-      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "code=not.like.*-C*", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
@@ -454,7 +454,11 @@ const Sb = (() => {
     if (!runIds.length) return [];
     const runFilter = `run_id=in.(${runIds.join(",")})`;
     const fetchPage = async (offset) => {
-      const filters = [`select=${columns}`, runFilter, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
+      /* finish_daily_recon_job keeps unresolved history as explicit carry rows
+         with a -C<uuid> code.  They remain auditable in exceptions/audit_log,
+         but are not exceptions computed by the latest run and must not inflate
+         the current queue or its totals. */
+      const filters = [`select=${columns}`, runFilter, "superseded_by_exception_id=is.null", "code=not.like.*-C*", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
@@ -481,7 +485,7 @@ const Sb = (() => {
     const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
     const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
     if (!runIds.length) return [];
-    const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
+    const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "code=not.like.*-C*", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
     return json(`/rest/v1/exceptions?${filters.join("&")}`);
   }
 
@@ -528,7 +532,7 @@ const Sb = (() => {
     } catch(error) { confirmationError=error.message; }
     const cases = [];
     for (let offset = 0; offset < 20000; offset += 500) {
-      const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&select=*&order=id.asc&limit=500&offset=${offset}`);
+      const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&code=not.like.*-C*&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
       if (page.length < 500) return { run, cases, complete: true, confirmations, confirmationError };
     }
