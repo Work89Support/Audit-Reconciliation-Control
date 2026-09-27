@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.34-bo-keep-placeholder-filter";
-const PARSER_VERSION = "1.9.34-bo-keep-placeholder-filter";
+const WORKER_VERSION = "1.9.35-empty-pm-template";
+const PARSER_VERSION = "1.9.35-empty-pm-template";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -78,6 +78,13 @@ const nonSuccessPmRows=dropEntries
   .filter(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'))
   .reduce((sum,[,count])=>sum+Number(count||0),0);
 const acceptedNonSuccessPm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonSuccessPmRows>0&&dropEntries.every(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'));
+// Provider exports are often generated from a fixed Excel template even when
+// the provider had no activity.  Accept zero rows only when the parser positively
+// identified the PM-provider header and there are no non-empty rows below it.
+// A workbook with an unreadable/dropped body still fails the quality gate.
+const pmHeaderIdx=Number.isInteger(Number(norm.format.headerIdx))?Number(norm.format.headerIdx):-1;
+const pmBodyRows=pmHeaderIdx>=0?rawRows.slice(pmHeaderIdx+1).filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')):[];
+const acceptedEmptyStructuredPm=file.kind==='pm_statement'&&detectedSource==='stm'&&norm.format.realCode==='pm_provider'&&pmHeaderIdx>=0&&pmBodyRows.length===0&&usableRows===0;
 // BO is the daily source of truth for which accounts were actually used.
 // A header-only BO workbook is therefore valid evidence for a zero-activity day,
 // not a parser failure.  Keep rejecting a truly empty/corrupt workbook.
@@ -100,11 +107,12 @@ const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.len
 const fatalReadError=/^อ่านไฟล์ไม่สำเร็จ|^ไม่พบข้อความใน PDF|^ไฟล์ตารางว่าง/.test(String(parseError||''));
 if(acceptedEmptyBo&&!fatalReadError) parseError=null;
 if(acceptedEmptyStmPdf&&!fatalReadError) parseError=null;
+if(acceptedEmptyStructuredPm&&!fatalReadError) parseError=null;
 if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
   const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
   const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
   parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
@@ -120,6 +128,7 @@ const fallbackBank=(tag&&tag.bank)||'';
 const kindSource={stm_pdf:'stm',pm_statement:'stm',bo_main:'bo',manual_credit:'bo',manual_payment:'bo',manual_bonus:'aux',comm_req:'aux',credit_out:'aux'};
 if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 if(acceptedEmptyBo) norm.warnings=[...(norm.warnings||[]),'BO ไม่มีรายการธุรกรรมที่ใช้จับคู่ (0 รายการ)'];
+if(acceptedEmptyStructuredPm) norm.warnings=[...(norm.warnings||[]),'PM Provider เป็นแม่แบบที่อ่านหัวตารางได้และไม่มีรายการธุรกรรม (0 รายการ)'];
 if(acceptedEmptyStmPdf) norm.warnings=[...(norm.warnings||[]),'Statement ไม่มีรายการธุรกรรม (0 รายการ)'];
 if(acceptedOutOfScopePm) norm.warnings=[...(norm.warnings||[]),'ข้ามไฟล์ PM '+intentionallyInactiveRows+' รายการ: Provider ยังไม่เปิดใช้สำหรับบริษัทนี้'];
 if(acceptedNonSuccessPm) norm.warnings=[...(norm.warnings||[]),'อ่านไฟล์ PM สำเร็จ แต่ไม่นำรายการสถานะไม่สำเร็จ '+nonSuccessPmRows+' รายการมากระทบยอด'];

@@ -186,10 +186,10 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.34-bo-keep-placeholder-filter'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.35-empty-pm-template'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.34-bo-keep-placeholder-filter'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.35-empty-pm-template'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
@@ -284,7 +284,7 @@ assert.match(workerText, /isInformationalAuditException/, "worker must not persi
 const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
 const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
 const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
-  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm, acceptedNonSuccessPm};');
+  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyStructuredPm, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm, acceptedNonSuccessPm};');
 const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
   {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
 const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
@@ -304,6 +304,17 @@ assert.ok(mixedPmDrops.parseError, 'mixed PM parse failures must still block the
 const failedPmOnly = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'รายการไม่สำเร็จ (PM: fail)':1}}, [['วันเวลา','สถานะ'],['2026-09-24 22:03:06','Fail']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
 assert.equal(failedPmOnly.parseError, null, 'recognized failed-only PM exports are readable zero-eligible control files');
 assert.equal(failedPmOnly.acceptedNonSuccessPm, true);
+const emptyPmTemplate = qualityGate(
+  {format:{source:'stm',realCode:'pm_provider',headerIdx:1},records:[],aux:[],dropped:{}},
+  [['UFABET123'],['Ref Id','User','จำนวนเงิน','สถานะ']],
+  {kind:'pm_statement'},'',null,'xlsx',false,{detect:()=>null});
+assert.equal(emptyPmTemplate.parseError, null, 'recognized header-only PM template is valid zero activity');
+assert.equal(emptyPmTemplate.acceptedEmptyStructuredPm, true);
+const unreadablePmBody = qualityGate(
+  {format:{source:'stm',realCode:'pm_provider',headerIdx:1},records:[],aux:[],dropped:{'ไม่มีเวลาที่อ่านได้':1}},
+  [['UFABET123'],['Ref Id','User','จำนวนเงิน','สถานะ'],['bad','member','100','success']],
+  {kind:'pm_statement'},'',null,'xlsx',false,{detect:()=>null});
+assert.ok(unreadablePmBody.parseError, 'PM template with a body row that cannot be parsed must still fail');
 const failedPmMixed = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'รายการไม่สำเร็จ (PM: fail)':1,'ไม่มีเวลาที่อ่านได้':1}}, [['วันเวลา','สถานะ'],['bad','Fail']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
 assert.ok(failedPmMixed.parseError, 'failed rows mixed with parser errors must still block the quality gate');
 assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');
