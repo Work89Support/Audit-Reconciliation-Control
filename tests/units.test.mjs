@@ -123,6 +123,15 @@ eq("BO แบบย่อ: provider ATP เป็น AUTOPEER", compactBo.record
 eq("BO แบบย่อ: ทิศทางถอน", compactBo.records[0].direction, "withdraw");
 eq("BO แบบย่อ: อ่าน ref จากโน้ต", compactBo.records[0].ref, "P2C-20260827-234211-EUBLWK");
 
+const compactBoKeepRows = [
+  ...compactBoRows,
+  ["2026-08-27 23:43", "ฝาก", "-", "-", "KEEP -", "100", "0", "-", "ระบบ", "-"],
+  ["2026-08-27 23:44", "ฝาก", "-", "-", "keep-", "200", "0", "-", "ระบบ", "-"],
+];
+const compactBoKeep = Formats.parse("UFABET7M_BO_DW_2026-08-27.xlsx", compactBoKeepRows, "2026-08-27");
+eq("BO แบบย่อ: ไม่นับแถวคั่น KEEP - เป็นธุรกรรม", compactBoKeep.records.length, 1);
+eq("BO แบบย่อ: บันทึกจำนวนแถว KEEP - ที่ตัดออก", compactBoKeep.dropped["แถวคั่นระบบ KEEP - (ไม่นำมากระทบยอด)"], 2);
+
 const transactionBoRows = [
   ["รหัส", "เวลา", "ประเภท", "ประเภทดำเนินการ", "ยูสเซอร์", "ธนาคาร", "จำนวน", "จำนวนที่ได้รับ", "ค่าธรรมเนียม", "เวลาทำรายการ", "หมายเหตุ", "ผู้ดำเนินการ"],
   ["10383583", "2026-08-31 00:11", "ถอน", "ถอน", "3fx33323", "KBANK 1968766313 (นราธิป บุญอาจ)(kob-deposit)", "650", "0", "0", "2026-08-30 22:56", "", "ไกด์ x5"],

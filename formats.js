@@ -463,6 +463,13 @@ const Formats = (() => {
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const type = val(f, r, "ประเภท");
       const companyAccount = val(f, r, "บัญชีบริษัทแบบย่อ");
+      // The 7M BO export can contain bookkeeping separator rows whose company
+      // account is literally `KEEP -`.  They carry an amount but are not a
+      // customer transaction or a provider/bank account.  Treating them as an
+      // STM identity creates five false BO-only rows in the 2026-09-20 audit.
+      if (/^KEEP\s*[-–—]?$/i.test(companyAccount)) {
+        return drop("แถวคั่นระบบ KEEP - (ไม่นำมากระทบยอด)"), null;
+      }
       const customerAccount = val(f, r, "บัญชีลูกค้าแบบย่อ");
       const note = val(f, r, "โน้ต");
       const pm = canonicalPm(companyAccount);
