@@ -583,9 +583,21 @@ const Formats = (() => {
         return drop("PARTIAL ไม่มียอดจ่ายจริงที่ตรวจสอบได้"), null;
       }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
-      const amountCandidates = dir === "withdraw"
-        ? ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]
-        : ["โอนจริง", "จำนวนที่ได้รับ", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"];
+      const sys123Company = ["AT4", "FR8", "SK8"].includes(subco);
+      /* เครือ 123 ต้องเลือกยอดตามความหมายของ Provider ก่อนชื่อคอลัมน์ทั่วไป
+         โดยเฉพาะ COREPAY/CYBERPLUS ฝาก: `จำนวนที่ฝาก` อาจมีเศษค่าธรรมเนียม
+         แต่ BO บันทึก `จำนวนที่ได้รับ` เช่น 200.87 -> 200.00 หากใช้รายการ
+         candidate ทั่วไปอาจเลือกยอดผิดและสร้าง missing_bo/missing_stm เท็จ */
+      const sys123AmountCandidates = dir === "withdraw"
+        ? ["จำนวนเงินถอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "transferredAmount", "ยอดโอนจริง", "โอนจริง", "จำนวนเงิน", "amount", "รวมหักเงิน"]
+        : ["COREPAY", "CYBERPLUS"].includes(provider)
+          ? ["จำนวนที่ได้รับ", "จำนวนเงินฝากจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "โอนจริง", "realAmount", "amount", "สร้างฝาก"]
+          : ["จำนวนเงินฝากจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "โอนจริง", "realAmount", "amount", "สร้างฝาก", "จำนวนที่ได้รับ"];
+      const amountCandidates = sys123Company
+        ? sys123AmountCandidates
+        : dir === "withdraw"
+          ? ["transferredAmount", "ยอดโอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "โอนจริง", "จำนวนเงิน", "รวมหักเงิน", "amount"]
+          : ["โอนจริง", "จำนวนที่ได้รับ", "จำนวนเงินฝาก", "จำนวนเงิน", "amount", "สร้างฝาก", "realAmount"];
       const xbAmountColumn = dir === "deposit" ? "realAmount" : ["AUTOPEER", "MYPAY"].includes(provider) ? "transferredAmount" : "amount";
       const amountSource = xbPolicy
         ? firstValue(f, r, [xbAmountColumn])

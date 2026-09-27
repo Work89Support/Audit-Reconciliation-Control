@@ -710,6 +710,20 @@ await (async () => {
   eq('123 PM: one missing identity field closes by reciprocal near time',r.matched,1);
   eq('123 PM: partial identity fallback is auditable',r.matchEvidence[0]?.method,'sys123-partial-identity-reciprocal-near-time');
 
+  for (const company of ['AT4','FR8','SK8']) {
+    const companyStm=rec({...missingAccountStm,rowNo:5110+_id,company,subco:company,sec:3600});
+    const companyBo=rec({...nearBo,rowNo:5120+_id,company,subco:company,sec:3600+45*60});
+    r=await run([companyStm],[companyBo]);
+    eq(`123 ${company}: one matching identity closes within 60 minutes`,r.matched,1);
+    eq(`123 ${company}: 60-minute fallback remains auditable`,r.matchEvidence[0]?.method,'sys123-partial-identity-reciprocal-near-time');
+  }
+
+  r=await run(
+    [rec({...missingAccountStm,rowNo:5140,company:'FR8',subco:'FR8',sec:3600})],
+    [rec({...nearBo,rowNo:5141,company:'FR8',subco:'FR8',sec:3600+61*60})],
+  );
+  eq('123 PM: partial identity beyond 60 minutes stays open',r.matched,0);
+
   const genericProviderStm=rec({...stm,rowNo:5151,account:'PM',sec:7200});
   r=await run([genericProviderStm],[nearBo],{...settings,sys123FallbackTimeTolerance:600});
   eq('123 PM: generic provider is recovered from a unique strict BO identity',r.matched,1);

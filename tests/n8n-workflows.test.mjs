@@ -204,7 +204,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.27-sys123-provider-recovery'/, "worker version must identify System 123 provider recovery support");
+assert.match(workerText, /worker_version:'1\.9\.28-sys123-amount-time'/, "worker version must identify System 123 amount and time policy");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /sys123_pending_evidence:true/, "worker summary must record the System 123 pending-evidence policy");
@@ -237,8 +237,11 @@ assert.match(workerText, /internal_transfer_tolerance_sec:300/, "worker summary 
 assert.match(workerText, /bo_split_rows_preserved:true/, "worker summary must identify BO split payout preservation");
 assert.match(workerText, /seven_m_provider_identity_rule:true/, "worker summary must identify the 7M Ref/User/Amount rule");
 assert.match(workerText, /sys123_provider_identity_rule:true/, "worker summary must identify the 123 member/account/amount rule");
+assert.match(workerText, /sys123_provider_amount_policy:true/, "worker summary must identify provider-specific System 123 amount selection");
+assert.match(workerText, /sys123_received_amount_deposit:true/, "worker summary must identify received-amount matching for System 123 deposits");
 assert.match(workerText, /sys123_account_tail_fallback:true/, "worker summary must identify the 123 account-tail fallback");
 assert.match(workerText, /sys123_partial_identity_reciprocal_near_time:true/, "worker summary must identify the 123 partial-identity reciprocal fallback");
+assert.match(workerText, /sys123_fallback_time_tolerance_sec:3600/, "worker summary must expose the safe 60-minute partial-identity window");
 assert.match(workerText, /sys123_cyber_withdraw_two_point:true/, "worker summary must identify the 123 Cyberplus withdrawal exception");
 assert.match(workerText, /sys123_duplicate_reciprocal_nearest:true/, "worker summary must identify the safe duplicate matcher");
 assert.match(workerText, /sys123_duplicate_time_tolerance_sec:3600/, "worker summary must expose the duplicate time window");

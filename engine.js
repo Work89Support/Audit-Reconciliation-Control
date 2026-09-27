@@ -934,7 +934,10 @@ const Engine = (() => {
        identity อย่างน้อยหนึ่งจุดที่ตรงจริง โดยข้อมูลที่มีอยู่ห้ามขัดกัน
        จากนั้นเลือกเฉพาะคู่เวลาใกล้ที่สุดแบบ reciprocal 1:1 เท่านั้น
        รองรับคู่ก่อน/หลังเที่ยงคืนจาก timestamp จริง แต่ไม่เดาคู่จากยอดล้วน */
-    const sys123FallbackTimeTol = Math.max(0, Number(settings.sys123FallbackTimeTolerance ?? 600));
+    /* เมื่อมี identity เพียงหนึ่งจุด คู่ยังต้องไม่ขัดกันและต้องเลือกกันเองแบบ
+       reciprocal 1:1 จึงขยายหน้าต่างเฉพาะเครือ 123 เป็น 60 นาทีได้อย่างปลอดภัย
+       เพื่อรองรับเวลา Provider/BO เหลื่อม โดยไม่จับจากยอดล้วน */
+    const sys123FallbackTimeTol = Math.max(0, Number(settings.sys123FallbackTimeTolerance ?? 3600));
     const sys123IdentityState = (s, b) => {
       const sm = identityText(s && s.memberCode), bm = identityText(b && b.memberCode);
       const memberMatch = !!sm && !!bm && sm === bm;
