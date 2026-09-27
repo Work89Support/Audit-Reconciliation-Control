@@ -93,12 +93,34 @@ eq("TMN fundout: เก็บขาโยกเงินไว้จับคู
 eq("TMN fundout: ระบุ internalTransferHint", tmnFundout.records[0]?.internalTransferHint, true);
 eq("TMN fundout: ยังเป็นรายการถอน", tmnFundout.records[0]?.direction, "withdraw");
 
+const TMN_NON_CUSTOMER_ROWS = `
+ใบแสดงรายการ / Statement of Account
+เงินเข้า เงินออก ยอดคงเหลือ
+20/09/2026 12:00:00 เงินออก -0.29 p2p receive fee 100.29 100.00
+20/09/2026 12:01:00 เงินออก -0.01 ยอดคงเหลือ 100.00 99.99
+20/09/2026 12:02:00 เงินออก -100.00 0891234567 99.99 0.00
+`;
+const tmnNonCustomer = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_NON_CUSTOMER_ROWS, "2026-09-20");
+eq("TMN non-customer: ตัด fee และยอดประกอบ ไม่สร้างเคสเทียม", tmnNonCustomer.records.length, 1);
+eq("TMN non-customer: คงรายการลูกค้าจริง", tmnNonCustomer.records[0]?.amount, 100);
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0
 09-08-26 07:06 โอนเงิน 50.00 1,000.00 K PLUS โอนไป SCB X1
 `;
 eq("KBANK: ไม่มี 'LINE BK' ยังตรวจเป็น KBANK", P.header(toPages(KPLUS)).bank, "KBANK");
+
+const KBANK_SLASH_DIRECTION = `
+KASIKORNBANK
+เลขที่บัญชีเงินฝาก 195-3-58330-1
+20/09/26 17:50 รับโอนจาก 7,000.00 10,000.00 K PLUS TMN รุ่งฟ้า
+20/09/26 18:00 โอนไป 500.00 9,500.00 K PLUS SCB X1234
+`;
+const kbankSlashDirection = await P.parseText("UFABET7M_STM_KB_กิตติ_DW.pdf", KBANK_SLASH_DIRECTION, "2026-09-20");
+eq("KBANK slash date: อ่านรายการรูปแบบ / ได้ครบ", kbankSlashDirection.records.length, 2);
+eq("KBANK description: รับโอนจาก = ฝาก", kbankSlashDirection.records[0]?.direction, "deposit");
+eq("KBANK description: โอนไป = ถอน", kbankSlashDirection.records[1]?.direction, "withdraw");
 
 /* n8n native extraction: KBANK SMS fee puts balance before description and
    the real debit amount on the following line. */

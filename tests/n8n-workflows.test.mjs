@@ -204,7 +204,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.28-sys123-amount-time'/, "worker version must identify System 123 amount and time policy");
+assert.match(workerText, /worker_version:'1\.9\.29-seven-m-source-parity'/, "worker version must identify the 7M source-parity release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /sys123_pending_evidence:true/, "worker summary must record the System 123 pending-evidence policy");
@@ -231,6 +231,11 @@ assert.match(workerText, /xb_provider_signed_amount_close:true/, "worker summary
 assert.match(workerText, /cp2_provider_alias:true/, "worker summary must identify the CP2 provider alias");
 assert.match(workerText, /bank_signed_amount_normalized:true/, "worker summary must identify signed bank amount normalization");
 assert.match(workerText, /statement_fee_rows_filtered:true/, "worker summary must identify statement fee filtering");
+assert.match(workerText, /tmn_non_customer_rows_filtered:true/, "worker summary must identify TMN fee and balance-row filtering");
+assert.match(workerText, /seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed/, "worker summary must expose excluded unconfirmed 7M COREPAY pending rows");
+assert.match(workerText, /const pendingExact=\(s,b\)=>/, "worker must validate pending COREPAY deposits against BO before including them");
+assert.match(workerText, /replace\(\/\\\\s\+\/g,' '\)/, "pending COREPAY Ref comparison must normalize whitespace in the deployed worker");
+assert.match(workerText, /rows\.length===1&&\(pendingPeers\.get\(rows\[0\]\)\|\|\[\]\)\.length===1/, "pending COREPAY confirmation must remain one-to-one");
 assert.match(workerText, /seven_m_internal_transfer_reciprocal:true/, "worker summary must identify reciprocal 7M internal-transfer matching");
 assert.match(workerText, /tmn_fundout_preserved:true/, "worker summary must identify preserved TMN fundout evidence");
 assert.match(workerText, /internal_transfer_tolerance_sec:300/, "worker summary must record the internal-transfer time window");

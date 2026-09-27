@@ -168,6 +168,38 @@ if(duplicateStatementRowsRemoved){
   stm.length=0; stm.push(...unique);
 }
 if(bo.some(r=>r.formatCode)){const merged=Formats.merge(bo);bo.length=0;merged.sort((a,b)=>(a.sec||0)-(b.sec||0)).forEach(r=>bo.push(r));}
+// COREPAY ฝากของ 7M บางไฟล์คงสถานะ pending ไว้ก่อน settlement. รายการเหล่านี้
+// ใช้เป็นหลักฐานได้ก็ต่อเมื่อ BO ยืนยันครบ Ref + User + Amount แบบหนึ่งต่อหนึ่ง
+// เท่านั้น; pending ที่ยังไม่มี BO ไม่ใช่ธุรกรรมสำเร็จและต้องไม่เพิ่ม denominator
+// หรือเปิด missing_bo เทียม. เมื่อ BO มาภายหลัง การรันรอบใหม่จะรับแถวเดิมเข้าเอง.
+const idText=value=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+const refText=value=>String(value||'').trim().toLowerCase().replace(/\\s+/g,' ');
+const pendingExact=(s,b)=>{
+  if(!s||!b||String(s.account||'').toUpperCase()!=='COREPAY'||String(b.account||'').toUpperCase()!=='COREPAY') return false;
+  if(s.direction!=='deposit'||b.direction!=='deposit'||Number(s.amount)!==Number(b.amount)) return false;
+  const su=idText(s.memberCode),bu=idText(b.memberCode);
+  if(!su||su!==bu) return false;
+  const sr=refText(s.transactionRef||s.ref),hay=[b.ref,b.note,b.raw].map(refText).join(' | ');
+  return !!sr&&hay.includes(sr);
+};
+const pendingRows=stm.filter(r=>String(r.subco||r.company||'').toUpperCase()==='UFABET7M'
+  &&String(r.account||'').toUpperCase()==='COREPAY'&&r.direction==='deposit'
+  &&String(r.status||'').trim().toLowerCase()==='pending');
+const pendingCandidates=new Map(),pendingPeers=new Map();
+for(const s of pendingRows){
+  const rows=[];
+  for(let i=0;i<bo.length;i++) if(pendingExact(s,bo[i])){rows.push(i);const peers=pendingPeers.get(i)||[];peers.push(s);pendingPeers.set(i,peers);}
+  pendingCandidates.set(s,rows);
+}
+const confirmedPending=new Set(pendingRows.filter(s=>{
+  const rows=pendingCandidates.get(s)||[];
+  return rows.length===1&&(pendingPeers.get(rows[0])||[]).length===1;
+}));
+const sevenMUnconfirmedPendingRowsSuppressed=pendingRows.length-confirmedPending.size;
+if(sevenMUnconfirmedPendingRowsSuppressed){
+  const eligible=stm.filter(r=>!pendingRows.includes(r)||confirmedPending.has(r));
+  stm.length=0;stm.push(...eligible);
+}
 const parsed=files.filter(f=>f.format&&(f.format.source==='bo'||f.format.source==='aux')).map(f=>({records:f.format.source==='bo'?(f.records||[]):[],aux:f.aux||[]}));
 const biz=Rules.run(parsed,${settings});
 const boFirstCoverage=(()=>{
@@ -214,7 +246,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.28-sys123-amount-time',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode

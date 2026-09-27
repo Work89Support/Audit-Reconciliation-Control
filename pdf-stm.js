@@ -211,7 +211,7 @@ const PdfStm = (() => {
     pages.forEach((lines) => {
       lines.forEach((l) => {
         const t = l.text;
-        const dateMatch = t.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\b/);
+        const dateMatch = t.match(/^(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b/);
         if (!dateMatch) return;
         if (/ยอดยกมา|ยอดยกไป/.test(t)) return;
         const time = (t.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
@@ -220,7 +220,7 @@ const PdfStm = (() => {
         if (amts.length < 2) return;
         const amount = numOf(amts[amts.length - 2].s);
         const balance = numOf(amts[amts.length - 1].s);
-        const kind = (t.match(/(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/) || [])[1] || "";
+        const kind = (t.match(/(รับโอนเงิน|รับโอนจาก|เงินโอนเข้า|โอนเงิน|โอนไป|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/) || [])[1] || "";
         const chIdx = l.items.findIndex((i) => i === amts[amts.length - 1]);
         const tail = l.items.slice(chIdx + 1).map((i) => i.s).join(" ").trim();
         rows.push({
@@ -247,6 +247,7 @@ const PdfStm = (() => {
      the receiving bank leg.  Dropping it here creates two false one-sided
      exceptions (for example TMN -7,000 / KBANK +7,000). */
   const TMN_FEE = /^(fee_|.*_fee$)/i;
+  const TMN_NON_CUSTOMER = /(?:^|[_\s-])fee(?:[_\s-]|$)|ค่าธรรมเนียม|ยอด(?:ยกมา|ยกไป|คงเหลือ)|opening[_\s-]?balance|closing[_\s-]?balance|balance[_\s-]?(?:forward|brought|carried)/i;
   const TMN_INTERNAL_TRANSFER = /(?:^|_)promptpay_.*_fundout$|(?:^|_).*_fundout$/i;
   function parseTMN(pages) {
     const rows = [];
@@ -265,6 +266,7 @@ const PdfStm = (() => {
           balance: numOf(m[7]),
           desc: detail,
           isFee: TMN_FEE.test(detail),
+          isNonCustomer: TMN_NON_CUSTOMER.test(detail),
           internalTransferHint: TMN_INTERNAL_TRANSFER.test(detail),
           raw: l.text,
         });
@@ -711,7 +713,7 @@ const PdfStm = (() => {
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
-      if (r.isFee) return drop("ค่าธรรมเนียม TrueMoney (ไม่ใช่รายการลูกค้า)");
+      if (r.isFee || r.isNonCustomer) return drop("ค่าธรรมเนียมหรือยอดประกอบ TrueMoney (ไม่ใช่รายการลูกค้า)");
       if (businessDate && r.date && r.date !== businessDate && !previousDayReport) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       records.push({
         rowNo: i + 1,
