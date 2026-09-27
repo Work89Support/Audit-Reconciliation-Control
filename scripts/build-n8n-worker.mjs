@@ -66,6 +66,16 @@ const outsideProviderRows=Number((norm.dropped||{})[outsideProviderReason]||0);
 const inactiveQpayRows=Number((norm.dropped||{})[inactiveQpayReason]||0);
 const intentionallyInactiveRows=outsideProviderRows+inactiveQpayRows;
 const acceptedOutOfScopePm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonEmptyRows>0&&intentionallyInactiveRows>0&&dropEntries.every(([reason])=>reason===outsideProviderReason||reason===inactiveQpayReason);
+// A recognized PM workbook whose body rows are all explicitly non-successful
+// (Fail/Failed/Cancelled/etc.) is a readable control file with zero eligible
+// reconciliation rows.  Treating it as a corrupt file blocks the whole
+// company-day even though the parser has positively classified every row.
+// This acceptance changes only file quality; it never creates a transaction
+// and therefore cannot close a BO row from a failed provider entry.
+const nonSuccessPmRows=dropEntries
+  .filter(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'))
+  .reduce((sum,[,count])=>sum+Number(count||0),0);
+const acceptedNonSuccessPm=file.kind==='pm_statement'&&detectedSource==='stm'&&usableRows===0&&nonSuccessPmRows>0&&dropEntries.every(([reason])=>String(reason).startsWith('รายการไม่สำเร็จ (PM:'));
 // BO is the daily source of truth for which accounts were actually used.
 // A header-only BO workbook is therefore valid evidence for a zero-activity day,
 // not a parser failure.  Keep rejecting a truly empty/corrupt workbook.
@@ -92,7 +102,7 @@ if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อ�
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutOfScopePm){
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
   const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
   const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
   parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
@@ -110,6 +120,7 @@ if(!parseError&&kindSource[file.kind]) norm.format.source=kindSource[file.kind];
 if(acceptedEmptyBo) norm.warnings=[...(norm.warnings||[]),'BO ไม่มีรายการธุรกรรมที่ใช้จับคู่ (0 รายการ)'];
 if(acceptedEmptyStmPdf) norm.warnings=[...(norm.warnings||[]),'Statement ไม่มีรายการธุรกรรม (0 รายการ)'];
 if(acceptedOutOfScopePm) norm.warnings=[...(norm.warnings||[]),'ข้ามไฟล์ PM '+intentionallyInactiveRows+' รายการ: Provider ยังไม่เปิดใช้สำหรับบริษัทนี้'];
+if(acceptedNonSuccessPm) norm.warnings=[...(norm.warnings||[]),'อ่านไฟล์ PM สำเร็จ แต่ไม่นำรายการสถานะไม่สำเร็จ '+nonSuccessPmRows+' รายการมากระทบยอด'];
 for(const r of (norm.records||[])){
   const pmKey=Formats.canonicalPm(r.channel||r.account||'');
   if(pmKey){r.account=pmKey;r.channel=pmKey;}
@@ -203,7 +214,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.21-xb-no-stale-duplicate',xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.27-sys123-provider-recovery',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
@@ -253,8 +264,11 @@ try {
     const result=await PdfStm.parseText(meta.file.file_name,text,meta.job.business_date);
     diagnostics=result.quality;
     const explicitEmpty=/(ไม่มีรายการเคลื่อนไหว|ไม่มีรายการธุรกรรม|ไม่พบรายการเคลื่อนไหว|no transactions|no activity)/i.test(text);
-    const forceSevenMScanOcr=meta.file.kind==='stm_pdf'&&/^UFABET7M_STM_/i.test(String(meta.file.file_name||''));
-    readable=!forceSevenMScanOcr && !!result.header.bank && !!result.header.account && result.quality.complete && (result.quality.parsedRows>0 || explicitEmpty);
+    // Trust complete native statement extraction for every company, including
+    // 7M. Image-only or incomplete PDFs still fail these checks and continue
+    // to OCR, but a complete native parse must not be replaced by a noisier OCR
+    // version (which previously created false partial-read cases on KBANK).
+    readable=!!result.header.bank && !!result.header.account && result.quality.complete && (result.quality.parsedRows>0 || explicitEmpty);
   }
 } catch(error) { diagnostics={error:String(error.message||error)}; }
 return [{json:{text,pdf_readable:readable,native_quality:diagnostics,numpages:source.numpages||null},pairedItem:{item:0}}];`;

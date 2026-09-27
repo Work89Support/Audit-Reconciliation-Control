@@ -433,6 +433,14 @@ const PdfStm = (() => {
       const joined = [];
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
+        // Google Drive OCR may flatten the KBANK opening-balance row and the
+        // first SMS-fee transaction into one physical line:
+        //   01-09-26 16-09-26 18:49 ยอดยกมา ... 20.00 500.61 480.61 ...
+        // The first date and 500.61 are the statement opening balance, not the
+        // transaction date/amount.  Keep the dated fee (20.00) and closing
+        // balance (480.61) as the auditable row.
+        const flattenedSmsFee = line.match(/\b(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ยอดยกมา\s+ค่าธรรมเนียม.+?\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(โอนเข้า\/หักบัญชีอัตโนมัติ)\s+(.+)$/);
+        if (flattenedSmsFee) line = [flattenedSmsFee[1], flattenedSmsFee[2], "ค่าธรรมเนียม", flattenedSmsFee[3], flattenedSmsFee[5], flattenedSmsFee[6], flattenedSmsFee[7].trim()].join(" ");
         // Only join a wrapped row up to its two monetary columns. A new date,
         // header or footer is never consumed into the preceding transaction.
         if (start.test(line) && !isStatementPeriod(line) && !isBalanceForward(line) && !/ยอดยกมา|ยอดยกไป|balance brought|balance carried/i.test(line)) {
@@ -442,6 +450,19 @@ const PdfStm = (() => {
             line += " " + lines[++i];
           }
         }
+        // Some KBANK OCR output puts the closing balance and transaction code
+        // on the next physical line. At this point the joined row already has
+        // two numbers (fee + opening balance), so the generic join above stops
+        // one line too early. Pull in only that narrowly identified third
+        // amount/code line, then apply the existing SMS-fee transform.
+        if (/^\d{1,2}-\d{1,2}-\d{2,4}\s+\d{1,2}-\d{1,2}-\d{2,4}\s+\d{1,2}:\d{2}\s+ยอดยกมา\s+ค่าธรรมเนียม/.test(line)
+          && (line.match(/-?[\d,]+\.\d{2}(?!\d)/g) || []).length === 2
+          && i + 1 < lines.length
+          && /^-?[\d,]+\.\d{2}\s+(?:โอนเข้า\/หักบัญชีอัตโนมัติ|รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ค่าธรรมเนียม)/.test(lines[i + 1])) {
+          line += " " + lines[++i];
+        }
+        const joinedSmsFee = line.match(/\b(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ยอดยกมา\s+ค่าธรรมเนียม.+?\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(โอนเข้า\/หักบัญชีอัตโนมัติ)\s*(.*)$/);
+        if (joinedSmsFee) line = [joinedSmsFee[1], joinedSmsFee[2], "ค่าธรรมเนียม", joinedSmsFee[3], joinedSmsFee[5], joinedSmsFee[6], joinedSmsFee[7].trim()].filter(Boolean).join(" ");
         // KBANK native extraction sometimes places balance before amount.
         const m = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(-?[\d,]+\.\d{2})\s+(.*?)\+\s*\+\s*(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\s+(-?[\d,]+\.\d{2})\s*$/);
         if (m) line = [m[1], m[2], m[6], m[7], m[4], m[3].trim(), m[5].trim()].filter(Boolean).join(" ");
@@ -449,6 +470,13 @@ const PdfStm = (() => {
         // text joins ATM to the balance and places the fee amount last.
         const fee = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ATM\s*(-?[\d,]+\.\d{2})\s+(.*?)ค่าธรรมเนียมรายปีบัตรเดบิต\s+(-?[\d,]+\.\d{2})\s*$/);
         if (fee) line = [fee[1], fee[2], "ค่าธรรมเนียมรายปีบัตรเดบิต", fee[5], fee[3], "ATM", fee[4].trim()].filter(Boolean).join(" ");
+        // KBANK SMS fee statements extracted by n8n put the running balance
+        // immediately after the transaction channel and emit the debit amount
+        // at the very end (often on the following physical line).  Reorder the
+        // two verified monetary columns before the normal KBANK parser sees
+        // them; otherwise the balance is incorrectly treated as the fee.
+        const smsFee = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+(โอนเข้า\/หักบัญชีอัตโนมัติ)\s*(-?[\d,]+\.\d{2})\s+(.+?ค่าธรรมเนียม.+?)\s+(-?[\d,]+\.\d{2})\s*$/);
+        if (smsFee) line = [smsFee[1], smsFee[2], "ค่าธรรมเนียม", smsFee[6], smsFee[4], smsFee[3], smsFee[5].trim()].join(" ");
         joined.push({ text: line, items: line.split(/\s+/).map((s) => ({ s })) });
       }
       return joined;
@@ -623,6 +651,19 @@ const PdfStm = (() => {
       head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     if (!rows.length) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
+    // A flattened PDF line can begin with an opening-balance date and later
+    // contain the actual transaction date immediately followed by its time.
+    // Prefer that exact business-date marker only when it is present in the
+    // same raw row; this avoids changing genuine cross-day transactions.
+    if (businessDate && (head.bank === "KBANK" || head.bank === "LBK")) {
+      const [yyyy, mm, dd] = businessDate.split("-");
+      const yy = yyyy.slice(-2);
+      const escapedDate = `${Number(dd)}[-/]0?${Number(mm)}[-/](?:${yy}|${yyyy})`;
+      const businessDateTime = new RegExp(`(?:^|\\s)${escapedDate}\\s+\\d{1,2}:\\d{2}\\b`);
+      rows.forEach((row) => {
+        if (row.date !== businessDate && businessDateTime.test(String(row.raw || ""))) row.date = businessDate;
+      });
+    }
     const remainingRows = [...rows];
     const unreadRows = [];
     pages.forEach((lines, pageIndex) => lines.forEach((line, lineIndex) => {

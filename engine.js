@@ -787,6 +787,23 @@ const Engine = (() => {
       ["CYBERPLUS", new Set(["deposit", "withdraw"])],
       ["LOCALPAY", new Set(["deposit", "withdraw"])],
     ]);
+    const sys123GenericProvider = (value) => {
+      const provider = String(value || "").trim().toUpperCase();
+      return !provider || provider === "PM" || provider === "SYS123" || provider === "UNKNOWN";
+    };
+    /* บางไฟล์ 123 ไม่มีชื่อ Provider และถูก normalize เป็น PM แม้ฝั่ง BO ระบุ
+       Provider ชัดเจน อนุญาตให้อนุมานได้เฉพาะเมื่ออีกฝั่งมี Provider ที่รองรับ;
+       ห้ามจับถ้าทั้งสองฝั่งเป็นชื่อกว้างหรือระบุ Provider ขัดกัน */
+    const sys123ProviderOfPair = (s, b) => {
+      const stmProvider = String(s && s.account || "").trim().toUpperCase();
+      const boProvider = String(b && b.account || "").trim().toUpperCase();
+      const stmGeneric = sys123GenericProvider(stmProvider);
+      const boGeneric = sys123GenericProvider(boProvider);
+      if (stmGeneric && boGeneric) return null;
+      if (!stmGeneric && !boGeneric && stmProvider !== boProvider) return null;
+      const provider = stmGeneric ? boProvider : stmProvider;
+      return sys123Directions.has(provider) ? provider : null;
+    };
     const accountIdentity = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9ก-๙]+/g, "");
     const accountIdentityMatches = (left, right) => {
       const a = accountIdentity(left), b = accountIdentity(right);
@@ -800,8 +817,8 @@ const Engine = (() => {
       && sys123Companies.has(auditCompanyOf(b)) && s.isPmChannel && b.isPmChannel;
     const sys123ProviderCandidate = (s, b) => {
       if (!isSys123PmPair(s, b) || !sameCompany(s, b)) return false;
-      const provider = String(s.account || "").trim().toUpperCase();
-      if (provider !== String(b.account || "").trim().toUpperCase()) return false;
+      const provider = sys123ProviderOfPair(s, b);
+      if (!provider) return false;
       if (!sys123Directions.get(provider)?.has(s.direction) || s.direction !== b.direction) return false;
       if (!Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
       const stmMember = identityText(s.memberCode), boMember = identityText(b.memberCode);
@@ -809,11 +826,20 @@ const Engine = (() => {
       if (provider === "CYBERPLUS" && s.direction === "withdraw") return true;
       return accountIdentityMatches(s.custAccount || s.custAccountLast4, b.custAccount || b.custAccountLast4);
     };
+    const sys123AmountIndex = new Map();
+    boRecords.forEach((b, i) => {
+      if (!sys123Companies.has(auditCompanyOf(b)) || !b.isPmChannel || !Number.isFinite(b.amount)) return;
+      const key = Number(b.amount).toFixed(2);
+      const rows = sys123AmountIndex.get(key) || [];
+      rows.push(i);
+      sys123AmountIndex.set(key, rows);
+    });
+    const sys123BoRows = (s) => sys123AmountIndex.get(Number(s.amount).toFixed(2)) || [];
     const sys123Candidates = new Map();
     const sys123Peers = new Map();
     stmRecords.forEach((s) => {
       if (!sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
-      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+      const rows = sys123BoRows(s)
         .filter((i) => !boUsed[i] && sys123ProviderCandidate(s, boRecords[i]));
       sys123Candidates.set(s, rows);
       rows.forEach((i) => {
@@ -833,9 +859,14 @@ const Engine = (() => {
         b,
         dt: timeDistance(s, b),
         sys123ProviderMatch: true,
-        sys123MatchMethod: s.account === "CYBERPLUS" && s.direction === "withdraw"
-          ? "sys123-member-amount"
-          : "sys123-member-account-amount",
+        sys123MatchMethod: (() => {
+          const provider = sys123ProviderOfPair(s, b);
+          const inferred = sys123GenericProvider(s.account) || sys123GenericProvider(b.account);
+          const base = provider === "CYBERPLUS" && s.direction === "withdraw"
+            ? "sys123-member-amount"
+            : "sys123-member-account-amount";
+          return inferred ? base.replace("sys123-", "sys123-provider-inferred-") : base;
+        })(),
       });
     });
 
@@ -858,7 +889,7 @@ const Engine = (() => {
       const peers = new Map();
       stmRecords.forEach((s) => {
         if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
-        const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        const rows = sys123BoRows(s)
           .filter((i) => !boUsed[i] && sys123TimedCandidate(s, boRecords[i]))
           .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
         candidates.set(s, rows);
@@ -885,9 +916,14 @@ const Engine = (() => {
           b,
           dt: timeDistance(s, b),
           sys123ProviderMatch: true,
-          sys123MatchMethod: s.account === "CYBERPLUS" && s.direction === "withdraw"
-            ? "sys123-member-amount-reciprocal-nearest"
-            : "sys123-member-account-amount-reciprocal-nearest",
+          sys123MatchMethod: (() => {
+            const provider = sys123ProviderOfPair(s, b);
+            const inferred = sys123GenericProvider(s.account) || sys123GenericProvider(b.account);
+            const base = provider === "CYBERPLUS" && s.direction === "withdraw"
+              ? "sys123-member-amount-reciprocal-nearest"
+              : "sys123-member-account-amount-reciprocal-nearest";
+            return inferred ? base.replace("sys123-", "sys123-provider-inferred-") : base;
+          })(),
         });
         sys123Progress = true;
       });
@@ -903,7 +939,7 @@ const Engine = (() => {
       const sm = identityText(s && s.memberCode), bm = identityText(b && b.memberCode);
       const memberMatch = !!sm && !!bm && sm === bm;
       const memberConflict = !!sm && !!bm && sm !== bm;
-      const provider = String(s && s.account || "").trim().toUpperCase();
+      const provider = sys123ProviderOfPair(s, b) || String(s && s.account || "").trim().toUpperCase();
       const accountIgnored = provider === "CYBERPLUS" && s.direction === "withdraw";
       const sa = accountIdentity(s && (s.custAccount || s.custAccountLast4));
       const ba = accountIdentity(b && (b.custAccount || b.custAccountLast4));
@@ -913,11 +949,12 @@ const Engine = (() => {
     };
     const sys123FallbackCandidate = (s, b) => {
       if (!isSys123PmPair(s, b) || !sameCompany(s, b)) return false;
-      const provider = String(s.account || "").trim().toUpperCase();
-      if (provider !== String(b.account || "").trim().toUpperCase()) return false;
+      const provider = sys123ProviderOfPair(s, b);
+      if (!provider) return false;
       if (!sys123Directions.get(provider)?.has(s.direction) || s.direction !== b.direction) return false;
       if (!Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
-      if (!providerStatusOk(s) || !providerStatusOk(b)) return false;
+      const sys123StatusOk = (r) => String(r && r.status || "").trim().toUpperCase() === "PENDING" || providerStatusOk(r);
+      if (!sys123StatusOk(s) || !sys123StatusOk(b)) return false;
       if (s.noTime || b.noTime || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)) return false;
       if (!isIsoDate(s.date) || !isIsoDate(b.date) || timeDistance(s, b) > sys123FallbackTimeTol) return false;
       const identity = sys123IdentityState(s, b);
@@ -928,7 +965,7 @@ const Engine = (() => {
     const sys123FallbackPeers = new Map();
     stmRecords.forEach((s) => {
       if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
-      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+      const rows = sys123BoRows(s)
         .filter((i) => !boUsed[i] && sys123FallbackCandidate(s, boRecords[i]))
         .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
       sys123FallbackCandidates.set(s, rows);
@@ -951,7 +988,9 @@ const Engine = (() => {
         b,
         dt: timeDistance(s, b),
         sys123ProviderMatch: true,
-        sys123MatchMethod: "sys123-partial-identity-reciprocal-near-time",
+        sys123MatchMethod: (sys123GenericProvider(s.account) || sys123GenericProvider(b.account))
+          ? "sys123-provider-inferred-partial-identity-reciprocal-near-time"
+          : "sys123-partial-identity-reciprocal-near-time",
       });
     });
 

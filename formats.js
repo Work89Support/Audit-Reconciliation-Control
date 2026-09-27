@@ -324,7 +324,18 @@ const Formats = (() => {
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
-    return hit ? hit[1] : null;
+    if (hit) return hit[1];
+    /* ไฟล์เครือ 123 ใช้ชื่อย่อ Provider ในชื่อไฟล์/ชื่อชีตบ่อยมาก เช่น
+       `FR8_PM_CP_D...` หรือ `CY ถ` แต่ไม่มีคอลัมน์ provider ภายในไฟล์
+       จับเฉพาะ token ที่คั่นชัดเจนเพื่อไม่ให้ AT ในรหัสบริษัท AT4 หรือคำอื่น
+       ถูกตีความเป็น AUTOPEER โดยบังเอิญ */
+    const tokens = new Set(s.split(/[^a-z0-9]+/).filter(Boolean));
+    if (tokens.has("at")) return "AUTOPEER";
+    if (tokens.has("az")) return "AZPAY";
+    if (tokens.has("cp")) return "COREPAY";
+    if (tokens.has("cy")) return "CYBERPLUS";
+    if (tokens.has("lo") || tokens.has("lp")) return "LOCALPAY";
+    return null;
   }
   function subcoOf(fileName, title) {
     const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|3X|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
@@ -549,7 +560,15 @@ const Formats = (() => {
         && provider === "COREPAY"
         && dir === "deposit"
         && status === "pending";
-      if (!partial && !sevenMCorepayPendingDeposit && !["success", "successed", "สำเร็จ"].includes(status)) {
+      // System 123 provider exports can remain `pending` after the transaction
+      // is already present in BO.  The approved 123 audit rule does not use
+      // provider status as a closing key; it requires member/user, customer
+      // account (except CYBERPLUS withdrawal), and amount.  Keep the row as
+      // reconciliation evidence and let the strict identity matcher decide.
+      // This does not auto-close a row on status or amount alone.
+      const sys123Pending = ["AT4", "FR8", "SK8"].includes(subco)
+        && status === "pending";
+      if (!partial && !sevenMCorepayPendingDeposit && !sys123Pending && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       const timeSource = xbPolicy

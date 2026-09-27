@@ -710,6 +710,23 @@ await (async () => {
   eq('123 PM: one missing identity field closes by reciprocal near time',r.matched,1);
   eq('123 PM: partial identity fallback is auditable',r.matchEvidence[0]?.method,'sys123-partial-identity-reciprocal-near-time');
 
+  const genericProviderStm=rec({...stm,rowNo:5151,account:'PM',sec:7200});
+  r=await run([genericProviderStm],[nearBo],{...settings,sys123FallbackTimeTolerance:600});
+  eq('123 PM: generic provider is recovered from a unique strict BO identity',r.matched,1);
+  eq('123 PM: inferred provider is recorded in evidence',r.matchEvidence[0]?.method,'sys123-provider-inferred-member-account-amount');
+
+  const genericPendingMissingAccount=rec({...missingAccountStm,rowNo:5152,account:'PM',status:'pending',sec:7200});
+  r=await run([genericPendingMissingAccount],[nearBo],{...settings,sys123FallbackTimeTolerance:600});
+  eq('123 PM: pending generic provider with one matching identity closes only by reciprocal near time',r.matched,1);
+  eq('123 PM: pending inferred fallback remains auditable',r.matchEvidence[0]?.method,'sys123-provider-inferred-partial-identity-reciprocal-near-time');
+
+  r=await run(
+    [genericProviderStm],
+    [nearBo,rec({...nearBo,rowNo:5153,account:'LOCALPAY',sec:7350})],
+    {...settings,sys123FallbackTimeTolerance:600},
+  );
+  eq('123 PM: generic provider stays open when two providers are equally valid',r.matched,0);
+
   r=await run(
     [rec({...missingAccountStm,rowNo:5201,memberCode:'member-a'})],
     [rec({...nearBo,rowNo:5202,memberCode:'member-b'})],

@@ -100,6 +100,61 @@ const KPLUS = `
 `;
 eq("KBANK: ไม่มี 'LINE BK' ยังตรวจเป็น KBANK", P.header(toPages(KPLUS)).bank, "KBANK");
 
+/* n8n native extraction: KBANK SMS fee puts balance before description and
+   the real debit amount on the following line. */
+const KBANK_SMS_FEE = `
+ชื่อบัญชี น.ส. ปาหนัน สุขใจ
+เลขที่บัญชีเงินฝาก 196-8-76505-8
+รอบระหว่างวันที่ 01/09/2026 - 16/09/2026
+16-09-26 18:49 โอนเข้า/หักบัญชีอัตโนมัติ480.61 ค่าธรรมเนียมบริการ SMS ALERT*ค่าธรรมเนียม SMS ขยันบอก /
+อื่น ๆ
+20.00
+`;
+const kbankSmsFee = await P.parseText("SK8_STM_KB_ปาหนัน_DW_2026-09-16.pdf", KBANK_SMS_FEE, "2026-09-16");
+eq("KBANK SMS fee: อ่านรายการที่ n8n แยกยอดไว้ท้ายบรรทัดได้", kbankSmsFee.records.length, 1);
+eq("KBANK SMS fee: ยอดรายการ = 20 ไม่ใช่ยอดคงเหลือ", kbankSmsFee.records[0]?.amount, 20);
+eq("KBANK SMS fee: ยอดคงเหลือ = 480.61", kbankSmsFee.records[0]?.balance, 480.61);
+eq("KBANK SMS fee: เป็นรายการถอน", kbankSmsFee.records[0]?.direction, "withdraw");
+eq("KBANK SMS fee: ผ่าน quality gate", kbankSmsFee.quality.complete, true);
+
+/* Google Drive OCR may flatten the opening balance and the SMS-fee row. */
+const KBANK_SMS_FEE_FLAT = `
+ชื่อบัญชี น.ส. ปาหนัน สุขใจ เลขที่บัญชีเงินฝาก 196-8-76505-8
+01-09-26 16-09-26 18:49 ยอดยกมา ค่าธรรมเนียม SMS ขยันบอก / อื่น ๆ 20.00 500.61 480.61 โอนเข้า/หักบัญชีอัตโนมัติ ค่าธรรมเนียมบริการ SMS ALERT*
+`;
+const kbankSmsFeeFlat = await P.parseText("SK8_STM_KB_ปาหนัน_DW_2026-09-16.pdf", KBANK_SMS_FEE_FLAT, "2026-09-16");
+eq("KBANK SMS fee flat: ไม่ใช้วันยอดยกมาเป็นวันรายการ", kbankSmsFeeFlat.records[0]?.sourceDate, "2026-09-16");
+eq("KBANK SMS fee flat: ยอดรายการถูกต้อง", kbankSmsFeeFlat.records[0]?.amount, 20);
+eq("KBANK SMS fee flat: ยอดคงเหลือถูกต้อง", kbankSmsFeeFlat.records[0]?.balance, 480.61);
+eq("KBANK SMS fee flat: ผ่าน quality gate", kbankSmsFeeFlat.quality.complete, true);
+
+const KBANK_SMS_FEE_OCR_LINES = `
+ชื่อบัญชี น.ส. ปาหนัน สุขใจ
+เลขที่บัญชีเงินฝาก 196-8-76505-8
+01-09-26 16-09-26
+18:49
+ยอดยกมา
+ค่าธรรมเนียม SMS ขยันบอก / อื่น ๆ
+20.00
+500.61
+480.61 โอนเข้า/หักบัญชีอัตโนมัติ
+ค่าธรรมเนียมบริการ SMS ALERT*
+`;
+const kbankSmsFeeOcrLines = await P.parseText("SK8_STM_KB_ปาหนัน_DW_2026-09-16.pdf", KBANK_SMS_FEE_OCR_LINES, "2026-09-16");
+eq("KBANK SMS fee OCR lines: รวมยอดคงเหลือบรรทัดถัดไป", kbankSmsFeeOcrLines.records.length, 1);
+eq("KBANK SMS fee OCR lines: วันที่ธุรกรรมถูกต้อง", kbankSmsFeeOcrLines.records[0]?.sourceDate, "2026-09-16");
+eq("KBANK SMS fee OCR lines: ยอดรายการถูกต้อง", kbankSmsFeeOcrLines.records[0]?.amount, 20);
+eq("KBANK SMS fee OCR lines: ยอดคงเหลือถูกต้อง", kbankSmsFeeOcrLines.records[0]?.balance, 480.61);
+eq("KBANK SMS fee OCR lines: ผ่าน quality gate", kbankSmsFeeOcrLines.quality.complete, true);
+
+const KBANK_LEADING_BALANCE_DATE = `
+เลขที่บัญชีเงินฝาก 196-8-76505-8
+01-09-26 สรุป 16-09-26 18:49 ถอนเงิน 20.00 480.61
+`;
+const kbankLeadingDate = await P.parseText("SK8_STM_KB_ปาหนัน_DW_2026-09-16.pdf", KBANK_LEADING_BALANCE_DATE, "2026-09-16");
+eq("KBANK flattened: ใช้วันธุรกรรมที่มีเวลากำกับ", kbankLeadingDate.records[0]?.sourceDate, "2026-09-16");
+eq("KBANK flattened: ไม่ใช้วันยอดยกมา", kbankLeadingDate.records.length, 1);
+
 /* Worker รับ pages ที่ Extract PDF คืนมาโดยตรง: statement วันก่อนหน้าทั้งฉบับ
    ต้องเข้าในรอบวันที่รายงาน และยังเก็บ sourceDate ไว้ตรวจย้อนหลัง */
 const workerSrc = src.replace(

@@ -120,7 +120,7 @@ const validPdfText = pdfHeader + '04/09/26 10:00 X1 ENET 100.00 1100.00\nรั�
 assert.equal((await probe({text:validPdfText},metaForPdf))[0].json.pdf_readable, true);
 assert.equal((await probe({text:pdfHeader+'04/09/26 10:00 X1 ENET 100.00 1100.00'},metaForPdf))[0].json.pdf_readable, true, 'optional SCB counterparty text must not force a complete core transaction through OCR');
 const sevenMScanMeta = () => ({item:{json:{file:{file_name:'UFABET7M_STM_SCB_สมภพ_DW_2026-09-23.pdf',kind:'stm_pdf'},job:{business_date:'2026-09-23'}}}});
-assert.equal((await probe({text:validPdfText},sevenMScanMeta))[0].json.pdf_readable, false, '7M bank-statement scans must use the full OCR route');
+assert.equal((await probe({text:validPdfText},sevenMScanMeta))[0].json.pdf_readable, true, '7M bank statements with a complete native parse must not be degraded by OCR');
 const testedPdfParser = (await readFile(new URL('../pdf-stm.js', import.meta.url), 'utf8')).trim();
 for (const workflow of [worker, await load('audit-round-worker.json')]) {
   for (const node of workflow.nodes.filter(n => n.parameters?.jsCode?.includes('const PdfStm'))) {
@@ -204,7 +204,13 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.24-xb-sapan-type-pagination'/, "worker version must identify per-type Sapan pagination");
+assert.match(workerText, /worker_version:'1\.9\.27-sys123-provider-recovery'/, "worker version must identify System 123 provider recovery support");
+assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
+assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
+assert.match(workerText, /sys123_pending_evidence:true/, "worker summary must record the System 123 pending-evidence policy");
+assert.match(workerText, /sys123_pending_partial_identity_fallback:true/, "worker summary must record pending partial-identity fallback");
+assert.match(workerText, /sys123_generic_provider_inference:true/, "worker summary must record generic System 123 provider inference");
+assert.match(workerText, /sys123_short_provider_tokens:true/, "worker summary must record short provider filename tokens");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
 assert.match(workerText, /company=in\.\(/, "3XB Sapan history query must include equivalent legacy company labels without consuming the API row cap on unrelated companies");
@@ -256,7 +262,7 @@ assert.match(workerText, /isInformationalAuditException/, "worker must not persi
 const normalizeNode = worker.nodes.find(node => node.parameters?.jsCode?.includes('const detectedSource=norm.format.source'));
 const qualityCode = normalizeNode.parameters.jsCode.split("const detectedSource=norm.format.source")[1].split('let tag=Registry.matchFile')[0];
 const qualityGate = new Function('norm','rawRows','file','extractedText','parseError','ext','acceptedEmptyPm','Formats',
-  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm};');
+  "const detectedSource=norm.format.source" + qualityCode + '; return {parseError, acceptedEmptyBo, acceptedEmptyStmPdf, acceptedOutOfScopePm, acceptedNonSuccessPm};');
 const checkEmpty = (rows, source, header, text='', kind='bo_main', ext='xlsx') => qualityGate(
   {format:{source},records:[],aux:[]},rows,{kind},text,null,ext,false,{detect:()=>header});
 const boHeaderFixture = {headerIdx:0,spec:{side:'bo'}};
@@ -273,6 +279,11 @@ assert.equal(qpayOnly.parseError, null, 'QPAY-only export is accepted while admi
 assert.equal(qpayOnly.acceptedOutOfScopePm, true);
 const mixedPmDrops = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{[outsideProviderReason]:12,'ไม่มีเวลาที่อ่านได้':1}}, [['id','provider'],['1','localpay']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
 assert.ok(mixedPmDrops.parseError, 'mixed PM parse failures must still block the quality gate');
+const failedPmOnly = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'รายการไม่สำเร็จ (PM: fail)':1}}, [['วันเวลา','สถานะ'],['2026-09-24 22:03:06','Fail']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
+assert.equal(failedPmOnly.parseError, null, 'recognized failed-only PM exports are readable zero-eligible control files');
+assert.equal(failedPmOnly.acceptedNonSuccessPm, true);
+const failedPmMixed = qualityGate({format:{source:'stm'},records:[],aux:[],dropped:{'รายการไม่สำเร็จ (PM: fail)':1,'ไม่มีเวลาที่อ่านได้':1}}, [['วันเวลา','สถานะ'],['bad','Fail']], {kind:'pm_statement'}, '', null, 'xlsx', false, {detect:()=>null});
+assert.ok(failedPmMixed.parseError, 'failed rows mixed with parser errors must still block the quality gate');
 assert.ok(checkEmpty([['unsupported']], 'unknown', null).parseError, 'unknown nonempty BO must not become a successful empty file');
 assert.equal(checkEmpty([['valid header']], 'bo', boHeaderFixture).parseError, null, 'recognized header-only BO is valid');
 assert.ok(checkEmpty([['valid header'],['unreadable transaction']], 'bo', boHeaderFixture).parseError, 'dropped BO rows must not become zero activity');
