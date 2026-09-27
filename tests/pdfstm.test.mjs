@@ -129,6 +129,49 @@ eq("TMN n8n layout: อ่านหลายแถวที่ถูก flatten"
 eq("TMN n8n layout: ตัด fee หลัง normalize ช่องว่างภาษาไทย", tmnN8nLayout.records.length, 1);
 eq("TMN n8n layout: คงยอดลูกค้าจริง", tmnN8nLayout.records[0]?.amount, 100);
 
+const TMN_COLUMN_LAYOUT = `
+ใบแสดงรายการ
+Statement of Account
+ชื่อบัญชี
+(Account Name)
+คุณทดสอบ ระบบ
+วันที่
+ประเภท
+20/09/2026 10:00:00
+เงินเข้า
+20/09/2026 10:00:01
+เงินออก
+20/09/2026 10:05:00
+เงินออก
+20/09/2026 10:10:00
+เงินเข้า
+เลขที่บัญชี
+(Account no)
+0812792075
+รายละเอียด
+100.00 0611934999
+-2.90
+fee_p2p_receive
+-7,000.00
+promptpay_bay_fundout
+50.00 0628298580
+8,000.00
+8,100.00
+8,100.00
+8,097.10
+8,097.10
+1,097.10
+1,097.10
+1,147.10
+ยอดคงเหลือ
+`;
+const tmnColumnLayout = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_COLUMN_LAYOUT, "2026-09-20");
+eq("TMN column layout: อ่านเลขบัญชีที่แยกบรรทัด", tmnColumnLayout.header.account, "0812792075");
+eq("TMN column layout: ยืนยันครบทุกแถวก่อนกรอง", tmnColumnLayout.quality.parsedRows, 4);
+eq("TMN column layout: ตัด fee แต่คงรายการลูกค้า", tmnColumnLayout.records.length, 3);
+eq("TMN column layout: คง fundout ไว้จับขาโยกเงิน", tmnColumnLayout.records[1]?.internalTransferHint, true);
+eq("TMN column layout: ยอด fundout มาจากผลต่าง balance", tmnColumnLayout.records[1]?.amount, 7000);
+
 const TMN_UNREADABLE = `
 20/09/2026 01:35:00 เงินออก 100.00 ข้อมูลไม่ครบ
 `;

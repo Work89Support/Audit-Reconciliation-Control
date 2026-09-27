@@ -95,7 +95,7 @@ const PdfStm = (() => {
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 
     let account = "";
-    const am = blob.match(/(?:เลข(?:ที่)?บัญชี(?:เงินฝาก)?|Account No\.?)\s*[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d-\d{5}-\d)\b/) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
+    const am = blob.match(/(?:เลข(?:ที่)?บัญชี(?:เงินฝาก)?|Account No\.?)\s*(?:\(Account no\)\s*)?[:\s]*([\d-]{9,20})/i) || blob.match(/\b(\d{3}-\d-\d{5}-\d)\b/) || blob.match(/\b(\d{3}-\d{1,6}-\d{1,2})\b/);
     if (am) account = digits(am[1]);
 
     let holder = "";
@@ -266,7 +266,7 @@ const PdfStm = (() => {
     const flattened = new RegExp(source + "(?=\\s+\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s+\\d{1,2}:\\d{2}:\\d{2}|$)", "g");
     const add = (m, raw) => {
       const detail = m[5].trim();
-      const key = `${m[1]}|${m[2]}|${m[3]}|${m[4]}|${detail}|${m[7]}`;
+      const key = `${m[1]}|${m[2]}|${m[3]}|${Math.abs(numOf(m[4]))}|${numOf(m[7])}`;
       if (seen.has(key)) return;
       seen.add(key);
       rows.push({
@@ -298,6 +298,142 @@ const PdfStm = (() => {
           if (m) add(m, l.text);
         }
       });
+    });
+
+    /* n8n's native PDF extractor can return TrueMoney statements in visual
+       column order instead of row order.  In that representation all
+       date/type cells appear first, followed by movement/detail cells and the
+       opening/closing balance columns.  Reconstruct only when every row can
+       be proven by a continuous before -> after balance chain and when the
+    signed movement/detail columns agree row-for-row.  This deliberately
+    fails closed on an incomplete or ambiguous page. */
+    const amountLine = /^-?[\d,]+\.\d{2}$/;
+    const close = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 0.011;
+    let previousColumnRow = null;
+    pages.forEach((lines) => {
+      const cells = lines.map((line) => normalize(line.text)).filter(Boolean);
+      const flat = cells.join("\n");
+      const dates = [...flat.matchAll(/(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}:\d{2}:\d{2})/g)];
+      const dateCells = cells.filter((cell) => /\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}/.test(cell));
+      const typeSource = flat.replace(/เงิน\s*ออก\s*\/\s*เงิน\s*เข้า/g, " ");
+      const types = [...typeSource.matchAll(/เงิน\s*(เข้า|ออก)/g)];
+      if (!dates.length || dates.length !== types.length) return;
+      // A normal row-oriented page was already parsed above.  The fallback is
+      // only for pages where native extraction separated the visual columns.
+      if (dates.every((date) => rows.some((row) => row.date === isoOf(date[1]) && row.sec === secOf(date[2])))) return;
+
+      const deposits = [...flat.matchAll(/(?:^|\s)([\d,]+\.\d{2})\s+(\d{10})(?=\s|$)/gm)]
+        .map((m) => ({ amount: numOf(m[1]), desc: m[2] }));
+      const moneyMatches = [...flat.matchAll(/(?:^|\s)(-?[\d,]+\.\d{2})(?=\s|$)/gm)]
+        .map((m) => ({ token: m[1], index: m.index }));
+      const moneyTokens = moneyMatches.map((match) => match.token);
+      const negativeAmounts = moneyTokens.filter((cell) => /^-/.test(cell)).map((cell) => Math.abs(numOf(cell)));
+      const depositCount = types.filter((m) => m[1] === "เข้า").length;
+      const withdrawalCount = types.length - depositCount;
+      if (deposits.length < depositCount || negativeAmounts.length !== withdrawalCount) return;
+
+      const values = moneyTokens.filter((cell) => amountLine.test(cell)).map((cell) => numOf(cell));
+      const candidates = [];
+      for (let i = 0; i + 1 < values.length; i++) {
+        if (!close(values[i], values[i + 1])) candidates.push({
+          index: i, before: values[i], after: values[i + 1],
+          beforePos: moneyMatches[i].index, afterPos: moneyMatches[i + 1].index,
+        });
+      }
+      const directionMatches = (candidate, type) => type === "เข้า"
+        ? candidate.after > candidate.before : candidate.after < candidate.before;
+      let best = null;
+      candidates.filter((candidate) => directionMatches(candidate, types[0][1])).forEach((start) => {
+        const path = [start];
+        for (let rowIndex = 1; rowIndex < types.length; rowIndex++) {
+          const previous = path[path.length - 1];
+          const next = candidates.find((candidate) => candidate.index > previous.index + 1
+            && close(candidate.before, previous.after)
+            && directionMatches(candidate, types[rowIndex][1]));
+          if (!next) break;
+          path.push(next);
+        }
+        const gapCost = start.index + path.reduce((total, candidate, index) => index
+          ? total + candidate.index - (path[index - 1].index + 2) : total, 0);
+        if (!best || path.length > best.path.length || (path.length === best.path.length && gapCost < best.gapCost)) {
+          best = { path, gapCost };
+        }
+      });
+      if (!best || best.path.length !== dates.length) return;
+
+      const sameAmounts = (left, right) => left.length === right.length
+        && left.map((value) => Math.round(value * 100) / 100).sort((a, b) => a - b)
+          .every((value, index) => close(value, right.map((item) => Math.round(item * 100) / 100).sort((a, b) => a - b)[index]));
+      const depositMovements = best.path.filter((_, index) => types[index][1] === "เข้า")
+        .map((candidate) => Math.abs(candidate.after - candidate.before));
+      const withdrawalMovements = best.path.filter((_, index) => types[index][1] === "ออก")
+        .map((candidate) => Math.abs(candidate.after - candidate.before));
+      const unmatchedDepositMovements = [...depositMovements];
+      const verifiedDeposits = [];
+      deposits.forEach((item) => {
+        const matchIndex = unmatchedDepositMovements.findIndex((movement) => close(movement, item.amount));
+        if (matchIndex < 0) return;
+        unmatchedDepositMovements.splice(matchIndex, 1);
+        verifiedDeposits.push(item);
+      });
+      if (unmatchedDepositMovements.length || verifiedDeposits.length !== depositCount
+        || !sameAmounts(withdrawalMovements, negativeAmounts)) return;
+
+      const reconstructed = [];
+      for (let i = 0; i < dates.length; i++) {
+        const direction = types[i][1] === "เข้า" ? "deposit" : "withdraw";
+        const movement = Math.round(Math.abs(best.path[i].after - best.path[i].before) * 100) / 100;
+        let detail = "";
+        if (direction === "deposit") {
+          const matchIndex = verifiedDeposits.findIndex((item) => close(item.amount, movement));
+          if (matchIndex >= 0) {
+            detail = verifiedDeposits[matchIndex].desc;
+            verifiedDeposits.splice(matchIndex, 1);
+          }
+        }
+        reconstructed.push({
+          date: dates[i][1], time: dates[i][2], type: `เงิน${types[i][1]}`,
+          movement, detail, balance: best.path[i].after,
+          raw: dateCells[i] || "",
+        });
+      }
+      // TrueMoney receive fees are deterministic: 2.9% of the immediately
+      // preceding deposit (capped at 20 baht), posted within two seconds.
+      // Require the inferred count to equal the explicit fee markers on the
+      // same page before labeling or dropping any row.
+      let inferredFees = 0;
+      reconstructed.forEach((row, index) => {
+        const previous = index ? reconstructed[index - 1] : previousColumnRow;
+        if (!previous) return;
+        let seconds = secOf(row.time) - secOf(previous.time);
+        if (seconds < 0) seconds += 86400;
+        const expected = Math.min(Math.round(previous.movement * 0.029 * 100) / 100, 20);
+        if (previous.type === "เงินเข้า" && row.type === "เงินออก" && seconds <= 2 && close(row.movement, expected)) {
+          row.detail = "fee_p2p_receive";
+          inferredFees += 1;
+        }
+      });
+      const feeMarkers = (flat.match(/\bfee_p2p_receive\b/gi) || []).length;
+      if (inferredFees !== feeMarkers) return;
+      // fundout descriptions can be emitted inside the balance column. Map
+      // each marker to the nearest reconstructed withdrawal balance pair.
+      const fundoutMarkers = [...flat.matchAll(/\b[A-Za-z0-9_]*fundout\b/gi)];
+      fundoutMarkers.forEach((marker) => {
+        let bestIndex = -1;
+        let bestDistance = Infinity;
+        reconstructed.forEach((row, index) => {
+          if (row.type !== "เงินออก" || row.detail === "fee_p2p_receive") return;
+          const candidate = best.path[index];
+          const distance = Math.min(Math.abs((candidate.beforePos || 0) - marker.index), Math.abs((candidate.afterPos || 0) - marker.index));
+          if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+        });
+        if (bestIndex >= 0) reconstructed[bestIndex].detail = marker[0];
+      });
+      reconstructed.forEach((row) => {
+        add([null, row.date, row.time, row.type, String(row.movement), row.detail, String(best.path[0].before), String(row.balance)],
+          row.raw || `${row.date} ${row.time} ${row.type} ${row.movement.toFixed(2)} ${row.detail} ${row.balance.toFixed(2)}`);
+      });
+      previousColumnRow = reconstructed[reconstructed.length - 1] || previousColumnRow;
     });
     return rows;
   }
