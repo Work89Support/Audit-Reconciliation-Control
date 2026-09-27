@@ -560,15 +560,9 @@ const Formats = (() => {
         && provider === "COREPAY"
         && dir === "deposit"
         && status === "pending";
-      // System 123 provider exports can remain `pending` after the transaction
-      // is already present in BO.  The approved 123 audit rule does not use
-      // provider status as a closing key; it requires member/user, customer
-      // account (except CYBERPLUS withdrawal), and amount.  Keep the row as
-      // reconciliation evidence and let the strict identity matcher decide.
-      // This does not auto-close a row on status or amount alone.
-      const sys123Pending = ["AT4", "FR8", "SK8"].includes(subco)
-        && status === "pending";
-      if (!partial && !sevenMCorepayPendingDeposit && !sys123Pending && !["success", "successed", "สำเร็จ"].includes(status)) {
+      // System 123 is completed-only evidence. Pending provider rows are not
+      // settled transactions and must not inflate the reconciliation denominator.
+      if (!partial && !sevenMCorepayPendingDeposit && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       const timeSource = xbPolicy
@@ -584,15 +578,10 @@ const Formats = (() => {
       }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */
       const sys123Company = ["AT4", "FR8", "SK8"].includes(subco);
-      /* เครือ 123 ต้องเลือกยอดตามความหมายของ Provider ก่อนชื่อคอลัมน์ทั่วไป
-         โดยเฉพาะ COREPAY/CYBERPLUS ฝาก: `จำนวนที่ฝาก` อาจมีเศษค่าธรรมเนียม
-         แต่ BO บันทึก `จำนวนที่ได้รับ` เช่น 200.87 -> 200.00 หากใช้รายการ
-         candidate ทั่วไปอาจเลือกยอดผิดและสร้าง missing_bo/missing_stm เท็จ */
+      /* เครือ 123 ใช้ยอดฝาก/ถอนตามกฎ BO ไม่ใช้ยอดสุทธิหลังค่าธรรมเนียม */
       const sys123AmountCandidates = dir === "withdraw"
         ? ["จำนวนเงินถอนจริง", "จำนวนเงินถอน", "P2P จ่าย", "p2pจ่าย", "transferredAmount", "ยอดโอนจริง", "โอนจริง", "จำนวนเงิน", "amount", "รวมหักเงิน"]
-        : ["COREPAY", "CYBERPLUS"].includes(provider)
-          ? ["จำนวนที่ได้รับ", "จำนวนเงินฝากจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "โอนจริง", "realAmount", "amount", "สร้างฝาก"]
-          : ["จำนวนเงินฝากจริง", "จำนวนเงินฝาก", "จำนวนเงิน", "โอนจริง", "realAmount", "amount", "สร้างฝาก", "จำนวนที่ได้รับ"];
+        : ["จำนวนเงินฝากจริง", "จำนวนเงินฝาก", "จำนวนที่ฝาก", "จำนวนเงิน", "สร้างฝาก", "amount", "โอนจริง", "realAmount", "จำนวนที่ได้รับ"];
       const amountCandidates = sys123Company
         ? sys123AmountCandidates
         : dir === "withdraw"
@@ -603,9 +592,14 @@ const Formats = (() => {
         ? firstValue(f, r, [xbAmountColumn])
         : firstValue(f, r, amountCandidates);
       const amountColumn = amountSource.column || (dir === "deposit" ? "realAmount" : "transferredAmount");
-      const amount = xbPolicy
+      const rawAmount = xbPolicy
         ? num(amountSource.value)
         : partial ? Number(paidText) : num(amountSource.value);
+      // COREPAY ฝากของเครือ 123 ใส่เศษค่าธรรมเนียมไว้ในยอด PM แต่ BO
+      // เก็บยอดฐานจำนวนเต็ม เช่น 100.45 เทียบกับ BO 100.
+      const amount = sys123Company && provider === "COREPAY" && dir === "deposit"
+        ? Math.trunc(rawAmount)
+        : rawAmount;
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const requestedRaw = valAny(f, r, ["แจ้งถอน", "สร้างฝาก", "amount"]);
       const requested = num(requestedRaw) || null;

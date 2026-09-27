@@ -28,15 +28,12 @@ assert.equal(parse('AUTOPEER','D',[row('PARTIAL',550,355)]).records.length,0);
 assert.equal(parse('COREPAY','W',[row('PARTIAL',550,355)]).records.length,0);
 assert.equal(parse('AUTOPEER','W',[row('RETURN',550,0),row('PENDING',550,0)]).records.length,0);
 
-// System 123 files can retain `pending` after BO already contains the
-// transaction. Keep the row as evidence; the reconciliation matcher still
-// requires the configured member/account/amount identity before closure.
+// System 123 reconciliation uses completed transactions only. Pending rows are
+// not settled evidence and must not inflate the denominator or open cases.
 const sys123PendingHeader = ['วันที่ทำรายการ','Ref Id','รหัสสมาชิก','เลขบัญชีสมาชิก','จำนวนเงินฝาก','สถานะ'];
 const sys123PendingRow = ['2026-09-11 10:15:00','REF-123','member-1','1234567890',500,'Pending'];
 const pending123 = context.F.parse('AT4_PM_LOCALPAY_D_2026-09-11.xlsx',[sys123PendingHeader,sys123PendingRow],'2026-09-11');
-assert.equal(pending123.records.length,1);
-assert.equal(pending123.records[0].amount,500);
-assert.equal(pending123.records[0].status,'pending');
+assert.equal(pending123.records.length,0);
 
 // The waiver is company-scoped. It must not silently relax XB controls.
 const pendingXb = context.F.parse('MC8_PM_COREPAY_D_2026-09-11.xlsx',[sys123PendingHeader,sys123PendingRow],'2026-09-11');
@@ -45,6 +42,13 @@ assert.equal(pendingXb.records.length,0);
 // System 123 also uses short provider tokens in source file/sheet names.
 // They must not remain under the generic PM bucket.
 const shortProvider123 = context.F.parse('FR8_PM_CP_D_2026-09-11.xlsx',[sys123PendingHeader,sys123PendingRow],'2026-09-11');
-assert.equal(shortProvider123.records.length,1);
-assert.equal(shortProvider123.records[0].account,'COREPAY');
+assert.equal(shortProvider123.records.length,0);
+
+// COREPAY deposits contain fee decimals in PM, while BO records the whole-baht
+// base amount. Keep the deposit column and canonicalize only this provider rule.
+const corepaySuccessRow = ['2026-09-11 10:15:00','REF-CP','member-2','9988776655',100.45,'Success'];
+const corepaySuccess = context.F.parse('FR8_PM_CP_D_2026-09-11.xlsx',[sys123PendingHeader,corepaySuccessRow],'2026-09-11');
+assert.equal(corepaySuccess.records.length,1);
+assert.equal(corepaySuccess.records[0].account,'COREPAY');
+assert.equal(corepaySuccess.records[0].amount,100);
 console.log('PM partial payout: provider, direction, precision and missing-amount guards passed');

@@ -237,14 +237,19 @@ eq('7M COREPAY deposit: pending rows remain eligible for reconciliation',sevenCo
 eq('7M COREPAY deposit: pending received amount is used',sevenCorepayPendingDeposit.records[1]?.amount,5000);
 eq('7M COREPAY deposit: pending Ref Id is retained',sevenCorepayPendingDeposit.records[2]?.ref,'260921175034-93622497-CP');
 for (const company of ['AT4','FR8','SK8']) {
-  const parsed = Formats.parse(`${company}_PM_CP_D_2026-09-20.xlsx`, [
+  const pending = Formats.parse(`${company}_PM_CP_D_2026-09-20.xlsx`, [
     ['วันที่ทำรายการ','รหัสสมาชิก','เลขบัญชีสมาชิก','Ref Id','จำนวนที่ฝาก','จำนวนที่ได้รับ','สถานะ'],
     ['2026-09-20 20:19:40','FAZ307097','3994396464','260920201940-TEST-CP',200.87,200,'pending'],
   ], '2026-09-20');
-  eq(`123 ${company} COREPAY deposit: pending row remains eligible`,parsed.records.length,1);
-  eq(`123 ${company} COREPAY deposit: use received amount`,parsed.records[0]?.amount,200);
-  eq(`123 ${company} COREPAY deposit: preserve received amount column`,parsed.records[0]?.amountColumn,'จำนวนที่ได้รับ');
-  eq(`123 ${company} COREPAY deposit: infer provider from CP token`,parsed.records[0]?.account,'COREPAY');
+  eq(`123 ${company} COREPAY deposit: pending row is excluded`,pending.records.length,0);
+  const completed = Formats.parse(`${company}_PM_CP_D_2026-09-20.xlsx`, [
+    ['วันที่ทำรายการ','รหัสสมาชิก','เลขบัญชีสมาชิก','Ref Id','จำนวนที่ฝาก','จำนวนที่ได้รับ','สถานะ'],
+    ['2026-09-20 20:19:40','FAZ307097','3994396464','260920201940-TEST-CP',200.87,200,'Success'],
+  ], '2026-09-20');
+  eq(`123 ${company} COREPAY deposit: completed row remains eligible`,completed.records.length,1);
+  eq(`123 ${company} COREPAY deposit: use whole-baht BO base amount`,completed.records[0]?.amount,200);
+  eq(`123 ${company} COREPAY deposit: preserve gross deposit column`,completed.records[0]?.amountColumn,'จำนวนที่ฝาก');
+  eq(`123 ${company} COREPAY deposit: infer provider from CP token`,completed.records[0]?.account,'COREPAY');
 }
 const sevenCorepayGenericFile = Formats.parse('20-09-26 7MPM.xlsx', [
   ['UFABET7M'],
