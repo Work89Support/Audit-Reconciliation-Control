@@ -251,25 +251,52 @@ const PdfStm = (() => {
   const TMN_INTERNAL_TRANSFER = /(?:^|_)promptpay_.*_fundout$|(?:^|_).*_fundout$/i;
   function parseTMN(pages) {
     const rows = [];
-    const re = /^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+(เงินเข้า|เงินออก)\s+(-?[\d,]+\.\d{2})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/;
+    const seen = new Set();
+    // n8n/PDF.js occasionally inserts spaces or zero-width characters inside
+    // the Thai transaction type ("เงิน เข้า") and can flatten more than one
+    // visual row into the same text line.  Normalize only layout whitespace;
+    // monetary columns and the description are kept verbatim for audit.
+    const normalize = (value) => String(value || "")
+      .replace(/[\u200b\u200c\u200d\ufeff]/g, "")
+      .replace(/\u00a0/g, " ")
+      .replace(/เงิน\s+(เข้า|ออก)/g, "เงิน$1")
+      .replace(/\s+/g, " ").trim();
+    const source = "(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\s+(\\d{1,2}:\\d{2}:\\d{2})\\s+(เงินเข้า|เงินออก)\\s+(-?[\\d,]+\\.\\d{2})\\s+(.+?)\\s+([\\d,]+\\.\\d{2})\\s+([\\d,]+\\.\\d{2})";
+    const exact = new RegExp("^" + source + "$");
+    const flattened = new RegExp(source + "(?=\\s+\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s+\\d{1,2}:\\d{2}:\\d{2}|$)", "g");
+    const add = (m, raw) => {
+      const detail = m[5].trim();
+      const key = `${m[1]}|${m[2]}|${m[3]}|${m[4]}|${detail}|${m[7]}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({
+        date: isoOf(m[1]),
+        sec: secOf(m[2]),
+        code: m[3], // เงินเข้า/เงินออก
+        channel: "TMN",
+        amount: Math.abs(numOf(m[4])),
+        balance: numOf(m[7]),
+        desc: detail,
+        isFee: TMN_FEE.test(detail),
+        isNonCustomer: TMN_NON_CUSTOMER.test(detail),
+        internalTransferHint: TMN_INTERNAL_TRANSFER.test(detail),
+        raw,
+      });
+    };
     pages.forEach((lines) => {
       lines.forEach((l) => {
-        const m = l.text.match(re);
-        if (!m) return;
-        const detail = m[5].trim();
-        rows.push({
-          date: isoOf(m[1]),
-          sec: secOf(m[2]),
-          code: m[3], // เงินเข้า/เงินออก
-          channel: "TMN",
-          amount: Math.abs(numOf(m[4])),
-          balance: numOf(m[7]),
-          desc: detail,
-          isFee: TMN_FEE.test(detail),
-          isNonCustomer: TMN_NON_CUSTOMER.test(detail),
-          internalTransferHint: TMN_INTERNAL_TRANSFER.test(detail),
-          raw: l.text,
-        });
+        const raw = normalize(l.text);
+        // Run the bounded global matcher first: an anchored expression would
+        // otherwise accept a flattened two-row line as one very long first
+        // row and use the last two balances as that row's monetary columns.
+        flattened.lastIndex = 0;
+        let part;
+        let matched = false;
+        while ((part = flattened.exec(raw))) { matched = true; add(part, part[0]); }
+        if (!matched) {
+          const m = raw.match(exact);
+          if (m) add(m, l.text);
+        }
       });
     });
     return rows;
@@ -495,6 +522,11 @@ const PdfStm = (() => {
      ฟังก์ชันนี้รับแถวเดิมเฉพาะเมื่อจำนวน/วัน/เวลา/ทิศทางตรงกับ marker ใน OCR ใหม่
      ครบทุกแถว และเลขบัญชีตรงกับหัว statement เท่านั้น */
   function parseStructuredOcr(fileName, evidence, freshText, businessDate) {
+    // TMN rows carry fee/internal-transfer semantics in their description.
+    // Historical structured OCR stores only normalized financial columns and
+    // can therefore replay fee rows as customer transactions.  Always parse
+    // TMN from the current PDF text so those semantic controls are reapplied.
+    if (/(?:^|[_\s-])TMN(?:[_\s-]|$)|TRUEMONEY/i.test(String(fileName || ""))) return null;
     const sourceRows = Array.isArray(evidence?.rows) ? evidence.rows : [];
     if (!sourceRows.length || !freshText || !businessDate) return null;
     const pages = pagesFromText(freshText);
@@ -649,9 +681,22 @@ const PdfStm = (() => {
   async function parse(fileName, arrayBuffer, businessDate) {
     const pages = Array.isArray(arrayBuffer) ? arrayBuffer : await textLines(arrayBuffer);
     const head = header(pages);
+    // n8n's native PDF extractor sometimes omits the TMN column heading while
+    // preserving every transaction row.  In that layout content-only bank
+    // detection falls through to the generic parser, which cannot label
+    // fee_p2p_receive and therefore turns wallet fees into false transactions.
+    // The controlled source filename is already classified as STM_TMN.  It
+    // must take precedence over bank words in transaction descriptions (for
+    // example a TMN transfer whose destination text contains "SCB").
+    if (/(?:^|[_\s-])TMN(?:[_\s-]|$)|TRUEMONEY/i.test(String(fileName || ""))) head.bank = "TMN";
     let rows =
       head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
-    if (!rows.length) rows = parseGeneric(pages);
+    // Never reinterpret an unreadable TMN statement with the generic bank
+    // parser.  TMN has three monetary columns (movement, opening, closing), so
+    // the generic two-column rule turns balances into transactions and can
+    // falsely close or open cases.  An unrecognized TMN layout must fail the
+    // quality gate instead of producing financial evidence from wrong fields.
+    if (!rows.length && head.bank !== "TMN") rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
     // A flattened PDF line can begin with an opening-balance date and later
     // contain the actual transaction date immediately followed by its time.

@@ -104,6 +104,37 @@ const tmnNonCustomer = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า
 eq("TMN non-customer: ตัด fee และยอดประกอบ ไม่สร้างเคสเทียม", tmnNonCustomer.records.length, 1);
 eq("TMN non-customer: คงรายการลูกค้าจริง", tmnNonCustomer.records[0]?.amount, 100);
 
+// รูปแบบที่ n8n Extract PDF คืนมาจริงอาจไม่มีหัวคอลัมน์ TMN แต่ชื่อไฟล์ยัง
+// ระบุ STM_TMN ชัดเจน ต้องใช้ parser ของ TMN เพื่อไม่ให้นับ fee_p2p_receive.
+const TMN_NO_HEADING = `
+20/09/2026 12:00:00 เงินออก -0.29 fee_p2p_receive 100.29 100.00
+20/09/2026 12:02:00 เงินออก -100.00 SCB 0891234567 100.00 0.00
+`;
+const tmnNoHeading = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-20.pdf", TMN_NO_HEADING, "2026-09-20");
+eq("TMN filename fallback: ตัด fee เมื่อ n8n ทำหัวคอลัมน์หาย", tmnNoHeading.records.length, 1);
+eq("TMN filename fallback: คงยอดลูกค้าจริง", tmnNoHeading.records[0]?.amount, 100);
+const staleTmnOcr = P.parseStructuredOcr(
+  "UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-20.pdf",
+  { rows: [{ date: "2026-09-20", sec: 43200, direction: "withdraw", amount: 0.29, balance: 100 }] },
+  TMN_NO_HEADING,
+  "2026-09-20",
+);
+eq("TMN structured OCR: ไม่ใช้แถวเก่าที่ทำข้อมูล fee หาย", staleTmnOcr, null);
+
+const TMN_N8N_LAYOUT = `
+20/09/2026 01:34:31 เงิน เข้า -2.67 fee_p2p_receive 2,354.53 2,351.86 20/09/2026 01:35:00 เงิน ออก -100.00 0891234567 2,351.86 2,251.86
+`;
+const tmnN8nLayout = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_N8N_LAYOUT, "2026-09-20");
+eq("TMN n8n layout: อ่านหลายแถวที่ถูก flatten", tmnN8nLayout.quality.parsedRows, 2);
+eq("TMN n8n layout: ตัด fee หลัง normalize ช่องว่างภาษาไทย", tmnN8nLayout.records.length, 1);
+eq("TMN n8n layout: คงยอดลูกค้าจริง", tmnN8nLayout.records[0]?.amount, 100);
+
+const TMN_UNREADABLE = `
+20/09/2026 01:35:00 เงินออก 100.00 ข้อมูลไม่ครบ
+`;
+const tmnUnreadable = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_UNREADABLE, "2026-09-20");
+eq("TMN safety: ไม่ fallback ไปอ่านยอดผิดด้วย generic parser", tmnUnreadable.records.length, 0);
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0

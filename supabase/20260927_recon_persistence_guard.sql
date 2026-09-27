@@ -37,6 +37,10 @@ end $$;
 -- Lifecycle carry rows preserve the unresolved historical record, but they
 -- are not exceptions computed by the current reconciliation.  Keep them in
 -- history while excluding them from the current-run work queue and totals.
+-- A native current exception can legitimately have previous_exception_id when
+-- the lifecycle links it to the same case from the prior run; therefore that
+-- column cannot distinguish native rows from copied carry rows.  Carry rows
+-- are created by finish_daily_recon_job with the explicit "-C<uuid>" code.
 create or replace view public.v_current_exceptions as
 select e.id, e.run_id, e.code, e.business_date, e.occurred_at,
        e.company, e.bank, e.account, e.direction, e.member_code,
@@ -49,7 +53,7 @@ from public.daily_recon_jobs j
 join public.exceptions e on e.run_id=j.last_run_id
 where j.status='completed'
   and e.superseded_by_exception_id is null
-  and e.previous_exception_id is null;
+  and not (e.previous_exception_id is not null and e.code like '%-C%');
 
 revoke all on function public.verify_recon_run_exception_count(uuid) from public,anon;
 grant execute on function public.verify_recon_run_exception_count(uuid) to authenticated,service_role;
