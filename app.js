@@ -410,7 +410,7 @@ function filteredExceptions(source = DB.exceptions) {
     if (x.q) {
       const q = x.q.toLowerCase();
       const provider = typeof pmProviderOf === "function" ? pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) || "" : "";
-      const hay = `${e.id} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider}`.toLowerCase();
+      const hay = `${e.id} ${e.code || ""} ${caseLabel(e)} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1171,6 +1171,16 @@ function safeExceptionDetail(e) {
   return detail.replace(/undefined/gi, "ไม่พบข้อมูล").replace(/NaN(?::NaN)*/gi, "ไม่พบเวลา");
 }
 
+function caseLabel(e) {
+  const company = String(e?.company || "ไม่ระบุ").trim();
+  const date = String(e?.date || e?.business_date || "").slice(0, 10);
+  const shortDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? `${date.slice(8, 10)}-${date.slice(5, 7)}-${date.slice(2, 4)}`
+    : date;
+  const code = String(e?.code || e?.id || "เคส").trim();
+  return [company, shortDate, code].filter(Boolean).join(" ");
+}
+
 function mapLiveException(e) {
   const severity = e.severity || "medium";
   const slaHours = Number(sevMeta(severity).sla || 48);
@@ -1178,7 +1188,12 @@ function mapLiveException(e) {
   const ageHours = Math.max(0, Math.floor((Date.now() - created) / 3600000));
   const status = e.status || "open";
   return {
-    id: e.code || e.id,
+    // `code` starts again at EX-3001 for every company/run.  It is a display
+    // number, not a globally unique key.  Using it for drawer navigation made
+    // a 3XB row open the first MC8 EX-3001 already loaded in memory.  Keep the
+    // persisted UUID as the UI/action key and render the scoped label instead.
+    id: e.id,
+    code: e.code || e.id,
     dbId: e.id,
     runId: e.run_id,
     date: e.business_date,
@@ -1835,7 +1850,7 @@ VIEWS.dashboard = (root) => {
                 .slice(0, 6)
                 .map(
                   (e) => `<tr class="clickable" data-ex="${e.id}">
-                  <td><b>${e.id}</b><small class="sub">${h(e.employee)}</small></td>
+                  <td><b>${h(caseLabel(e))}</b><small class="sub">${h(e.employee)}</small></td>
                   <td>${h(e.typeName)}</td>
                   <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
                   <td class="danger">${e.ageHours} ชม. / SLA ${e.slaHours} ชม.</td></tr>`,
@@ -3093,7 +3108,7 @@ VIEWS.exceptions = (root) => {
       : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
     const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
     return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
-      <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(e.id)}</small></td>
+      <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(caseLabel(e))}</small></td>
       <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
       <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
@@ -3108,7 +3123,7 @@ VIEWS.exceptions = (root) => {
   }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
 
   const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
-    <td><b>${e.id}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
+    <td><b>${h(caseLabel(e))}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
     <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td><td>${h(e.typeName)}</td>
     <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
     <td class="right tnum">${e.bankAmount === null ? '<span class="muted">—</span>' : money(e.bankAmount)}</td>
@@ -3532,7 +3547,7 @@ async function openException(id, options = {}) {
     <header class="drawer-head">
       <div>
         <p class="eyebrow">${h(e.typeName)} · ${h(e.company)}</p>
-        <h2 id="drawerTitle">${e.id} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></h2>
+        <h2 id="drawerTitle">${h(caseLabel(e))} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></h2>
       </div>
       <button class="icon-btn" id="drawerClose" aria-label="ปิด">✕</button>
     </header>
@@ -3936,7 +3951,7 @@ VIEWS.matching = (root) => {
   root.innerHTML = `
     <section class="panel">
       <div class="panel-heading">
-        <div><p class="eyebrow">รายการที่ ${state.matchIndex + 1} จาก ${list.length}</p><h2>${e.id} · ${h(e.typeName)}</h2></div>
+        <div><p class="eyebrow">รายการที่ ${state.matchIndex + 1} จาก ${list.length}</p><h2>${h(caseLabel(e))} · ${h(e.typeName)}</h2></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="mPrev" ${state.matchIndex === 0 ? "disabled" : ""}>← ก่อนหน้า</button>
           <button class="ghost-button sm" id="mNext" ${state.matchIndex === list.length - 1 ? "disabled" : ""}>ถัดไป →</button>
