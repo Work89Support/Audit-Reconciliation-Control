@@ -385,6 +385,17 @@ const kbNative = await P.parseText("KB.pdf", "KASIKORN BANK\nAccount No. 1234567
 eq("KB native: รองรับปี 4 หลักและยอดสลับตำแหน่ง", kbNative.records.length, 1);
 eq("KB native: แยกยอดจากยอดคงเหลือ", kbNative.records[0]?.amount, 100);
 eq("KB native: ยอดคงเหลือ", kbNative.records[0]?.balance, 1100);
+const kbCurrentLayout = await P.parseText("MC8_STM_KB_ทินกร_DW_2026-09-27.pdf", `
+เลขที่บัญชีเงินฝาก 199-8-54539-7
+27-09-26 23:38 LINE BK14,192.52 รหัสอ้างอิง KLI20001โอนเงิน 100.00
+27-09-26 23:39 K PLUS18,092.52 จาก X1234 นาย ทดสอบรับโอนเงิน 3,900.00
+27-09-26 23:40 LINE BK17,992.52 รหัสอ้างอิง KLI20002โอนเงิน 100.00
+`, "2026-09-27");
+eq("KB current layout: อ่านแถวที่ไม่มี ++ ครบ", kbCurrentLayout.records.length, 3);
+eq("KB current layout: ยอด 3,900 เป็นยอดรายการ", kbCurrentLayout.records[1]?.amount, 3900);
+eq("KB current layout: 18,092.52 เป็นยอดคงเหลือ", kbCurrentLayout.records[1]?.balance, 18092.52);
+eq("KB current layout: ฝากถูกทิศทาง", kbCurrentLayout.records[1]?.direction, "deposit");
+eq("KB current layout: quality ผ่านครบทุกแถว", kbCurrentLayout.quality.complete, true);
 const unknownDirection = await P.parseText("unknown.pdf", "Account No. 1234567890\n04/09/26 10:00 UNKNOWN 100.00 1,100.00", "2026-09-04");
 eq("unknown direction: ไม่เดาเป็นฝาก", unknownDirection.records.length, 0);
 eq("unknown direction: ไม่ผ่าน quality", unknownDirection.quality.complete, false);

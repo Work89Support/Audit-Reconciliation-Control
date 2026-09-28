@@ -631,6 +631,19 @@ const PdfStm = (() => {
         // KBANK native extraction sometimes places balance before amount.
         const m = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(-?[\d,]+\.\d{2})\s+(.*?)\+\s*\+\s*(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\s+(-?[\d,]+\.\d{2})\s*$/);
         if (m) line = [m[1], m[2], m[6], m[7], m[4], m[3].trim(), m[5].trim()].filter(Boolean).join(" ");
+        // The current KBANK PDF layout also puts the running balance before
+        // the transaction type and emits the movement amount at the very end,
+        // but most rows do not contain the historical "++" separator:
+        //   27-09-26 23:39 K PLUS18,092.52 ... รับโอนเงิน 3,900.00
+        // Reorder only a complete, bounded two-money row. This prevents the
+        // balance from becoming the transaction amount and, critically, keeps
+        // rows without "++" from disappearing before reconciliation.
+        if (!m) {
+          const balanceFirst = line.match(/^(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(-?[\d,]+\.\d{2})\s+(.*?)(รับโอนเงิน|รับโอนจาก|เงินโอนเข้า|โอนเงิน|โอนไป|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\s+(-?[\d,]+\.\d{2})\s*$/);
+          if (balanceFirst && (line.match(/-?[\d,]+\.\d{2}(?!\d)/g) || []).length === 2) {
+            line = [balanceFirst[1], balanceFirst[2], balanceFirst[6], balanceFirst[7], balanceFirst[4], balanceFirst[3].trim(), balanceFirst[5].trim()].filter(Boolean).join(" ");
+          }
+        }
         // KBANK debit-card annual fee has no ++ transfer marker. Native PDF
         // text joins ATM to the balance and places the fee amount last.
         const fee = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ATM\s*(-?[\d,]+\.\d{2})\s+(.*?)ค่าธรรมเนียมรายปีบัตรเดบิต\s+(-?[\d,]+\.\d{2})\s*$/);
