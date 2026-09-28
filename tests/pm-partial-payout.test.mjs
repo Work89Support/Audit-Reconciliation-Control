@@ -35,6 +35,16 @@ const sys123PendingRow = ['2026-09-11 10:15:00','REF-123','member-1','1234567890
 const pending123 = context.F.parse('AT4_PM_LOCALPAY_D_2026-09-11.xlsx',[sys123PendingHeader,sys123PendingRow],'2026-09-11');
 assert.equal(pending123.records.length,0);
 
+// AZPAY can emit a pending-only withdrawal sheet without any timestamp column.
+// It is still a recognized PM control file and every row is deliberately
+// excluded as non-success; it must not fall through as an unreadable workbook.
+const pendingOnlyNoDateHeader = ['PaymentId','Ref1','Ref2','จำนวนเงินถอน','ค่าธรรมเนียม','ถอนสุทธิ','สถานะ'];
+const pendingOnlyNoDateRow = ['2dfec976a9','2efbf1d7-1983-4942-abda-a92dfec976a9','',150000,0,150000,'Pending'];
+const pendingOnlyNoDate = context.F.parse('FR8_PM_AZPAY_W_2026-09-27.xlsx',[pendingOnlyNoDateHeader,pendingOnlyNoDateRow],'2026-09-27');
+assert.equal(pendingOnlyNoDate.code,'pm_provider');
+assert.equal(pendingOnlyNoDate.records.length,0);
+assert.equal(pendingOnlyNoDate.dropped['รายการไม่สำเร็จ (PM: pending)'],1);
+
 // The waiver is company-scoped. It must not silently relax XB controls.
 const pendingXb = context.F.parse('MC8_PM_COREPAY_D_2026-09-11.xlsx',[sys123PendingHeader,sys123PendingRow],'2026-09-11');
 assert.equal(pendingXb.records.length,0);

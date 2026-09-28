@@ -107,6 +107,12 @@ const Formats = (() => {
      ตรวจจับจาก: มีคอลัมน์วันที่ + สถานะ + ยอด (และไม่เข้า SPEC อื่น) */
   const PM_DATE = ["paymenttime", "expiredtime", "updatetime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requesttime"];
   const PM_STATUS = ["status", "สถานะ"];
+  // Some provider withdrawal exports omit every time column while a payout is
+  // still Pending. They remain valid control files: the pending rows must be
+  // excluded, but the file itself must not fail the quality gate. Require a
+  // provider-specific identity column before accepting this no-date layout so
+  // an unrelated status/amount table cannot be misclassified as PM.
+  const PM_IDENTITY = ["paymentid", "ref1", "ref2", "refid", "orderid", "transactionid"];
   const PM_AMT_DEP = ["โอนจริง", "จำนวนที่ได้รับ", "จำนวนเงิน", "amount", "สร้างฝาก", "realamount"];
   const PM_AMT_WIT = ["transferredamount", "p2pจ่าย", "p2p จ่าย", "โอนจริง", "รวมหักเงิน", "จำนวนเงิน", "amount"];
   const anyCol = (cells, names) => names.some((n) => cells.some((c) => c === norm(n) || c.startsWith(norm(n))));
@@ -114,7 +120,9 @@ const Formats = (() => {
     for (let i = 0; i < Math.min(rows.length, 30); i++) {
       const cells = (rows[i] || []).map(norm).filter(Boolean);
       if (cells.length < 3) continue;
-      if (anyCol(cells, PM_DATE) && anyCol(cells, PM_STATUS) && anyCol(cells, [...PM_AMT_DEP, ...PM_AMT_WIT])) {
+      const hasDate = anyCol(cells, PM_DATE);
+      const hasPendingLayoutIdentity = anyCol(cells, PM_IDENTITY);
+      if ((hasDate || hasPendingLayoutIdentity) && anyCol(cells, PM_STATUS) && anyCol(cells, [...PM_AMT_DEP, ...PM_AMT_WIT])) {
         const idx = {};
         const exactIdx = {};
         (rows[i] || []).forEach((raw, j) => {
