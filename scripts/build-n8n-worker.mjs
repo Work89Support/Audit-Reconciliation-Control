@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.40-kbank-pdfium-mixed-layout";
-const PARSER_VERSION = "1.9.40-kbank-pdfium-mixed-layout";
+const WORKER_VERSION = "1.9.41-xb-member-identity-guard";
+const PARSER_VERSION = "1.9.41-xb-member-identity-guard";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),

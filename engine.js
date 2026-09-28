@@ -606,6 +606,18 @@ const Engine = (() => {
       // through the legacy amount/time rule before the correct row is examined.
       return providerIdOf(s) !== boProviderId;
     };
+    // For XB PM rows, the member/user is transaction identity, not merely
+    // descriptive metadata. Repeated amounts around the same minute are common;
+    // allowing the generic time/amount passes to cross different users can make
+    // both rows look matched while attaching each BO transaction to the wrong PM
+    // transaction. Keep exact Sapan/_id matching above as the stronger rule, but
+    // reject every generic fallback when both sides expose different users.
+    const xbMemberConflict = (s, b) => {
+      if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !b.isPmChannel) return false;
+      const stmMember = identityText(s && (s.memberCode || s.username));
+      const boMember = identityText(b && (b.memberCode || b.username));
+      return !!(stmMember && boMember && stmMember !== boMember);
+    };
     const xbRefCandidates = new Map();
     const xbRefPeers = new Map();
     const xbBoByProviderRef = new Map();
@@ -1021,6 +1033,7 @@ const Engine = (() => {
     const identityCandidate = (s, b) => sameCompany(s, b) && !!String(s.company || s.subco || "").trim()
       && !isSys123PmPair(s, b)
       && !xbProviderRefConflict(s, b)
+      && !xbMemberConflict(s, b)
       && s.date === b.date && isIsoDate(s.date)
       && !!s.direction && s.direction === b.direction && s.account === b.account
       && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
@@ -1053,6 +1066,7 @@ const Engine = (() => {
     const dirOK = (s, b) => {
       if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
       if (xbProviderRefConflict(s, b)) return false;
+      if (xbMemberConflict(s, b)) return false;
       if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
           && providerIdentityConflict(s, b)) return false;
       /* คู่ PM 7M ที่ปลอดภัยถูกใช้ไปแล้วใน provider identity / reciprocal
@@ -1256,6 +1270,7 @@ const Engine = (() => {
     const rescueEligible = (s, b) => sameCompany(s, b)
       && !!String(s.company || s.subco || "").trim()
       && !xbProviderRefConflict(s, b)
+      && !xbMemberConflict(s, b)
       && !(['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel)
       && !isSys123PmPair(s, b)
       && s.date === b.date && isIsoDate(s.date)

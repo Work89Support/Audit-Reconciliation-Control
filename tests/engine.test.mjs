@@ -590,6 +590,20 @@ await (async () => {
   eq('XB provider: transactionId without Sapan evidence never uses id recovery',r.matchEvidence.filter(e=>e.providerRefRecoveredFromTransactionId).length,0);
   r=await run([missingIdStm],[recoveredIdBo,{...recoveredIdBo,note:`Sapan: 6aa8a28b6f7ddd65ebf16ce8`}]);
   eq('XB provider: ambiguous BO transactionId remains open',r.matched,0);
+
+  const sameAmountStm = [
+    rec({company:'AZPAY',subco:'3XB',account:'AZPAY',isPmChannel:true,direction:'deposit',amount:100,sec:21*3600+21*60,memberCode:'3fx49390'}),
+    rec({company:'AZPAY',subco:'3XB',account:'AZPAY',isPmChannel:true,direction:'deposit',amount:100,sec:21*3600+22*60,memberCode:'3fx415744'}),
+  ];
+  const reversedUsersBo = [
+    rec({company:'3XB',account:'AZPAY',isPmChannel:true,direction:'deposit',amount:100,sec:21*3600+21*60,memberCode:'3fx415744'}),
+    rec({company:'3XB',account:'AZPAY',isPmChannel:true,direction:'deposit',amount:100,sec:21*3600+22*60,memberCode:'3fx49390'}),
+  ];
+  r=await run(sameAmountStm,reversedUsersBo);
+  eq('XB PM: repeated amount rows still close both transactions',r.matched,2);
+  ok('XB PM: repeated amount rows never cross different users',r.matchEvidence.every(e=>e.customer.stm.user===e.customer.bo.user));
+  r=await run([sameAmountStm[0]],[reversedUsersBo[0]]);
+  eq('XB PM: same amount and time but different user stays open',r.matched,0);
 })();
 
 await (async () => {
