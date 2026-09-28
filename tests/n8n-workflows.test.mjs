@@ -186,10 +186,10 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.39-kbank-balance-first'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.40-kbank-pdfium-mixed-layout'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.39-kbank-balance-first'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.40-kbank-pdfium-mixed-layout'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
@@ -214,7 +214,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.39-kbank-balance-first'/, "worker version must identify the deployed parser/control release");
+assert.match(workerText, /worker_version:'1\.9\.40-kbank-pdfium-mixed-layout'/, "worker version must identify the deployed parser/control release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /pending_only_pm_zero_eligible:true/, "worker summary must record pending-only PM zero-eligible handling");

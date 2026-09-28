@@ -628,6 +628,24 @@ const PdfStm = (() => {
         }
         const joinedSmsFee = line.match(/\b(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+ยอดยกมา\s+ค่าธรรมเนียม.+?\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(โอนเข้า\/หักบัญชีอัตโนมัติ)\s*(.*)$/);
         if (joinedSmsFee) line = [joinedSmsFee[1], joinedSmsFee[2], "ค่าธรรมเนียม", joinedSmsFee[3], joinedSmsFee[5], joinedSmsFee[6], joinedSmsFee[7].trim()].filter(Boolean).join(" ");
+        // KBANK/PDFium may concatenate the channel with the running balance
+        // and the description with the transaction type.  Parse by bounded
+        // token positions instead of relying on a separator such as "++":
+        //   LINE BK12,638.52 ...++โอนเงิน 1,700.00
+        //   K PLUS8,038.52 ...KMP21983รับโอนเงิน 1,900.00
+        // The first money is the running balance only when it appears before
+        // the transaction type and the second money appears after it.
+        const prefix = line.match(/^(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+(\d{1,2}:\d{2})\s+/);
+        const monies = [...line.matchAll(/-?[\d,]+\.\d{2}(?!\d)/g)];
+        const kindToken = line.match(/(รับโอนเงิน|รับโอนจาก|เงินโอนเข้า|โอนเงิน|โอนไป|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/);
+        if (prefix && monies.length === 2 && kindToken
+          && monies[0].index < kindToken.index && kindToken.index < monies[1].index) {
+          const channel = line.slice(prefix[0].length, monies[0].index).trim();
+          const detail = line.slice(monies[0].index + monies[0][0].length, kindToken.index)
+            .replace(/\+\s*\+\s*$/, "").trim();
+          line = [prefix[1], prefix[2], kindToken[1], monies[1][0], monies[0][0], channel, detail]
+            .filter(Boolean).join(" ");
+        }
         // KBANK native extraction sometimes places balance before amount.
         const m = line.match(/^(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(-?[\d,]+\.\d{2})\s+(.*?)\+\s*\+\s*(รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)\s+(-?[\d,]+\.\d{2})\s*$/);
         if (m) line = [m[1], m[2], m[6], m[7], m[4], m[3].trim(), m[5].trim()].filter(Boolean).join(" ");

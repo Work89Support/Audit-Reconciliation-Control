@@ -396,6 +396,20 @@ eq("KB current layout: ยอด 3,900 เป็นยอดรายการ",
 eq("KB current layout: 18,092.52 เป็นยอดคงเหลือ", kbCurrentLayout.records[1]?.balance, 18092.52);
 eq("KB current layout: ฝากถูกทิศทาง", kbCurrentLayout.records[1]?.direction, "deposit");
 eq("KB current layout: quality ผ่านครบทุกแถว", kbCurrentLayout.quality.complete, true);
+const kbPdfiumMixedLayout = await P.parseText("MC8_STM_KB_ทินกร_DW_2026-09-27.pdf", `
+เลขที่บัญชีเงินฝาก 199-8-54539-7
+27-09-26 08:29 K PLUS8,038.52 รหัสอ้างอิง KMP21983รับโอนเงิน 1,900.00
+27-09-26 08:45 K PLUS10,038.52 จาก X8509 นาย ทดสอบ++รับโอนเงิน 2,000.00
+27-09-26 10:42 LINE BK9,248.52 รหัสอ้างอิง KLI20571โอนเงิน 790.00
+27-09-26 22:43 Internet/Mobile ต่าง
+ธนาคาร
+9,548.52 จาก CLCX X1530 TEST USER++รับโอนเงิน 300.00
+27-09-26 23:39 Internet/Mobile GSB13,448.52 รหัสอ้างอิง Q0305918รับโอนเงิน 3,900.00
+`, "2026-09-27");
+eq("KB PDFium mixed: อ่านทั้งแบบมีและไม่มี ++ รวมบรรทัดตัด", kbPdfiumMixedLayout.records.length, 5);
+eq("KB PDFium mixed: ยอดรายการถูกลำดับ", kbPdfiumMixedLayout.records.map((r) => r.amount).join(","), "1900,2000,790,300,3900");
+eq("KB PDFium mixed: ยอดคงเหลือถูกลำดับ", kbPdfiumMixedLayout.records.map((r) => r.balance).join(","), "8038.52,10038.52,9248.52,9548.52,13448.52");
+eq("KB PDFium mixed: ผ่าน quality gate", kbPdfiumMixedLayout.quality.complete, true);
 const unknownDirection = await P.parseText("unknown.pdf", "Account No. 1234567890\n04/09/26 10:00 UNKNOWN 100.00 1,100.00", "2026-09-04");
 eq("unknown direction: ไม่เดาเป็นฝาก", unknownDirection.records.length, 0);
 eq("unknown direction: ไม่ผ่าน quality", unknownDirection.quality.complete, false);
