@@ -60,6 +60,18 @@ const BBL = `
 `;
 eq("BBL: ตรวจเจอเมื่อมี 'ธนาคารกรุงเทพ'", P.header(toPages(BBL)).bank, "BBL");
 
+/* Counterparty bank names in body rows must not replace the statement owner. */
+const KBANK_WITH_COUNTERPARTIES = `
+ธนาคารกสิกรไทย
+เลขที่บัญชีเงินฝาก 195-3-58330-1
+ชื่อบัญชี นาย กิตติ ปานแสงทอง
+27/09/2026 01:51 รับโอนเงิน 50.00 1000.00 K PLUS จาก KTB จ.ส.อ.เอกพล
+27/09/2026 02:42 รับโอนเงิน 66.00 1066.00 K PLUS จาก SCB ลูกค้า
+`;
+const kbankOwner = P.header(toPages(KBANK_WITH_COUNTERPARTIES));
+eq("KBANK: ธนาคารคู่โอน KTB/SCB ไม่สร้างบัญชีเจ้าของปลอม", kbankOwner.bank, "KBANK");
+eq("KBANK: ยึดเลขบัญชีเจ้าของ 1953583301", kbankOwner.account, "1953583301");
+
 /* LINE BK must be identified by the document heading, not a transaction channel. */
 const LBK = `
 LINE BK Statement

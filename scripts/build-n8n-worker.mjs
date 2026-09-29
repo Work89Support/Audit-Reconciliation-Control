@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.41-xb-member-identity-guard";
-const PARSER_VERSION = "1.9.41-xb-member-identity-guard";
+const WORKER_VERSION = "1.9.42-7m-statement-identity-docx";
+const PARSER_VERSION = "1.9.42-7m-statement-identity-docx";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -33,7 +33,7 @@ if(upstreamError){
 try{
   if(parseError){
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
-  }else if(ext==='pdf'){
+  }else if(ext==='pdf'||ext==='docx'){
     extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
     const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
     norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,job.business_date)
@@ -125,19 +125,19 @@ if(acceptedEmptyBo&&!fatalReadError) parseError=null;
 if(acceptedEmptyStmPdf&&!fatalReadError) parseError=null;
 if(acceptedOutsideDayStmPdf&&!fatalReadError) parseError=null;
 if(acceptedEmptyStructuredPm&&!fatalReadError) parseError=null;
-if(!parseError&&ext==='pdf'&&!pdfEvidence) parseError='ไม่พบข้อความใน PDF (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
+if(!parseError&&(ext==='pdf'||ext==='docx')&&!pdfEvidence) parseError='ไม่พบข้อความใน Statement (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
-if(!parseError&&ext!=='pdf'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
-if(!parseError&&ext!=='pdf'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
+if(!parseError&&ext!=='pdf'&&ext!=='docx'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
+if(!parseError&&ext!=='pdf'&&ext!=='docx'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
 if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedOutsideDayPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutsideDayStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
   const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
   const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
-  parseError=ext==='pdf'&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
+  parseError=(ext==='pdf'||ext==='docx')&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
     : file.kind==='pm_statement'&&zeroAmountRows>0 ? 'ได้รับไฟล์ PM และอ่านตารางแล้ว แต่พบรายการยอดเงินเป็นศูนย์ '+zeroAmountRows+' รายการที่นำไปจับคู่ไม่ได้ — ตรวจยอดในไฟล์ต้นฉบับหรือขอฉบับแก้ไข (ไม่ใช่ไฟล์หาย และยังไม่ยืนยันว่าไม่มีธุรกรรม)'
     : outsideDay>0 ? 'ได้รับไฟล์และอ่านได้แล้ว แต่มี '+outsideDay+' รายการคนละวันที่กับงาน '+job.business_date+' — ตรวจวันที่ในไฟล์ก่อนย้ายเข้ารอบที่ถูกต้อง (ยังไม่ถือว่าขาดไฟล์หรือไม่มียอด)'
     : 'อ่านหัวตารางได้ แต่ไม่พบรายการที่นำไปกระทบยอดได้';
 }
-if(!parseError&&ext==='pdf'&&norm.quality&&!norm.quality.complete) parseError='PDF อ่านได้บางส่วน: มี '+norm.quality.unreadRows.length+' บรรทัดที่อ่านไม่ได้ และ '+norm.quality.invalidRows.length+' รายการที่ต้องยืนยัน (ยังไม่นำไปกระทบยอด)';
+if(!parseError&&(ext==='pdf'||ext==='docx')&&norm.quality&&!norm.quality.complete) parseError='Statement อ่านได้บางส่วน: มี '+norm.quality.unreadRows.length+' บรรทัดที่อ่านไม่ได้ และ '+norm.quality.invalidRows.length+' รายการที่ต้องยืนยัน (ยังไม่นำไปกระทบยอด)';
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';
@@ -156,12 +156,20 @@ for(const r of (norm.records||[])){
   if(pmKey){r.account=pmKey;r.channel=pmKey;}
   if((!r.account||r.account==='UNKNOWN')&&fallbackAccount) r.account=Registry.normalizeAccount(fallbackAccount,fallbackBank||r.bank);
   else if(r.account&&/\\d/.test(String(r.account))) r.account=Registry.normalizeAccount(r.account,fallbackBank||r.bank);
-  if(!r.bank&&fallbackBank) r.bank=fallbackBank;
+  // The account number is the authoritative statement identity. Counterparty
+  // text such as KTB เอกพล inside KB กิตติ must not create a phantom account.
+  const registered=r.account&&/\d/.test(String(r.account))?Registry.byAccount(r.account):null;
+  if(registered&&registered.source==='bank'){
+    r.account=Registry.normalizeAccount(registered.account,registered.bank);
+    r.bank=registered.bank;
+    r.channel=registered.bank;
+    r.statementHolder=registered.name||'';
+  }else if(!r.bank&&fallbackBank) r.bank=fallbackBank;
   r.subco=fallbackCompany;
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:ext==='pdf'?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:(ext==='pdf'||ext==='docx')?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
 
 const reconcileCode = `${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
@@ -381,14 +389,14 @@ const nodes = [
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes,created_at,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||!healthyNames.has(keyOf(f.file_name))); const seen=new Set(); const selected=readable.filter(f=>{const key=[keyOf(f.file_name),String(f.checksum||''),Number(f.size_bytes||0)].join('|'); if(seen.has(key)) return false; seen.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||!healthyNames.has(keyOf(f.file_name))); const seen=new Set(); const selected=readable.filter(f=>{const key=[keyOf(f.file_name),String(f.checksum||''),Number(f.size_bytes||0)].join('|'); if(seen.has(key)) return false; seen.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     options: { response: { response: { responseFormat: "file", outputPropertyName: "data" } }, timeout: 120000 },
   }),
   { parameters: { jsCode: "const item=$input.first(); const meta=$('วนทีละไฟล์').item.json; const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบข้อมูลไฟล์ '+meta.file.file_name); binary.data={...binary.data,fileName:meta.file.file_name,fileExtension:meta.file.ext}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, id: "restore-original-file-name", name: "คืนชื่อไฟล์ต้นฉบับ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1090, 340] },
-  { parameters: { conditions: { options: { caseSensitive: false, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-pdf", leftValue: "={{ $('วนทีละไฟล์').item.json.file.ext }}", rightValue: "pdf", operator: { type: "string", operation: "equals" } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-statement-document", leftValue: "={{ ['pdf','docx'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
   { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF โดยตรง", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 220], onError: "continueRegularOutput" },
   { parameters: { jsCode: nativePdfProbe }, id: "probe-native-pdf", name: "ตรวจรายการ PDF ก่อน OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1530, 220] },
@@ -398,7 +406,7 @@ const nodes = [
   driveHttp("google-drive-ocr-upload", "Google Drive OCR: แปลง PDF", [2080, 280], {
     method: "POST", url: "https://www.googleapis.com/upload/drive/v2/files", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
     sendQuery: true, queryParameters: { parameters: [{ name: "uploadType", value: "media" }, { name: "convert", value: "true" }, { name: "ocr", value: "true" }, { name: "ocrLanguage", value: "th" }] },
-    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/pdf" }] }, sendBody: true, contentType: "binaryData", inputDataFieldName: "data",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "={{ $('วนทีละไฟล์').item.json.file.ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf' }}" }] }, sendBody: true, contentType: "binaryData", inputDataFieldName: "data",
     options: { timeout: 180000, response: { response: { responseFormat: "json" } } },
   }),
   driveHttp("google-drive-ocr-export", "Google Drive OCR: อ่านข้อความ", [2300, 280], {

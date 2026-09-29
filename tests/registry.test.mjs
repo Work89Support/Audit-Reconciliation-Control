@@ -44,6 +44,12 @@ const m6 = R.matchFile("UFABET7M_STM_KB_เพ็ญศรี_W_2026-08-10.pdf")
 eq("bank standard W: direction withdraw", m6.direction, "withdraw");
 const m7 = R.matchFile("UFABET7M_STM_KB_เพ็ญศรี_DW_2026-08-10.pdf");
 eq("bank standard DW: direction both", m7.direction, "both");
+const m8 = R.matchFile("KB กิตติ W.pdf");
+eq("7M: KB กิตติ W -> canonical KBANK account", m8.match && m8.match.bank + "/" + m8.match.account, "KBANK/1953583301");
+const m9 = R.matchFile("UFABET7M_STM_SCB_สมภพ_DW_2026-09-27.pdf");
+eq("7M: SCB สมภพ -> canonical SCB account", m9.match && m9.match.bank + "/" + m9.match.account, "SCB/5034633891");
+const phantom = R.matchFile("STM KTB จ.ส.อ.เอกพล D-W.pdf");
+ok("7M: KTB เอกพลไม่ใช่บัญชีในทะเบียน", !phantom.match, JSON.stringify(phantom));
 
 /* ---- matchFile: PM ---- */
 const p1 = R.matchFile("3XB 12PAY ถอน 05-06-2026.csv");

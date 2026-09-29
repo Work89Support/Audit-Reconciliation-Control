@@ -83,14 +83,20 @@ const PdfStm = (() => {
     const blob = (pages[0] || []).map((l) => l.text).join("\n");
     const heading = blob.split(/\n\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/)[0];
     let bank = null;
-    if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(blob)) bank = "SCB";
+    // Identify the statement owner from the heading, not transaction details.
+    // A KBANK statement can contain descriptions such as "รับโอนจาก SCB" or
+    // "รับโอนจาก KTB"; scanning the whole document creates phantom accounts.
+    if (/ไทยพาณิชย์|SIAM COMMERCIAL/i.test(heading)) bank = "SCB";
     // LINE BK in a transaction channel does not identify the statement's bank.
     else if (/LINE\s*BK|ไลน์\s*บีเค/i.test(heading)) bank = "LBK";
-    else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(blob)) bank = "KBANK";
-    else if (/ออมสิน|MyMo|GSB/i.test(blob)) bank = "GSB";
-    else if (/ธนาคารกรุงเทพ|BANGKOK BANK/i.test(blob)) bank = "BBL"; // ต้องมีคำว่า "ธนาคาร" นำ กัน "กรุงเทพฯ" ในที่อยู่สำนักงานใหญ่ธนาคารอื่น
-    else if (/กรุงไทย|KRUNGTHAI/i.test(blob)) bank = "KTB";
-    else if (/กรุงศรี|อยุธยา|KRUNGSRI|AYUDHYA/i.test(blob)) bank = "BAY";
+    else if (/กสิกร|KASIKORN|K PLUS|เลขที่บัญชีเงินฝาก/i.test(heading)) bank = "KBANK";
+    else if (/ออมสิน|MyMo|GSB/i.test(heading)) bank = "GSB";
+    else if (/ธนาคารกรุงเทพ|BANGKOK BANK/i.test(heading)) bank = "BBL"; // ต้องมีคำว่า "ธนาคาร" นำ กัน "กรุงเทพฯ" ในที่อยู่สำนักงานใหญ่ธนาคารอื่น
+    else if (/กรุงไทย|KRUNGTHAI/i.test(heading)) bank = "KTB";
+    else if (/กรุงศรี|อยุธยา|KRUNGSRI|AYUDHYA/i.test(heading)) bank = "BAY";
+    // Some BAY exports print the bank legal name only in the footer. Use this
+    // fallback only after no owner brand was found in the heading.
+    else if (/ธนาคารกรุงศรีอยุธยา|BANK OF AYUDHYA/i.test(blob)) bank = "BAY";
     /* TrueMoney Wallet: หัวข้อ "ใบแสดงรายการ / Statement of Account" + คอลัมน์ เงินเข้า/เงินออก + ยอดคงเหลือ (เลขบัญชี = เบอร์มือถือ) */
     else if (/เงินเข้า/.test(blob) && /เงินออก/.test(blob) && /ยอดคงเหลือ/.test(blob)) bank = "TMN";
 

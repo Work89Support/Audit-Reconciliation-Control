@@ -71,6 +71,7 @@ assert.match(classifier.parameters.jsCode, /รายงานหน้า\\s\*B
 assert.match(classifier.parameters.jsCode, /companyOf\(j\.file_name/, "generic BO filenames must resolve company from the attachment name");
 assert.match(classifier.parameters.jsCode, /SK8\?/, "the field alias SK must resolve to canonical company SK8");
 assert.match(classifier.parameters.jsCode, /CPXM/, "CPXM spreadsheets must be recognized as PM statements");
+assert.match(classifier.parameters.jsCode, /\(pdf\|docx\)/, "explicit Word statements must enter statement classification");
 const attachmentSplitter = live.nodes.find((node) => node.name === "แยกไฟล์แนบทีละไฟล์");
 assert.match(attachmentSplitter.parameters.jsCode, /subject: src\.json\.subject/, "email subject must reach every attachment");
 const sourceFileWriter = live.nodes.find((node) => node.name === "Supabase: บันทึกทะเบียนไฟล์");
@@ -110,6 +111,8 @@ assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrig
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "อ่าน PDF โดยตรง", "PDFs must enter the native parser first");
+assert.match(worker.nodes.find(node => node.name === "เป็น PDF?").parameters.conditions.conditions[0].leftValue, /docx/, "Word statements must enter document OCR");
+assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /'docx'/, "worker must select classified Word statements");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
 assert.equal(worker.connections["อ่าน PDF โดยตรง"].main[0][0].node, "ตรวจรายการ PDF ก่อน OCR");
 const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -186,10 +189,10 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.41-xb-member-identity-guard'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.42-7m-statement-identity-docx'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.41-xb-member-identity-guard'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.42-7m-statement-identity-docx'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
@@ -214,7 +217,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.41-xb-member-identity-guard'/, "worker version must identify the deployed parser/control release");
+assert.match(workerText, /worker_version:'1\.9\.42-7m-statement-identity-docx'/, "worker version must identify the deployed parser/control release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /pending_only_pm_zero_eligible:true/, "worker summary must record pending-only PM zero-eligible handling");

@@ -21,8 +21,8 @@ function directionOf(name) {
   if (withdraw) return 'withdraw';
   return null;
 }
-function isBankStatementPdf(name) {
-  if (!/\.pdf$/i.test(String(name || ''))) return false;
+function isBankStatementDocument(name) {
+  if (!/\.(pdf|docx)$/i.test(String(name || ''))) return false;
   const n = String(name || '');
   const toks = tokensOf(n);
   const explicitStatement = /ฝาก\s*[-–—/]?\s*ถอน|ฝากถอน|statement|(^|[^a-z0-9])stm([^a-z0-9]|$)/i.test(n);
@@ -33,8 +33,10 @@ function kindOf(name, subject) {
   const n = String(name || '');
   const s = String(subject || '');
   if (/รายงานหน้า\s*BO/i.test(s) && /\.(xlsx|xlsm?|csv)$/i.test(n)) return 'bo_main';
-  if (/\.pdf$/i.test(n)) return isBankStatementPdf(n) ? 'stm_pdf' : 'doc_clarify';
-  if (/\.docx?$/i.test(n)) return 'doc_clarify';
+  if (/\.pdf$/i.test(n)) return isBankStatementDocument(n) ? 'stm_pdf' : 'doc_clarify';
+  // 7M receives TMN statements as screenshots embedded in Word late in the
+  // month. Only an explicitly named statement with bank + D/W enters recon.
+  if (/\.docx$/i.test(n)) return isBankStatementDocument(n) ? 'stm_pdf' : 'doc_clarify';
   if (/รายงานบัญชี(ฝาก|ถอน)|(^|[^a-z0-9])BO([^a-z0-9]|$)/i.test(n)) return 'bo_main';
   if (/ฝากมือ.*เครดิต/.test(n)) return 'manual_credit';
   if (/ฝากมือ.*Payment/i.test(n)) return 'manual_payment';
