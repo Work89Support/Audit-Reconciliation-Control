@@ -190,6 +190,119 @@ const TMN_UNREADABLE = `
 const tmnUnreadable = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_W.pdf", TMN_UNREADABLE, "2026-09-20");
 eq("TMN safety: ไม่ fallback ไปอ่านยอดผิดด้วย generic parser", tmnUnreadable.records.length, 0);
 
+const TMN_WALLET_SCREENSHOT = `
+03:05
+รายการ
+รับเงินจาก บิเด็น อ***
+01:32
+ค่าธรรมเนียมการรับเงินโอน
+01:13
+แชร์รายการ
++฿ 134.00
+-฿ 0.87
+รับเงินจาก สกนธ์ เ***
++฿ 30.00
+01:13
+ค่าธรรมเนียมการรับเงินโอน
+-฿ 1.28
+01:09
+รับเงินจาก สมพร แ***
++฿ 44.00
+01:09
+ค่าธรรมเนียมการรับเงินโอน
+00:30
+รับเงินจาก บิเด็น อ***
+00:30
+ค่าธรรมเนียมการรับเงินโอน
+00:09
+-฿ 4.64
++฿ 160.00
+-฿ 1.45
+รับเงินจาก สมพร แ***
++฿ 50.00
+00:09
+23 กันยายน 2569
+`;
+const tmnWalletScreenshot = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-24.docx", TMN_WALLET_SCREENSHOT, "2026-09-23");
+eq("TMN screenshot: อ่านรายการลูกค้าและตัด fee", tmnWalletScreenshot.records.length, 5);
+eq("TMN screenshot: แปลงวันที่ พ.ศ.", tmnWalletScreenshot.records[0]?.sourceDate, "2026-09-23");
+eq("TMN screenshot: จับเวลาแถวแรก", tmnWalletScreenshot.records[0]?.sec, 1 * 3600 + 32 * 60);
+eq("TMN screenshot: จับยอดจากเครื่องหมายบวก", tmnWalletScreenshot.records[0]?.amount, 134);
+eq("TMN screenshot: คงยอดช่วงท้ายภาพ", tmnWalletScreenshot.records[3]?.amount, 160);
+
+const TMN_WALLET_OCR_PAGES = `
+รายการ
+รับเงินจาก คนแรก ก***
+22:03.
++B 120.00
+-B 1.20
+ค่าธรรมเนียมการรับเงินโอน
+23 กันยายน 2569
+\f
+รายการ
+รับเงินจาก คนสอง ข*** 15:21
++B 90.00
+-B 0.90
+ค่าธรรมเนียมการรับเงินโอน
+รับเงินจาก แถวภาพตัด ค***
+\f
+รายการ
+รับเงินจาก คนสาม ง***
+09:05
++B 50.00
+24 กันยายน 2569
+`;
+const tmnWalletOcrPages = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-24.docx", TMN_WALLET_OCR_PAGES);
+eq("TMN OCR: รับสัญลักษณ์ B และข้ามเศษค่าธรรมเนียม", tmnWalletOcrPages.records.length, 3);
+eq("TMN OCR: วันที่หัวท้ายภาพแรก", tmnWalletOcrPages.records[0]?.sourceDate, "2026-09-23");
+eq("TMN OCR: หน้าต่อเนื่องคงวันที่ล่าสุดที่พบ", tmnWalletOcrPages.records[1]?.sourceDate, "2026-09-23");
+eq("TMN OCR: อ่านเวลาในบรรทัดรายการ", tmnWalletOcrPages.records[1]?.sec, 15 * 3600 + 21 * 60);
+eq("TMN OCR: ไม่สร้างรายการจากแถวภาพตัดที่ยอดไม่ครบ", tmnWalletOcrPages.records.some((row) => /แถวภาพตัด/.test(row.desc)), false);
+const tmnWalletOcrBusinessDate = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-24.docx", TMN_WALLET_OCR_PAGES, "2026-09-24");
+eq("TMN OCR: รอบวันที่ 24 ไม่ปนรายการวันที่ 23", tmnWalletOcrBusinessDate.records.length, 1);
+
+const TMN_WALLET_INITIAL_UNDATED_PAGE = `
+รายการ
+รับเงินจาก หน้าแรก ก***
+08:15
++B 75.00
+\f
+รายการ
+รับเงินจาก หน้าสอง ข***
+09:20
++B 80.00
+24 กันยายน 2569
+`;
+const tmnWalletInitialUndatedPage = await P.parseText("UFABET7M_STM_TMN_สรวิศา_DW_2026-09-24.docx", TMN_WALLET_INITIAL_UNDATED_PAGE, "2026-09-24");
+eq("TMN OCR: เติมวันที่ให้เฉพาะหน้าต้นที่ยังไม่มีหัววันที่", tmnWalletInitialUndatedPage.records.length, 2);
+eq("TMN OCR: หน้าต้นใช้วันที่แรกที่พิสูจน์ได้", tmnWalletInitialUndatedPage.records[0]?.sourceDate, "2026-09-24");
+
+const TMN_WALLET_FLATTENED_DATES = `
+รายการ
+รับเงินจาก วันที่ยี่สิบสาม ก***
+23:55
++B 20.00
+23 กันยายน 2569
+รายการ
+รับเงินจาก วันที่ยี่สิบสี่ ข***
+00:05
++B 30.00
+รับเงินจาก วันที่ยี่สิบสี่ ค*** 01:04
++B 40.00
+24 กันยายน 2569
+เมื่อวานนี้
+รับเงินจาก ช่วงก่อนหน้า ง***
+23:53
++B 10.00
+`;
+const tmnWalletFlattenedDates = await P.parseText("UFABET7M_STM_TMN_สรวิศา_DW_2026-09-24.docx", TMN_WALLET_FLATTENED_DATES, "2026-09-24");
+eq("TMN OCR: แบ่งหลายวันที่อยู่ใน OCR ก้อนเดียว", tmnWalletFlattenedDates.records.length, 2);
+eq("TMN OCR: รายการหลังหัววันก่อนหน้าใช้หัววันที่ถัดไป", tmnWalletFlattenedDates.records[0]?.sourceDate, "2026-09-24");
+eq("TMN OCR: ไม่ปนช่วงเมื่อวานเข้าวันธุรกิจ", tmnWalletFlattenedDates.records.some((row) => row.amount === 10), false);
+
+const TMN_OCR_IMAGE_BOUNDARY = TMN_WALLET_INITIAL_UNDATED_PAGE.replace("\f", "\n---OCR_IMAGE---\n");
+eq("TMN OCR: marker ระหว่างภาพจาก n8n เป็นขอบหน้า", P.pagesFromText(TMN_OCR_IMAGE_BOUNDARY).length, 2);
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0

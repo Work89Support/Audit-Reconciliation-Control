@@ -255,7 +255,146 @@ const PdfStm = (() => {
   const TMN_FEE = /^(fee_|.*_fee$)/i;
   const TMN_NON_CUSTOMER = /(?:^|[_\s-])fee(?:[_\s-]|$)|ค่าธรรมเนียม|ยอด(?:ยกมา|ยกไป|คงเหลือ)|opening[_\s-]?balance|closing[_\s-]?balance|balance[_\s-]?(?:forward|brought|carried)/i;
   const TMN_INTERNAL_TRANSFER = /(?:^|_)promptpay_.*_fundout$|(?:^|_).*_fundout$/i;
-  function parseTMN(pages) {
+  function parseTMNWalletScreenshots(pages, businessDate) {
+    const rows = [];
+    const thaiMonths = {
+      "มกราคม": 1, "กุมภาพันธ์": 2, "มีนาคม": 3, "เมษายน": 4,
+      "พฤษภาคม": 5, "มิถุนายน": 6, "กรกฎาคม": 7, "สิงหาคม": 8,
+      "กันยายน": 9, "ตุลาคม": 10, "พฤศจิกายน": 11, "ธันวาคม": 12,
+    };
+    const dateOf = (text) => {
+      const match = String(text || "").match(/(\d{1,2})\s+(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)\s+(\d{4})/);
+      if (!match) return null;
+      let year = Number(match[3]);
+      if (year > 2400) year -= 543;
+      return `${year}-${String(thaiMonths[match[2]]).padStart(2, "0")}-${String(Number(match[1])).padStart(2, "0")}`;
+    };
+    const timeOnly = /^(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/;
+    // Google Drive OCR commonly renders the baht glyph as a Latin B in
+    // screenshots embedded in Word.  Keep the sign mandatory: unsigned OCR
+    // fragments must never become financial evidence.
+    const signedAmount = /(?:^|\s)([+-])\s*(?:฿|B|บาท)?\s*([\d,]+(?:\.\d{2})?)(?:\s|$)/i;
+    const feeText = /ค่าธรรมเนียม/;
+    const depositText = /รับเงินจาก|รับโอนเงิน|เงินโอนเข้า|เติมเงินเข้า/;
+    const withdrawText = /โอนเงินออก|โอนเงินให้|ส่งเงินให้|ถอนเงิน|จ่ายเงิน|ชำระเงิน/;
+
+    const previousIsoDate = (value) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+      const [year, month, day] = value.split("-").map(Number);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      date.setUTCDate(date.getUTCDate() - 1);
+      return date.toISOString().slice(0, 10);
+    };
+
+    const parseSegment = (cells, segmentDate) => {
+      if (!segmentDate) return;
+      const events = [];
+      let sawSignedAmount = false;
+      for (const cell of cells) {
+        if (/^รายการ$/.test(cell) || dateOf(cell) || /^เมื่อวานนี้$/.test(cell)) continue;
+        if (feeText.test(cell)) {
+          events.push({ kind: "fee", direction: "withdraw", desc: cell });
+          continue;
+        }
+        if (depositText.test(cell)) {
+          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/);
+          events.push({ kind: "customer", direction: "deposit", desc: cell, time: inlineTime?.[1] || null });
+          continue;
+        }
+        if (withdrawText.test(cell)) {
+          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/);
+          events.push({ kind: "customer", direction: "withdraw", desc: cell, time: inlineTime?.[1] || null });
+          continue;
+        }
+        const amountMatch = cell.match(signedAmount);
+        if (amountMatch) {
+          sawSignedAmount = true;
+          const direction = amountMatch[1] === "+" ? "deposit" : "withdraw";
+          const candidate = [...events].reverse().find((event) => event.amount == null
+            && (event.direction === direction || (event.kind === "fee" && direction === "withdraw")));
+          if (candidate) candidate.amount = Math.abs(numOf(amountMatch[2]));
+          else events.push({ kind: "unassigned", direction, amount: Math.abs(numOf(amountMatch[2])), desc: cell });
+          continue;
+        }
+        const timeMatch = cell.match(timeOnly);
+        if (timeMatch) {
+          const candidate = [...events].reverse().find((event) => event.time == null && event.kind !== "unassigned");
+          if (candidate) candidate.time = timeMatch[1];
+        }
+      }
+      // Screenshot crops can contain a partial row from the adjacent screen.
+      // Keep only customer events whose own time and signed amount are both
+      // proven. Orphan amounts and incomplete descriptions are never promoted.
+      const customer = events.filter((event) => event.kind === "customer"
+        && event.time != null && Number.isFinite(event.amount));
+      if (!sawSignedAmount || !customer.length) return;
+      customer.forEach((event) => rows.push({
+        date: segmentDate,
+        sec: secOf(event.time),
+        code: event.direction === "deposit" ? "เงินเข้า" : "เงินออก",
+        channel: "TMN",
+        amount: event.amount,
+        balance: null,
+        direction: event.direction,
+        desc: event.desc,
+        isFee: false,
+        isNonCustomer: false,
+        internalTransferHint: event.direction === "withdraw" && /โยก|fundout/i.test(event.desc),
+        raw: `${segmentDate} ${event.time} ${event.direction} ${event.amount.toFixed(2)} ${event.desc}`,
+      }));
+    };
+
+    const explicitDates = pages.map((lines) => dateOf(lines.map((line) => line.text).join("\n")));
+    const inferredDates = [...explicitDates];
+    // TMN Word exports are a chronological sequence of phone screenshots. A
+    // date label usually appears near the bottom of the first screenshot for
+    // that day; continuation screenshots keep the most recently proven date.
+    // Backfill only an initial undated prefix from the first explicit date.
+    // Backfilling every gap from the next label incorrectly turns late rows of
+    // Sep 23 into Sep 24 when the Sep 24 label is on the final screenshot.
+    let previousDate = null;
+    for (let i = 0; i < inferredDates.length; i++) {
+      if (inferredDates[i]) previousDate = inferredDates[i];
+      else if (previousDate) inferredDates[i] = previousDate;
+    }
+    const firstExplicitIndex = explicitDates.findIndex(Boolean);
+    if (firstExplicitIndex > 0) {
+      for (let i = 0; i < firstExplicitIndex; i++) inferredDates[i] = explicitDates[firstExplicitIndex];
+    }
+    if (!explicitDates.some(Boolean) && /^\d{4}-\d{2}-\d{2}$/.test(String(businessDate || ""))) {
+      inferredDates.fill(businessDate);
+    }
+
+    pages.forEach((lines, pageIndex) => {
+      const cells = lines.map((line) => String(line.text || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+      const listStart = cells.findIndex((cell) => /^รายการ$/.test(cell));
+      const pageDate = inferredDates[pageIndex];
+      if (listStart < 0 || !pageDate) return;
+      const content = cells.slice(listStart + 1);
+      const boundaries = content.map((cell, index) => ({ index, date: dateOf(cell) })).filter((item) => item.date);
+      if (!boundaries.length) {
+        parseSegment(content, pageDate);
+        return;
+      }
+
+      // TrueMoney lists newest items first and prints the calendar heading
+      // below the rows that belong to it. Google OCR can flatten several Word
+      // screenshots into one text item, so one OCR page may contain multiple
+      // date headings. Assign every completed segment to the heading that ends
+      // it instead of applying the first heading to the whole OCR blob.
+      let start = 0;
+      for (const boundary of boundaries) {
+        parseSegment(content.slice(start, boundary.index), boundary.date);
+        start = boundary.index + 1;
+      }
+      const trailing = content.slice(start);
+      if (trailing.some((cell) => /^เมื่อวานนี้$/.test(cell))) {
+        parseSegment(trailing, previousIsoDate(boundaries[boundaries.length - 1].date));
+      }
+    });
+    return rows;
+  }
+  function parseTMN(pages, businessDate) {
     const rows = [];
     const seen = new Set();
     // n8n/PDF.js occasionally inserts spaces or zero-width characters inside
@@ -441,6 +580,7 @@ const PdfStm = (() => {
       });
       previousColumnRow = reconstructed[reconstructed.length - 1] || previousColumnRow;
     });
+    if (!rows.length) rows.push(...parseTMNWalletScreenshots(pages, businessDate));
     return rows;
   }
 
@@ -599,7 +739,7 @@ const PdfStm = (() => {
   // breaks, repair only structural line wraps; never replace ambiguous digits.
   function pagesFromText(text) {
     const start = /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/;
-    return String(text || "").replace(/\u0000/g, "").split("\f").map((page) => {
+    return String(text || "").replace(/\u0000/g, "").split(/\f|\n---OCR_IMAGE---\n/).map((page) => {
       const lines = page.split(/\r?\n/).map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
       const joined = [];
       for (let i = 0; i < lines.length; i++) {
@@ -863,7 +1003,7 @@ const PdfStm = (() => {
     // example a TMN transfer whose destination text contains "SCB").
     if (/(?:^|[_\s-])TMN(?:[_\s-]|$)|TRUEMONEY/i.test(String(fileName || ""))) head.bank = "TMN";
     let rows =
-      head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
+      head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages, businessDate) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
     // Never reinterpret an unreadable TMN statement with the generic bank
     // parser.  TMN has three monetary columns (movement, opening, closing), so
     // the generic two-column rule turns balances into transactions and can

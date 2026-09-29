@@ -665,6 +665,12 @@ await (async () => {
   eq('123 AUTOPEER: evidence records three-point method',r.matchEvidence[0]?.method,'sys123-member-account-amount');
   eq('123 AUTOPEER: dedicated match counter',r.sys123ProviderMatched,1);
 
+  const cpStm=rec({...base,account:'COREPAY',direction:'deposit',amount:333,sec:21*3600+42*60,memberCode:'igoal24233',custAccount:'2812481790'});
+  const cpBo=rec({...base,account:'COREPAY',isPmChannel:false,direction:'deposit',amount:333,sec:21*3600+43*60,memberCode:'igoal24233',custAccount:'2812481790'});
+  r=await run([cpStm],[cpBo]);
+  eq('123 COREPAY: normalized BO without PM flag still closes on member + account + amount',r.matched,1);
+  eq('123 COREPAY: normalized BO uses strict three-point method instead of time fallback',r.matchEvidence[0]?.method,'sys123-member-account-amount');
+
   r=await run([stm],[{...bo,custAccount:'9999999999'}]);
   eq('123 AUTOPEER: conflicting customer account stays open',r.matched,0);
   r=await run([stm],[{...bo,memberCode:'different-member'}]);

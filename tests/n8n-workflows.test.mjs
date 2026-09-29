@@ -135,10 +135,13 @@ for(const text of [pdfHeader.repeat(4), validPdfText+'\n04/09/26 10:01 unreadabl
   assert.equal((await probe({text},metaForPdf))[0].json.pdf_readable, false, 'unreadable/partial text must reach OCR even when over 40 characters');
 }
 assert.equal((await probe({text:validPdfText,error:'extract failed'},metaForPdf))[0].json.pdf_readable, false);
-const formatOcr = new AsyncFunction('$json',worker.nodes.find(node => node.name === "จัดผล OCR").parameters.jsCode);
-assert.equal((await formatOcr({data:'text'}))[0].json.ocr_confidence,null,'no fabricated OCR confidence');
-assert.equal((await formatOcr({error:'OCR unavailable'}))[0].json.error,'OCR unavailable');
-assert.equal((await formatOcr({unexpected:'error object'}))[0].json.text,'','JSON/error output must not be interpreted as statement text');
+const formatOcr = new AsyncFunction('$input',worker.nodes.find(node => node.name === "จัดผล OCR").parameters.jsCode);
+const ocrInput = (...rows) => ({ all: () => rows.map((json) => ({ json })) });
+assert.equal((await formatOcr(ocrInput({data:'text'})))[0].json.ocr_confidence,null,'no fabricated OCR confidence');
+assert.equal((await formatOcr(ocrInput({error:'OCR unavailable'})))[0].json.error,'OCR unavailable');
+assert.equal((await formatOcr(ocrInput({unexpected:'error object'})))[0].json.text,'','JSON/error output must not be interpreted as statement text');
+assert.equal((await formatOcr(ocrInput({data:'page 1'},{data:'page 2'})))[0].json.ocr_page_count,2,'all embedded DOCX screenshots must be preserved');
+assert.match((await formatOcr(ocrInput({data:'page 1'},{data:'page 2'})))[0].json.text,/page 1\fpage 2/,'embedded DOCX screenshots must remain separate parser pages');
 assert.equal(worker.connections["ดาวน์โหลดไฟล์จาก Storage"].main[0][0].node, "คืนชื่อไฟล์ต้นฉบับ", "downloaded binaries must restore the original attachment name");
 const originalNameNode = worker.nodes.find((node) => node.name === "คืนชื่อไฟล์ต้นฉบับ");
 assert.ok(originalNameNode, "worker must preserve the original Gmail attachment name");
@@ -189,11 +192,15 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.42-7m-statement-identity-docx'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.51-7m-tmn-ocr-boundaries'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.42-7m-statement-identity-docx'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.51-7m-tmn-ocr-boundaries'/,
   "the auditable BO-first summary must identify the complete workflow build");
+assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
+assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
+assert.equal(worker.connections["เลือกภาพรายการ TMN"].main[0][0].node, "Google Drive OCR: แปลง PDF");
+assert.match(workerText, /word\[\\\\\/\]media/, "DOCX statements must OCR their embedded transaction screenshots");
 assert.match(workerText, /record_source_file_parse_results/, "every file parse result must be persisted atomically");
 assert.equal(worker.connections["กระทบยอดและสร้าง Exception"].main[0][0].node, "Supabase: บันทึกผลอ่านไฟล์");
 assert.equal(worker.connections["Supabase: บันทึกผลอ่านไฟล์"].main[0][0].node, "ไฟล์ผ่าน Quality Gate?");
@@ -217,7 +224,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.42-7m-statement-identity-docx'/, "worker version must identify the deployed parser/control release");
+assert.match(workerText, /worker_version:'1\.9\.51-7m-tmn-ocr-boundaries'/, "worker version must identify the deployed parser/control release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /pending_only_pm_zero_eligible:true/, "worker summary must record pending-only PM zero-eligible handling");

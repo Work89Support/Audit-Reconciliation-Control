@@ -2,6 +2,7 @@
 (function(root){
   'use strict';
   const auditPolicy=root.AuditVisiblePolicy||(typeof require==='function'?require('./audit-visible-policy.js'):null);
+  const registryCatalog=root.Registry||(typeof require==='function'?require('./registry.js'):null);
   const COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);
   const BASE_SHEETS=Object.freeze(['AT ถ','AT ฝ','AZ ถ','AZ ฝ','CP ถ','CP ฝ','M ถ','M ฝ']);
   const LOCALPAY_SHEETS=Object.freeze(['LP ถ','LP ฝ']);
@@ -35,7 +36,7 @@
     'LP ถ':['วัน/เวลา','รหัสสมาชิก','เลขบัญชีสมาชิก','จำนวนเงินถอน','สถานะ'],
     'LP ฝ':['วัน/เวลา','รหัสสมาชิก','เลขบัญชีสมาชิก','จำนวนเงินฝาก','สถานะ'],
   });
-  const ALL_HEADERS=Object.freeze(['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท','BO · วัน / เวลา','BO · ยอด','BO · บัญชีลูกค้า','BO · ท้าย 4','BO · ธนาคารลูกค้า','BO · ชื่อ / User','BO · User','BO · อ้างอิง','BO · รายละเอียดต้นฉบับ','STM/PM · วัน / เวลา','STM/PM · ยอด','STM/PM · บัญชีลูกค้า','STM/PM · ท้าย 4','STM/PM · ธนาคารลูกค้า','STM/PM · ชื่อ / User','STM/PM · User','STM/PM · อ้างอิง','STM/PM · รายละเอียดต้นฉบับ','ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit','เอกสารอ้างอิง','ผลต่างยอด','สถานะสำหรับเทียบทีมกระทบมือ']);
+  const ALL_HEADERS=Object.freeze(['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท','STM/PM · วัน / เวลา','STM/PM · ยอด','STM/PM · บัญชีลูกค้า','STM/PM · ท้าย 4','STM/PM · ธนาคารลูกค้า','STM/PM · ชื่อ / User','STM/PM · User','STM/PM · อ้างอิง','STM/PM · รายละเอียดต้นฉบับ','BO · วัน / เวลา','BO · ยอด','BO · บัญชีลูกค้า','BO · ท้าย 4','BO · ธนาคารลูกค้า','BO · ชื่อ / User','BO · User','BO · อ้างอิง','BO · รายละเอียดต้นฉบับ','ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit','เอกสารอ้างอิง','ผลต่างยอด','สถานะสำหรับเทียบทีมกระทบมือ']);
   const STATEMENT_HEADERS=Object.freeze(['ลำดับ','บริษัท','วันที่','บัญชี Statement','ประเภท','วัน / เวลา Statement','ยอด Statement','บัญชีลูกค้า','ท้าย 4','ธนาคาร','ชื่อ / User Statement','เลขอ้างอิง Statement','วัน / เวลา BO','ยอด BO','User BO','ชื่อ / User BO','เลขอ้างอิง BO','ต่างเวลา','เงื่อนไขที่จับคู่','ผลต่างยอด','สถานะ Audit']);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const numeric=v=>Number.isFinite(Number(v))?Number(v):null;
@@ -66,6 +67,16 @@
   function isSys123(value){return ['AT4','FR8','SK8'].includes(String(value||'').toUpperCase());}
   function sheetOf(row){let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
   function stamp(t){return t?.date?`${t.date} ${Number.isFinite(t.sec)&&t.sec>=0&&t.sec<86400?new Date(t.sec*1000).toISOString().slice(11,19):''}`.trim():'';}
+  function chronologicalRows(rows){
+    const key=value=>String(value||'').trim();
+    return rows.map((row,index)=>({row,index})).sort((a,b)=>{
+      const aPm=key(a.row.pmTime),bPm=key(b.row.pmTime),aBo=key(a.row.boTime),bBo=key(b.row.boTime);
+      const primary=(aPm||aBo).localeCompare(bPm||bBo,'en',{numeric:true});
+      if(primary)return primary;
+      const secondary=aBo.localeCompare(bBo,'en',{numeric:true});
+      return secondary||a.index-b.index;
+    }).map(item=>item.row);
+  }
   function realRaw(value){const s=String(value||'').trim();return s&&!/^[—–-]|^ไม่พบรายการ|^รอข้อมูล|^ไม่มีข้อมูล/i.test(s)?s:'';}
   function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);return hit?hit[1].toLowerCase():'';}
   function normalizedBo(bo,raw=''){
@@ -125,28 +136,31 @@
   }
   function rulePanel(company){
     if(isSevenM(company)) return `<details class="mc8-requirements" open><summary>เงื่อนไขกระทบยอด 7M ที่ใช้รอบนี้</summary><div class="mc8-rule-columns"><div><h4>PM · จับคู่ 3 จุด</h4><ul><li>Ref / Ref Id ใน STM PM ↔ Note ของ BO</li><li>User / Username ใน STM PM ↔ User ใน BO</li><li>ยอดเงินจริงของ Provider ↔ ยอด BO</li><li>ATP ฝาก: โอนจริง · ATP ถอน: P2P จ่าย</li><li>COREPAY/CYBERPLUS ฝาก: จำนวนที่ได้รับ</li><li>AZPAY/MYPAY/LOCALPAY ใช้จำนวนเงินตามช่องรายการ</li></ul></div><div><h4>เกณฑ์ปิดเคส</h4><ul><li>เวลาเป็นข้อมูลประกอบ ไม่ใช่คีย์หลัก</li><li>Ref + User + ยอดตรงกัน ปิดได้แม้เวลาต่าง</li><li>User ไม่ครบ ใช้ Ref + ยอดได้เมื่อเป็นคู่เดียวที่ไม่ซ้ำ</li><li>ค้นหาข้ามแถว/ข้ามชีตได้ แต่คู่ซ้ำหรือกำกวมต้องตรวจเพิ่ม</li><li>Note ที่มีข้อความ P2P/MyPay สำเร็จ ระบบค้นหา Ref ภายในข้อความ</li></ul></div><div><h4>STM ธนาคารปกติ</h4><ul><li>จับคู่ยอดเงินและฝาก/ถอนในบัญชีเดียวกัน</li><li>รองรับ BO/STM เรียงแถวไม่ตรงกัน</li><li>ใช้เวลาที่ใกล้ที่สุดช่วยเลือกคู่เมื่อยอดซ้ำ</li><li>TMN แยกฝาก/ถอนเมื่อ STM ไม่ครบหรือมาจาก Word</li></ul></div></div><p class="mc8-rule-note">สีเขียว = ปิดได้ทันที · สีเหลือง = รอตรวจ · ระบบไม่ปิดจากเวลาใกล้เคียงเพียงอย่างเดียว</p></details>`;
-    if(isSys123(company)) return `<details class="mc8-requirements" open><summary>เงื่อนไขกระทบยอดเครือ 123 ที่ใช้รอบนี้</summary><div class="mc8-rule-columns"><div><h4>PM · จุดที่ต้องตรง</h4><ul><li>AUTOPEER / COREPAY / LOCALPAY ฝาก-ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอด</li><li>AZPAY: เปิดเฉพาะฝาก ใช้รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก</li><li>CYBERPLUS ฝาก: ใช้ 3 จุด</li><li>CYBERPLUS ถอน: รหัสสมาชิก + ยอดถอนจริง (2 จุด)</li></ul></div><div><h4>เกณฑ์ปิดเคส</h4><ul><li>ต้องเป็นบริษัท Provider และทิศทางเดียวกัน</li><li>ต้องเป็นคู่ 1:1 ที่ไม่ซ้ำ</li><li>เวลาใช้เป็นข้อมูลประกอบ ไม่ใช้แทนตัวตนลูกค้า</li><li>ข้อมูลขาด ขัดกัน หรือหลายคู่คงไว้ให้ Audit ตรวจ</li></ul></div><div><h4>STM ธนาคารปกติ</h4><ul><li>แยกชีตตามบัญชีและแยกฝาก D / ถอน W</li><li>BBL ไม่มีเวลา: ใช้บัญชี + วัน + ทิศทาง + ยอด</li><li>KTB และธนาคารที่มีเวลา: ใช้เวลา + ยอด</li></ul></div></div><p class="mc8-rule-note">สีเขียว = หลักฐานครบตามกฎ · สีเหลือง/แดง = ยังห้ามปิดอัตโนมัติ</p></details>`;
+    if(isSys123(company)) return `<details class="mc8-requirements" open><summary>เงื่อนไขกระทบยอดเครือ 123 ที่ใช้รอบนี้</summary><div class="mc8-rule-columns"><div><h4>PM · จุดที่ต้องตรง</h4><ul><li>AUTOPEER / COREPAY / LOCALPAY ฝาก-ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอด</li><li>AZPAY: เปิดเฉพาะฝาก ใช้รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก</li><li>CYBERPLUS ฝาก: ใช้ 3 จุด</li><li>CYBERPLUS ถอน: รหัสสมาชิก + ยอดถอนจริง (2 จุด)</li></ul></div><div><h4>เกณฑ์ปิดเคส</h4><ul><li>ต้องเป็นบริษัท Provider และทิศทางเดียวกัน</li><li>ต้องเป็นคู่ 1:1 ที่ไม่ซ้ำ</li><li>เวลาใช้เป็นข้อมูลประกอบ ไม่ใช้แทนตัวตนลูกค้า</li><li>ข้อมูลขาด ขัดกัน หรือหลายคู่คงไว้ให้ Audit ตรวจ</li></ul></div><div><h4>STM ธนาคารปกติ</h4><ul><li>AT4/SK8 และบัญชีธนาคารเครือ 123 แยกชีตฝาก D / ถอน W</li><li>SCB จิตติพัฒน์ FR8 รวมฝาก-ถอน D-W ตามไฟล์ต้นทาง</li><li>เรียงเวลา STM จากน้อยไปมาก โดยวาง STM ซ้ายและ BO ขวา</li><li>BBL ไม่มีเวลา: ใช้บัญชี + วัน + ทิศทาง + ยอด</li><li>KTB และธนาคารที่มีเวลา: ใช้เวลา + ยอด</li></ul></div></div><p class="mc8-rule-note">สีเขียว = หลักฐานครบตามกฎ · สีเหลือง/แดง = ยังห้ามปิดอัตโนมัติ</p></details>`;
     return `<details class="mc8-requirements"><summary>เงื่อนไขกระทบยอดของกลุ่ม XB</summary><ul><li>จับคู่ภายในบริษัท/บัญชี/Provider/ทิศทางเดียวกัน</li><li>PM ฝากยึด paymentTime ก่อน และใช้ expiredTime เมื่อไม่มี paymentTime</li><li>LOCALPAY ฝาก: เทียบ paymentTime ของ PM กับช่อง “เวลาทำรายการ” ของ BO; ช่อง “เวลา” เป็นเวลาสร้างรายการและไม่ใช้แทนเวลาจริง</li><li>PM ถอนยึด updateTime · ยอดฝากใช้ realAmount · ยอดถอนใช้ช่องเงินจริงของ Provider</li><li>PM เก็บ id ธุรกรรมแยกจาก _id ที่เก็บรหัส 6aa... ห้ามนำสองคอลัมน์นี้มาทับกัน</li><li>BO ถอน: แยกเฉพาะรหัส 6aa... หลัง Sapan:/Spean: เหมือน Text to Columns; ไม่รวมคำว่าโอนจริง สำเร็จ คืน หรือข้อความอื่นที่ตามหลัง</li><li>PM _id ต้องตรงกับรหัสที่แยกจาก BO และยอดจริงต้องตรงกันแบบคู่ 1:1 จึงปิดได้ แม้เวลา/ชื่อ Provider เดิมคลาดเคลื่อน</li><li>กฎ Sapan/_id ใช้กับ AT/AZ/CP/M/LP ที่มี _id เพื่อไม่ให้เคสหลุดเพราะเวลาไม่ตรง</li><li>ช่องหมายเหตุแสดงเฉพาะหมายเหตุ BO จริง; ชื่อวิธีจับคู่ เช่น legacy-rule แสดงในคอลัมน์เงื่อนไขเท่านั้น</li><li>คู่ที่ชัดเจนปิดได้ทันที; คู่ซ้ำ ข้ามวัน หรือหลักฐานไม่ครบจะแสดงไว้ให้ Audit ตรวจ</li></ul></details>`;
   }
   function summaries(rows,names=SHEETS){return Object.fromEntries(names.map(name=>[name,summarize(rows.filter(r=>sheetOf(r)===name))]));}
   function isStatement(row){
     const account=String(row?.account||'').replace(/\D/g,'');
     if(!/^\d{6,}$/.test(account))return false;
-    const meta=root.Registry?.byAccount?.(account);
+    const meta=registryCatalog?.byAccount?.(account);
     if(meta?.bank||meta?.name)return true;
     if(providerOfRow(row)!=='OTHER')return false;
     const info=row?.pm||{};
     return !!(info.bank||info.name||info.user||info.account);
   }
   function shortHolder(name){
-    const words=String(name||'').trim().replace(/^(นาย|นางสาว|นาง|น\.ส\.)\s*/,'').split(/\s+/).filter(Boolean);
+    const raw=String(name||'').trim();
+    // คุณากร is the account holder's given name, not the honorific "คุณ".
+    const normalized=/^คุณากร(?:\s|$)/.test(raw)?raw:raw.replace(/^(นาย|นางสาว|นาง|น\.ส\.|คุณ)\s*/,'');
+    const words=normalized.split(/\s+/).filter(Boolean);
     return words[0]||'';
   }
   function statementGroups(rows,company=''){
-    const registry=root.Registry,byAccount=new Map();
+    const registry=registryCatalog,byAccount=new Map();
     rows.filter(isStatement).forEach(row=>{
       const account=String(row.account),meta=registry?.byAccount?.(account)||{},info=row.pm||{};
-      const bank=meta.bank||info.bank||row.bank||'STM',holder=shortHolder(meta.name||info.name||info.user),tmn=String(bank).toUpperCase()==='TMN',splitDirection=tmn||isSys123(company||row.company),direction=splitDirection?directionOf(row.direction):'',suffix=splitDirection?(direction==='deposit'?'D':direction==='withdraw'?'W':'ไม่ระบุ'):'D-W',groupId=splitDirection?`${account}:${direction}`:account,base=`STM ${bank}${holder?' '+holder:''} ${suffix}`;
+      const bank=meta.bank||info.bank||row.bank||'STM',holder=shortHolder(meta.name||info.name||info.user),tmn=String(bank).toUpperCase()==='TMN',combinedSourceAccount=account==='4311918665',splitDirection=tmn||(isSys123(company||row.company)&&!combinedSourceAccount),direction=splitDirection?directionOf(row.direction):'',suffix=splitDirection?(direction==='deposit'?'D':direction==='withdraw'?'W':'ไม่ระบุ'):'D-W',groupId=splitDirection?`${account}:${direction}`:account,base=`STM ${bank}${holder?' '+holder:''} ${suffix}`;
       const group=byAccount.get(groupId)||{key:`statement:${groupId}`,account,direction,base,label:base,rows:[]};
       group.rows.push(row);byAccount.set(groupId,group);
     });
@@ -209,7 +223,7 @@
     const state=row.kind==='closed'?'ปิดเคสแล้ว':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':row.kind==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
     const sources=sourceColumns(row);
     const boNote=bo.providerReference||sapanProviderId(bo.note)||sapanProviderId(row.boRaw)||row.boRaw||bo.note||'';
-    return [row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`BO ${row.boSource?.row??''}`,`PM ${row.pmSource?.row??''}`,`เวลา ${sources.time}`,`ยอด ${sources.amount}`].filter(v=>!v.endsWith(' ')).join(' · '),amountDiff(row),status];
+    return [row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`STM/PM ${row.pmSource?.row??''}`,`BO ${row.boSource?.row??''}`,`เวลา ${sources.time}`,`ยอด ${sources.amount}`].filter(v=>!v.endsWith(' ')).join(' · '),amountDiff(row),status];
   }
   function leftExportValue(header,row){
     const pm=row.pm||{},provider=providerOf(row.account),code=(provider==='AT'?'autopeer':provider==='AZ'?'azpay':provider==='CP'?'corepay':provider==='LP'?'localpay':'mypays24');
@@ -261,7 +275,7 @@
   }
   function buildAuditExportSheets(rows,company,date,complete=true,schema=root.MC8SheetSchema){
     if(!schema?.sheets?.length)throw new Error('ไม่พบโครงหัวตาราง Audit');
-    const allRows=rows.map(row=>allExportRow(row,complete)),allTones=exportTones(rows,complete,ALL_HEADERS.length-1);
+    const orderedRows=chronologicalRows(rows),allRows=orderedRows.map(row=>allExportRow(row,complete)),allTones=exportTones(orderedRows,complete,ALL_HEADERS.length-1);
     const allTotal=Array(ALL_HEADERS.length).fill(''),allSummary=summarize(rows);allTotal[0]='รวม';allTotal[1]=`${rows.length.toLocaleString('th-TH')} รายการ`;allTotal[ALL_HEADERS.indexOf('BO · ยอด')]=allSummary.boCents/100;allTotal[ALL_HEADERS.indexOf('STM/PM · ยอด')]=allSummary.pmCents/100;allTotal[ALL_HEADERS.indexOf('ผลต่างยอด')]=allSummary.diffAfterCents/100;allTotal[ALL_HEADERS.length-1]='รวมทุกสถานะ';
     const providerNames=providerSheets(company,rows),templates=providerTemplates(schema,company,rows),supported=rows.filter(row=>providerNames.includes(sheetOf(row))),statement=rows.filter(isStatement),statementSets=statementGroups(statement,company);
     const bySheet=summaries(supported,providerNames);
@@ -272,20 +286,21 @@
       {name:'ข้อมูลทั้งหมด',headers:[...ALL_HEADERS],rows:allRows,...allTones,widths:[18,18,18,20,12,20,14,18,10,16,22,16,24,34,20,14,18,10,16,22,16,24,34,18,40,38,22,28],footerRows:[allTotal]},
       {name:'สรุป',headers:['ชีต','Provider','ประเภท','จำนวน STM/PM','รวมยอด STM/PM','รวมยอด BO','ผลต่าง','รายการต้องตรวจ','สถานะ'],rows:summaryRows,rowTones:summaryTones,widths:[12,16,12,16,20,20,18,18,20],footerRows:[['รวม','','',summaryRows.reduce((s,r)=>s+r[3],0),summaryRows.reduce((s,r)=>s+r[4],0),summaryRows.reduce((s,r)=>s+r[5],0),summaryRows.reduce((s,r)=>s+r[6],0),summaryRows.reduce((s,r)=>s+r[7],0),complete?'ครบตามรอบ':'ข้อมูลยังไม่ครบ']]},
     ];
-    for(const group of statementSets){const headers=[...STATEMENT_HEADERS],data=group.rows.map((row,index)=>statementExportRow(row,index,company,date,complete));sheets.push({name:group.label,headers,rows:data,...exportTones(group.rows,complete,headers.length-1),widths:[8,12,14,20,12,20,16,20,10,16,24,24,20,16,18,24,20,18,40,16,26],footerRows:[totalRow(headers,data,'ยอด Statement')]});}
-    for(const template of templates){const scoped=rows.filter(row=>sheetOf(row)===template.name),headers=[...template.headers,...AUDIT_HEADERS],data=scoped.map(row=>providerExportRow(template,row,complete)),amountHeader=pmAmountHeader(headers,template.name);sheets.push({name:template.name,headers,rows:data,...exportTones(scoped,complete,headers.length-1),widths:headers.map(header=>!header?3:/Time|เวลา/.test(header)?20:/id|Ref|reference|system|transaction|merchant|รหัส/i.test(header)?24:/หมายเหตุ|เงื่อนไข/.test(header)?32:/สถานะ Audit/.test(header)?26:14),footerRows:[totalRow(headers,data,amountHeader)]});}
+    for(const group of statementSets){const headers=[...STATEMENT_HEADERS],scoped=chronologicalRows(group.rows),data=scoped.map((row,index)=>statementExportRow(row,index,company,date,complete));sheets.push({name:group.label,headers,rows:data,...exportTones(scoped,complete,headers.length-1),widths:[8,12,14,20,12,20,16,20,10,16,24,24,20,16,18,24,20,18,40,16,26],footerRows:[totalRow(headers,data,'ยอด Statement')]});}
+    for(const template of templates){const scoped=chronologicalRows(rows.filter(row=>sheetOf(row)===template.name)),headers=[...template.headers,...AUDIT_HEADERS],data=scoped.map(row=>providerExportRow(template,row,complete)),amountHeader=pmAmountHeader(headers,template.name);sheets.push({name:template.name,headers,rows:data,...exportTones(scoped,complete,headers.length-1),widths:headers.map(header=>!header?3:/Time|เวลา/.test(header)?20:/id|Ref|reference|system|transaction|merchant|รหัส/i.test(header)?24:/หมายเหตุ|เงื่อนไข/.test(header)?32:/สถานะ Audit/.test(header)?26:14),footerRows:[totalRow(headers,data,amountHeader)]});}
     sheets.forEach(sheet=>{sheet.headerStyle='template';});
     return sheets;
   }
 
   function tableView(rows,company,date,complete,sheet,schema=root.MC8SheetSchema){
-    if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:rows.map((row,index)=>statementExportRow(row,index,company,date,complete))};
+    const ordered=chronologicalRows(rows);
+    if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:ordered.map((row,index)=>statementExportRow(row,index,company,date,complete))};
     if(SHEETS.includes(sheet)){
       const template=providerTemplates(schema,company,rows).find(item=>item.name===sheet);
       if(!template)throw new Error(`ไม่พบหัวตาราง ${sheet}`);
-      return {headers:[...template.headers,...AUDIT_HEADERS],rows:rows.map(row=>providerExportRow(template,row,complete))};
+      return {headers:[...template.headers,...AUDIT_HEADERS],rows:ordered.map(row=>providerExportRow(template,row,complete))};
     }
-    return {headers:[...ALL_HEADERS],rows:rows.map(row=>allExportRow(row,complete))};
+    return {headers:[...ALL_HEADERS],rows:ordered.map(row=>allExportRow(row,complete))};
   }
   function headerTone(header,index,headers,sheet){
     if(header===null||header===undefined||header==='')return 'gap';

@@ -31,9 +31,10 @@ const rows = [
 ];
 
 const sheets = live.buildAuditExportSheets(rows, 'MC8', '2026-09-15', true, schema);
-assert.deepEqual(sheets.map(sheet => sheet.name), ['ข้อมูลทั้งหมด', 'สรุป', 'STM KBANK pm-user D-W', 'AT ถ', 'AT ฝ', 'AZ ถ', 'AZ ฝ', 'CP ถ', 'CP ฝ', 'M ถ', 'M ฝ']);
+assert.deepEqual(sheets.map(sheet => sheet.name), ['ข้อมูลทั้งหมด', 'สรุป', 'STM KBANK ทินกร D-W', 'AT ถ', 'AT ฝ', 'AZ ถ', 'AZ ฝ', 'CP ถ', 'CP ฝ', 'M ถ', 'M ฝ']);
 assert.equal(sheets[0].title, undefined, 'first sheet header must start on row 1');
 assert.equal(sheets[0].headers.at(-1), 'สถานะสำหรับเทียบทีมกระทบมือ');
+assert.ok(sheets[0].headers.indexOf('STM/PM · วัน / เวลา') < sheets[0].headers.indexOf('BO · วัน / เวลา'),'all-data export must place STM/PM on the left of BO');
 assert.deepEqual(sheets[0].rowTones, ['', '', '', 'error', 'warning', '']);
 assert.equal(sheets[0].cellTones[0].at(-1), 'success');
 assert.equal(sheets[0].cellTones[1].at(-1), 'success');
@@ -70,8 +71,27 @@ assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('ร�
 assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('เลขบัญชีสมาชิก'));
 assert.ok(sys123Sheets.find(sheet=>sheet.name==='AT ฝ').headers.includes('จำนวนเงินฝาก'));
 assert.ok(!sys123Sheets.find(sheet=>sheet.name==='CY ถ').headers.includes('เลขบัญชีสมาชิก'),'123 CYBERPLUS withdrawal uses only member and amount');
-assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ D').rows.length,1,'123 normal-bank deposit must have a separate account sheet');
-assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ W').rows.length,1,'123 normal-bank withdrawal must have a separate account sheet');
+assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ D').rows.length,1,'123 normal-bank deposit must use a separate sheet');
+assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ W').rows.length,1,'123 normal-bank withdrawal must use a separate sheet');
+
+const chronologicalStatements = live.buildAuditExportSheets([
+  row({company:'FR8',account:'4311918665',direction:'withdraw',pmTime:'2026-09-27 23:40:00',boTime:'2026-09-27 23:41:00',pm:{user:'late',bank:'SCB'}}),
+  row({company:'FR8',account:'4311918665',direction:'deposit',pmTime:'2026-09-27 00:25:00',boTime:'2026-09-27 00:26:00',pm:{user:'early',bank:'SCB'}}),
+], 'FR8', '2026-09-27', true, schema).find(sheet=>sheet.name==='STM SCB จิตติพัฒน์ D-W');
+assert.ok(chronologicalStatements,'FR8 account 4311918665 must use the registered SCB จิตติพัฒน์ name');
+assert.deepEqual(chronologicalStatements.rows.map(row=>row[5]),['2026-09-27 00:25:00','2026-09-27 23:40:00'],'ordinary statement rows must sort by STM time ascending');
+assert.equal(chronologicalStatements.rows[0][12],'2026-09-27 00:26:00','BO stays paired on the right after chronological sorting');
+
+for(const [company,account,direction,pm,expected] of [
+  ['AT4','6517248040','deposit',{bank:'OTHER',name:'ผู้โอนผิด'},'STM BBL นรวร D'],
+  ['SK8','6517249394','withdraw',{bank:'OTHER',name:'ผู้โอนผิด'},'STM BBL ดลยา W'],
+  ['MR9','5034674009','deposit',{bank:'OTHER',name:'MR'},'STM SCB คุณากร D-W'],
+  ['UR9','4201154177','withdraw',{bank:'KBANK',name:'ลือชัย'},'STM SCB คมสัน D-W'],
+  ['PS8','5292894087','deposit',{bank:'KTB',name:'MR.KITTICHAI'},'STM SCB นรวร D-W'],
+]){
+  const corrected=live.buildAuditExportSheets([row({company,account,direction,pm})],company,'2026-09-27',true,schema);
+  assert.ok(corrected.some(sheet=>sheet.name===expected),`registered source account must name sheet ${expected}`);
+}
 
 const threeXbSheets = live.buildAuditExportSheets([
   row({company:'3XB',account:'LOCALPAY',direction:'deposit'}),

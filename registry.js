@@ -334,6 +334,19 @@ const Registry = (() => {
 "subco": "FR8",
 "provider": "",
 "bank": "SCB",
+"account": "4311918665",
+"accountRaw": "431-191866-5",
+"name": "จิตติพัฒน์",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB จิตติพัฒน์ ถอน-ฝาก ว/ด/ป.pdf",
+"note": "รวมรายการฝาก-ถอนในชีตเดียว"
+},
+{
+"subco": "FR8",
+"provider": "",
+"bank": "SCB",
 "account": "5034633029",
 "accountRaw": "503-463302-9",
 "name": "นาย ภานุพงษ์ พร้อมจิตย์",
@@ -684,6 +697,19 @@ const Registry = (() => {
 {
 "subco": "MR9",
 "provider": "",
+"bank": "SCB",
+"account": "5034674009",
+"accountRaw": "503-467400-9",
+"name": "คุณากร",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB คุณากร ถอน-ฝาก ว/ด/ป.pdf",
+"note": ""
+},
+{
+"subco": "MR9",
+"provider": "",
 "bank": "KBANK",
 "account": "1998218930",
 "accountRaw": "199-8-21893-0",
@@ -926,6 +952,19 @@ const Registry = (() => {
 "channel": "AUTOPEER",
 "source": "pm",
 "file": "MC8 ATP ฝาก ว/ด/ป.csv",
+"note": ""
+},
+{
+"subco": "UR9",
+"provider": "",
+"bank": "SCB",
+"account": "4201154177",
+"accountRaw": "420-115417-7",
+"name": "คมสัน",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB คมสัน ถอน-ฝาก ว/ด/ป.pdf",
 "note": ""
 },
 {
@@ -1485,3 +1524,4 @@ const Registry = (() => {
   return { ACCOUNTS, normalizeAccount, matchFile, byAccount, detectFromName, dirOf };
 })();
 if (typeof window !== "undefined") window.Registry = Registry;
+if (typeof module !== "undefined") module.exports = Registry;

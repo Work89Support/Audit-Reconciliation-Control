@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.42-7m-statement-identity-docx";
-const PARSER_VERSION = "1.9.42-7m-statement-identity-docx";
+const WORKER_VERSION = "1.9.51-7m-tmn-ocr-boundaries";
+const PARSER_VERSION = "1.9.51-7m-tmn-ocr-boundaries";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -26,7 +26,7 @@ const input=$input.all();
 let norm, rawRows=[], extractedText='';
 let parseError=null;
 let acceptedEmptyPm=false;
-const upstreamError=input[0]&&input[0].json&&input[0].json.error;
+const upstreamError=input.map(x=>x&&x.json&&x.json.error).find(Boolean);
 if(upstreamError){
   parseError='อ่านไฟล์ไม่สำเร็จ ('+file.file_name+'): '+String(upstreamError.message||upstreamError.description||upstreamError).slice(0,500);
 }
@@ -34,7 +34,7 @@ try{
   if(parseError){
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
   }else if(ext==='pdf'||ext==='docx'){
-    extractedText=String((input[0]&&input[0].json&&input[0].json.text)||'');
+    extractedText=input.map(x=>String((x&&x.json&&x.json.text)||'').trim()).filter(Boolean).join('\\n---OCR_IMAGE---\\n');
     const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
     norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,job.business_date)
       || await PdfStm.parseText(file.file_name,extractedText,job.business_date);
@@ -403,17 +403,22 @@ const nodes = [
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-pdf-text", leftValue: "={{ $json.pdf_readable === true }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf-text", name: "PDF มีข้อความ?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1640, 220] },
   { parameters: { jsCode: "const text=String($json.text??$json.data??'').trim(); return [{json:{text,ocr_used:false,ocr_provider:'native_pdf',ocr_confidence:null,ocr_page_count:Number($json.numpages||0)||null},pairedItem:{item:0}}];" }, id: "format-native-pdf", name: "จัดผล PDF โดยตรง", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 180] },
   { parameters: { jsCode: "const src=$('คืนชื่อไฟล์ต้นฉบับ').item; if(!src.binary||!src.binary.data) throw new Error('ไม่พบไฟล์ PDF ต้นฉบับสำหรับ OCR'); return [{json:{},binary:src.binary,pairedItem:{item:0}}];" }, id: "restore-pdf-binary", name: "เตรียม PDF สำหรับ OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1860, 280] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-docx", leftValue: "={{ $('วนทีละไฟล์').item.json.file.ext === 'docx' }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-docx", name: "เป็น Word ภาพรายการ?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1970, 280] },
+  { parameters: { jsCode: "const item=$input.first(); const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบ binary ของ DOCX'); binary.data={...binary.data,fileExtension:'zip',fileName:'tmn-statement.zip',mimeType:'application/zip'}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, id: "docx-as-zip", name: "เตรียม Word เป็น ZIP", type: "n8n-nodes-base.code", typeVersion: 2, position: [2080, 380] },
+  { parameters: { operation: "decompress", binaryPropertyName: "data", outputPrefix: "docx_" }, id: "unzip-docx-images", name: "แตกภาพจาก Word", type: "n8n-nodes-base.compression", typeVersion: 1.1, position: [2190, 380] },
+  { parameters: { jsCode: "const out=[]; for(const item of $input.all()){ for(const [key,bin] of Object.entries(item.binary||{})){ const name=String(bin.fileName||key); const path=[bin.directory,name].filter(Boolean).join('/'); if(!/word[\\/]media[\\/]/i.test(path)||!/[.](png|jpe?g|webp|tiff?)$/i.test(name)) continue; const ext=(name.match(/[.]([a-z0-9]+)$/i)||[])[1]?.toLowerCase()||'png'; const mime=/jpe?g/.test(ext)?'image/jpeg':ext==='webp'?'image/webp':/^tiff?$/.test(ext)?'image/tiff':'image/png'; out.push({json:{docx_image:path},binary:{data:{...bin,mimeType:mime,fileExtension:ext}},pairedItem:{item:0}}); }} if(!out.length) throw new Error('ไม่พบภาพรายการใน Word'); return out;" }, id: "select-docx-images", name: "เลือกภาพรายการ TMN", type: "n8n-nodes-base.code", typeVersion: 2, position: [2300, 380] },
   driveHttp("google-drive-ocr-upload", "Google Drive OCR: แปลง PDF", [2080, 280], {
     method: "POST", url: "https://www.googleapis.com/upload/drive/v2/files", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
     sendQuery: true, queryParameters: { parameters: [{ name: "uploadType", value: "media" }, { name: "convert", value: "true" }, { name: "ocr", value: "true" }, { name: "ocrLanguage", value: "th" }] },
-    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "={{ $('วนทีละไฟล์').item.json.file.ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf' }}" }] }, sendBody: true, contentType: "binaryData", inputDataFieldName: "data",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "={{ $binary.data.mimeType || 'application/pdf' }}" }] }, sendBody: true, contentType: "binaryData", inputDataFieldName: "data",
     options: { timeout: 180000, response: { response: { responseFormat: "json" } } },
   }),
   driveHttp("google-drive-ocr-export", "Google Drive OCR: อ่านข้อความ", [2300, 280], {
     url: "=https://www.googleapis.com/drive/v2/files/{{ $json.id }}/export", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
     sendQuery: true, queryParameters: { parameters: [{ name: "mimeType", value: "text/plain" }] }, options: { timeout: 180000, response: { response: { responseFormat: "text" } } },
+    maxTries: 5, waitBetweenTries: 5000,
   }),
-  { parameters: { jsCode: "if($json.error) return [{json:{error:$json.error,text:'',ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null},pairedItem:{item:0}}]; const raw=$json.data??$json.body??$json.text; const text=typeof raw==='string'?raw:''; return [{json:{text,ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_page_count:null},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
+  { parameters: { jsCode: "const items=$input.all(); const errors=items.map(x=>x.json&&x.json.error).filter(Boolean); const texts=items.map(x=>{const raw=x.json&&(x.json.data??x.json.body??x.json.text); return typeof raw==='string'?raw.trim():'';}).filter(Boolean); if(!texts.length&&errors.length) return [{json:{error:errors[0],text:'',ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null},pairedItem:{item:0}}]; return [{json:{text:texts.join('\\f'),ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_page_count:texts.length,ocr_errors:errors.length},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: true, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },
   { parameters: { operation: "text", binaryPropertyName: "data", destinationKey: "data", options: { encoding: "utf8" } }, id: "extract-csv", name: "อ่าน CSV", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 520], onError: "continueRegularOutput" },
   { parameters: { jsCode: normalizeCode }, id: "normalize", name: "แปลงรายการเป็นมาตรฐาน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1880, 340] },
@@ -536,7 +541,11 @@ const connections = {
   "ตรวจรายการ PDF ก่อน OCR": { main: [[{ node: "PDF มีข้อความ?", type: "main", index: 0 }]] },
   "PDF มีข้อความ?": { main: [[{ node: "จัดผล PDF โดยตรง", type: "main", index: 0 }], [{ node: "เตรียม PDF สำหรับ OCR", type: "main", index: 0 }]] },
   "จัดผล PDF โดยตรง": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
-  "เตรียม PDF สำหรับ OCR": { main: [[{ node: "Google Drive OCR: แปลง PDF", type: "main", index: 0 }]] },
+  "เตรียม PDF สำหรับ OCR": { main: [[{ node: "เป็น Word ภาพรายการ?", type: "main", index: 0 }]] },
+  "เป็น Word ภาพรายการ?": { main: [[{ node: "เตรียม Word เป็น ZIP", type: "main", index: 0 }], [{ node: "Google Drive OCR: แปลง PDF", type: "main", index: 0 }]] },
+  "เตรียม Word เป็น ZIP": { main: [[{ node: "แตกภาพจาก Word", type: "main", index: 0 }]] },
+  "แตกภาพจาก Word": { main: [[{ node: "เลือกภาพรายการ TMN", type: "main", index: 0 }]] },
+  "เลือกภาพรายการ TMN": { main: [[{ node: "Google Drive OCR: แปลง PDF", type: "main", index: 0 }]] },
   "Google Drive OCR: แปลง PDF": { main: [[{ node: "Google Drive OCR: อ่านข้อความ", type: "main", index: 0 }]] },
   "Google Drive OCR: อ่านข้อความ": { main: [[{ node: "จัดผล OCR", type: "main", index: 0 }]] },
   "จัดผล OCR": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
@@ -563,4 +572,19 @@ const connections = {
 
 const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
+// Keep the manual/round worker's embedded parser in lockstep with the tested
+// browser parser.  That workflow has its own orchestration graph, so replace
+// only the PdfStm source segment inside code nodes that already embed it.
+const roundWorkerPath = path.join(root, "n8n/audit-round-worker.json");
+const roundWorker = JSON.parse(await readFile(roundWorkerPath, "utf8"));
+for (const node of roundWorker.nodes || []) {
+  const code = node.parameters?.jsCode;
+  if (typeof code !== "string" || !code.includes("const PdfStm")) continue;
+  const declaration = code.indexOf("const PdfStm");
+  const parserStart = code.lastIndexOf("/*", declaration);
+  const parserEnd = code.indexOf("\nconst meta=", declaration);
+  if (parserStart < 0 || parserEnd < 0) throw new Error(`หา PdfStm segment ไม่พบใน node ${node.name}`);
+  node.parameters.jsCode = code.slice(0, parserStart) + pdf.trim() + code.slice(parserEnd);
+}
+await writeFile(roundWorkerPath, JSON.stringify(roundWorker, null, 2) + "\n");
 console.log(`built n8n/audit-headless-worker.json (${workflow.nodes.length} nodes)`);

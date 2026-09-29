@@ -25,6 +25,9 @@ eq("normalize: TMN เติม 0 หน้า", R.normalizeAccount("812792075",
 
 /* ---- byAccount ---- */
 eq("byAccount: 4142322778 -> FR8", (R.byAccount("4142322778") || {}).subco, "FR8");
+eq("byAccount: 4311918665 -> FR8/SCB จิตติพัฒน์", [R.byAccount("4311918665")?.subco,R.byAccount("4311918665")?.bank,R.byAccount("4311918665")?.name].join("/"), "FR8/SCB/จิตติพัฒน์");
+eq("byAccount: 5034674009 -> MR9/SCB คุณากร", [R.byAccount("5034674009")?.subco,R.byAccount("5034674009")?.bank,R.byAccount("5034674009")?.name].join("/"), "MR9/SCB/คุณากร");
+eq("byAccount: 4201154177 -> UR9/SCB คมสัน", [R.byAccount("4201154177")?.subco,R.byAccount("4201154177")?.bank,R.byAccount("4201154177")?.name].join("/"), "UR9/SCB/คมสัน");
 eq("byAccount: TMN 0812792075 -> 7M", (R.byAccount("0812792075") || {}).subco, "7M");
 
 /* ---- matchFile: bank ---- */
@@ -48,6 +51,12 @@ const m8 = R.matchFile("KB กิตติ W.pdf");
 eq("7M: KB กิตติ W -> canonical KBANK account", m8.match && m8.match.bank + "/" + m8.match.account, "KBANK/1953583301");
 const m9 = R.matchFile("UFABET7M_STM_SCB_สมภพ_DW_2026-09-27.pdf");
 eq("7M: SCB สมภพ -> canonical SCB account", m9.match && m9.match.bank + "/" + m9.match.account, "SCB/5034633891");
+const m10 = R.matchFile("FR8_STM_SCB_จิตติพัฒน์_DW_2026-09-27.pdf");
+eq("FR8: SCB จิตติพัฒน์ -> canonical SCB account", m10.match && m10.match.bank + "/" + m10.match.account, "SCB/4311918665");
+const m11 = R.matchFile("MR9_STM_SCB_คุณากร_DW_2026-09-27.pdf");
+eq("MR9: SCB คุณากร -> canonical SCB account", m11.match && m11.match.bank + "/" + m11.match.account, "SCB/5034674009");
+const m12 = R.matchFile("UR9_STM_SCB_คมสัน_DW_2026-09-27.pdf");
+eq("UR9: SCB คมสัน -> canonical SCB account", m12.match && m12.match.bank + "/" + m12.match.account, "SCB/4201154177");
 const phantom = R.matchFile("STM KTB จ.ส.อ.เอกพล D-W.pdf");
 ok("7M: KTB เอกพลไม่ใช่บัญชีในทะเบียน", !phantom.match, JSON.stringify(phantom));
 

@@ -799,6 +799,11 @@ const Engine = (() => {
       ["CYBERPLUS", new Set(["deposit", "withdraw"])],
       ["LOCALPAY", new Set(["deposit", "withdraw"])],
     ]);
+    /* BO เครือ 123 บางไฟล์ถูก normalize เป็นรายการ BO ปกติ (isPmChannel=false)
+       แต่ยังมี Provider ชัดเจนใน account. ต้องให้กฎตัวตน 3 จุดรับรายการนี้ด้วย
+       ไม่เช่นนั้นระบบจะตกไปใช้กฎเวลาและสร้าง missing_bo/missing_stm เท็จ */
+    const isSys123ProviderRecord = (r) => !!(r && (r.isPmChannel
+      || sys123Directions.has(String(r.account || "").trim().toUpperCase())));
     const sys123GenericProvider = (value) => {
       const provider = String(value || "").trim().toUpperCase();
       return !provider || provider === "PM" || provider === "SYS123" || provider === "UNKNOWN";
@@ -826,7 +831,7 @@ const Engine = (() => {
       return Math.min(a.length, b.length) >= 4 && (a.endsWith(b) || b.endsWith(a));
     };
     const isSys123PmPair = (s, b) => sys123Companies.has(auditCompanyOf(s))
-      && sys123Companies.has(auditCompanyOf(b)) && s.isPmChannel && b.isPmChannel;
+      && sys123Companies.has(auditCompanyOf(b)) && isSys123ProviderRecord(s) && isSys123ProviderRecord(b);
     const sys123ProviderCandidate = (s, b) => {
       if (!isSys123PmPair(s, b) || !sameCompany(s, b)) return false;
       const provider = sys123ProviderOfPair(s, b);
@@ -840,7 +845,7 @@ const Engine = (() => {
     };
     const sys123AmountIndex = new Map();
     boRecords.forEach((b, i) => {
-      if (!sys123Companies.has(auditCompanyOf(b)) || !b.isPmChannel || !Number.isFinite(b.amount)) return;
+      if (!sys123Companies.has(auditCompanyOf(b)) || !isSys123ProviderRecord(b) || !Number.isFinite(b.amount)) return;
       const key = Number(b.amount).toFixed(2);
       const rows = sys123AmountIndex.get(key) || [];
       rows.push(i);
@@ -850,7 +855,7 @@ const Engine = (() => {
     const sys123Candidates = new Map();
     const sys123Peers = new Map();
     stmRecords.forEach((s) => {
-      if (!sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+      if (!sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
       const rows = sys123BoRows(s)
         .filter((i) => !boUsed[i] && sys123ProviderCandidate(s, boRecords[i]));
       sys123Candidates.set(s, rows);
@@ -900,7 +905,7 @@ const Engine = (() => {
       const candidates = new Map();
       const peers = new Map();
       stmRecords.forEach((s) => {
-        if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+        if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
         const rows = sys123BoRows(s)
           .filter((i) => !boUsed[i] && sys123TimedCandidate(s, boRecords[i]))
           .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
@@ -979,7 +984,7 @@ const Engine = (() => {
     const sys123FallbackCandidates = new Map();
     const sys123FallbackPeers = new Map();
     stmRecords.forEach((s) => {
-      if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !s.isPmChannel) return;
+      if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
       const rows = sys123BoRows(s)
         .filter((i) => !boUsed[i] && sys123FallbackCandidate(s, boRecords[i]))
         .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
