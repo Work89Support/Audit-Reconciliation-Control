@@ -547,8 +547,15 @@ const Formats = (() => {
       const providerFromRef = /^P2C-/i.test(id)
         ? "AUTOPEER"
         : /(?:^|[-_])CP$/i.test(id) ? "COREPAY" : "";
-      const provider = (meta && meta.provider)
-        || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1]
+      // The provider stored in each exported row is the authoritative source.
+      // Mail attachment names can be copied from an earlier file (for example
+      // `UR9_PM_MYPAY_W...` while every row says `provider=azpay`).  Trusting
+      // the filename first makes the parser select MYPAY's transferredAmount
+      // column and can turn an otherwise valid AZPAY file into zero-amount
+      // rows.  Fall back to the filename only when the row has no recognized
+      // provider value.
+      const provider = (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1]
+        || (meta && meta.provider)
         || providerFromBoAccount
         || providerFromRef
         || (provRaw ? provRaw.toUpperCase() : "PM");

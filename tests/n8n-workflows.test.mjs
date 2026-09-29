@@ -182,8 +182,8 @@ assert.doesNotMatch(workerText, /\.first\(0, \$prevNode\.runIndex\)/, "job/file 
 assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be treated as the statement side");
 assert.match(workerText, /healthyNames/, "a healthy later copy must supersede an unreadable file with the same name");
 assert.match(workerText, /created_at/, "duplicate attachments must prefer the newest source copy");
-assert.match(workerText, /const seen=new Set\(\)/, "identical parsed files from duplicate mail batches must be reconciled only once");
-assert.match(workerText, /Number\(f\.size_bytes\|\|0\)/, "duplicate file identity must include the source size when checksums are unavailable");
+assert.match(workerText, /const seenNames=new Set\(\)/, "only the newest readable attachment with a logical file name may enter reconciliation");
+assert.match(workerText, /const key=keyOf\(f\.file_name\)/, "a corrected later copy must replace the earlier copy even when its size or checksum changed");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
 assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
@@ -192,10 +192,10 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /row_count:usableRows/, "row_count must contain usable transaction rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.51-7m-tmn-ocr-boundaries'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.56-content-source-dedupe'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.51-7m-tmn-ocr-boundaries'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.56-content-source-dedupe'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -224,7 +224,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.51-7m-tmn-ocr-boundaries'/, "worker version must identify the deployed parser/control release");
+assert.match(workerText, /worker_version:'1\.9\.56-content-source-dedupe'/, "worker version must identify the deployed parser/control release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /pending_only_pm_zero_eligible:true/, "worker summary must record pending-only PM zero-eligible handling");
@@ -282,6 +282,9 @@ assert.match(workerText, /seven_m_tmn_split_tabs:true/, "worker summary must ide
 assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");
+assert.match(workerText, /duplicate_source_rows_removed/, "worker must report duplicate STM or PM rows removed even when file names differ");
+assert.match(workerText, /const sourceGroups=new Map\(\)/, "whole-file duplicate detection must cover every STM and PM source, not PDF statements only");
+assert.doesNotMatch(workerText, /row\.formatCode!=='stm_pdf'/, "PM files with duplicate content under different names must enter whole-file duplicate detection");
 assert.match(workerText, /reciprocal_nearest_any_time:true/, "worker summary must identify any-time unique reciprocal matching");
 assert.match(workerText, /bo_transaction_time_primary:true/, "worker summary must identify BO transaction-time matching");
 assert.match(workerText, /xb_provider_scope_at_az_cp_m:true/, "worker summary must identify the XB AT/AZ/CP/M scope");

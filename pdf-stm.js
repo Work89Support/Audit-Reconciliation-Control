@@ -994,6 +994,13 @@ const PdfStm = (() => {
   async function parse(fileName, arrayBuffer, businessDate) {
     const pages = Array.isArray(arrayBuffer) ? arrayBuffer : await textLines(arrayBuffer);
     const head = header(pages);
+    // PDFium can omit the KBANK logo/name and emit the account label only
+    // after the statement-period line. `header()` intentionally inspects only
+    // the heading (to avoid mistaking counterparty banks for the owner), so in
+    // that layout the owner bank is otherwise blank even though every row is
+    // parsed completely. Use only the controlled STM filename token as a
+    // fallback, and never override a bank identified from the document.
+    if (!head.bank && /(?:^|[_\s-])STM[_\s-](?:KB|KBANK)(?:[_\s-]|$)/i.test(String(fileName || ""))) head.bank = "KBANK";
     // n8n's native PDF extractor sometimes omits the TMN column heading while
     // preserving every transaction row.  In that layout content-only bank
     // detection falls through to the generic parser, which cannot label

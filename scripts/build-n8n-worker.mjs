@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.51-7m-tmn-ocr-boundaries";
-const PARSER_VERSION = "1.9.51-7m-tmn-ocr-boundaries";
+const WORKER_VERSION = "1.9.56-content-source-dedupe";
+const PARSER_VERSION = "1.9.56-content-source-dedupe";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -186,24 +186,25 @@ for(const f of files){
   if(f.format&&f.format.source==='bo') bo.push(...records);
   else stm.push(...records);
 }
-// เมลอาจแนบ statement เดิมซ้ำต่างเวลาหรือสร้าง PDF ใหม่ที่รายละเอียดต่างกัน
-// ถ้าชุดธุรกรรมทั้งไฟล์ตรงกันทุก tuple ให้เก็บเพียงฉบับแรก ไม่หักรายการจริงที่
-// บังเอิญยอด/เวลาเท่ากันเพียงบางแถว
-const statementGroups=new Map();
+// เมลอาจแนบไฟล์ STM/PM ชุดเดิมซ้ำต่างเวลา หรือส่งเนื้อหาเดียวกันมาโดยเปลี่ยนชื่อ
+// Provider ผิด (เช่น AZPAY ถูกตั้งชื่อเป็น MYPAY). ถ้าชุดธุรกรรมทั้งไฟล์ตรงกัน
+// ทุก tuple ให้เก็บเพียงฉบับแรก ไม่หักรายการจริงที่บังเอิญยอด/เวลาเท่ากันบางแถว.
+const sourceGroups=new Map();
 for(const row of stm){
-  if(row.formatCode!=='stm_pdf'||!row.source_file_id) continue;
-  const group=statementGroups.get(row.source_file_id)||[];
-  group.push(row); statementGroups.set(row.source_file_id,group);
+  if(!row.source_file_id) continue;
+  const group=sourceGroups.get(row.source_file_id)||[];
+  group.push(row); sourceGroups.set(row.source_file_id,group);
 }
-const duplicateStatementFileIds=new Set(), statementFingerprints=new Map();
-for(const [fileId,rows] of statementGroups){
-  const fingerprint=JSON.stringify(rows.map(r=>[r.date,r.sec,r.direction,Number(r.amount||0),r.balance===null?null:Number(r.balance),String(r.account||'')]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
-  if(rows.length&&statementFingerprints.has(fingerprint)) duplicateStatementFileIds.add(fileId);
-  else if(rows.length) statementFingerprints.set(fingerprint,fileId);
+const duplicateSourceFileIds=new Set(),sourceFingerprints=new Map();
+for(const [fileId,rows] of sourceGroups){
+  const tuples=rows.map(r=>[String(r.formatCode||''),String(r.date||''),Number(r.sec||0),String(r.direction||''),Number(r.amount||0),r.balance===null||r.balance===undefined?null:Number(r.balance),String(r.account||''),String(r.memberCode||r.username||''),String(r.transactionRef||r.ref||''),String(r.status||'')]);
+  const fingerprint=JSON.stringify(tuples.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  if(rows.length&&sourceFingerprints.has(fingerprint)) duplicateSourceFileIds.add(fileId);
+  else if(rows.length) sourceFingerprints.set(fingerprint,fileId);
 }
-const duplicateStatementRowsRemoved=stm.filter(r=>duplicateStatementFileIds.has(r.source_file_id)).length;
-if(duplicateStatementRowsRemoved){
-  const unique=stm.filter(r=>!duplicateStatementFileIds.has(r.source_file_id));
+const duplicateSourceRowsRemoved=stm.filter(r=>duplicateSourceFileIds.has(r.source_file_id)).length;
+if(duplicateSourceRowsRemoved){
+  const unique=stm.filter(r=>!duplicateSourceFileIds.has(r.source_file_id));
   stm.length=0; stm.push(...unique);
 }
 if(bo.some(r=>r.formatCode)){const merged=Formats.merge(bo);bo.length=0;merged.sort((a,b)=>(a.sec||0)-(b.sec||0)).forEach(r=>bo.push(r));}
@@ -288,7 +289,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_statement_files:[...duplicateStatementFileIds],duplicate_statement_rows_removed:duplicateStatementRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
@@ -389,7 +390,7 @@ const nodes = [
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=eq.{{ $json.business_date }}&select=id,company,source_files(id,file_name,storage_path,kind,company,parsed,checksum,size_bytes,created_at,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||!healthyNames.has(keyOf(f.file_name))); const seen=new Set(); const selected=readable.filter(f=>{const key=[keyOf(f.file_name),String(f.checksum||''),Number(f.size_bytes||0)].join('|'); if(seen.has(key)) return false; seen.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); for(const b of $input.all().map(x=>x.json)){for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); if(company===String(job.company||'').toUpperCase()&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const key=keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",

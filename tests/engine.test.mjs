@@ -75,6 +75,19 @@ const run = (stm, bo, s = settings, masterAccounts = []) => Engine.reconcile(stm
   ok("normalize: ไฟล์ว่างไม่ทำให้ parser ล้ม", empty && empty.format && empty.format.source === "pm", JSON.stringify(empty));
 })();
 
+/* ชื่อไฟล์จากอีเมลอาจเป็นชื่อเก่าค้าง แต่ provider ในแต่ละแถวเป็นหลักฐานจริง */
+(function () {
+  const rows = [
+    ["id", "amount", "provider", "status", "requestTime", "transactionId", "updateTime", "_id"],
+    ['="01a0e85e-e5f4-702e-b367-2db6d16ad4a6"', "578", "azpay", "SUCCESSED", "2026-09-28 21:15:28", '="1182399"', "2026-09-28 21:16:45", "6aba7680964006be41fee1ca"],
+  ];
+  const st = { rules: { filterCarryForward: true, pmSuccessOnly: true } };
+  const n = Engine.normalize("UR9_PM_MYPAY_W_2026-09-28.xlsx.csv", rows, st, "2026-09-28");
+  eq("PM mislabeled filename: ใช้ provider จากข้อมูลจริง", n.records[0]?.account, "AZPAY");
+  eq("PM mislabeled filename: ใช้ยอด AZPAY ถอน", n.records[0]?.amount, 578);
+  eq("PM mislabeled filename: ใช้ updateTime", n.records[0]?.sec, 21 * 3600 + 16 * 60 + 45);
+})();
+
 /* ================= 2) normalize ================= */
 (function () {
   const rows = [
@@ -604,6 +617,12 @@ await (async () => {
   ok('XB PM: repeated amount rows never cross different users',r.matchEvidence.every(e=>e.customer.stm.user===e.customer.bo.user));
   r=await run([sameAmountStm[0]],[reversedUsersBo[0]]);
   eq('XB PM: same amount and time but different user stays open',r.matched,0);
+  r=await run(
+    [rec({company:'COREPAY',subco:'MR9',account:'COREPAY',isPmChannel:true,direction:'deposit',amount:100000,sec:17*3600+4*60+57,memberCode:'="ma85027"'})],
+    [rec({company:'MR9',account:'COREPAY',isPmChannel:true,direction:'deposit',amount:100000,sec:17*3600+4*60,memberCode:'ma85027'})],
+  );
+  eq('XB PM: Excel formula wrapper does not create a false member conflict',r.matched,1);
+  eq('XB PM: wrapped member retains the original audit evidence',r.matchEvidence[0]?.customer?.stm?.user,'="ma85027"');
 })();
 
 await (async () => {

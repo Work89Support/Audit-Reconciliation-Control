@@ -521,6 +521,17 @@ eq("KB current layout: ยอด 3,900 เป็นยอดรายการ",
 eq("KB current layout: 18,092.52 เป็นยอดคงเหลือ", kbCurrentLayout.records[1]?.balance, 18092.52);
 eq("KB current layout: ฝากถูกทิศทาง", kbCurrentLayout.records[1]?.direction, "deposit");
 eq("KB current layout: quality ผ่านครบทุกแถว", kbCurrentLayout.quality.complete, true);
+const kbPdfiumHeaderReordered = await P.parseText("MC8_STM_KB_ทินกร_DW_2026-09-28.pdf", `
+ชื่อบัญชี นาย ทินกร โฉมสะอาด
+199-8-54539-7
+01/09/2026 - 28/09/2026
+เลขที่บัญชีเงินฝาก
+28-09-26 00:01 Internet/Mobile SCB3,733.52 จาก SCB X0001 นาย ทดสอบ++รับโอนเงิน 30.00
+`, "2026-09-28");
+eq("KB PDFium reordered header: ใช้รหัส STM_KB เมื่อหัว PDF ไม่มีชื่อธนาคาร", kbPdfiumHeaderReordered.header.bank, "KBANK");
+eq("KB PDFium reordered header: เลขบัญชียังถูกต้อง", kbPdfiumHeaderReordered.header.account, "1998545397");
+eq("KB PDFium reordered header: ผ่าน quality gate", kbPdfiumHeaderReordered.quality.complete, true);
+eq("KB PDFium reordered header: ยอดรายการไม่ใช่ยอดคงเหลือ", kbPdfiumHeaderReordered.records[0]?.amount, 30);
 const kbPdfiumMixedLayout = await P.parseText("MC8_STM_KB_ทินกร_DW_2026-09-27.pdf", `
 เลขที่บัญชีเงินฝาก 199-8-54539-7
 27-09-26 08:29 K PLUS8,038.52 รหัสอ้างอิง KMP21983รับโอนเงิน 1,900.00

@@ -361,6 +361,14 @@ const Engine = (() => {
   const shiftOf = (h) => (h >= 8 && h < 16 ? "morning" : h >= 16 ? "afternoon" : "night");
   const key2 = (a, amt) => a + "|" + amt.toFixed(2);
   const identityText = (value) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  // CSV exports generated from Excel often preserve text cells as formulas
+  // such as ="ma85027".  The wrapper is presentation syntax, not part of the
+  // member identity.  Normalize it before the XB cross-member guard compares
+  // PM with BO, while keeping the guard itself strict for genuinely different
+  // users.
+  const memberIdentityText = (value) => identityText(value)
+    .replace(/^=["']/, "")
+    .replace(/["']$/, "");
   // BO can contain a long note such as
   // `Sapan: 6aa... | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01`.
   // Treat the colon as a Text-to-Columns boundary and retain only the exact
@@ -614,8 +622,8 @@ const Engine = (() => {
     // reject every generic fallback when both sides expose different users.
     const xbMemberConflict = (s, b) => {
       if (!xbCompanies.has(auditCompanyOf(s)) || !s.isPmChannel || !b.isPmChannel) return false;
-      const stmMember = identityText(s && (s.memberCode || s.username));
-      const boMember = identityText(b && (b.memberCode || b.username));
+      const stmMember = memberIdentityText(s && (s.memberCode || s.username));
+      const boMember = memberIdentityText(b && (b.memberCode || b.username));
       return !!(stmMember && boMember && stmMember !== boMember);
     };
     const xbRefCandidates = new Map();
