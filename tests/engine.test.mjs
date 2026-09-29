@@ -321,6 +321,34 @@ await (async function () {
   eq("rescue: ข้อมูลลูกค้าขัดกันยังคงไม่จับ", conflict.matched, 0);
 })();
 
+/* FR8 statement ธนาคารปกติอาจให้เพียงเลขท้ายบัญชีผู้โอน ขณะที่ BO เก็บบัญชี
+   สมาชิกอีกเลข ต้องกู้คู่จากชื่อ+ยอด+เวลาแบบ reciprocal nearest และไม่ให้
+   STM ที่เกินจริงหนึ่งแถวทำให้คู่อื่นทั้งกลุ่มหลุด */
+await (async function () {
+  const common = { account: "4311918665", amount: 50, company: "FR8", subco: "FR8", direction: "deposit", date: "2026-09-28" };
+  const stm = [
+    rec({ ...common, sec: 37 * 60, custAccountLast4: "7912", custBank: "KBANK", custName: "น.ส. รัตติกาล พึ่งแก้ว" }),
+    rec({ ...common, sec: 59 * 60, custAccountLast4: "7912", custBank: "KBANK", custName: "นางสาว รัตติกาล พึ่งแก้ว" }),
+    rec({ ...common, sec: 2 * 3600, custAccountLast4: "9999", custBank: "SCB", custName: "คนละคน" }),
+  ];
+  const bo = [
+    rec({ ...common, sec: 38 * 60 + 21, custAccount: "0563827912", custBank: "GSB", custName: "รัตติกาล พึ่งแก้ว", via: "เติมมือ" }),
+    rec({ ...common, sec: 61 * 60 + 57, custAccount: "0563827912", custBank: "GSB", custName: "รัตติกาล พึ่งแก้ว", via: "เติมมือ" }),
+  ];
+  const r = await run(stm, bo, { ...settings, exactUniqueTolerance: 600 });
+  eq("FR8 bank-name rescue: จับคู่ที่ชื่อ/ยอด/เวลาตรงได้แม้บัญชีขัดกัน", r.matched, 2);
+  eq("FR8 bank-name rescue: เหลือ STM เกินจริงเพียงหนึ่งเคส", r.exceptions.filter((e) => e.type === "missing_bo").length, 1);
+  eq("FR8 bank-name rescue: ไม่เหลือ BO เกินเทียม", r.exceptions.filter((e) => e.type === "missing_stm").length, 0);
+  eq("FR8 bank-name rescue: เก็บวิธีจับคู่ในหลักฐาน", r.matchEvidence.filter((e) => e.method === "fr8-bank-name-amount-reciprocal-near-time").length, 2);
+
+  const unsafe = await run(
+    [rec({ ...common, sec: 3600, custName: "สมชาย ใจดี", custAccountLast4: "1111" })],
+    [rec({ ...common, sec: 3650, custName: "สมหญิง ใจดี", custAccount: "0000002222" })],
+    { ...settings, exactUniqueTolerance: 600 },
+  );
+  eq("FR8 bank-name rescue: ชื่อไม่ตรงยังคงเป็นเคส", unsafe.matched, 0);
+})();
+
 /* Statement ที่ระบบรับเข้าและผูกบริษัทจากไฟล์แล้วเป็นแหล่งข้อมูลที่เชื่อถือได้
    ไม่ควรถูกเปิด wrong_account เพียงเพราะทะเบียนเดิมยังไม่มีเลขบัญชี */
 await (async function () {

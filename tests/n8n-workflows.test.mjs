@@ -195,7 +195,7 @@ assert.match(workerText, /row_count:usableRows/, "row_count must contain usable 
 assert.match(workerText, /parser_version:'1\.9\.57-7m-tmn-row-order'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.57-7m-tmn-row-order'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.58-fr8-bank-name-reciprocal'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -224,7 +224,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.57-7m-tmn-row-order'/, "worker version must identify the deployed parser/control release");
+assert.match(workerText, /worker_version:'1\.9\.58-fr8-bank-name-reciprocal'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
 assert.match(workerText, /non_success_pm_zero_eligible:true/, "worker summary must record failed-only PM zero-eligible handling");
 assert.match(workerText, /pending_only_pm_zero_eligible:true/, "worker summary must record pending-only PM zero-eligible handling");
@@ -232,6 +232,7 @@ assert.match(workerText, /sys123_pending_evidence:true/, "worker summary must re
 assert.match(workerText, /sys123_pending_partial_identity_fallback:true/, "worker summary must record pending partial-identity fallback");
 assert.match(workerText, /sys123_generic_provider_inference:true/, "worker summary must record generic System 123 provider inference");
 assert.match(workerText, /sys123_short_provider_tokens:true/, "worker summary must record short provider filename tokens");
+assert.match(workerText, /fr8_bank_name_reciprocal_near_time:true/, "worker summary must record the FR8 normal-bank name rescue rule");
 assert.match(workerText, /xb_provider_duplicate_rows_suppressed:result\.xbProviderDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate provider rows");
 assert.match(workerText, /business_date=eq\./, "Sapan lifecycle must search all open cases from the same business date");
 assert.match(workerText, /company=in\.\(/, "3XB Sapan history query must include equivalent legacy company labels without consuming the API row cap on unrelated companies");

@@ -1329,9 +1329,66 @@ const Engine = (() => {
       matched.push({ s, b, dt: timeDistance(s, b), rescueMatch: true });
     });
 
+    /* FR8 statement ธนาคารปกติแสดงเลขบัญชีผู้โอนเพียง 4 หลักท้าย ขณะที่ BO
+       อาจเก็บบัญชีสมาชิกคนละเลข (เช่นบัญชีที่ลงทะเบียนไว้) ทั้งที่ชื่อผู้โอน,
+       ยอด และเวลาเป็นรายการเดียวกัน กฎ customer-account conflict ด้านบนจึง
+       ตั้งใจไม่จับไว้ก่อน ขั้นนี้กู้เฉพาะคู่ที่ปลอดภัยด้วยชื่อเต็มที่ตรงกัน +
+       account บริษัท/ยอด/ทิศทาง/วันเดียวกัน และ reciprocal nearest ไม่เกิน
+       10 นาที รองรับยอดซ้ำที่จำนวนสองฝั่งไม่เท่ากันโดยเหลือเฉพาะส่วนต่างจริง */
+    const customerNameIdentity = (value) => String(value || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/^(?:นาย|นางสาว|นาง|น\.\s*ส\.|mr\.?|mrs\.?|miss)\s*/i, "")
+      .replace(/[^a-z0-9ก-๙]+/g, "");
+    const fr8BankNameCandidate = (s, b) => {
+      if (auditCompanyOf(s) !== "FR8" || auditCompanyOf(b) !== "FR8") return false;
+      if (s.isPmChannel || b.isPmChannel || !sameCompany(s, b)) return false;
+      if (s.date !== b.date || !isIsoDate(s.date)) return false;
+      if (!s.direction || s.direction !== b.direction || s.account !== b.account || s.amount !== b.amount) return false;
+      if (s.noTime || b.noTime || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)) return false;
+      if (timeDistance(s, b) > exactUniqueTol) return false;
+      const stmName = customerNameIdentity(s.custName);
+      const boName = customerNameIdentity(b.custName);
+      return stmName.length >= 4 && stmName === boName;
+    };
+    const fr8BankNameMatched = new Set();
+    let fr8BankNameProgress = true;
+    while (fr8BankNameProgress) {
+      fr8BankNameProgress = false;
+      const candidates = new Map();
+      const peers = new Map();
+      stmLeft2.forEach((s) => {
+        if (rescuedStm.has(s) || fr8BankNameMatched.has(s)) return;
+        const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+          .filter((ci) => !boUsed[ci] && fr8BankNameCandidate(s, boRecords[ci]))
+          .map((ci) => ({ ci, dt: timeDistance(s, boRecords[ci]) }));
+        candidates.set(s, rows);
+        rows.forEach(({ ci, dt }) => {
+          let list = peers.get(ci);
+          if (!list) peers.set(ci, (list = []));
+          list.push({ s, dt });
+        });
+      });
+      const proposals = [];
+      candidates.forEach((rows, s) => {
+        const ci = uniqueNearest(rows, (row) => row.ci);
+        if (ci == null || boUsed[ci]) return;
+        if (uniqueNearest(peers.get(ci) || [], (row) => row.s) !== s) return;
+        proposals.push({ s, ci });
+      });
+      proposals.forEach(({ s, ci }) => {
+        if (rescuedStm.has(s) || fr8BankNameMatched.has(s) || boUsed[ci]) return;
+        const b = boRecords[ci];
+        boUsed[ci] = 1;
+        fr8BankNameMatched.add(s);
+        matched.push({ s, b, dt: timeDistance(s, b), fr8BankNameMatch: true });
+        fr8BankNameProgress = true;
+      });
+    }
+
     // pass 3: STM ที่เหลือ = ไม่มีฝั่ง BO
     stmLeft2.forEach((s) => {
-      if (!rescuedStm.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
+      if (!rescuedStm.has(s) && !fr8BankNameMatched.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
     });
 
     // pass 4: BO ที่เหลือ = ไม่มีฝั่ง STM หรือเป็นรายการซ้ำ
@@ -1451,7 +1508,7 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         internalTransferMatched: !!m.internalTransferMatch,
         xbProviderRefMatched: !!m.xbProviderRefMatch,
         providerSignedAmountNormalized: !!m.providerSignedAmountNormalized,
@@ -1461,6 +1518,7 @@ const Engine = (() => {
         providerNearTimeMatched: !!m.providerNearTimeMatch,
         sys123ProviderMatched: !!m.sys123ProviderMatch,
         rescueMatched: !!m.rescueMatch,
+        fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
         customer: {
