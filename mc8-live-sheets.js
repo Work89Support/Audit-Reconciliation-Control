@@ -39,7 +39,7 @@
   const ALL_HEADERS=Object.freeze(['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท','STM/PM · วัน / เวลา','STM/PM · ยอด','STM/PM · บัญชีลูกค้า','STM/PM · ท้าย 4','STM/PM · ธนาคารลูกค้า','STM/PM · ชื่อ / User','STM/PM · User','STM/PM · อ้างอิง','STM/PM · รายละเอียดต้นฉบับ','BO · วัน / เวลา','BO · ยอด','BO · บัญชีลูกค้า','BO · ท้าย 4','BO · ธนาคารลูกค้า','BO · ชื่อ / User','BO · User','BO · อ้างอิง','BO · รายละเอียดต้นฉบับ','ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit','เอกสารอ้างอิง','ผลต่างยอด','สถานะสำหรับเทียบทีมกระทบมือ']);
   const STATEMENT_HEADERS=Object.freeze(['ลำดับ','บริษัท','วันที่','บัญชี Statement','ประเภท','วัน / เวลา Statement','ยอด Statement','บัญชีลูกค้า','ท้าย 4','ธนาคาร','ชื่อ / User Statement','เลขอ้างอิง Statement','วัน / เวลา BO','ยอด BO','User BO','ชื่อ / User BO','เลขอ้างอิง BO','ต่างเวลา','เงื่อนไขที่จับคู่','ผลต่างยอด','สถานะ Audit']);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const numeric=v=>Number.isFinite(Number(v))?Number(v):null;
+  const numeric=v=>v===null||v===undefined||typeof v==='boolean'||String(v).trim()===''?null:Number.isFinite(Number(v))?Number(v):null;
   const cents=v=>{const n=numeric(v);return n===null?null:Math.round(n*100);};
   const money=v=>v===null||v===undefined||v===''?'—':numeric(v)===null?'อ่านยอดไม่ได้':Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const moneyCents=v=>money(v/100);
@@ -194,13 +194,14 @@
   function auditStatus(row,complete=true){
     if(row.kind==='closed')return 'ปิดเคสแล้ว';
     if(!complete)return 'ต้องตรวจเพิ่ม · ข้อมูลรอบไม่ครบ';
-    if(row.kind==='matched')return 'ปิดได้ทันที';
+    const pm=cents(row.pmAmount),bo=cents(row.boAmount);
+    const equalPair=hasSide(row,'pm')&&hasSide(row,'bo')&&pm!==null&&pm===bo;
+    if(row.kind==='matched')return equalPair?'ปิดได้ทันที':'ต้องตรวจเพิ่ม · หลักฐานคู่ไม่สมบูรณ์';
     if(row.kind==='advisory')return 'แจ้งข้อมูล · ไม่ต้องยืนยัน';
     if(row.kind==='pending_next_day'||row.exType==='cross_day')return 'ค้างรอข้อมูลข้ามวัน · รอข้อมูลของวันถัดไป';
-    const pm=cents(row.pmAmount),bo=cents(row.boAmount);
-    // An equal, complete pair is allowed through. Extra informational flags
-    // must not become an Audit action item or a visible "ต้องตรวจเพิ่ม" state.
-    return hasSide(row,'pm')&&hasSide(row,'bo')&&pm!==null&&pm===bo?'ปิดได้ทันที':'ปิดไม่ได้/ต้องตรวจ';
+    // Equal amounts alone do not resolve an open exception. Only the same
+    // verified source-evidence gate used by production quick-close can allow it.
+    return equalPair&&row.case?._quickSourceEvidence&&row.case.status==='open'?'ปิดได้ทันที':'ปิดไม่ได้/ต้องตรวจ';
   }
   function toneOf(status){return status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')?'warning':'error';}
   function exportTones(rows,complete,statusIndex){
@@ -375,7 +376,8 @@
     }
     function draw(){
       if(!alive())return;
-      const all=data?rowsOf(data,company):[],baseShown=filter(all,pm,direction,status,sheet),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
+      // Keep source identity, displayed values, tone and action in one order.
+      const all=data?rowsOf(data,company):[],baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all.filter(r=>providerNames.includes(sheetOf(r))||isStatement(r));
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
       const rawView=tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};

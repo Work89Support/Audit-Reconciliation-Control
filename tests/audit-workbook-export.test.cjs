@@ -35,7 +35,7 @@ assert.deepEqual(sheets.map(sheet => sheet.name), ['ข้อมูลทั้�
 assert.equal(sheets[0].title, undefined, 'first sheet header must start on row 1');
 assert.equal(sheets[0].headers.at(-1), 'สถานะสำหรับเทียบทีมกระทบมือ');
 assert.ok(sheets[0].headers.indexOf('STM/PM · วัน / เวลา') < sheets[0].headers.indexOf('BO · วัน / เวลา'),'all-data export must place STM/PM on the left of BO');
-assert.deepEqual(sheets[0].rowTones, ['', '', '', 'error', 'warning', '']);
+assert.deepEqual(sheets[0].rowTones, ['', '', 'error', 'error', 'warning', '']);
 assert.equal(sheets[0].cellTones[0].at(-1), 'success');
 assert.equal(sheets[0].cellTones[1].at(-1), 'success');
 assert.equal(sheets[0].cellTones[4].at(-1), 'warning');
@@ -75,9 +75,9 @@ assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัท
 assert.equal(sys123Sheets.find(sheet=>sheet.name==='STM KBANK จิรภัทร์ W').rows.length,1,'123 normal-bank withdrawal must use a separate sheet');
 
 const chronologicalStatements = live.buildAuditExportSheets([
-  row({company:'FR8',account:'4311918665',direction:'withdraw',pmTime:'2026-09-27 23:40:00',boTime:'2026-09-27 23:41:00',pm:{user:'late',bank:'SCB'}}),
+  row({company:'FR8',account:'4311918665',direction:'deposit',pmTime:'2026-09-27 23:40:00',boTime:'2026-09-27 23:41:00',pm:{user:'late',bank:'SCB'}}),
   row({company:'FR8',account:'4311918665',direction:'deposit',pmTime:'2026-09-27 00:25:00',boTime:'2026-09-27 00:26:00',pm:{user:'early',bank:'SCB'}}),
-], 'FR8', '2026-09-27', true, schema).find(sheet=>sheet.name==='STM SCB จิตติพัฒน์ D-W');
+], 'FR8', '2026-09-27', true, schema).find(sheet=>sheet.name==='STM SCB จิตติพัฒน์ D');
 assert.ok(chronologicalStatements,'FR8 account 4311918665 must use the registered SCB จิตติพัฒน์ name');
 assert.deepEqual(chronologicalStatements.rows.map(row=>row[5]),['2026-09-27 00:25:00','2026-09-27 23:40:00'],'ordinary statement rows must sort by STM time ascending');
 assert.equal(chronologicalStatements.rows[0][12],'2026-09-27 00:26:00','BO stays paired on the right after chronological sorting');
@@ -140,7 +140,7 @@ assert.deepEqual(atDeposit.headers.slice(-4), ['เงื่อนไขที�
 assert.equal(atDeposit.rows.length, 3);
 assert.equal(atDeposit.rows[0].at(-1), 'ปิดได้ทันที');
 assert.equal(atDeposit.rows[1].at(-1), 'แจ้งข้อมูล · ไม่ต้องยืนยัน');
-assert.equal(atDeposit.rows[2].at(-1), 'ปิดได้ทันที');
+assert.equal(atDeposit.rows[2].at(-1), 'ปิดไม่ได้/ต้องตรวจ');
 assert.equal(atDeposit.rows[0][atDeposit.headers.indexOf('requestTime')], '', 'requestTime must stay blank');
 assert.equal(atDeposit.rows[0][atDeposit.headers.indexOf('paymentTime')], '2026-09-15 10:00:10');
 assert.match(atDeposit.rows[0][atDeposit.headers.indexOf('เงื่อนไขที่จับคู่')], /เวลา PM: paymentTime/);
