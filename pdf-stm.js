@@ -289,6 +289,8 @@ const PdfStm = (() => {
     const parseSegment = (cells, segmentDate) => {
       if (!segmentDate) return;
       const events = [];
+      const amounts = [];
+      const times = [];
       let sawSignedAmount = false;
       for (const cell of cells) {
         if (/^รายการ$/.test(cell) || dateOf(cell) || /^เมื่อวานนี้$/.test(cell)) continue;
@@ -310,17 +312,39 @@ const PdfStm = (() => {
         if (amountMatch) {
           sawSignedAmount = true;
           const direction = amountMatch[1] === "+" ? "deposit" : "withdraw";
-          const candidate = [...events].reverse().find((event) => event.amount == null
-            && (event.direction === direction || (event.kind === "fee" && direction === "withdraw")));
-          if (candidate) candidate.amount = Math.abs(numOf(amountMatch[2]));
-          else events.push({ kind: "unassigned", direction, amount: Math.abs(numOf(amountMatch[2])), desc: cell });
+          amounts.push({ direction, amount: Math.abs(numOf(amountMatch[2])) });
           continue;
         }
         const timeMatch = cell.match(timeOnly);
         if (timeMatch) {
-          const candidate = [...events].reverse().find((event) => event.time == null && event.kind !== "unassigned");
-          if (candidate) candidate.time = timeMatch[1];
+          times.push(timeMatch[1]);
         }
+      }
+      // OCR from screenshots embedded in Word is not guaranteed to be
+      // row-major. It commonly emits all descriptions, then all amounts, then
+      // all times. Assigning each value to the latest preceding description
+      // reverses or shifts transactions (for example 1,000 becoming 10,000 on
+      // a neighbouring row). Within each screenshot the visual row order is
+      // preserved inside every column, so align values to events in that same
+      // order. Keep fees in the withdrawal sequence so their negative amounts
+      // cannot leak into customer withdrawals.
+      const amountIndex = { deposit: 0, withdraw: 0 };
+      const amountsByDirection = {
+        deposit: amounts.filter((item) => item.direction === "deposit"),
+        withdraw: amounts.filter((item) => item.direction === "withdraw"),
+      };
+      for (const event of events) {
+        const candidates = amountsByDirection[event.direction] || [];
+        const item = candidates[amountIndex[event.direction] || 0];
+        if (item) {
+          event.amount = item.amount;
+          amountIndex[event.direction] = (amountIndex[event.direction] || 0) + 1;
+        }
+      }
+      let timeIndex = 0;
+      for (const event of events) {
+        if (event.time != null) continue;
+        if (timeIndex < times.length) event.time = times[timeIndex++];
       }
       // Screenshot crops can contain a partial row from the adjacent screen.
       // Keep only customer events whose own time and signed amount are both

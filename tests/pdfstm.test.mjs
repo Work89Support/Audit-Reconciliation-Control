@@ -303,6 +303,41 @@ eq("TMN OCR: ไม่ปนช่วงเมื่อวานเข้าว�
 const TMN_OCR_IMAGE_BOUNDARY = TMN_WALLET_INITIAL_UNDATED_PAGE.replace("\f", "\n---OCR_IMAGE---\n");
 eq("TMN OCR: marker ระหว่างภาพจาก n8n เป็นขอบหน้า", P.pagesFromText(TMN_OCR_IMAGE_BOUNDARY).length, 2);
 
+const TMN_WALLET_COLUMN_GROUPED = `
+รายการ
+รับเงินจาก คนแรก ก***
+รับเงินจาก คนสอง ข***
+รับเงินจาก คนสาม ค***
++B 1,000.00
++B 74.00
++B 53.00
+14:09
+14:28
+14:21
+28 กันยายน 2569
+`;
+const tmnWalletColumnGrouped = await P.parseText("UFABET7M_STM_TMN_สรวิศา_DW_2026-09-28.docx", TMN_WALLET_COLUMN_GROUPED, "2026-09-28");
+eq("TMN OCR column group: คงยอดตามลำดับแถว ไม่ย้อนใส่คนท้าย", tmnWalletColumnGrouped.records.map((row) => row.amount).join(","), "1000,74,53");
+eq("TMN OCR column group: คงเวลาตามลำดับแถว", tmnWalletColumnGrouped.records.map((row) => row.sec).join(","), `${14 * 3600 + 9 * 60},${14 * 3600 + 28 * 60},${14 * 3600 + 21 * 60}`);
+
+const TMN_WALLET_WITHDRAW_COLUMN_GROUPED = `
+รายการ
+โอนเงินให้ คนถอนหนึ่ง ก***
+โอนเงินให้ คนถอนสอง ข***
+โอนเงินให้ คนถอนสาม ค***
+-B 2,030.00
+-B 300.00
+-B 100.00
+01:42
+07:52
+08:42
+28 กันยายน 2569
+`;
+const tmnWalletWithdrawColumnGrouped = await P.parseText("UFABET7M_STM_TMN_สรวิศา_DW_2026-09-28.docx", TMN_WALLET_WITHDRAW_COLUMN_GROUPED, "2026-09-28");
+eq("TMN OCR withdraw column group: อ่านรายการถอนครบ 3 ยอด", tmnWalletWithdrawColumnGrouped.records.length, 3);
+eq("TMN OCR withdraw column group: คงยอดถอนตามแถว", tmnWalletWithdrawColumnGrouped.records.map((row) => row.amount).join(","), "2030,300,100");
+eq("TMN OCR withdraw column group: ระบุทิศทางถอนครบ", tmnWalletWithdrawColumnGrouped.records.every((row) => row.direction === "withdraw"), true);
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0
