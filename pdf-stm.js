@@ -1112,17 +1112,29 @@ const PdfStm = (() => {
     const dropped = {};
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
+    let ocrDateCandidateRows = 0;
     rows.forEach((r, i) => {
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
       if (r.direction === "adjustment") return drop("รายการปรับปรุงยอด (XB) แยกออกจากการจับคู่");
       if (r.isFee || r.isNonCustomer) return drop("ค่าธรรมเนียมหรือยอดประกอบ TrueMoney (ไม่ใช่รายการลูกค้า)");
-      if (businessDate && r.date && r.date !== businessDate && !previousDayReport) return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
+      const ocrDateCandidateOnly = !!(
+        businessDate && r.date && r.date !== businessDate && !previousDayReport && r.ocrWalletScreenshot
+      );
+      if (businessDate && r.date && r.date !== businessDate && !previousDayReport && !ocrDateCandidateOnly) {
+        return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
+      }
+      if (ocrDateCandidateOnly) ocrDateCandidateRows++;
       records.push({
         rowNo: i + 1,
         source: "stm",
         formatCode: "stm_pdf",
-        date: previousDayReport ? businessDate : r.date,
+        // Phone screenshots are sometimes flattened with the next/previous
+        // calendar heading. Preserve those rows as candidates for the
+        // requested business day, but never let them enter ordinary matching.
+        // Engine.reconcile may promote one only when an unused BO row proves a
+        // unique reciprocal company/account/direction/amount/time pair.
+        date: previousDayReport || ocrDateCandidateOnly ? businessDate : r.date,
         sourceDate: r.date,
         reportLagDays: previousDayReport ? 1 : 0,
         sec: r.sec,
@@ -1143,12 +1155,14 @@ const PdfStm = (() => {
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
         internalTransferHint: !!r.internalTransferHint,
         ocrWalletScreenshot: !!r.ocrWalletScreenshot,
+        ocrDateCandidateOnly,
         raw: r.raw,
       });
     });
 
     const warnings = [];
     if (previousDayReport) warnings.push(`Statement เป็นข้อมูลวันที่ ${expectedPreviousDate} และถูกนำเข้ารอบ ${businessDate} ตามวันที่รายงาน`);
+    if (ocrDateCandidateRows) warnings.push(`เก็บรายการภาพ TMN ที่หัววันที่คลาด ${ocrDateCandidateRows} รายการไว้เป็น candidate ตรวจเท่านั้น — ใช้ได้เมื่อ BO ยืนยันคู่เดียว`);
     if (!head.bank) warnings.push("ระบุธนาคารจากหัวกระดาษไม่ได้ — ใช้ตัวอ่านแบบทั่วไป");
     if (!head.account) warnings.push("อ่านเลขบัญชีจากหัวกระดาษไม่ได้ — ต้องระบุเองในหน้าตั้งค่าบัญชี");
     if (!records.length) warnings.push(rows.length && dropped["วันที่ไม่ตรงกับวันที่ตรวจ"] === rows.length

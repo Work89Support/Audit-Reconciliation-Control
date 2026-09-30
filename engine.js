@@ -465,6 +465,12 @@ const Engine = (() => {
       xbProviderDuplicateRowsSuppressed++;
       return false;
     });
+    // TMN Word screenshots can contain the right transaction under a calendar
+    // heading flattened from an adjacent screenshot. Keep those rows outside
+    // every ordinary matching pass. They may be promoted only after all normal
+    // STM rows have had first claim on BO and a strict reciprocal pair remains.
+    const tmnDateCandidates = stmRecords.filter((row) => !!row.ocrDateCandidateOnly);
+    stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly);
     const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -494,8 +500,9 @@ const Engine = (() => {
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
 
     /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
-    const stmAccounts = new Set(stmRecords.map((r) => r.account));
-    const stmChannels = new Set(stmRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
+    const statementCoverageRecords = stmRecords.concat(tmnDateCandidates);
+    const stmAccounts = new Set(statementCoverageRecords.map((r) => r.account));
+    const stmChannels = new Set(statementCoverageRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
     const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
     const noStmSide = [];
 
@@ -522,6 +529,7 @@ const Engine = (() => {
     const matched = [];
     const exceptions = [];
     const stmLeft = [];
+    const tmnDateCandidateMatched = new Set();
     let timeDiffCount = 0;
     const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
@@ -1438,6 +1446,50 @@ const Engine = (() => {
       });
     }
 
+    /* TMN OCR rows whose calendar heading disagreed with the requested round
+       are evidence candidates, not statement rows. Promote one only after all
+       normal matches, when both sides have exactly one unused reciprocal pair:
+       - same 7M company, statement account and direction
+       - exact amount within 60 minutes, or the known extra-digit OCR class
+         within 60 seconds
+       Unmatched/ambiguous candidates are ignored and never create an exception
+       or inflate the STM denominator. */
+    const tmnDateCandidatePairs = new Map();
+    const tmnDateCandidatePeers = new Map();
+    tmnDateCandidates.forEach((s) => {
+      if (!isSevenMTmnOcr(s)) return;
+      const rows = (accIdx.get(s.account) || []).filter((ci) => {
+        if (boUsed[ci]) return false;
+        const b = boRecords[ci];
+        if (!sameCompany(s, b) || s.date !== b.date || s.direction !== b.direction) return false;
+        if (!Number.isFinite(s.sec) || !Number.isFinite(b.sec)) return false;
+        const dt = timeDistance(s, b);
+        return (s.amount === b.amount && dt < 3600)
+          || (plausibleTmnOcrAmount(s.amount, b.amount) && dt <= 60);
+      });
+      tmnDateCandidatePairs.set(s, rows);
+      rows.forEach((ci) => {
+        let peers = tmnDateCandidatePeers.get(ci);
+        if (!peers) tmnDateCandidatePeers.set(ci, (peers = []));
+        peers.push(s);
+      });
+    });
+    tmnDateCandidates.forEach((s) => {
+      const rows = tmnDateCandidatePairs.get(s) || [];
+      if (rows.length !== 1) return;
+      const ci = rows[0];
+      if (boUsed[ci] || (tmnDateCandidatePeers.get(ci) || []).length !== 1) return;
+      const b = boRecords[ci];
+      const amountCorrected = s.amount !== b.amount;
+      boUsed[ci] = 1;
+      tmnDateCandidateMatched.add(s);
+      matched.push({
+        s, b, dt: timeDistance(s, b), tmnOcrDateRecovery: true,
+        tmnOcrAmountCorrection: amountCorrected,
+        tmnOcrTimeCorrection: !amountCorrected && s.sec !== b.sec,
+      });
+    });
+
     // pass 3: STM ที่เหลือ = ไม่มีฝั่ง BO
     stmLeft2.forEach((s) => {
       if (!rescuedStm.has(s) && !fr8BankNameMatched.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
@@ -1518,7 +1570,7 @@ const Engine = (() => {
     const hourlyStm = new Array(24).fill(0);
     const hourlyMatched = new Array(24).fill(0);
     let crossDayWindow = 0;
-    stmRecords.forEach((r) => {
+    stmRecords.concat([...tmnDateCandidateMatched]).forEach((r) => {
       hourlyStm[Math.floor(r.sec / 3600)]++;
       if (r.crossDay) crossDayWindow++;
     });
@@ -1529,6 +1581,7 @@ const Engine = (() => {
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
     const elapsed = Math.round(Date.now() - t0);
+    const reconciledStmCount = stmRecords.length + tmnDateCandidateMatched.size;
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
@@ -1537,10 +1590,10 @@ const Engine = (() => {
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
-      stmCount: stmRecords.length,
+      stmCount: reconciledStmCount,
       boCount: boRecords.length,
       elapsedMs: elapsed,
-      matchRate: stmRecords.length ? (matched.length / stmRecords.length) * 100 : 0,
+      matchRate: reconciledStmCount ? (matched.length / reconciledStmCount) * 100 : 0,
       nearTolerance: timeDiffCount,
       hourlyStm,
       hourlyMatched,
@@ -1560,7 +1613,9 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
+        ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
         tmnOcrTimeCorrected: !!m.tmnOcrTimeCorrection,
         ocrOriginalAmount: m.tmnOcrAmountCorrection ? m.s.amount : null,

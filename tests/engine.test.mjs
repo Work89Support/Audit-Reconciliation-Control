@@ -860,6 +860,36 @@ await (async () => {
   );
   eq('7M TMN OCR time: คู่เดียวกันที่ OCR เวลาคลาด 22 นาทีปิดได้', shifted.matched, 1);
   eq('7M TMN OCR time: เก็บวิธีแก้เวลาแบบ reciprocal', shifted.matchEvidence[0]?.method, 'seven-m-tmn-ocr-time-reciprocal');
+
+  const offDate = await run(
+    [tmn(68, 21 * 3600 + 15 * 60, { account: 'TMN-SORAWISA', sourceDate: '2026-09-28', ocrDateCandidateOnly: true })],
+    [bo(68, 21 * 3600 + 15 * 60, { account: 'TMN-SORAWISA' })],
+  );
+  eq('7M TMN OCR date: candidate ที่ BO ยืนยันคู่เดียวปิดได้', offDate.matched, 1);
+  eq('7M TMN OCR date: นับ STM เฉพาะ candidate ที่ยืนยันแล้ว', offDate.stmCount, 1);
+  eq('7M TMN OCR date: เก็บวิธีกู้วันที่ไว้สอบทาน', offDate.matchEvidence[0]?.method, 'seven-m-tmn-ocr-offdate-reciprocal');
+  eq('7M TMN OCR date: เก็บวันที่ OCR ต้นฉบับ', offDate.matchEvidence[0]?.ocrSourceDate, '2026-09-28');
+
+  const offDateAmount = await run(
+    [tmn(4000, 21 * 3600 + 2 * 60, { sourceDate: '2026-09-28', ocrDateCandidateOnly: true })],
+    [bo(40, 21 * 3600 + 2 * 60)],
+  );
+  eq('7M TMN OCR date+amount: กู้ได้เมื่อ BO ยืนยันคู่เดียว', offDateAmount.matched, 1);
+  eq('7M TMN OCR date+amount: เก็บวิธีแก้สองชั้น', offDateAmount.matchEvidence[0]?.method, 'seven-m-tmn-ocr-offdate-amount-reciprocal');
+
+  const unconfirmedOffDate = await run(
+    [tmn(77, 10 * 3600, { sourceDate: '2026-09-28', ocrDateCandidateOnly: true })],
+    [],
+  );
+  eq('7M TMN OCR date: candidate ที่ BO ไม่ยืนยันไม่สร้างเคส', unconfirmedOffDate.exceptions.length, 0);
+  eq('7M TMN OCR date: candidate ที่ BO ไม่ยืนยันไม่นับ STM', unconfirmedOffDate.stmCount, 0);
+
+  const ambiguousOffDate = await run(
+    [tmn(50, 10 * 3600, { sourceDate: '2026-09-28', ocrDateCandidateOnly: true })],
+    [bo(50, 10 * 3600), bo(50, 10 * 3600 + 30)],
+  );
+  eq('7M TMN OCR date: candidate กำกวมไม่ปิด BO เอง', ambiguousOffDate.matched, 0);
+  eq('7M TMN OCR date: candidate กำกวมไม่นับ STM', ambiguousOffDate.stmCount, 0);
 })();
 
 /* ---------------- report ---------------- */

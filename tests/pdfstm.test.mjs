@@ -259,7 +259,8 @@ eq("TMN OCR: หน้าต่อเนื่องคงวันที่ล�
 eq("TMN OCR: อ่านเวลาในบรรทัดรายการ", tmnWalletOcrPages.records[1]?.sec, 15 * 3600 + 21 * 60);
 eq("TMN OCR: ไม่สร้างรายการจากแถวภาพตัดที่ยอดไม่ครบ", tmnWalletOcrPages.records.some((row) => /แถวภาพตัด/.test(row.desc)), false);
 const tmnWalletOcrBusinessDate = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-24.docx", TMN_WALLET_OCR_PAGES, "2026-09-24");
-eq("TMN OCR: รอบวันที่ 24 ไม่ปนรายการวันที่ 23", tmnWalletOcrBusinessDate.records.length, 1);
+eq("TMN OCR: รอบวันที่ 24 มีรายการปกติหนึ่งรายการ", tmnWalletOcrBusinessDate.records.filter((row) => !row.ocrDateCandidateOnly).length, 1);
+eq("TMN OCR: วันที่ 23 ถูกเก็บเป็น candidate เท่านั้น", tmnWalletOcrBusinessDate.records.filter((row) => row.ocrDateCandidateOnly).length, 2);
 
 const TMN_WALLET_INITIAL_UNDATED_PAGE = `
 รายการ
@@ -296,9 +297,9 @@ const TMN_WALLET_FLATTENED_DATES = `
 +B 10.00
 `;
 const tmnWalletFlattenedDates = await P.parseText("UFABET7M_STM_TMN_สรวิศา_DW_2026-09-24.docx", TMN_WALLET_FLATTENED_DATES, "2026-09-24");
-eq("TMN OCR: แบ่งหลายวันที่อยู่ใน OCR ก้อนเดียว", tmnWalletFlattenedDates.records.length, 2);
-eq("TMN OCR: รายการหลังหัววันก่อนหน้าใช้หัววันที่ถัดไป", tmnWalletFlattenedDates.records[0]?.sourceDate, "2026-09-24");
-eq("TMN OCR: ไม่ปนช่วงเมื่อวานเข้าวันธุรกิจ", tmnWalletFlattenedDates.records.some((row) => row.amount === 10), false);
+eq("TMN OCR: แบ่งหลายวันที่อยู่ใน OCR ก้อนเดียว", tmnWalletFlattenedDates.records.filter((row) => !row.ocrDateCandidateOnly).length, 2);
+eq("TMN OCR: รายการหลังหัววันก่อนหน้าใช้หัววันที่ถัดไป", tmnWalletFlattenedDates.records.find((row) => !row.ocrDateCandidateOnly)?.sourceDate, "2026-09-24");
+eq("TMN OCR: ช่วงเมื่อวานเป็น candidate ไม่ใช่รายการจริง", tmnWalletFlattenedDates.records.find((row) => row.amount === 10)?.ocrDateCandidateOnly, true);
 
 const TMN_OCR_IMAGE_BOUNDARY = TMN_WALLET_INITIAL_UNDATED_PAGE.replace("\f", "\n---OCR_IMAGE---\n");
 eq("TMN OCR: marker ระหว่างภาพจาก n8n เป็นขอบหน้า", P.pagesFromText(TMN_OCR_IMAGE_BOUNDARY).length, 2);

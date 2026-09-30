@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.59-7m-tmn-ocr-completeness";
-const PARSER_VERSION = "1.9.58-7m-tmn-screenshot-completeness";
+const WORKER_VERSION = "1.9.60-7m-tmn-offdate-reciprocal";
+const PARSER_VERSION = "1.9.60-7m-tmn-offdate-candidates";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -57,7 +57,8 @@ try{
 norm=norm||{format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
 norm.format=norm.format||{source:'unknown',realCode:null};
 const detectedSource=norm.format.source||'unknown';
-const usableRows=(norm.records||[]).length+(norm.aux||[]).length;
+const usableRows=(norm.records||[]).filter(r=>!r.ocrDateCandidateOnly).length+(norm.aux||[]).length;
+const candidateRows=(norm.records||[]).filter(r=>r.ocrDateCandidateOnly).length;
 const nonEmptyRows=rawRows.filter(r=>Array.isArray(r)&&r.some(v=>String(v??'').trim()!=='')).length;
 // XB uses AT/AZ/CP/M for every company and LOCALPAY for 3XB. QPAY files may
 // arrive before admin activation; record them as inactive, not corrupt.
@@ -116,6 +117,11 @@ const acceptedEmptyStmPdf=file.kind==='stm_pdf'&&usableRows===0&&pdfEvidence.len
 // activity.  Do not use this exception when OCR/PDF quality is incomplete or
 // when any row has another parse/drop reason.
 const acceptedOutsideDayStmPdf=file.kind==='stm_pdf'&&detectedSource==='stm'&&usableRows===0&&outsideDayPmRows>0&&pdfEvidence.length>=40&&hasTransactionTimestamp&&norm.quality?.complete!==false&&dropEntries.every(([reason])=>String(reason)==='วันที่ไม่ตรงกับวันที่ตรวจ');
+// A TMN Word screenshot may contain only rows whose calendar heading was
+// flattened from an adjacent image. They are not usable transactions yet, but
+// the file is readable evidence. Engine will promote only BO-confirmed 1:1
+// candidates; an unmatched candidate never creates a transaction or case.
+const acceptedCandidateOnlyStm=file.kind==='stm_pdf'&&detectedSource==='stm'&&usableRows===0&&candidateRows>0&&norm.quality?.complete!==false;
 // Some parsers reject a valid header-only workbook before the generic quality
 // checks below run.  A BO/statement with clear evidence but zero transactions is
 // still a valid daily control file, so clear semantic "no usable rows" errors.
@@ -129,7 +135,7 @@ if(!parseError&&(ext==='pdf'||ext==='docx')&&!pdfEvidence) parseError='ไม่
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&ext!=='docx'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&ext!=='docx'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
-if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedOutsideDayPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutsideDayStmPdf&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
+if(!parseError&&usableRows===0&&!acceptedEmptyPm&&!acceptedEmptyStructuredPm&&!acceptedOutsideDayPm&&!acceptedEmptyBo&&!acceptedEmptyStmPdf&&!acceptedOutsideDayStmPdf&&!acceptedCandidateOnlyStm&&!acceptedOutOfScopePm&&!acceptedNonSuccessPm){
   const outsideDay=Number((norm.dropped||{})['วันที่ไม่ตรงกับวันที่ตรวจ']||0);
   const zeroAmountRows=Number((norm.dropped||{})['ยอดเงินเป็นศูนย์']||0);
   parseError=(ext==='pdf'||ext==='docx')&&(norm.warnings||[]).length ? norm.warnings.join(' · ')
@@ -169,7 +175,7 @@ for(const r of (norm.records||[])){
   r.company=fallbackCompany;
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,extracted_row_count:(ext==='pdf'||ext==='docx')?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:usableRows,candidate_row_count:candidateRows,extracted_row_count:(ext==='pdf'||ext==='docx')?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
 
 const reconcileCode = `${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
@@ -177,7 +183,7 @@ if(!files.length) throw new Error('ไม่พบไฟล์ที่อ่า
 const job=files[0].job;
 const parserVersionErrors=files.filter(f=>f.parser_version!=='${PARSER_VERSION}').map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:'เวอร์ชันตัวอ่านไฟล์ไม่ตรงกับ Worker: ได้ '+String(f.parser_version||'ไม่ระบุ')+' ต้องเป็น ${PARSER_VERSION}',row_count:f.row_count||0}));
 const qualityErrors=files.filter(f=>f.parse_error).map(f=>({id:f.file.id,file_name:f.file.file_name,parse_error:f.parse_error,row_count:f.row_count||0})).concat(parserVersionErrors);
-const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error&&f.parser_version==='${PARSER_VERSION}',row_count:f.row_count||0,parse_error:f.parse_error||null,parser_version:f.parser_version||null,dropped:f.dropped||{}}));
+const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error&&f.parser_version==='${PARSER_VERSION}',row_count:f.row_count||0,candidate_row_count:f.candidate_row_count||0,parse_error:f.parse_error||null,parser_version:f.parser_version||null,dropped:f.dropped||{}}));
 if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:parseResults,quality_errors:qualityErrors},pairedItem:{item:0}}];
 const stm=[],bo=[];
 for(const f of files){
@@ -254,7 +260,7 @@ const boFirstCoverage=(()=>{
 })();
 boFirstCoverage.parser_version='${PARSER_VERSION}';
 boFirstCoverage.worker_version='${WORKER_VERSION}';
-boFirstCoverage.source_parse=parseResults.map(f=>({id:f.id,file_name:f.file_name,row_count:f.row_count,parser_version:f.parser_version,dropped:f.dropped}));
+boFirstCoverage.source_parse=parseResults.map(f=>({id:f.id,file_name:f.file_name,row_count:f.row_count,candidate_row_count:f.candidate_row_count,parser_version:f.parser_version,dropped:f.dropped}));
 let result;
 const started=Date.now();
 if(!stm.length){
@@ -289,7 +295,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
