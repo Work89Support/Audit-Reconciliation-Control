@@ -555,6 +555,32 @@ await (async () => {
   );
   eq('123 approved manual bank: duplicate amount remains review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
 
+  r=await run(
+    [
+      rec({...base,amount:110,sec:0,rowNo:6211}),
+      rec({...base,amount:40,sec:0,rowNo:6212}),
+      rec({...base,amount:10,sec:0,rowNo:6213}),
+      rec({...base,amount:10,sec:0,rowNo:6214}),
+    ],
+    [
+      rec({...base,amount:110,sec:63000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6221}),
+      rec({...base,amount:40,sec:64000,noTime:false,via:'เติมมือ',memberCode:'user-b',rowNo:6222}),
+      rec({...base,amount:10,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-c',rowNo:6223}),
+      rec({...base,amount:10,sec:66000,noTime:false,via:'เติมมือ',memberCode:'user-d',rowNo:6224}),
+    ],
+  );
+  eq('123 approved manual bank: duplicate amount does not contaminate unique rows',r.matchEvidence.filter(e=>e.sys123ManualAutoClosed).length,2);
+  eq('123 approved manual bank: only duplicate amount rows remain review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+
+  r=await run(
+    [rec({...base,amount:70,sec:0,rowNo:6231}),rec({...base,amount:50,sec:0,rowNo:6232})],
+    [
+      rec({...base,amount:70,sec:64000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6241}),
+      rec({...base,amount:50,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6242}),
+    ],
+  );
+  eq('123 approved manual bank: repeated user rows remain review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+
   const other={...base,account:'9999999999'};
   r=await run([rec({...other,amount:50,sec:0})],[rec({...other,amount:50,sec:100,noTime:false,via:'เติมมือ',memberCode:'user-c'})]);
   eq('123 manual bank: account outside approved list remains review',r.exceptions.filter(e=>e.type==='manual_review').length,1);

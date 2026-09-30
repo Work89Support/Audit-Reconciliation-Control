@@ -1618,8 +1618,16 @@ const Engine = (() => {
       const manualGroup = boGroup.filter(isManualBo);
       const users = manualGroup.map((row) => identityText(row.memberCode));
       const amounts = manualGroup.map((row) => Number(row.amount).toFixed(2));
-      if (!manualGroup.length || users.some((user) => !user) || new Set(users).size !== users.length) return false;
-      if (new Set(amounts).size !== amounts.length) return false;
+      const currentUser = identityText(m.b.memberCode);
+      const currentAmount = Number(m.b.amount).toFixed(2);
+      /* Judge each matched manual row independently.  A duplicate elsewhere in
+         the same bank/day must not turn every otherwise-unambiguous row into a
+         review case.  The current row still stays open when its own user or
+         amount is duplicated, when the user is missing, or when STM has more
+         than one possible row for that amount. */
+      if (!manualGroup.length || !currentUser) return false;
+      if (users.filter((user) => user === currentUser).length !== 1) return false;
+      if (amounts.filter((amount) => amount === currentAmount).length !== 1) return false;
       if (stmGroup.filter((row) => row.amount === m.s.amount).length !== 1) return false;
       const boTotal = boGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);
       const stmTotal = stmGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);

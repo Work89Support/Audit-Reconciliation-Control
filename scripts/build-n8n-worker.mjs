@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.64-sys123-bank-time";
-const PARSER_VERSION = "1.9.64-sys123-bank-time";
+const WORKER_VERSION = "1.9.65-sys123-manual-row-scope";
+const PARSER_VERSION = "1.9.65-sys123-manual-row-scope";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
