@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.61-7m-docx-ocr-regression-gate";
-const PARSER_VERSION = "1.9.61-7m-docx-ocr-regression-gate";
+const WORKER_VERSION = "1.9.62-7m-docx-monotonic-evidence";
+const PARSER_VERSION = "1.9.62-7m-docx-monotonic-evidence";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -156,10 +156,15 @@ if(!parseError&&(ext==='pdf'||ext==='docx')&&norm.quality&&!norm.quality.complet
 if(!parseError&&ext==='docx'&&(ocrErrors>0||(ocrInputCount>0&&ocrPageCount<ocrInputCount))){
   parseError='OCR Word อ่านภาพไม่ครบ: ได้ข้อความ '+ocrPageCount+' จาก '+ocrInputCount+' ภาพ และพบข้อผิดพลาด '+ocrErrors+' รายการ — เก็บผลรอบก่อนและรอรันใหม่';
 }
-if(!parseError&&ext==='docx'&&file.parsed===true&&priorRowCount>0&&attemptedRows<priorRowCount){
+if(!parseError&&ext==='docx'&&priorRowCount>0&&attemptedRows<priorRowCount){
   parseError='OCR Word อ่านรายการลดลงจากรอบก่อน: รอบนี้ '+attemptedRows+' รายการ รอบก่อน '+priorRowCount+' รายการ — ไม่ยอมให้ผลที่ขาดทับข้อมูลเดิม';
 }
-const reportedRowCount=parseError&&ext==='docx'&&priorRowCount>attemptedRows?priorRowCount:usableRows;
+// DOCX attachments are immutable evidence. Once a run has observed a higher
+// usable-row count, a later OCR attempt (successful or not) must never lower
+// that stored completeness baseline.
+const reportedRowCount=ext==='docx'&&priorRowCount>0
+  ? (parseError?priorRowCount:Math.max(priorRowCount,usableRows))
+  : usableRows;
 let tag=Registry.matchFile(file.file_name).match;
 const fallbackCompany=job.company||file.company||'';
 const fallbackAccount=(tag&&tag.account)||'';

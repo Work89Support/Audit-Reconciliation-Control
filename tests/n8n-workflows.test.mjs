@@ -192,7 +192,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.61-7m-docx-ocr-regression-gate'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.62-7m-docx-monotonic-evidence'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -200,7 +200,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.61-7m-docx-ocr-regression-gate'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.62-7m-docx-monotonic-evidence'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -229,7 +229,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.61-7m-docx-ocr-regression-gate'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.62-7m-docx-monotonic-evidence'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /seven_m_tmn_offdate_reciprocal:true/, "worker summary must record the guarded TMN off-date recovery policy");
 assert.match(workerText, /seven_m_docx_ocr_regression_gate:true/, "worker summary must record the DOCX OCR regression guard");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
@@ -362,11 +362,11 @@ const docxRegression = qualityGate(
 assert.match(docxRegression.parseError, /อ่านรายการลดลงจากรอบก่อน/);
 assert.equal(docxRegression.reportedRowCount, 5, 'a short OCR attempt must retain the previous accepted row count');
 const docxPartialImages = qualityGate(
-  {format:{source:'stm',realCode:'tmn'},records:[{},{},{}],aux:[],warnings:[],dropped:{},quality:{complete:true,unreadRows:[],invalidRows:[]}},
+  {format:{source:'stm',realCode:'tmn'},records:[{},{},{},{}],aux:[],warnings:[],dropped:{},quality:{complete:true,unreadRows:[],invalidRows:[]}},
   [],{kind:'stm_pdf',parsed:true,row_count:3,ocrMeta:{ocr_input_count:3,ocr_page_count:2,ocr_errors:1}},
   'TMN statement 26/09/2026 12:30 amount 100',null,'docx',false,{detect:()=>null});
 assert.match(docxPartialImages.parseError, /อ่านภาพไม่ครบ/);
-assert.equal(docxPartialImages.reportedRowCount, 3);
+assert.equal(docxPartialImages.reportedRowCount, 3, 'a failed OCR attempt must not raise or lower the accepted baseline');
 const outsideDayStmPdfIncomplete = qualityGate(
   {format:{source:'stm',realCode:'bbl_pdf'},records:[],aux:[],warnings:[],dropped:{'วันที่ไม่ตรงกับวันที่ตรวจ':79},quality:{complete:false,unreadRows:['bad'],invalidRows:[]}},
   [],{kind:'stm_pdf'},'Statement SCB account 1234 25/09/2026 12:30 รายการ 100.00 balance 900.00',null,'pdf',false,{detect:()=>null});
