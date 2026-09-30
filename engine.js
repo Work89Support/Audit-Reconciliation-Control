@@ -531,6 +531,16 @@ const Engine = (() => {
       return raw === "3X" ? "3XB" : raw;
     };
     const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase();
+    const isSevenMTmnOcr = (r) => ['7M', 'UFABET7M'].includes(auditCompanyOf(r))
+      && !r.isPmChannel && !!r.ocrWalletScreenshot
+      && /^(?:TMN|TRUEMONEY)$/.test(String(r.channel || r.bank || "").trim().toUpperCase());
+    const plausibleTmnOcrAmount = (ocrAmount, boAmount) => {
+      if (!Number.isInteger(ocrAmount) || !Number.isInteger(boAmount) || ocrAmount <= boAmount || boAmount <= 0) return false;
+      const ratio = ocrAmount / boAmount;
+      if ([10, 100, 1000].includes(ratio)) return true;
+      const ocrText = String(ocrAmount), boText = String(boAmount);
+      return ocrText.length === boText.length + 1 && ocrText.endsWith(boText);
+    };
 
     /* 7M internal transfers are recorded twice on each source: money leaves one
        company account and reaches another.  BO labels these rows as โยกเงิน/รับยอด,
@@ -585,6 +595,41 @@ const Engine = (() => {
       boUsed[i] = 1;
       internalTransferMatched.add(s);
       matched.push({ s, b, dt: timeDistance(s, b), internalTransferMatch: true });
+    });
+
+    /* TrueMoney phone screenshots are OCR evidence, not native financial
+       text. Repair only the known extra-digit class (10->1,000, 53->953,
+       40->4,000) when BO independently proves a unique reciprocal pair with
+       the same company/account/direction/date and time within one minute.
+       Decimal differences such as 280.41 vs 280 remain visible for review. */
+    const tmnOcrAmountMatched = new Set();
+    const tmnOcrAmountCandidates = new Map();
+    const tmnOcrAmountPeers = new Map();
+    stmRecords.forEach((s) => {
+      if (!isSevenMTmnOcr(s) || internalTransferMatched.has(s)) return;
+      const candidates = (accIdx.get(s.account) || []).filter((i) => {
+        if (boUsed[i]) return false;
+        const b = boRecords[i];
+        return sameCompany(s, b) && s.date === b.date && s.direction === b.direction
+          && Number.isFinite(s.sec) && Number.isFinite(b.sec) && timeDistance(s, b) <= 60
+          && plausibleTmnOcrAmount(s.amount, b.amount);
+      });
+      tmnOcrAmountCandidates.set(s, candidates);
+      candidates.forEach((i) => {
+        let peers = tmnOcrAmountPeers.get(i);
+        if (!peers) tmnOcrAmountPeers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    stmRecords.forEach((s) => {
+      const candidates = tmnOcrAmountCandidates.get(s) || [];
+      if (candidates.length !== 1) return;
+      const i = candidates[0];
+      if (boUsed[i] || (tmnOcrAmountPeers.get(i) || []).length !== 1) return;
+      const b = boRecords[i];
+      boUsed[i] = 1;
+      tmnOcrAmountMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), tmnOcrAmountCorrection: true });
     });
 
     /* PM เครือ XB โดยเฉพาะฝั่งถอนเก็บตัวตนธุรกรรมสองค่าแยกกัน:
@@ -1110,6 +1155,7 @@ const Engine = (() => {
       10000,
       (s) => {
         if (internalTransferMatched.has(s)) return;
+        if (tmnOcrAmountMatched.has(s)) return;
         if (xbProviderRefMatched.has(s)) return;
         if (providerIdentityMatched.has(s)) return;
         if (providerNearTimeMatched.has(s)) return;
@@ -1205,11 +1251,17 @@ const Engine = (() => {
           }
         }
         if (best >= 0 && bestDt < 3600) {
-          boUsed[best] = 1;
           const b = boRecords[best];
-          if (timeVarianceAutoPassCompanies.has(auditCompanyOf(s))) {
+          // Do not consume a TMN screenshot row as time_diff. Leave it for the
+          // reciprocal 1:1 rescue below, which can safely correct cases such
+          // as an OCR time 20:53 whose actual row is 21:15.
+          if (isSevenMTmnOcr(s)) {
+            stmLeft.push(s);
+          } else if (timeVarianceAutoPassCompanies.has(auditCompanyOf(s))) {
+            boUsed[best] = 1;
             matched.push({ s, b, dt: bestDt, timeVarianceAccepted: true });
           } else {
+            boUsed[best] = 1;
             exceptions.push(mkException("time_diff", s, b, bestDt));
           }
         } else {
@@ -1326,7 +1378,7 @@ const Engine = (() => {
       const b = boRecords[ci];
       boUsed[ci] = 1;
       rescuedStm.add(s);
-      matched.push({ s, b, dt: timeDistance(s, b), rescueMatch: true });
+      matched.push({ s, b, dt: timeDistance(s, b), rescueMatch: true, tmnOcrTimeCorrection: isSevenMTmnOcr(s) });
     });
 
     /* FR8 statement ธนาคารปกติแสดงเลขบัญชีผู้โอนเพียง 4 หลักท้าย ขณะที่ BO
@@ -1508,7 +1560,11 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
+        tmnOcrTimeCorrected: !!m.tmnOcrTimeCorrection,
+        ocrOriginalAmount: m.tmnOcrAmountCorrection ? m.s.amount : null,
+        correctedAmount: m.tmnOcrAmountCorrection ? m.b.amount : null,
         internalTransferMatched: !!m.internalTransferMatch,
         xbProviderRefMatched: !!m.xbProviderRefMatch,
         providerSignedAmountNormalized: !!m.providerSignedAmountNormalized,

@@ -835,6 +835,33 @@ await (async () => {
   eq('123 bank statement: time variance is evidence only',r.exceptions.length,0);
 })();
 
+await (async () => {
+  const tmn = (amount, sec, extra = {}) => rec({
+    company: 'UFABET7M', account: 'TMN-RUNGFA', bank: 'TMN', channel: 'TMN',
+    direction: 'deposit', date: '2026-09-29', amount, sec,
+    ocrWalletScreenshot: true, ...extra,
+  });
+  const bo = (amount, sec, extra = {}) => rec({
+    company: 'UFABET7M', account: 'TMN-RUNGFA', bank: 'TMN', channel: 'TMN',
+    direction: 'deposit', date: '2026-09-29', amount, sec, ...extra,
+  });
+  for (const [ocrAmount, actualAmount] of [[1000, 10], [953, 53], [4000, 40]]) {
+    const r = await run([tmn(ocrAmount, 7 * 3600 + 53 * 60)], [bo(actualAmount, 7 * 3600 + 53 * 60)]);
+    eq(`7M TMN OCR amount: ${ocrAmount} แก้กลับเป็น ${actualAmount} เมื่อ BO ยืนยันคู่เดียว`, r.matched, 1);
+    eq(`7M TMN OCR amount: ${ocrAmount} เก็บวิธีแก้ที่สอบทานได้`, r.matchEvidence[0]?.method, 'seven-m-tmn-ocr-amount-reciprocal');
+  }
+  const decimal = await run([tmn(280.41, 2 * 3600 + 3 * 60)], [bo(280, 2 * 3600 + 3 * 60)]);
+  eq('7M TMN OCR amount: 280.41 กับ 280 ไม่ถูกแก้เดา', decimal.matched, 0);
+  ok('7M TMN OCR amount: ส่วนต่างทศนิยมยังเป็นเคสให้ตรวจ', decimal.exceptions.length > 0);
+
+  const shifted = await run(
+    [tmn(68, 20 * 3600 + 53 * 60, { account: 'TMN-SORAWISA' })],
+    [bo(68, 21 * 3600 + 15 * 60, { account: 'TMN-SORAWISA' })],
+  );
+  eq('7M TMN OCR time: คู่เดียวกันที่ OCR เวลาคลาด 22 นาทีปิดได้', shifted.matched, 1);
+  eq('7M TMN OCR time: เก็บวิธีแก้เวลาแบบ reciprocal', shifted.matchEvidence[0]?.method, 'seven-m-tmn-ocr-time-reciprocal');
+})();
+
 /* ---------------- report ---------------- */
 console.log("\nEngine unit tests");
 console.log(results.join("\n"));

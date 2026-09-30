@@ -363,6 +363,10 @@ const PdfStm = (() => {
         desc: event.desc,
         isFee: false,
         isNonCustomer: false,
+        // Preserve provenance so the reconciliation engine may apply only
+        // tightly-scoped OCR repairs to phone screenshots. Native PDF rows
+        // must never be changed by those rules.
+        ocrWalletScreenshot: true,
         internalTransferHint: event.direction === "withdraw" && /โยก|fundout/i.test(event.desc),
         raw: `${segmentDate} ${event.time} ${event.direction} ${event.amount.toFixed(2)} ${event.desc}`,
       }));
@@ -393,8 +397,12 @@ const PdfStm = (() => {
       const cells = lines.map((line) => String(line.text || "").replace(/\s+/g, " ").trim()).filter(Boolean);
       const listStart = cells.findIndex((cell) => /^รายการ$/.test(cell));
       const pageDate = inferredDates[pageIndex];
-      if (listStart < 0 || !pageDate) return;
-      const content = cells.slice(listStart + 1);
+      if (!pageDate) return;
+      // Continuation screenshots frequently omit the app title/header. The
+      // signed amount + customer description + time quality gate in
+      // parseSegment is strong enough to read those pages without inventing
+      // transactions from ordinary document text.
+      const content = listStart < 0 ? cells : cells.slice(listStart + 1);
       const boundaries = content.map((cell, index) => ({ index, date: dateOf(cell) })).filter((item) => item.date);
       if (!boundaries.length) {
         parseSegment(content, pageDate);
@@ -414,6 +422,12 @@ const PdfStm = (() => {
       const trailing = content.slice(start);
       if (trailing.some((cell) => /^เมื่อวานนี้$/.test(cell))) {
         parseSegment(trailing, previousIsoDate(boundaries[boundaries.length - 1].date));
+      } else {
+        // Newer TrueMoney screenshots print the calendar heading above the
+        // transactions, while older captures print it below. The completed
+        // segments above preserve the old layout; this trailing segment is
+        // the rows belonging to a heading at the top of the screenshot.
+        parseSegment(trailing, boundaries[boundaries.length - 1].date);
       }
     });
     return rows;
@@ -1128,6 +1142,7 @@ const PdfStm = (() => {
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
         internalTransferHint: !!r.internalTransferHint,
+        ocrWalletScreenshot: !!r.ocrWalletScreenshot,
         raw: r.raw,
       });
     });

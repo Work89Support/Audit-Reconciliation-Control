@@ -338,6 +338,33 @@ eq("TMN OCR withdraw column group: อ่านรายการถอนคร
 eq("TMN OCR withdraw column group: คงยอดถอนตามแถว", tmnWalletWithdrawColumnGrouped.records.map((row) => row.amount).join(","), "2030,300,100");
 eq("TMN OCR withdraw column group: ระบุทิศทางถอนครบ", tmnWalletWithdrawColumnGrouped.records.every((row) => row.direction === "withdraw"), true);
 
+const TMN_WALLET_DATE_AT_TOP = `
+รายการ
+28 กันยายน 2569
+รับเงินจาก คนหนึ่ง ก***
++B 280.41
+02:03
+รับเงินจาก คนสอง ข***
++B 10.00
+07:53
+`;
+const tmnWalletDateAtTop = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_D_2026-09-28.docx", TMN_WALLET_DATE_AT_TOP, "2026-09-28");
+eq("TMN OCR date at top: อ่านรายการหลังหัววันที่ครบ", tmnWalletDateAtTop.records.length, 2);
+eq("TMN OCR date at top: คงทศนิยม 280.41", tmnWalletDateAtTop.records[0]?.amount, 280.41);
+eq("TMN OCR date at top: เก็บ provenance ของภาพ", tmnWalletDateAtTop.records.every((row) => row.ocrWalletScreenshot), true);
+
+const TMN_WALLET_CONTINUATION_NO_HEADER = `
+โอนเงินให้ คนถอนหนึ่ง ก***
+-B 100.00
+08:42
+โอนเงินให้ คนถอนสอง ข***
+-B 300.00
+07:52
+`;
+const tmnWalletContinuation = await P.parseText("UFABET7M_STM_TMN_สรวิศา_W_2026-09-28.docx", TMN_WALLET_CONTINUATION_NO_HEADER, "2026-09-28");
+eq("TMN OCR continuation: ไม่มีคำว่ารายการก็อ่านแถวที่มีหลักฐานครบ", tmnWalletContinuation.records.length, 2);
+eq("TMN OCR continuation: คงทิศทางถอน", tmnWalletContinuation.records.every((row) => row.direction === "withdraw"), true);
+
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
 เลขที่บัญชีเงินฝาก 123-4-56789-0
@@ -659,6 +686,12 @@ eq('SCB ambiguous identities: description remains blank',ambiguousScb.records.ev
 const pageBoundaryScb=await P.parseText('SCB.pdf',scbHeader+scbDescriptions[0]+'\f'+scbHeader+scbRows[0],'2026-09-08');
 eq('SCB never carry a description across pages',pageBoundaryScb.records[0]?.desc,'');
 eq('SCB page boundary: core row remains reconcilable',pageBoundaryScb.records.length,1);
+const scbSomphopLate = await P.parseText('UFABET7M_STM_SCB_สมภพ_DW_2026-09-28.pdf', `${scbHeader}
+28/09/26 21:59 X1 ENET 80.00 4,408.40 รับโอนจาก KTB x9249 PORNPIPHAT KINGPIKUN
+28/09/26 23:23 X1 ENET 37.00 4,445.40 รับโอนจาก KTB x0128 NATTAPHONG PANSUEBPH
+29/09/26 00:28 X1 ENET 4.80 4,450.20 รับโอนจาก SCB x2403 TEST USER`, '2026-09-28');
+eq('SCB สมภพ: อ่านยอดท้ายวัน 23:23 จำนวน 37 บาท', scbSomphopLate.records.at(-1)?.amount, 37);
+eq('SCB สมภพ: รอบวันที่ 28 ไม่ปนรายการวันที่ 29', scbSomphopLate.records.length, 2);
 const reverseScb=P.applyDirection([{code:'X1',amount:100,balance:1100},{code:'X1',amount:100,balance:1000}],'SCB');
 eq('SCB explicit X1 wins over reversed balances',reverseScb[1].direction,'deposit');
 
