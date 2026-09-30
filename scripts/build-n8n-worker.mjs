@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.62-7m-docx-monotonic-evidence";
-const PARSER_VERSION = "1.9.62-7m-docx-monotonic-evidence";
+const WORKER_VERSION = "1.9.63-google-ocr-throttled-retry";
+const PARSER_VERSION = "1.9.63-google-ocr-throttled-retry";
 const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -351,7 +351,16 @@ const deployedReconcileCode = reconcileCode
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
 const driveHttp = (id, name, position, parameters) => ({
-  parameters,
+  parameters: {
+    ...parameters,
+    options: {
+      ...(parameters.options || {}),
+      // DOCX statements can contain 17-18 screenshots.  Sending every image
+      // to Drive OCR concurrently intermittently drops the final 1-2 images.
+      // Serialize the requests so all source pages reach the quality gate.
+      batching: { batch: { batchSize: 1, batchInterval: 1500 } },
+    },
+  },
   id,
   name,
   type: "n8n-nodes-base.httpRequest",
@@ -359,8 +368,8 @@ const driveHttp = (id, name, position, parameters) => ({
   position,
   credentials: driveCred,
   retryOnFail: true,
-  maxTries: 3,
-  waitBetweenTries: 1000,
+  maxTries: 6,
+  waitBetweenTries: 5000,
   onError: "continueRegularOutput",
 });
 
@@ -444,7 +453,6 @@ const nodes = [
   driveHttp("google-drive-ocr-export", "Google Drive OCR: อ่านข้อความ", [2300, 280], {
     url: "=https://www.googleapis.com/drive/v2/files/{{ $json.id }}/export", authentication: "predefinedCredentialType", nodeCredentialType: "googleDriveOAuth2Api",
     sendQuery: true, queryParameters: { parameters: [{ name: "mimeType", value: "text/plain" }] }, options: { timeout: 180000, response: { response: { responseFormat: "text" } } },
-    maxTries: 5, waitBetweenTries: 5000,
   }),
   { parameters: { jsCode: "const items=$input.all(); const errors=items.map(x=>x.json&&x.json.error).filter(Boolean); const texts=items.map(x=>{const raw=x.json&&(x.json.data??x.json.body??x.json.text); return typeof raw==='string'?raw.trim():'';}).filter(Boolean); if(!texts.length&&errors.length) return [{json:{error:errors[0],text:'',ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_input_count:items.length,ocr_page_count:0,ocr_errors:errors.length},pairedItem:{item:0}}]; return [{json:{text:texts.join('\\f'),ocr_used:true,ocr_provider:'google_drive',ocr_confidence:null,ocr_input_count:items.length,ocr_page_count:texts.length,ocr_errors:errors.length},pairedItem:{item:0}}];" }, id: "format-ocr-result", name: "จัดผล OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [2520, 280] },
   { parameters: { operation: "xlsx", binaryPropertyName: "data", options: { headerRow: false, rawData: true, readAsString: true } }, id: "extract-xlsx", name: "อ่าน Excel", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1640, 400], onError: "continueRegularOutput" },

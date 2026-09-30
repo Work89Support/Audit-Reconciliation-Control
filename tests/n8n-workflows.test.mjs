@@ -152,6 +152,14 @@ for (const name of ["อ่าน Excel", "อ่าน CSV"]) {
 assert.match(workerText, /upstreamError/, "extractor failures must become per-file quality errors");
 assert.match(workerText, /อ่านไฟล์ไม่สำเร็จ \('/, "quality errors must identify the original attachment name");
 assert.ok(worker.nodes.some((node) => node.name === "Google Drive OCR: แปลง PDF"), "Google Drive OCR fallback must remain available for scanned PDFs");
+for (const name of ["Google Drive OCR: แปลง PDF", "Google Drive OCR: อ่านข้อความ"]) {
+  const node = worker.nodes.find((item) => item.name === name);
+  assert.equal(node.parameters.options.batching.batch.batchSize, 1, `${name} must serialize screenshot OCR requests`);
+  assert.ok(node.parameters.options.batching.batch.batchInterval >= 1500, `${name} must pause between screenshot OCR requests`);
+  assert.equal(node.retryOnFail, true, `${name} must retry transient Google OCR failures`);
+  assert.ok(node.maxTries >= 6, `${name} must allow quota and conversion delays to recover`);
+  assert.ok(node.waitBetweenTries >= 5000, `${name} must back off before retrying Google OCR`);
+}
 assert.ok(worker.nodes.filter((node) => node.type === "n8n-nodes-base.splitInBatches").length >= 1);
 assert.match(workerText, /claim_daily_recon_jobs/);
 assert.match(workerText, /finish_daily_recon_job/);
@@ -192,7 +200,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.62-7m-docx-monotonic-evidence'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.63-google-ocr-throttled-retry'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -200,7 +208,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.62-7m-docx-monotonic-evidence'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.63-google-ocr-throttled-retry'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -229,7 +237,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.62-7m-docx-monotonic-evidence'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.63-google-ocr-throttled-retry'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /seven_m_tmn_offdate_reciprocal:true/, "worker summary must record the guarded TMN off-date recovery policy");
 assert.match(workerText, /seven_m_docx_ocr_regression_gate:true/, "worker summary must record the DOCX OCR regression guard");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");
