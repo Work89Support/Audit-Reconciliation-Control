@@ -488,6 +488,14 @@ eq("KTB: รายการแรก เวลา (จากบรรทัด�
 eq("KTB: รายการแรก 'เงินโอนเข้า' = deposit", ktbRows[0] && ktbRows[0].direction, "deposit");
 eq("KTB: รายการสอง 'โอนเงินออก' = withdraw", ktbRows[1] && ktbRows[1].direction, "withdraw");
 eq("KTB: รายการสอง ยอด = 127", ktbRows[1] && ktbRows[1].amount, 127);
+const ktbNextDay = await P.parseText("AT4_STM_KTB_เบญจพร_D_2026-09-28.pdf", `
+บริษัท ธนาคารกรุงไทย จำกัด มหาชน
+เลขที่บัญชี 209-0879-114 รหัสสาขา 209
+29/09/69 เงินโอนเข้า (IORSDT) 014-6444474223 100.00 16,592.01 209
+00:02
+`, "2026-09-28");
+eq("KTB next-day: เก็บรายการวันที่ถัดไปเป็น candidate", ktbNextDay.records[0]?.ktbNextDayCandidateOnly, true);
+eq("KTB next-day: คงวันที่ธนาคารจริงไว้", ktbNextDay.records[0]?.date, "2026-09-29");
 
 /* ---- KTB แบบไม่แสดงเวลา (บางบัญชีตามหมายเหตุในทะเบียน) -> โหมด noTime ---- */
 const KTB_NT = `

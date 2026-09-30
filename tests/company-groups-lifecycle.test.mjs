@@ -11,7 +11,7 @@ assert.match(app, /name: "เครือ 123"[\s\S]*status: "active"/);
 assert.match(app, /CYBERPLUS ถอนใช้ 2 จุดคือรหัสสมาชิกและจำนวนเงินถอนจริง/);
 assert.match(app, /เลขบัญชีเต็มจับกับ 4 หลักท้ายได้/);
 assert.match(app, /คู่เวลาใกล้ที่สุดไม่เกิน 10 นาทีแบบ reciprocal 1:1/);
-assert.match(app, /BBL ที่ไม่มีเวลาใช้บัญชี\+วัน\+ทิศทาง\+ยอด/);
+assert.match(app, /BBL และ GSB ที่ไม่มีเวลาใช้บัญชี\+วัน\+ทิศทาง\+ยอด/);
 assert.match(app, /name: "เครือ 7M"[\s\S]*status: "active"/);
 assert.match(app, /paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime/);
 assert.match(app, /ยอดถอน AT\/M ใช้ transferredAmount · ยอดถอน AZ\/CP\/LP ใช้ amount/);

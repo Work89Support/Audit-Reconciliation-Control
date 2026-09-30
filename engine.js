@@ -470,7 +470,8 @@ const Engine = (() => {
     // every ordinary matching pass. They may be promoted only after all normal
     // STM rows have had first claim on BO and a strict reciprocal pair remains.
     const tmnDateCandidates = stmRecords.filter((row) => !!row.ocrDateCandidateOnly);
-    stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly);
+    const ktbNextDayCandidates = stmRecords.filter((row) => !!row.ktbNextDayCandidateOnly);
+    stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly && !row.ktbNextDayCandidateOnly);
     const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -500,7 +501,7 @@ const Engine = (() => {
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
 
     /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
-    const statementCoverageRecords = stmRecords.concat(tmnDateCandidates);
+    const statementCoverageRecords = stmRecords.concat(tmnDateCandidates, ktbNextDayCandidates);
     const stmAccounts = new Set(statementCoverageRecords.map((r) => r.account));
     const stmChannels = new Set(statementCoverageRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
     const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
@@ -530,6 +531,7 @@ const Engine = (() => {
     const exceptions = [];
     const stmLeft = [];
     const tmnDateCandidateMatched = new Set();
+    const ktbNextDayCandidateMatched = new Set();
     let timeDiffCount = 0;
     const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
@@ -1474,6 +1476,44 @@ const Engine = (() => {
         peers.push(s);
       });
     });
+
+    /* KTB may book a late-night System 123 transaction on the next calendar
+       date. These candidate rows are never normal STM rows. Promote only a
+       strict reciprocal 1:1 pair whose BO explicitly uses the bank timestamp,
+       crosses from the previous BO date and has the same account/direction/
+       amount/time. An unmatched candidate remains evidence only. */
+    const ktbCandidatePairs = new Map();
+    const ktbCandidatePeers = new Map();
+    ktbNextDayCandidates.forEach((s) => {
+      if (!sys123Companies.has(auditCompanyOf(s)) || String(s.bank || s.channel || '').toUpperCase() !== 'KTB') return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || []).filter((ci) => {
+        if (boUsed[ci]) return false;
+        const b = boRecords[ci];
+        return sameCompany(s, b)
+          && s.account === b.account && s.direction === b.direction
+          && s.date === b.date && b.crossDay === true
+          && b.bankDate === s.date && b.boDate && b.boDate !== b.bankDate
+          && b.matchTimeColumn === 'วันที่ธนาคาร'
+          && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+          && timeDistance(s, b) <= tolOf(s.direction, s, b);
+      });
+      ktbCandidatePairs.set(s, rows);
+      rows.forEach((ci) => {
+        let peers = ktbCandidatePeers.get(ci);
+        if (!peers) ktbCandidatePeers.set(ci, (peers = []));
+        peers.push(s);
+      });
+    });
+    ktbNextDayCandidates.forEach((s) => {
+      const rows = ktbCandidatePairs.get(s) || [];
+      if (rows.length !== 1) return;
+      const ci = rows[0];
+      if (boUsed[ci] || (ktbCandidatePeers.get(ci) || []).length !== 1) return;
+      const b = boRecords[ci];
+      boUsed[ci] = 1;
+      ktbNextDayCandidateMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), ktbNextDayBankTimeMatch: true });
+    });
     tmnDateCandidates.forEach((s) => {
       const rows = tmnDateCandidatePairs.get(s) || [];
       if (rows.length !== 1) return;
@@ -1553,9 +1593,44 @@ const Engine = (() => {
       else if (boTail && stmTail && boTail !== stmTail) exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
     });
 
-    // A matched manual credit still requires documentary review, not automatic clearance.
+    /* Manual credits normally remain documentary-review cases. Audit approved
+       a narrow System 123 exception for three ordinary-bank deposit accounts:
+       each pair must already match, users and amounts in the manual BO group
+       must be non-empty/unique, and total BO for that account/day/direction may
+       not exceed STM. Any ambiguity keeps the manual_review case. */
+    const sys123ManualAutoCloseAccounts = new Set([
+      'AT4|6517248040', // BBL นรวร D
+      'AT4|2090879114', // KTB เบญจพร D
+      'SK8|6517249394', // BBL ดลยา D
+    ]);
+    const isManualBo = (row) => /เติม\s*มือ|เติมเอง|manual/i.test(String(row && (row.via || row.channel) || ''));
+    const manualAutoCloseEligible = (m) => {
+      const company = auditCompanyOf(m.b);
+      const account = String(m.b.account || '').replace(/\D/g, '');
+      if (!sys123ManualAutoCloseAccounts.has(`${company}|${account}`)) return false;
+      if (m.b.isPmChannel || m.s.isPmChannel || m.b.direction !== 'deposit' || m.s.direction !== 'deposit') return false;
+      if (!Number.isFinite(m.b.amount) || m.b.amount <= 0 || m.b.amount !== m.s.amount) return false;
+      const sameGroup = (row) => auditCompanyOf(row) === company
+        && String(row.account || '').replace(/\D/g, '') === account
+        && row.date === m.b.date && row.direction === 'deposit';
+      const boGroup = boRecords.filter(sameGroup);
+      const stmGroup = stmRecords.concat([...ktbNextDayCandidateMatched]).filter(sameGroup);
+      const manualGroup = boGroup.filter(isManualBo);
+      const users = manualGroup.map((row) => identityText(row.memberCode));
+      const amounts = manualGroup.map((row) => Number(row.amount).toFixed(2));
+      if (!manualGroup.length || users.some((user) => !user) || new Set(users).size !== users.length) return false;
+      if (new Set(amounts).size !== amounts.length) return false;
+      if (stmGroup.filter((row) => row.amount === m.s.amount).length !== 1) return false;
+      const boTotal = boGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const stmTotal = stmGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      return boTotal <= stmTotal + 0.001;
+    };
     matched.forEach((m) => {
-      if (/เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || ""))) {
+      if (isManualBo(m.b)) {
+        if (manualAutoCloseEligible(m)) {
+          m.sys123ManualAutoClosed = true;
+          return;
+        }
         const review = mkException("manual_review", m.s, m.b, m.dt);
         review.riskAmount = 0;
         review.severity = "medium";
@@ -1570,7 +1645,7 @@ const Engine = (() => {
     const hourlyStm = new Array(24).fill(0);
     const hourlyMatched = new Array(24).fill(0);
     let crossDayWindow = 0;
-    stmRecords.concat([...tmnDateCandidateMatched]).forEach((r) => {
+    stmRecords.concat([...tmnDateCandidateMatched], [...ktbNextDayCandidateMatched]).forEach((r) => {
       hourlyStm[Math.floor(r.sec / 3600)]++;
       if (r.crossDay) crossDayWindow++;
     });
@@ -1581,7 +1656,7 @@ const Engine = (() => {
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
     const elapsed = Math.round(Date.now() - t0);
-    const reconciledStmCount = stmRecords.length + tmnDateCandidateMatched.size;
+    const reconciledStmCount = stmRecords.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size;
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
@@ -1613,7 +1688,7 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
@@ -1631,7 +1706,9 @@ const Engine = (() => {
         rescueMatched: !!m.rescueMatch,
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
-        manualReview: /เติม\s*มือ|เติมเอง|manual/i.test(String(m.b.via || "")),
+        ktbNextDayBankTimeMatched: !!m.ktbNextDayBankTimeMatch,
+        sys123ManualAutoClosed: !!m.sys123ManualAutoClosed,
+        manualReview: isManualBo(m.b) && !m.sys123ManualAutoClosed,
         customer: {
           bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "", providerReference: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw), note: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw) || m.b.note || "" },
           stm: customerEvidence(m.s),
@@ -1639,7 +1716,7 @@ const Engine = (() => {
         boAmount: m.b.amount,
         stmAmount: m.s.amount,
         stm: { fileId: m.s.source_file_id || null, checksum: m.s.source_checksum || null, row: m.s.rowNo ?? null, date: m.s.date, sec: m.s.noTime ? null : m.s.sec, noTime: !!m.s.noTime, timeColumn: m.s.timeColumn || null, amountColumn: m.s.amountColumn || null },
-        bo: { fileId: m.b.source_file_id || null, checksum: m.b.source_checksum || null, row: m.b.rowNo ?? null, date: m.b.date, sec: m.b.noTime ? null : m.b.sec, noTime: !!m.b.noTime },
+        bo: { fileId: m.b.source_file_id || null, checksum: m.b.source_checksum || null, row: m.b.rowNo ?? null, date: m.b.date, sec: m.b.noTime ? null : m.b.sec, noTime: !!m.b.noTime, timeColumn: m.b.matchTimeColumn || null, boDate: m.b.boDate || null, bankDate: m.b.bankDate || null },
       })),
     };
 

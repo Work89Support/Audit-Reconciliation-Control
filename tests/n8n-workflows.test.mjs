@@ -113,6 +113,9 @@ assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดย�
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "อ่าน PDF โดยตรง", "PDFs must enter the native parser first");
 assert.match(worker.nodes.find(node => node.name === "เป็น PDF?").parameters.conditions.conditions[0].leftValue, /docx/, "Word statements must enter document OCR");
 assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /'docx'/, "worker must select classified Word statements");
+assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /business_date=gte/, "worker must read the job day as the lower source boundary");
+assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /plus\(\{days:1\}\)/, "worker must inspect one adjacent batch for late KTB statements");
+assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /adjacent&&!\(sys123\.has\(jobCompany\)&&ktbStatement\)/, "worker must limit adjacent-day evidence to System 123 KTB statements");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
 assert.equal(worker.connections["อ่าน PDF โดยตรง"].main[0][0].node, "ตรวจรายการ PDF ก่อน OCR");
 const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -200,7 +203,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.63-google-ocr-throttled-retry'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.64-sys123-bank-time'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -208,7 +211,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.63-google-ocr-throttled-retry'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.64-sys123-bank-time'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -237,7 +240,10 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.63-google-ocr-throttled-retry'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.64-sys123-bank-time'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
+assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
+assert.match(workerText, /sys123_manual_bank_safe_close:true/, "worker summary must identify approved manual bank auto-close accounts");
 assert.match(workerText, /seven_m_tmn_offdate_reciprocal:true/, "worker summary must record the guarded TMN off-date recovery policy");
 assert.match(workerText, /seven_m_docx_ocr_regression_gate:true/, "worker summary must record the DOCX OCR regression guard");
 assert.match(workerText, /source_parser_completion:true/, "worker summary must record the source-parser completion release");

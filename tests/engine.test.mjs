@@ -234,6 +234,20 @@ await (async function () {
   eq("BO แบบย่อ: อ่านยอด", n.records[0]?.amount, 49);
 })();
 
+/* เครือ 123 STM ธนาคารปกติต้องเทียบกับวันที่ธนาคารในรายงาน BO */
+(function () {
+  const headers = ["วันที่ทำรายการ", "วันที่ธนาคาร", "จำนวนเงินฝากจริง", "จำนวนเงินถอนจริง", "ชื่อธนาคาร", "สมาชิก", "บัญชีลูกค้า", "เกิดโดย"];
+  const row = ["2026-09-28 18:00:00", "2026-09-28 18:36:00", "95", "", "KTB 2090879114", "user-a", "1234567890 | CUSTOMER", "auto"];
+  const st = { rules: { filterCarryForward: true, pmSuccessOnly: true } };
+  const at4 = Engine.normalize("AT4_BO_2026-09-28.xlsx", [headers, row], st, "2026-09-28").records[0];
+  eq("123 normal bank: ใช้เวลาธนาคารเป็นแกน", at4?.sec, 18 * 3600 + 36 * 60);
+  eq("123 normal bank: เก็บชื่อช่องเวลาที่ใช้", at4?.matchTimeColumn, "วันที่ธนาคาร");
+  const xb = Engine.normalize("3XB_BO_2026-09-28.xlsx", [headers, row], st, "2026-09-28").records[0];
+  eq("XB normal bank: ยังคงใช้เวลารายการ BO", xb?.sec, 18 * 3600);
+  const bbl = Engine.normalize("AT4_BO_2026-09-28.xlsx", [headers, [...row.slice(0, 4), "BBL 6517248040", ...row.slice(5)]], st, "2026-09-28").records[0];
+  eq("123 BBL no-time: ไม่บังคับเวลาธนาคาร", bbl?.sec, 18 * 3600);
+})();
+
 /* LOCALPAY ฝากต้องเทียบ PM paymentTime กับ BO เวลาทำรายการ ไม่ใช่เวลาสร้าง BO */
 await (async function () {
   const boRows = [
@@ -524,6 +538,37 @@ await (async () => {
   eq('pair evidence: PM time source retained',r.matchEvidence[0].stm.timeColumn,'paymentTime');
   eq('pair evidence: PM amount source retained',r.matchEvidence[0].stm.amountColumn,'realAmount');
   eq('pair evidence: missing name stays empty',r.matchEvidence[0].customer.stm.name,'');
+})();
+
+await (async () => {
+  const base={company:'AT4',subco:'AT4',account:'6517248040',bank:'BBL',channel:'BBL',direction:'deposit',date:'2026-09-28',noTime:true};
+  let r=await run(
+    [rec({...base,amount:110,sec:0})],
+    [rec({...base,amount:110,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-a'})],
+  );
+  eq('123 approved manual bank: matched pair has no manual review',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 approved manual bank: evidence records automatic close',r.matchEvidence[0]?.sys123ManualAutoClosed,true);
+
+  r=await run(
+    [rec({...base,amount:110,sec:0,rowNo:6101}),rec({...base,amount:110,sec:0,rowNo:6102})],
+    [rec({...base,amount:110,sec:64000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6201}),rec({...base,amount:110,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-b',rowNo:6202})],
+  );
+  eq('123 approved manual bank: duplicate amount remains review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+
+  const other={...base,account:'9999999999'};
+  r=await run([rec({...other,amount:50,sec:0})],[rec({...other,amount:50,sec:100,noTime:false,via:'เติมมือ',memberCode:'user-c'})]);
+  eq('123 manual bank: account outside approved list remains review',r.exceptions.filter(e=>e.type==='manual_review').length,1);
+})();
+
+await (async () => {
+  const s=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,ktbNextDayCandidateOnly:true});
+  const b=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,crossDay:true,boDate:'2026-09-28',bankDate:'2026-09-29',matchTimeColumn:'วันที่ธนาคาร'});
+  let r=await run([s],[b]);
+  eq('123 KTB next-day: strict bank-time candidate closes',r.matched,1);
+  eq('123 KTB next-day: method is auditable',r.matchEvidence[0]?.method,'sys123-ktb-next-day-bank-time-reciprocal');
+  r=await run([{...s,rowNo:6301}],[{...b,rowNo:6302,sec:600}]);
+  eq('123 KTB next-day: mismatched bank time stays evidence-only',r.matched,0);
+  eq('123 KTB next-day: unmatched candidate creates no false case',r.exceptions.length,1);
 })();
 
 await (async () => {

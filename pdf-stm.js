@@ -1103,6 +1103,9 @@ const PdfStm = (() => {
     const expectedPreviousDate = businessDate
       ? new Date(Date.parse(businessDate + "T00:00:00Z") - 86400000).toISOString().slice(0, 10)
       : null;
+    const expectedNextDate = businessDate
+      ? new Date(Date.parse(businessDate + "T00:00:00Z") + 86400000).toISOString().slice(0, 10)
+      : null;
     const observedDates = new Set(rows.map((r) => r.date).filter(Boolean));
     const previousDayReport = !!(
       businessDate && expectedPreviousDate && observedDates.size === 1 && observedDates.has(expectedPreviousDate)
@@ -1113,6 +1116,7 @@ const PdfStm = (() => {
     const drop = (w) => (dropped[w] = (dropped[w] || 0) + 1);
     const records = [];
     let ocrDateCandidateRows = 0;
+    let ktbNextDayCandidateRows = 0;
     rows.forEach((r, i) => {
       if (!r.date || !r.direction || !Number.isFinite(r.amount)) return drop("วันที่ ยอด หรือทิศทางยังยืนยันไม่ได้");
       if (r.sec === null || r.amount === null) return drop("อ่านเวลาหรือยอดไม่ได้");
@@ -1121,10 +1125,19 @@ const PdfStm = (() => {
       const ocrDateCandidateOnly = !!(
         businessDate && r.date && r.date !== businessDate && !previousDayReport && r.ocrWalletScreenshot
       );
-      if (businessDate && r.date && r.date !== businessDate && !previousDayReport && !ocrDateCandidateOnly) {
+      /* KTB may post a 23:00-23:59 transaction under the next calendar date.
+         Preserve that row only as a candidate. It never enters normal matching
+         or creates an exception; Engine promotes it only when the BO row proves
+         the same cross-day bank timestamp, account, direction and amount 1:1. */
+      const ktbNextDayCandidateOnly = !!(
+        head.bank === "KTB" && businessDate && expectedNextDate
+        && r.date === expectedNextDate && !previousDayReport
+      );
+      if (businessDate && r.date && r.date !== businessDate && !previousDayReport && !ocrDateCandidateOnly && !ktbNextDayCandidateOnly) {
         return drop("วันที่ไม่ตรงกับวันที่ตรวจ");
       }
       if (ocrDateCandidateOnly) ocrDateCandidateRows++;
+      if (ktbNextDayCandidateOnly) ktbNextDayCandidateRows++;
       records.push({
         rowNo: i + 1,
         source: "stm",
@@ -1156,6 +1169,7 @@ const PdfStm = (() => {
         internalTransferHint: !!r.internalTransferHint,
         ocrWalletScreenshot: !!r.ocrWalletScreenshot,
         ocrDateCandidateOnly,
+        ktbNextDayCandidateOnly,
         raw: r.raw,
       });
     });
@@ -1163,6 +1177,7 @@ const PdfStm = (() => {
     const warnings = [];
     if (previousDayReport) warnings.push(`Statement เป็นข้อมูลวันที่ ${expectedPreviousDate} และถูกนำเข้ารอบ ${businessDate} ตามวันที่รายงาน`);
     if (ocrDateCandidateRows) warnings.push(`เก็บรายการภาพ TMN ที่หัววันที่คลาด ${ocrDateCandidateRows} รายการไว้เป็น candidate ตรวจเท่านั้น — ใช้ได้เมื่อ BO ยืนยันคู่เดียว`);
+    if (ktbNextDayCandidateRows) warnings.push(`เก็บรายการ KTB วันที่ถัดไป ${ktbNextDayCandidateRows} รายการไว้เป็น candidate ตรวจเท่านั้น — ใช้ได้เมื่อ BO เวลา 23:00-23:59 ยืนยันคู่เดียว`);
     if (!head.bank) warnings.push("ระบุธนาคารจากหัวกระดาษไม่ได้ — ใช้ตัวอ่านแบบทั่วไป");
     if (!head.account) warnings.push("อ่านเลขบัญชีจากหัวกระดาษไม่ได้ — ต้องระบุเองในหน้าตั้งค่าบัญชี");
     if (!records.length) warnings.push(rows.length && dropped["วันที่ไม่ตรงกับวันที่ตรวจ"] === rows.length

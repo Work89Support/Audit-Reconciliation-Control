@@ -146,8 +146,11 @@ const AUDIT_COMPANY_GROUPS = Object.freeze([
     "ทุกคู่ต้องอยู่บริษัท Provider และทิศทางเดียวกัน; เลขบัญชีเต็มจับกับ 4 หลักท้ายได้เมื่อสมาชิกและยอดตรงกัน",
     "ถ้าสมาชิกหรือเลขบัญชีขาดเพียงหนึ่งฝั่ง ระบบใช้จุดที่เหลือร่วมกับยอดและคู่เวลาใกล้ที่สุดไม่เกิน 10 นาทีแบบ reciprocal 1:1; ข้อมูลขัดกัน คู่เวลาเสมอ หรือมีแต่ยอดจะไม่ปิด",
     "รายการซ้ำก่อน/หลังเที่ยงคืนจับต่อได้เมื่อ identity ตรงและเป็นคู่เวลาใกล้ที่สุดภายใน 60 นาที; เก็บหลักฐานข้ามวันใน Audit Log",
-    "ยอดตรงที่เวลาแตกต่างแต่ระบุคู่ได้ชัดเจนเป็นผลการจับคู่ ไม่ส่งให้ Audit ยืนยัน; รายการเติมมือ หลักฐานขัดกัน หรือคู่กำกวมยังคงเป็นเคส",
-    "STM ธนาคารปกติแยกชีตตามบัญชีและแยกฝาก (D) / ถอน (W); BBL ที่ไม่มีเวลาใช้บัญชี+วัน+ทิศทาง+ยอด ส่วน KTB และธนาคารที่มีเวลาใช้เวลา+ยอด",
+    "STM ธนาคารปกติจับเวลากับคอลัมน์วันที่ธนาคารในรายงานฝาก/ถอน; BBL และ GSB ที่ไม่มีเวลาใช้บัญชี+วัน+ทิศทาง+ยอด",
+    "รายการ KTB เวลา 23:00-23:59 ที่ธนาคารลงวันที่ถัดไป เก็บเป็น candidate และปิดได้เฉพาะเมื่อบัญชี ทิศทาง ยอด และเวลาธนาคารเป็นคู่ 1:1 กับ BO ของวันก่อนหน้า",
+    "ยอดตรงที่เวลาแตกต่างแต่ระบุคู่ได้ชัดเจนเป็นผลการจับคู่ ไม่ส่งให้ Audit ยืนยัน; รายการเติมมือทั่วไป หลักฐานขัดกัน หรือคู่กำกวมยังคงเป็นเคส",
+    "AT4 BBL นรวรฝาก, AT4 KTB เบญจพรฝาก และ SK8 BBL ดลยาฝาก: รายการเติมมือที่จับคู่ยอดตรง คนละยูส ยอดไม่ซ้ำ และยอด BO ไม่เกิน STM ปิดได้อัตโนมัติ",
+    "STM ธนาคารปกติแยกชีตตามบัญชีและแยกฝาก (D) / ถอน (W)",
   ] },
   { id: "SYS7M", name: "เครือ 7M", status: "active", companies: ["UFABET7M"], rules: [
     "PM ฝากและถอนต้องจับคู่ 3 จุด: Ref/Ref Id ใน STM PM กับ Note ของ BO, User/Username กับ User ใน BO และยอดตามช่องเงินจริงของ Provider กับยอด BO",
@@ -2035,13 +2038,17 @@ function dailyCompanyData(company) {
   const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
   const reportedExceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
   const informationalCount = (dailyCompanyState.informationalExceptions || []).filter((row) => normalizeLiveCompanyCode(row.company) === company).length;
-  const exceptionTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
+  const computedCurrentTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
   const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
   const confirmedDamage = exceptions.filter((row) => row.status === "damage");
-  const resolvedTotal = checklist?.resolved_count == null ? fixed.length : Number(checklist.resolved_count || 0);
-  const reportedOpen = Number(checklist?.open_count || 0);
-  const checklistCoversRun = checklist?.open_count != null && (reportedOpen + resolvedTotal) >= exceptionTotal;
-  const stillOpen = checklistCoversRun ? reportedOpen : Math.max(0, exceptionTotal - resolvedTotal);
+  /* audit_daily_checklist already counts the current actionable lifecycle and
+     intentionally excludes informational/stale rows. Do not compare it with
+     recon_runs.exception_count (the number originally generated), otherwise a
+     valid filtered total looks "incomplete" and the UI resurrects old cases. */
+  const hasCurrentCounts = checklist?.open_count != null && checklist?.resolved_count != null;
+  const resolvedTotal = hasCurrentCounts ? Number(checklist.resolved_count || 0) : fixed.length;
+  const stillOpen = hasCurrentCounts ? Number(checklist.open_count || 0) : Math.max(0, computedCurrentTotal - resolvedTotal);
+  const exceptionTotal = hasCurrentCounts ? stillOpen + resolvedTotal : computedCurrentTotal;
   const reconciliationFiles = files.filter((file) => file.kind !== "doc_clarify");
   const evidenceFiles = files.filter((file) => file.kind === "doc_clarify");
   return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
@@ -2079,11 +2086,11 @@ function dailyAuditSheetRows(date) {
   return companies.map((company) => {
     const row = checklistByCompany.get(company) || { company };
     const run = qualityByCompany.get(company) || {};
-    const exceptionCount = Number(run.exception_count ?? row.exception_count ?? 0);
-    const resolvedCount = Number(row.resolved_count || 0);
-    const reportedOpen = Number(row.open_count || 0);
-    const checklistCoversRun = row.open_count != null && (reportedOpen + resolvedCount) >= exceptionCount;
-    const openCount = checklistCoversRun ? reportedOpen : Math.max(0, exceptionCount - resolvedCount);
+    const generatedExceptionCount = Number(run.exception_count ?? row.exception_count ?? 0);
+    const hasCurrentCounts = row.open_count != null && row.resolved_count != null;
+    const resolvedCount = hasCurrentCounts ? Number(row.resolved_count || 0) : 0;
+    const openCount = hasCurrentCounts ? Number(row.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
+    const exceptionCount = hasCurrentCounts ? openCount + resolvedCount : generatedExceptionCount;
     const runStatus = row.job_status || run.status || "waiting_files";
     return {
       ...row,
@@ -2100,6 +2107,7 @@ function dailyAuditSheetRows(date) {
       boCount: Number(run.bo_count ?? row.bo_count ?? 0),
       matched: Number(run.matched ?? row.matched_count ?? 0),
       exceptionCount,
+      generatedExceptionCount,
       openCount,
       resolvedCount,
       missing: Array.isArray(row.missing_items) ? row.missing_items : [],
@@ -2592,7 +2600,7 @@ function renderDailyCompanySummary(root) {
       let direction = "deposit", page = 0;
       const draw = () => {
         const rows = evidence.filter(e => e.direction === direction);
-        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือต้องตรวจเอกสารเพิ่มเติม</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(e.timeDifferenceSeconds)} วินาที</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
+        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือทั่วไปต้องตรวจเอกสาร ยกเว้นบัญชีระบบ 123 ที่ผ่านกฎปิดอัตโนมัติซึ่ง Audit อนุมัติไว้</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(e.timeDifferenceSeconds)} วินาที</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : e.sys123ManualAutoClosed ? "<br>เติมมือ 123: ผ่านกฎปิดอัตโนมัติ" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
         $("#matchedDeposit").onclick = () => { direction = "deposit"; page = 0; draw(); };
         $("#matchedWithdraw").onclick = () => { direction = "withdraw"; page = 0; draw(); };
         $("#matchedPrev").onclick = () => { page--; draw(); };

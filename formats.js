@@ -313,6 +313,7 @@ const Formats = (() => {
   /* ชื่อบริษัทจากชื่อไฟล์ เช่น 'AT4 รายงานบัญชีฝาก ...' / 'FR8 ...' */
   const normalizeCompany = (value) => String(value || "").trim().toUpperCase() === "3X" ? "3XB" : String(value || "").trim().toUpperCase();
   const XB_COMPANIES = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
+  const SYS123_COMPANIES = new Set(["AT4", "FR8", "SK8"]);
   function companyOf(fileName) {
     const known = String(fileName || '').match(/(?:^|[_\s-])(3XB|3X|AT4|FR8|MC8|MR9|PS8|SK8|UFABET7M|UR9)(?=[_\s.-]|$)/i);
     if (known) return normalizeCompany(known[1]);
@@ -673,23 +674,38 @@ const Formats = (() => {
       const wit = num(val(f, r, "จำนวนเงินถอนจริง"));
       const amount = dep || wit;
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
-      const ch = channelOf(val(f, r, "ชื่อธนาคาร"));
+      const bankCell = val(f, r, "ชื่อธนาคาร");
+      const legacyChannel = channelOf(bankCell);
+      const namedBankAccount = boAccountOf(bankCell);
+      /* รายงานระบบ 123 บางรุ่นเขียน "KTB 2090879114" แทน
+         "2090879114 : KTB". ทำให้ตัวอ่านเดิมมองทั้งช่องเป็นชื่อ channel และ
+         ไม่รู้ว่าเป็นบัญชีธนาคาร จึงไม่เลือกวันที่ธนาคาร. รองรับทั้งสองรูปแบบ
+         โดยไม่เปลี่ยนการอ่านช่อง PM/Manual แบบเดิม. */
+      const ch = namedBankAccount.account !== "UNKNOWN"
+        ? { terminal: namedBankAccount.account, channel: namedBankAccount.channel, isBankAccount: true }
+        : legacyChannel;
       const mem = pipe(val(f, r, "สมาชิก"));
       const cust = pipe(val(f, r, "บัญชีลูกค้า"));
       const note = val(f, r, "หมายเหตุ");
+      /* STM ธนาคารปกติของเครือ 123 ต้องเทียบกับเวลาที่ธนาคารบันทึกใน
+         รายงานฝาก/ถอน ไม่ใช่เวลาที่รายการถูกสร้างใน BO. BBL/GSB ไม่มีเวลา
+         ที่เชื่อถือได้ใน STM จึงคงวันเวลารายการไว้และให้ noTime ฝั่ง STM
+         เป็นตัวผ่อนกรอบเวลา. เก็บทั้งสอง timestamp เพื่อสอบทานย้อนหลัง. */
+      const useBankTime = SYS123_COMPANIES.has(normalizeCompany(company))
+        && ch.isBankAccount && !["BBL", "GSB"].includes(ch.channel) && !!bankT;
+      const matchT = useBankTime ? bankT : boT;
       return {
         rowNo: i + 1,
         source: "bo",
         formatCode: "bo_main",
         boIdentityRaw: val(f, r, "ชื่อธนาคาร"),
-        // เวลาในหน้า BO เป็นแกนกระทบยอดตามขั้นตอน Audit; เวลาธนาคารเก็บไว้
-        // สำหรับหลักฐานข้ามวันเท่านั้น เพื่อไม่ให้คู่ปกติหลุดเพราะธนาคารลงเวลาช้า
-        date: boT.date,
-        sec: boT.sec,
+        date: matchT.date,
+        sec: matchT.sec,
         boDate: boT.date,
         boSec: boT.sec,
         bankDate: bankT.date,
         bankSec: bankT.sec,
+        matchTimeColumn: useBankTime ? "วันที่ธนาคาร" : "วันที่ทำรายการ",
         amount: Math.round(amount * 100) / 100,
         direction: dep ? "deposit" : "withdraw",
         account: canonicalPm(ch.channel) || ch.terminal || "UNKNOWN",
@@ -714,7 +730,7 @@ const Formats = (() => {
         providerRef: sapanProviderId(note),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
         lateNight: boT.sec >= 82800,
-        minutePrecision: !boT.secPrecision,
+        minutePrecision: !matchT.secPrecision,
         raw: r.join(" | "),
       };
     },

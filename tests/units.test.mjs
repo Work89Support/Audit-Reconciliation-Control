@@ -206,8 +206,8 @@ for (const [token,dep,wit,direction] of [["D",100,0,"deposit"],["W",0,100,"withd
 {
   const r = Formats.parse("FR8_BO_D_2026-09-07.xlsx", [customerHeaders,
     [1,"2026-09-07 23:58:00","2026-09-08 00:03:00","ref","user","1262976366 | ชาญชัย ตนเล็ก",100,0,"4311918665 : Manual"]], "2026-09-07").records[0];
-  eq("BO main: reconciliation date uses transaction date", r?.date, "2026-09-07");
-  eq("BO main: reconciliation time uses transaction time", r?.sec, 23 * 3600 + 58 * 60);
+  eq("BO main System 123: reconciliation date uses bank date", r?.date, "2026-09-08");
+  eq("BO main System 123: reconciliation time uses bank time", r?.sec, 3 * 60);
   eq("BO main: bank date remains available for cross-day evidence", r?.bankDate, "2026-09-08");
   eq("BO main: different bank date marks cross-day evidence", r?.crossDay, true);
 }
