@@ -206,7 +206,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.69-sys123-last4-primary'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.70-sys123-notime-amount-only'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -214,7 +214,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.69-sys123-last4-primary'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.70-sys123-notime-amount-only'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -243,11 +243,12 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.69-sys123-last4-primary'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.70-sys123-notime-amount-only'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
 assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
 assert.match(workerText, /sys123_manual_bank_safe_close:true/, "worker summary must identify approved manual bank auto-close accounts");
 assert.match(workerText, /sys123_manual_bank_time_amount:true/, "worker summary must identify bank-time manual matching");
+assert.match(workerText, /sys123_notime_amount_only:true/, "worker summary must identify the System 123 BBL\/GSB no-time amount-only policy");
 assert.match(workerText, /sys123_customer_identity_tags:true/, "worker summary must identify last-four and customer-name evidence");
 assert.match(appSource, /ท้าย 4 \/ ชื่อลูกค้า/, "System 123 exception search must advertise customer identity tags");
 assert.match(appSource, /sys123CustomerTags/, "System 123 exception search must include customer identity evidence");
@@ -272,9 +273,12 @@ assert.match(workerText, /const exactPair=\/\^6aa/, "Sapan lifecycle must use ex
 assert.match(workerText, /strictCovered\.length===sides\.length/, "non-time-diff lifecycle closure must retain strict company and direction safeguards");
 assert.match(workerText, /currentExactTimePair=clean\(row\.ex_type\)==='time_diff'&&equalAmount&&sameAmountCovered\.length>0/, "an equal-amount legacy time_diff must close when the new run proves an exact provider-id and amount despite corrupted legacy metadata");
 assert.match(workerText, /\['3x','3xb','3xbet'\]\.includes\(c\)\?'3xb':c/, "Sapan lifecycle must normalize equivalent 3XB company labels before closing a matched legacy case");
-assert.match(workerText, /select=id,company,direction,ex_type,system_amount,bank_amount/, "Sapan lifecycle must load exception type before applying the time-diff closure rule");
-assert.match(workerText, /\['time_diff','missing_stm','missing_bo','cross_day','amount_diff'\]\.map/, "exact Sapan lifecycle closure must split reads by exception class so no class is hidden by the API row cap");
+assert.match(workerText, /select=id,company,account,direction,ex_type,system_amount,bank_amount/, "lifecycle closure must load account and exception type before applying exact evidence rules");
+assert.match(workerText, /\['time_diff','missing_stm','missing_bo','cross_day','amount_diff','manual_review'\]\.map/, "lifecycle closure must split reads by exception class so no class is hidden by the API row cap");
 assert.match(workerText, /ex_type=eq\.'\+encodeURIComponent\(\$json\.ex_type\)/, "each Sapan history request must read one exception class at a time");
+assert.match(workerText, /sys123NoTimeAmountKeys/, "lifecycle must index current System 123 no-time exact-amount evidence");
+assert.match(workerText, /exception_auto_closed_by_sys123_notime_amount/, "worker must audit closure of prior System 123 manual-review cases proved by no-time exact amount evidence");
+assert.match(workerText, /sys123-notime-exact-amount/, "worker must preserve the System 123 no-time closure rule on prior cases");
 assert.match(workerText, /onError\":\"continueRegularOutput\"/, "an audit-log write failure must not leave the daily reconciliation job running");
 assert.match(workerText, /xb_provider_id_raw_recovery:true/, "worker summary must identify raw XB provider-id recovery");
 assert.match(workerText, /xb_provider_signed_amount_close:true/, "worker summary must identify exact Sapan matching across signed BO amounts");

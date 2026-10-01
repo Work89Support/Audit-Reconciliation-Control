@@ -84,19 +84,25 @@ const ReviewOverview = (() => {
       const sourceText=[...new Set([c.description,c.note].filter(Boolean))].join(' | ');
       return [time,p ? (which==='bo'?p.boAmount??p.amount:p.stmAmount) : (which==='bo'?e.system_amount:e.bank_amount),c.account||'',c.last4||'',c.bank||'',c.name||(c.user?'User: '+c.user:''),c.user||'',c.reference||'',sourceText];
     };
-    const seconds=p?p.timeDifferenceSeconds:e?.bo_date&&e?.stm_date?e.time_diff_sec:null;
+    const pairHasTime=!!(p&&!p.bo?.noTime&&!p.stm?.noTime&&Number.isFinite(p.bo?.sec)&&Number.isFinite(p.stm?.sec));
+    const caseHasTime=!!(e?.bo_time&&e?.stm_time);
+    const seconds=pairHasTime?p.timeDifferenceSeconds:caseHasTime?e.time_diff_sec:null;
     const payout=p?.pmPayout?.partial ? ` · PM ${p.pmPayout.status}: คำขอ ${p.pmPayout.requested??'ไม่ระบุ'} / จ่ายจริง ${p.pmPayout.paid??'ไม่ระบุ'} / คงเหลือ ${p.pmPayout.unpaid??'ไม่ระบุ'} (ยังไม่ยืนยันยอดคืนหรือรายการต่อ)` : '';
     const noteReview=xbPayoutNote(row);
     const withinHour=!p&&e?.ex_type==='time_diff'&&/^\d{4}-\d{2}-\d{2}$/.test(e.bo_date||'')&&e.bo_date===e.stm_date
       &&typeof seconds==='number'&&Number.isFinite(seconds)&&Math.abs(seconds)<=3600;
     const reason=e?.status==='closed'?'Audit ยืนยันปิดแล้ว — ดูเหตุผลและหลักฐานการปิดเคส':withinHour?'เวลาอยู่ใน 60 นาที แต่ระบบยังไม่ยืนยันคู่ — ตรวจข้อมูลลูกค้า เลขอ้างอิง และคู่ซ้ำ':(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'');
-    return [p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
+    return [p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'ไม่มีเวลา':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
   }
   const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
   const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
   function columnValue(row,i) {
     if(i===26)return row.case?'เปิดหลักฐาน / เมล':'คู่สำเร็จ ยังไม่ยืนยัน Audit';
-    if(i===23)return row.pair?.timeDifferenceSeconds ?? (row.case?.bo_date&&row.case?.stm_date?row.case.time_diff_sec:null);
+    if(i===23){
+      const p=row.pair,e=row.case;
+      if(p)return !p.bo?.noTime&&!p.stm?.noTime&&Number.isFinite(p.bo?.sec)&&Number.isFinite(p.stm?.sec)?p.timeDifferenceSeconds:null;
+      return e?.bo_time&&e?.stm_time?e.time_diff_sec:null;
+    }
     return sheetRow(row)[i];
   }
   function filterColumns(rows,rules={},sort={column:5,direction:'asc'}) {
@@ -159,7 +165,8 @@ const ReviewOverview = (() => {
       const b=p ? timestamp(p.bo) : e.bo_date ? `${e.bo_date} ${e.bo_time || 'ไม่ระบุเวลา'}` : 'ไม่พบ BO';
       const s=p ? timestamp(p.stm) : e.stm_date ? `${e.stm_date} ${e.stm_time || 'ไม่ระบุเวลา'}` : 'ไม่พบ STM/PM';
       const why=p ? (p.method==='customer-account-amount-same-day-60m' ? 'บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที' : 'จับคู่ตามกฎเดิม — ตรวจหลักฐานประกอบ') : e.type_name || e.ex_type;
-      return `<tr><td><span class="badge ${row.category==='matched' || row.category==='closed' ? 'green':'orange'}">${escape(labels[row.category])}</span><small>${p?'คู่รายการ':escape(e.code)}</small></td><td>${escape(row.account)}<small>${row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท'}</small></td><td>${escape(b)}${customer(p?.customer?.bo || e?.customer_details?.bo)}</td><td class="right">${amount(p ? p.boAmount ?? p.amount : e.system_amount)}</td><td>${escape(s)}${customer(p?.customer?.stm || e?.customer_details?.stm)}</td><td class="right">${amount(p ? p.stmAmount : e.bank_amount)}</td><td>${p || (e.bo_date && e.stm_date) ? escape(p ? p.timeDifferenceSeconds : e.time_diff_sec)+' วินาที' : '—'}</td><td>${escape(why)}${p?.manualReview?'<p>เติมมือ: ยังต้องตรวจเอกสาร</p>':''}${p?`<details><summary>ที่มารายคู่</summary><p>BO แถว ${escape(p.bo?.row ?? 'ไม่ระบุ')} · ไฟล์ ${escape(p.bo?.fileId || 'ไม่ได้เก็บรหัสไฟล์')}</p><p>STM/PM แถว ${escape(p.stm?.row ?? 'ไม่ระบุ')} · ไฟล์ ${escape(p.stm?.fileId || 'ไม่ได้เก็บรหัสไฟล์')}</p></details>`:`<button class="ghost-button sm" data-overview-case="${escape(e.id)}">เปิดตรวจเคส</button>`}</td></tr>`;
+      const hasTime=p?(!p.bo?.noTime&&!p.stm?.noTime&&Number.isFinite(p.bo?.sec)&&Number.isFinite(p.stm?.sec)):!!(e.bo_time&&e.stm_time);
+      return `<tr><td><span class="badge ${row.category==='matched' || row.category==='closed' ? 'green':'orange'}">${escape(labels[row.category])}</span><small>${p?'คู่รายการ':escape(e.code)}</small></td><td>${escape(row.account)}<small>${row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท'}</small></td><td>${escape(b)}${customer(p?.customer?.bo || e?.customer_details?.bo)}</td><td class="right">${amount(p ? p.boAmount ?? p.amount : e.system_amount)}</td><td>${escape(s)}${customer(p?.customer?.stm || e?.customer_details?.stm)}</td><td class="right">${amount(p ? p.stmAmount : e.bank_amount)}</td><td>${hasTime ? escape(p ? p.timeDifferenceSeconds : e.time_diff_sec)+' วินาที' : 'ไม่มีเวลา'}</td><td>${escape(why)}${p?.manualReview?'<p>เติมมือ: ยังต้องตรวจเอกสาร</p>':''}${p?`<details><summary>ที่มารายคู่</summary><p>BO แถว ${escape(p.bo?.row ?? 'ไม่ระบุ')} · ไฟล์ ${escape(p.bo?.fileId || 'ไม่ได้เก็บรหัสไฟล์')}</p><p>STM/PM แถว ${escape(p.stm?.row ?? 'ไม่ระบุ')} · ไฟล์ ${escape(p.stm?.fileId || 'ไม่ได้เก็บรหัสไฟล์')}</p></details>`:`<button class="ghost-button sm" data-overview-case="${escape(e.id)}">เปิดตรวจเคส</button>`}</td></tr>`;
     }
     function rowHtml(row) {
       const cells=sheetRow(row);

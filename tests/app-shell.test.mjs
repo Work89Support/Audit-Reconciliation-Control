@@ -40,6 +40,11 @@ for (const field of ["company", "date", "account", "direction", "type", "status"
 assert.equal(groupReviewCases([{...baseCase, account: "-"}, {...baseCase, id: "b", account: "-"}]).length, 2);
 assert.equal(groupReviewCases([{...baseCase, overSla: true}])[0].overdue, 1);
 const sideTimestamp = extractFunction("exceptionSideTimestamp");
+const hasComparableExceptionTimes = extractFunction("hasComparableExceptionTimes");
+assert.equal(hasComparableExceptionTimes({boTime:"12:00:00",stmTime:"12:00:00"}),true);
+assert.equal(hasComparableExceptionTimes({boTime:"12:00:00",stmTime:null}),false,"BBL/GSB without STM time must not display a fabricated time difference");
+assert.match(app, /ต้นทางไม่มีเวลา — ไม่ใช้เวลาเป็นเงื่อนไข/);
+assert.match(app, /evidenceTimeDiffLabel\(e\)/);
 assert.match(app, /id="loadMoreCases"/);
 assert.match(app, /offset: moreCaseState.offset/);
 assert.match(app, /generation !== liveOverviewState.requestId/);

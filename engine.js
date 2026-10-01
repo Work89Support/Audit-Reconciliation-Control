@@ -1688,12 +1688,11 @@ const Engine = (() => {
     /* รายการฝากมือเป็นขั้นตอนปกติของแอดมินในระบบ 123 จึงไม่ควรเปิดเคสเพียง
        เพราะ BO ระบุว่าเติมมือ เมื่อคู่ STM/BO เดิมจับกันได้ด้วยยอดและเวลา
        ธนาคารจริงภายในกรอบ และหลักฐานท้าย 4 ตัว/ชื่อที่มีอยู่ไม่ขัดกัน
-       รายการยอดซ้ำต้องเป็นคู่เดียวแบบ reciprocal หรือมี identity ช่วยแยก
-       ส่วน BBL/GSB ที่ STM ไม่มีเวลา คงกฎอนุมัติเดิมแบบจำกัดบัญชีไว้. */
-    const sys123NoTimeManualAutoCloseAccounts = new Set([
-      'AT4|6517248040', // BBL นรวร D
+       ส่วน BBL/GSB ที่ STM ไม่มีเวลา ให้ใช้คู่ที่ Engine จับด้วยบริษัท + บัญชี
+       + วัน + ทิศทาง + ยอดตรงกัน โดยไม่บังคับเวลา/User/ชื่อ เพราะต้นทางไม่มี
+       หลักฐานเหล่านั้นให้ตรวจ. ยอดหรือจำนวนรายการที่เกินคู่จริงยังคงเป็นเคส. */
+    const sys123NoTimeManualGuardedAccounts = new Set([
       'AT4|2090879114', // KTB เบญจพร D
-      'SK8|6517249394', // BBL ดลยา D
     ]);
     const isManualBo = (row) => /เติม\s*มือ|เติมเอง|manual/i.test(String(row && (row.via || row.channel) || ''));
     const manualAutoCloseEligible = (m) => {
@@ -1703,7 +1702,6 @@ const Engine = (() => {
       if (m.b.isPmChannel || m.s.isPmChannel || m.b.direction !== 'deposit' || m.s.direction !== 'deposit') return false;
       if (!Number.isFinite(m.b.amount) || m.b.amount <= 0 || m.b.amount !== m.s.amount) return false;
       const identity = sys123BankCustomerIdentity(m.s, m.b);
-      if (sys123BankIdentityConflict(identity)) return false;
       const sameGroup = (row) => auditCompanyOf(row) === company
         && String(row.account || '').replace(/\D/g, '') === account
         && row.date === m.b.date && row.direction === 'deposit';
@@ -1711,6 +1709,7 @@ const Engine = (() => {
       const stmGroup = stmRecords.concat([...ktbNextDayCandidateMatched]).filter(sameGroup);
       const manualGroup = boGroup.filter(isManualBo);
       if (!m.s.noTime && !m.b.noTime && Number.isFinite(m.s.sec) && Number.isFinite(m.b.sec)) {
+        if (sys123BankIdentityConflict(identity)) return false;
         if (m.b.matchTimeColumn !== 'วันที่ธนาคาร' && !m.ktbNextDayBankTimeMatch) return false;
         if (m.dt > exactUniqueTol) return false;
         const timedCandidate = (left, right) => left.amount === right.amount
@@ -1725,16 +1724,14 @@ const Engine = (() => {
         m.sys123CustomerNameMatch = m.sys123CustomerNameMatch || identity.nameMatch;
         return true;
       }
-      if (!sys123NoTimeManualAutoCloseAccounts.has(`${company}|${account}`)) return false;
+      const noTimeBank = String(m.s.bank || m.s.channel || m.b.bank || m.b.channel || '').trim().toUpperCase();
+      if (noTimeBank === 'BBL' || noTimeBank === 'GSB') return true;
+      if (!sys123NoTimeManualGuardedAccounts.has(`${company}|${account}`)) return false;
+      if (sys123BankIdentityConflict(identity)) return false;
       const users = manualGroup.map((row) => identityText(row.memberCode));
       const amounts = manualGroup.map((row) => Number(row.amount).toFixed(2));
       const currentUser = identityText(m.b.memberCode);
       const currentAmount = Number(m.b.amount).toFixed(2);
-      /* Judge each matched manual row independently.  A duplicate elsewhere in
-         the same bank/day must not turn every otherwise-unambiguous row into a
-         review case.  The current row still stays open when its own user or
-         amount is duplicated, when the user is missing, or when STM has more
-         than one possible row for that amount. */
       if (!manualGroup.length || !currentUser) return false;
       if (users.filter((user) => user === currentUser).length !== 1) return false;
       if (amounts.filter((amount) => amount === currentAmount).length !== 1) return false;
@@ -1806,7 +1803,7 @@ const Engine = (() => {
         amount: m.b.amount,
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
-        timeDifferenceSeconds: m.dt,
+        timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
         method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
@@ -1882,7 +1879,7 @@ const Engine = (() => {
         bankAmount,
         amountDiff: sysAmount === null || bankAmount === null ? 0 : sysAmount - bankAmount,
         riskAmount,
-        timeDiffSec: Math.round(dt),
+        timeDiffSec: (s && s.noTime) || (b && b.noTime) ? null : Math.round(dt),
         type,
         typeName: TYPE_NAME[type],
         severity,

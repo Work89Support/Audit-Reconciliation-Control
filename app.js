@@ -510,6 +510,17 @@ function diffLabel(e) {
       return `<span class="danger">${money(e.riskAmount)}</span>`;
   }
 }
+function hasComparableExceptionTimes(e) {
+  return !!(e && e.boTime && e.stmTime && e.boTime !== "-" && e.stmTime !== "-");
+}
+function exceptionTimeDiffLabel(e) {
+  return hasComparableExceptionTimes(e) ? `${num(e.timeDiffSec)} วิ` : "ไม่มีเวลา";
+}
+function evidenceTimeDiffLabel(e) {
+  return e?.bo?.noTime || e?.stm?.noTime || !Number.isFinite(Number(e?.timeDifferenceSeconds))
+    ? "ไม่มีเวลา"
+    : `${num(e.timeDifferenceSeconds)} วินาที`;
+}
 const sumRisk = (list) => list.reduce((a, c) => a + (c.riskAmount || 0), 0);
 const severityColor = (s) => Charts.STATUS[s] || "#7c8ea2";
 const statusMeta = (code) => DB.statuses.find((s) => s.code === code) || { name: code, tone: "grey" };
@@ -599,14 +610,14 @@ async function completeQuickClose(e) {
   catch (err) { return toast("ตรวจหลักฐานล่าสุดไม่สำเร็จ: " + err.message, "warn"); }
   if (state.dataset === "production" && e._quickVerifiedStatus !== "open") return toast("สถานะเคสเปลี่ยนแล้ว กรุณาเปิดตรวจใหม่", "warn");
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
-  const note = "Audit ยืนยันคู่ BO/PM และปิดเคส — ยอมรับเวลาต่างหรือข้ามวัน ตรวจยอด อ้างอิงและคู่ซ้ำแล้ว; ยอด " + e.systemAmount + " บาท; ต่างเวลา " + e.timeDiffSec + " วินาที; BO: " + e.boRaw + "; PM: " + e.stmRaw;
+  const note = "Audit ยืนยันคู่ BO/PM และปิดเคส — ยอมรับเวลาต่างหรือข้ามวัน ตรวจยอด อ้างอิงและคู่ซ้ำแล้ว; ยอด " + e.systemAmount + " บาท; เวลา " + exceptionTimeDiffLabel(e) + "; BO: " + e.boRaw + "; PM: " + e.stmRaw;
   if (!await persistCaseClosure(e, note)) return;
   e.resolutionNote = note;
   e.resolvedAt = new Date().toISOString();
   e.resolvedBy = (typeof Sb !== "undefined" && Sb.signedIn() ? Sb.currentEmail() : "") || currentUser().username;
   e.notes = e.notes || [];
   e.notes.push({ by: currentUser().username, at: nowStamp(), text: note });
-  logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · ต่างเวลา ${num(e.timeDiffSec || 0)} วินาที`);
+  logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · เวลา ${exceptionTimeDiffLabel(e)}`);
   closeModal();
   closeDrawer();
   toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
@@ -683,7 +694,7 @@ function confirmBulkCaseClose(rows, {company, date, onComplete}) {
         progress:(done,count)=>{if(!cancelled && $('#bulkCaseProgress')) $('#bulkCaseProgress').textContent=`ตรวจแล้ว ${done}/${count} รายการ`;},
         save:async row=>{
           const e=mapLiveException(row);e.id=row.id;
-          const note=`Audit ยืนยันแบบหลายรายการ — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; ยอด ${e.systemAmount} บาท; ต่างเวลา ${e.timeDiffSec} วินาที; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
+          const note=`Audit ยืนยันแบบหลายรายการ — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; ยอด ${e.systemAmount} บาท; เวลา ${exceptionTimeDiffLabel(e)}; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
           return persistCaseClosure(e,note);
         },
       });
@@ -702,7 +713,7 @@ function confirmQuickClose(e) {
   if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
   openModal(
     `ยืนยันปิดเคส ${h(e.id)}`,
-    `<div class="quick-close-box"><strong>พบข้อมูลครบทั้งสองฝั่งและยอดตรงกัน</strong><div class="quick-close-grid"><div><span>STM / ธนาคาร</span><b>${money(e.bankAmount)}</b></div><div><span>BO / ระบบ</span><b>${money(e.systemAmount)}</b></div><div><span>ผลต่างยอด</span><b>${money(Number(e.systemAmount) - Number(e.bankAmount))}</b></div><div><span>ผลต่างเวลา</span><b>${num(e.timeDiffSec || 0)} วินาที</b></div></div><small>ระบบจะบันทึกผู้ยืนยัน เวลา และเหตุผลไว้ใน Audit Log การปิดนี้เป็นการตัดสินใจของผู้ตรวจ ไม่ใช่การปิดอัตโนมัติ</small></div>`,
+    `<div class="quick-close-box"><strong>พบข้อมูลครบทั้งสองฝั่งและยอดตรงกัน</strong><div class="quick-close-grid"><div><span>STM / ธนาคาร</span><b>${money(e.bankAmount)}</b></div><div><span>BO / ระบบ</span><b>${money(e.systemAmount)}</b></div><div><span>ผลต่างยอด</span><b>${money(Number(e.systemAmount) - Number(e.bankAmount))}</b></div><div><span>ผลต่างเวลา</span><b>${h(exceptionTimeDiffLabel(e))}</b></div></div><small>ระบบจะบันทึกผู้ยืนยัน เวลา และเหตุผลไว้ใน Audit Log การปิดนี้เป็นการตัดสินใจของผู้ตรวจ ไม่ใช่การปิดอัตโนมัติ</small></div>`,
     `<button class="ghost-button" id="quickCloseCancel">กลับไปตรวจ</button><button class="primary-button" id="quickCloseConfirm">ยืนยันยอดตรงและปิดเคส</button>`,
   );
   $("#quickCloseCancel").addEventListener("click", closeModal);
@@ -2603,7 +2614,7 @@ function renderDailyCompanySummary(root) {
       let direction = "deposit", page = 0;
       const draw = () => {
         const rows = evidence.filter(e => e.direction === direction);
-        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือทั่วไปต้องตรวจเอกสาร ยกเว้นบัญชีระบบ 123 ที่ผ่านกฎปิดอัตโนมัติซึ่ง Audit อนุมัติไว้</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(e.timeDifferenceSeconds)} วินาที</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : e.sys123ManualAutoClosed ? "<br>เติมมือ 123: ผ่านกฎปิดอัตโนมัติ" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
+        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือทั่วไปต้องตรวจเอกสาร ยกเว้นบัญชีระบบ 123 ที่ผ่านกฎปิดอัตโนมัติซึ่ง Audit อนุมัติไว้</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(evidenceTimeDiffLabel(e))}</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : e.sys123ManualAutoClosed ? "<br>เติมมือ 123: ผ่านกฎปิดอัตโนมัติ" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
         $("#matchedDeposit").onclick = () => { direction = "deposit"; page = 0; draw(); };
         $("#matchedWithdraw").onclick = () => { direction = "withdraw"; page = 0; draw(); };
         $("#matchedPrev").onclick = () => { page--; draw(); };
@@ -3132,7 +3143,7 @@ VIEWS.exceptions = (root) => {
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
       <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>${reviewCustomerHtml(e, "stm")}` : ""}</td>
       <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
-      <td class="right tnum">${hasStm && hasBo ? `${num(e.timeDiffSec)} วิ` : ""}</td>
+      <td class="right tnum">${hasStm && hasBo ? h(exceptionTimeDiffLabel(e)) : ""}</td>
       <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
       <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
       <td class="sheet-explanation ${explanation ? "answered" : "waiting"}">${explanation ? h(explanation) : "<span>เว้นไว้รอชี้แจง</span>"}</td>
@@ -3577,7 +3588,7 @@ async function openException(id, options = {}) {
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
         <div><span>บริษัท</span><b>${h(e.company || "ไม่ระบุ")}</b></div>
         <div><span>บัญชี / ทิศทาง</span><b>${h(e.account)} (${h(e.bank)}) · ${h(e.direction)}</b></div>
-        <div><span>ผลต่างเวลา</span><b>${e.timeDiffSec} วินาที</b></div>
+        <div><span>ผลต่างเวลา</span><b>${h(exceptionTimeDiffLabel(e))}</b></div>
         <div><span>ยอดระบบ (BO)</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
         <div><span>ยอดธนาคาร (STM)</span><b>${e.bankAmount === null ? "ไม่พบรายการ" : money(e.bankAmount)}</b></div>
         <div><span>ผลต่าง</span><b>${diffLabel(e)}</b></div>
@@ -3947,7 +3958,7 @@ VIEWS.matching = (root) => {
   };
   const checks = [
     { name: "Bank Account", ok: true, detail: `${e.account} ตรงกับ master list ของ ${e.company}` },
-    { name: "Time Window", ok: e.timeDiffSec <= tol, detail: `ต่างกัน ${e.timeDiffSec} วินาที · tolerance ${tol} วินาที` },
+    { name: "Time Window", ok: !hasComparableExceptionTimes(e) || e.timeDiffSec <= tol, detail: hasComparableExceptionTimes(e) ? `ต่างกัน ${e.timeDiffSec} วินาที · tolerance ${tol} วินาที` : "ต้นทางไม่มีเวลา — ไม่ใช้เวลาเป็นเงื่อนไข" },
     {
       name: "Amount",
       ok: e.bankAmount !== null && e.systemAmount !== null && Math.abs(e.amountDiff) < DB.settings.diffAlert,
@@ -7540,7 +7551,7 @@ const SHEET_BUILDERS = {
             statusMeta(e.status).name, e.id, e.date, e.company, e.direction, e.account,
             hasBo ? exceptionSideTimestamp(e, "bo") : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
             hasStm ? exceptionSideTimestamp(e, "stm") : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
-            hasStm && hasBo ? e.timeDiffSec : "", hasStm && hasBo ? e.amountDiff : "", result,
+            hasStm && hasBo ? exceptionTimeDiffLabel(e) : "", hasStm && hasBo ? e.amountDiff : "", result,
             explanation || "เว้นไว้รอชี้แจง", sevMeta(e.severity).name, dueOf(e).short, e.overSla ? "เกิน" : "ปกติ",
             ...["bo", "stm"].flatMap((side) => { const c = reviewCustomer(e, side); return [c.user, c.account, c.name, c.tail, c.reference]; }),
           ];

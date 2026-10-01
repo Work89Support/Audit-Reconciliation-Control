@@ -553,7 +553,9 @@ await (async () => {
     [rec({...base,amount:110,sec:0,rowNo:6101}),rec({...base,amount:110,sec:0,rowNo:6102})],
     [rec({...base,amount:110,sec:64000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6201}),rec({...base,amount:110,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-b',rowNo:6202})],
   );
-  eq('123 approved manual bank: duplicate amount remains review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+  eq('123 BBL no-time manual bank: duplicate exact amounts auto-close 1:1',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 BBL no-time manual bank: duplicate evidence records automatic close',r.matchEvidence.filter(e=>e.sys123ManualAutoClosed).length,2);
+  eq('123 BBL no-time manual bank: no artificial time difference in evidence',r.matchEvidence.every(e=>e.timeDifferenceSeconds===null),true);
 
   r=await run(
     [
@@ -569,8 +571,8 @@ await (async () => {
       rec({...base,amount:10,sec:66000,noTime:false,via:'เติมมือ',memberCode:'user-d',rowNo:6224}),
     ],
   );
-  eq('123 approved manual bank: duplicate amount does not contaminate unique rows',r.matchEvidence.filter(e=>e.sys123ManualAutoClosed).length,2);
-  eq('123 approved manual bank: only duplicate amount rows remain review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+  eq('123 BBL no-time manual bank: all exact amount pairs close including duplicates',r.matchEvidence.filter(e=>e.sys123ManualAutoClosed).length,4);
+  eq('123 BBL no-time manual bank: duplicate amount rows do not remain review',r.exceptions.filter(e=>e.type==='manual_review').length,0);
 
   r=await run(
     [rec({...base,amount:70,sec:0,rowNo:6231}),rec({...base,amount:50,sec:0,rowNo:6232})],
@@ -579,11 +581,26 @@ await (async () => {
       rec({...base,amount:50,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6242}),
     ],
   );
-  eq('123 approved manual bank: repeated user rows remain review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
+  eq('123 BBL no-time manual bank: repeated user does not block amount-only close',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+
+  r=await run(
+    [rec({...base,amount:80,sec:0,rowNo:6251}),rec({...base,amount:80,sec:0,rowNo:6252})],
+    [rec({...base,amount:80,sec:65000,noTime:false,via:'เติมมือ',memberCode:'user-a',rowNo:6261})],
+  );
+  eq('123 BBL no-time manual bank: close only the exact pair that exists',r.matchEvidence.filter(e=>e.sys123ManualAutoClosed).length,1);
+  eq('123 BBL no-time manual bank: unmatched surplus stays visible',r.exceptions.filter(e=>e.type==='missing_bo').length,1);
 
   const other={...base,account:'9999999999'};
   r=await run([rec({...other,amount:50,sec:0})],[rec({...other,amount:50,sec:100,noTime:false,via:'เติมมือ',memberCode:'user-c'})]);
-  eq('123 manual bank: account outside approved list remains review',r.exceptions.filter(e=>e.type==='manual_review').length,1);
+  eq('123 BBL no-time manual bank: account outside old allowlist also closes by exact amount',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+
+  const gsb={...base,account:'8888888888',bank:'GSB',channel:'GSB'};
+  r=await run([rec({...gsb,amount:60,sec:0})],[rec({...gsb,amount:60,sec:200,noTime:false,via:'เติมมือ',memberCode:'user-d'})]);
+  eq('123 GSB no-time manual bank: exact amount closes without time evidence',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+
+  const scb={...base,account:'7777777777',bank:'SCB',channel:'SCB'};
+  r=await run([rec({...scb,amount:70,sec:0})],[rec({...scb,amount:70,sec:300,noTime:false,via:'เติมมือ',memberCode:'user-e'})]);
+  eq('123 other no-time manual bank: unsupported bank remains review',r.exceptions.filter(e=>e.type==='manual_review').length,1);
 })();
 
 await (async () => {
