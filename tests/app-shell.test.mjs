@@ -152,6 +152,8 @@ assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/
 assert.match(app, /function dailyAuditSheetRows\(date\)[\s\S]+dailyCompanyState\.checklist[\s\S]+dailyCompanyState\.quality/, "ตารางทุกบริษัทต้องใช้ snapshot วันที่เดียวกับรายละเอียดรายบริษัท");
 assert.match(app, /const hasCurrentCounts = row\.open_count != null && row\.resolved_count != null/, "ตารางทุกบริษัทต้องใช้ยอดเคสปัจจุบันจาก lifecycle ไม่ฟื้นเคสเก่าจากยอดที่สร้างตอนรัน");
 assert.match(app, /const exceptionCount = hasCurrentCounts \? openCount \+ resolvedCount : generatedExceptionCount/, "ยอดสีแดงต้องเท่ากับเคสปัจจุบันเมื่อ checklist พร้อม");
+assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\.open_count[\s\S]+lifecycle\.resolved_count/, "รายการล่าสุดบนแดชบอร์ดต้องใช้ยอด lifecycle ชุดเดียวกับรายละเอียดรายบริษัท");
+assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสปัจจุบัน ไม่ใช่ยอดที่เคยสร้างทั้งหมด");
 assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "หน้ารายวันต้องโหลดผลทุกบริษัทเพื่อสร้างตารางภาพรวมจริง");
 assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
 assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");

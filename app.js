@@ -1528,8 +1528,19 @@ function renderLiveDashboard(root) {
   const needsReview = quality.filter((x) => x.status === "needs_review").length;
   const waiting = quality.filter((x) => x.status === "waiting_files").length;
   const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
+  const checklistInRange = (liveOverviewState.checklist || []).filter(inLiveRange);
+  const checklistByCompanyDate = new Map(checklistInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
+  const currentExceptionCount = (row) => {
+    const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+    return lifecycle?.open_count != null && lifecycle?.resolved_count != null
+      ? Number(lifecycle.open_count || 0) + Number(lifecycle.resolved_count || 0)
+      : Number(row.exception_count || 0);
+  };
   const hiddenExceptionTotal = (liveOverviewState.informationalExceptions || []).filter(inLiveRange).length;
-  const exceptionTotal = Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal - Number(liveOverviewState.matchedStaleExceptions || 0));
+  const hasLifecycleCounts = checklistInRange.some((row) => row.open_count != null && row.resolved_count != null);
+  const exceptionTotal = hasLifecycleCounts
+    ? checklistInRange.reduce((sum, row) => sum + Number(row.open_count || 0) + Number(row.resolved_count || 0), 0)
+    : Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal - Number(liveOverviewState.matchedStaleExceptions || 0));
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
   const dailyAvailable = Array.isArray(liveOverviewState.daily) && !hasLiveCoreError("ยอดเมลและไฟล์");
   const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
@@ -1691,8 +1702,10 @@ function renderLiveDashboard(root) {
       <div class="table-wrap"><table class="live-table">
         <thead><tr><th>วันที่</th><th>บริษัท / ระบบ</th><th>สถานะ</th><th class="right">ไฟล์</th><th>ไฟล์ที่ยังขาด</th><th>ผลกระทบยอด</th></tr></thead>
         <tbody>${recent.map((row) => {
-          const status = LIVE_STATUS[row.status] || { label: row.status || "ไม่ทราบ", tone: "grey" };
-          return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span></td><td class="right tnum">${num(row.file_count)}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(row.exception_count)} exception`}</td></tr>`;
+          const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+          const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
+          const status = LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
+          return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span></td><td class="right tnum">${num(row.file_count)}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสปัจจุบัน`}</td></tr>`;
         }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
       </table></div>
     </section>`;
