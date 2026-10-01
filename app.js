@@ -148,8 +148,9 @@ const AUDIT_COMPANY_GROUPS = Object.freeze([
     "รายการซ้ำก่อน/หลังเที่ยงคืนจับต่อได้เมื่อ identity ตรงและเป็นคู่เวลาใกล้ที่สุดภายใน 60 นาที; เก็บหลักฐานข้ามวันใน Audit Log",
     "STM ธนาคารปกติจับเวลากับคอลัมน์วันที่ธนาคารในรายงานฝาก/ถอน; BBL และ GSB ที่ไม่มีเวลาใช้บัญชี+วัน+ทิศทาง+ยอด",
     "รายการ KTB เวลา 23:00-23:59 ที่ธนาคารลงวันที่ถัดไป เก็บเป็น candidate และปิดได้เฉพาะเมื่อบัญชี ทิศทาง ยอด และเวลาธนาคารเป็นคู่ 1:1 กับ BO ของวันก่อนหน้า",
-    "ยอดตรงที่เวลาแตกต่างแต่ระบุคู่ได้ชัดเจนเป็นผลการจับคู่ ไม่ส่งให้ Audit ยืนยัน; รายการเติมมือทั่วไป หลักฐานขัดกัน หรือคู่กำกวมยังคงเป็นเคส",
-    "AT4 BBL นรวรฝาก, AT4 KTB เบญจพรฝาก และ SK8 BBL ดลยาฝาก: รายการเติมมือที่จับคู่ยอดตรง คนละยูส ยอดไม่ซ้ำ และยอด BO ไม่เกิน STM ปิดได้อัตโนมัติ",
+    "ยอดตรงที่เวลาแตกต่างแต่ระบุคู่ได้ชัดเจนเป็นผลการจับคู่ ไม่ส่งให้ Audit ยืนยัน; หลักฐานขัดกันหรือคู่กำกวมยังคงเป็นเคส",
+    "รายการฝากมือธนาคารปกติ: ใช้ยอดกับเวลาธนาคารใน BO จับคู่ STM; ท้าย 4 ตัวและชื่อลูกค้าใช้ช่วยแยกรายการซ้ำ และจะไม่เปิดเคสเพียงเพราะระบุว่าเติมมือ",
+    "BBL/GSB ที่ STM ไม่มีเวลา: AT4 BBL นรวรฝาก, AT4 KTB เบญจพรฝาก และ SK8 BBL ดลยาฝากยังใช้กฎเฉพาะแบบยอดไม่ซ้ำ คนละยูส และยอด BO ไม่เกิน STM",
     "STM ธนาคารปกติแยกชีตตามบัญชีและแยกฝาก (D) / ถอน (W)",
   ] },
   { id: "SYS7M", name: "เครือ 7M", status: "active", companies: ["UFABET7M"], rules: [
@@ -414,7 +415,9 @@ function filteredExceptions(source = DB.exceptions) {
     if (x.q) {
       const q = x.q.toLowerCase();
       const provider = typeof pmProviderOf === "function" ? pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) || "" : "";
-      const hay = `${e.id} ${e.code || ""} ${caseLabel(e)} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider}`.toLowerCase();
+      const sys123CustomerTags = ["AT4", "FR8", "SK8"].includes(String(e.company || "").toUpperCase())
+        ? JSON.stringify(e.customerDetails || {}) : "";
+      const hay = `${e.id} ${e.code || ""} ${caseLabel(e)} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider} ${sys123CustomerTags}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -2904,8 +2907,14 @@ function reviewAccountHtml(e) {
   const isPm = /^(AUTOPEER|ATP|AZPAY|COREPAY|CPXM|CYBERPLUS|MYPAY|12PAY|PM)$/i.test(account);
   const bo = reviewCustomer(e, "bo");
   const stm = reviewCustomer(e, "stm");
+  const isSys123 = ["AT4", "FR8", "SK8"].includes(String(e.company || "").toUpperCase());
+  const tails = [...new Set([bo.tail, stm.tail].filter(Boolean))];
+  const names = [...new Set([bo.name, stm.name].filter(Boolean))];
+  const searchTags = isSys123 && (tails.length || names.length)
+    ? `<small class="sub">${tails.map((tail) => `<span class="badge blue">ท้าย 4: ${h(tail)}</span>`).join(" ")} ${names.map((name) => `<span class="badge violet">ชื่อ: ${h(name)}</span>`).join(" ")}</small>`
+    : "";
   const customerBlock = (label, c) => `<span><b>${label}</b><br>เลขบัญชี: ${h(c.account || "ไม่ระบุในข้อมูลเคส")}<br>ชื่อลูกค้า: ${h(c.name || "ไม่ระบุในข้อมูลเคส")}<br>ท้าย 4 ตัว: <b>${h(c.tail || "ยังยืนยันไม่ได้")}</b></span>`;
-  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}${customerBlock("บัญชีลูกค้าใน BO", bo)}${customerBlock("บัญชีลูกค้าใน STM/PM", stm)}</div>`;
+  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${searchTags}${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}${customerBlock("บัญชีลูกค้าใน BO", bo)}${customerBlock("บัญชีลูกค้าใน STM/PM", stm)}</div>`;
 }
 function reviewCustomerHtml(e, side) {
   const c = reviewCustomer(e, side);
@@ -3164,7 +3173,7 @@ VIEWS.exceptions = (root) => {
       <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>กรองต่อจากวันที่และบริษัทด้านบน · เลือกแล้วรายการเปลี่ยนทันที</p></div>
       <div class="case-filter-fields">
         <label class="case-filter-search" for="exSearch">ค้นหาเคสหรือบัญชี
-        <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / สมาชิก / Provider" value="${h(x.q)}" /></label>
+        <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / ท้าย 4 / ชื่อลูกค้า / สมาชิก / Provider" value="${h(x.q)}" /></label>
         <label for="exStatus">สถานะงาน
         <select id="exStatus">
           <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>ยังต้องดำเนินการ (ไม่รวมปิดแล้ว)</option>

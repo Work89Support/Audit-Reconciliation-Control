@@ -4,19 +4,20 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.65-sys123-manual-row-scope";
-const PARSER_VERSION = "1.9.65-sys123-manual-row-scope";
-const [formats, rules, registry, engine, pdfOriginal] = await Promise.all([
+const WORKER_VERSION = "1.9.68-sys123-bank-time-manual";
+const PARSER_VERSION = "1.9.68-sys123-bank-time-manual";
+const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
   read("registry.js"),
   read("engine.js"),
   read("pdf-stm.js"),
+  read("tmn-visual-review.js"),
 ]);
 
 const pdf = pdfOriginal;
 
-const runtime = [formats, rules, registry, engine, pdf].join("\n\n");
+const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,providerNearTimeTolerance:600,sys123DuplicateTimeTolerance:3600,sys123FallbackTimeTolerance:3600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
 
 const normalizeCode = `${runtime}
@@ -26,16 +27,19 @@ const input=$input.all();
 let norm, rawRows=[], extractedText='';
 let parseError=null;
 let acceptedEmptyPm=false;
+const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
+const usedManualTmnReview=ext==='pdf'&&storedOcr?.provider==='tmn_visual_review_v1';
 const upstreamError=input.map(x=>x&&x.json&&x.json.error).find(Boolean);
-if(upstreamError){
+if(upstreamError&&!usedManualTmnReview){
   parseError='อ่านไฟล์ไม่สำเร็จ ('+file.file_name+'): '+String(upstreamError.message||upstreamError.description||upstreamError).slice(0,500);
 }
 try{
-  if(parseError){
+  if(usedManualTmnReview){
+    norm=TmnVisualReview.normalize(storedOcr,file,job);
+  }else if(parseError){
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
   }else if(ext==='pdf'||ext==='docx'){
     extractedText=input.map(x=>String((x&&x.json&&x.json.text)||'').trim()).filter(Boolean).join('\\n---OCR_IMAGE---\\n');
-    const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
     norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,job.business_date)
       || await PdfStm.parseText(file.file_name,extractedText,job.business_date);
   }else if(ext==='csv'){
@@ -138,7 +142,7 @@ if(acceptedEmptyBo&&!fatalReadError) parseError=null;
 if(acceptedEmptyStmPdf&&!fatalReadError) parseError=null;
 if(acceptedOutsideDayStmPdf&&!fatalReadError) parseError=null;
 if(acceptedEmptyStructuredPm&&!fatalReadError) parseError=null;
-if(!parseError&&(ext==='pdf'||ext==='docx')&&!pdfEvidence) parseError='ไม่พบข้อความใน Statement (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
+if(!parseError&&(ext==='pdf'||ext==='docx')&&!pdfEvidence&&!usedManualTmnReview) parseError='ไม่พบข้อความใน Statement (อาจเป็นไฟล์สแกนหรือไฟล์เสีย)';
 if(!parseError&&ext==='csv'&&nonEmptyRows===0&&!acceptedEmptyPm&&Number(file.size_bytes||0)>16) parseError='ดาวน์โหลดไฟล์แล้ว แต่โหนดอ่าน CSV ไม่คืนข้อมูล (ตรวจ encoding หรือขั้นตอนส่งต่อใน n8n)';
 if(!parseError&&ext!=='pdf'&&ext!=='docx'&&nonEmptyRows===0&&!acceptedEmptyPm) parseError='ไฟล์ตารางว่างหรือไม่มีหัวตาราง';
 if(!parseError&&ext!=='pdf'&&ext!=='docx'&&detectedSource==='unknown'&&!acceptedEmptyBo) parseError='ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก';
@@ -204,7 +208,7 @@ for(const r of (norm.records||[])){
   }
 }
 for(const r of (norm.aux||[])){ if(!r.company) r.company=fallbackCompany; r.subco=fallbackCompany; }
-return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:reportedRowCount,attempted_row_count:attemptedRows,candidate_row_count:candidateRows,ocr_input_count:ocrInputCount,ocr_page_count:ocrPageCount,ocr_errors:ocrErrors,extracted_row_count:(ext==='pdf'||ext==='docx')?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
+return [{json:{job,file,format:norm.format,detected_source:detectedSource,records:norm.records||[],aux:norm.aux||[],parsed:!parseError,row_count:reportedRowCount,attempted_row_count:attemptedRows,candidate_row_count:candidateRows,ocr_input_count:ocrInputCount,ocr_page_count:ocrPageCount,ocr_errors:ocrErrors,extracted_row_count:usedManualTmnReview?attemptedRows:(ext==='pdf'||ext==='docx')?extractedText.split(/\\r?\\n/).filter(s=>s.trim()).length:nonEmptyRows,parse_error:parseError,pdf_quality:norm.quality||null,warnings:norm.warnings||[],dropped:norm.dropped||{},parser_version:'${PARSER_VERSION}'},pairedItem:{item:0}}];`;
 
 const reconcileCode = `${formats}\n\n${rules}\n\n${registry}\n\n${engine}
 const files=$input.all().map(x=>x.json).filter(x=>x&&x.file);
@@ -324,7 +328,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_manual_bank_safe_close:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_manual_bank_safe_close:true,sys123_manual_bank_time_amount:true,sys123_customer_identity_tags:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
@@ -351,6 +355,10 @@ const deployedReconcileCode = reconcileCode
   .replace(
     "xb_provider_signed_amount_close:true,",
     "xb_provider_signed_amount_close:true,xb_provider_duplicate_rows_suppressed:result.xbProviderDuplicateRowsSuppressed||0,",
+  )
+  .replace(
+    "seven_m_tmn_ocr_reciprocal_repair:true,",
+    "seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_exact_amount_first:true,seven_m_tmn_duplicate_rows_suppressed:result.tmnOcrDuplicateRowsSuppressed||0,",
   )
   .replace(
     "non_success_pm_zero_eligible:true,",
@@ -403,6 +411,7 @@ return [{json:{text,pdf_readable:readable,native_quality:diagnostics,numpages:so
 const nodes = [
   { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80] },
   { parameters: {}, id: "manual", name: "ทดสอบด้วยมือ", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [-1040, 240] },
+  { parameters: { inputSource: "passthrough" }, id: "a19bc85c-c123-4897-a385-c2a65bac7a15", name: "รับงานจากรอบตรวจ", type: "n8n-nodes-base.executeWorkflowTrigger", typeVersion: 1.1, position: [-1040, 400] },
   { ...http("queue", "Supabase: ตรวจไฟล์และจัดคิว", [-820, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
@@ -445,6 +454,8 @@ const nodes = [
   }),
   { parameters: { jsCode: "const item=$input.first(); const meta=$('วนทีละไฟล์').item.json; const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบข้อมูลไฟล์ '+meta.file.file_name); binary.data={...binary.data,fileName:meta.file.file_name,fileExtension:meta.file.ext}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, id: "restore-original-file-name", name: "คืนชื่อไฟล์ต้นฉบับ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1090, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-statement-document", leftValue: "={{ ['pdf','docx'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-reviewed-tmn-pdf", leftValue: "={{ (()=>{const f=$('วนทีละไฟล์').item.json.file;const o=Array.isArray(f.source_file_ocr)?f.source_file_ocr[0]:f.source_file_ocr;return f.ext==='pdf'&&o?.provider==='tmn_visual_review_v1';})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-reviewed-tmn", name: "TMN ตรวจภาพครบแล้ว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1310, 220] },
+  { parameters: { jsCode: "return [{json:{text:'',manual_visual_review:true},pairedItem:{item:0}}];" }, id: "use-reviewed-tmn", name: "ใช้รายการ TMN ที่ตรวจภาพ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 120] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
   { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF โดยตรง", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 220], onError: "continueRegularOutput" },
   { parameters: { jsCode: nativePdfProbe }, id: "probe-native-pdf", name: "ตรวจรายการ PDF ก่อน OCR", type: "n8n-nodes-base.code", typeVersion: 2, position: [1530, 220] },
@@ -572,6 +583,7 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
 const connections = {
   "ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
+  "รับงานจากรอบตรวจ": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
   "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "Supabase: คืนคิวที่สั่งรันใหม่", type: "main", index: 0 }]] },
   "Supabase: คืนคิวที่สั่งรันใหม่": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
   "รวมเป็นหนึ่งรอบ": { main: [[{ node: "Supabase: จองหนึ่งงาน", type: "main", index: 0 }]] },
@@ -582,7 +594,9 @@ const connections = {
   "วนทีละไฟล์": { main: [[{ node: "กระทบยอดและสร้าง Exception", type: "main", index: 0 }], [{ node: "ดาวน์โหลดไฟล์จาก Storage", type: "main", index: 0 }]] },
   "ดาวน์โหลดไฟล์จาก Storage": { main: [[{ node: "คืนชื่อไฟล์ต้นฉบับ", type: "main", index: 0 }]] },
   "คืนชื่อไฟล์ต้นฉบับ": { main: [[{ node: "เป็น PDF?", type: "main", index: 0 }]] },
-  "เป็น PDF?": { main: [[{ node: "อ่าน PDF โดยตรง", type: "main", index: 0 }], [{ node: "เป็น Excel?", type: "main", index: 0 }]] },
+  "เป็น PDF?": { main: [[{ node: "TMN ตรวจภาพครบแล้ว?", type: "main", index: 0 }], [{ node: "เป็น Excel?", type: "main", index: 0 }]] },
+  "TMN ตรวจภาพครบแล้ว?": { main: [[{ node: "ใช้รายการ TMN ที่ตรวจภาพ", type: "main", index: 0 }], [{ node: "อ่าน PDF โดยตรง", type: "main", index: 0 }]] },
+  "ใช้รายการ TMN ที่ตรวจภาพ": { main: [[{ node: "แปลงรายการเป็นมาตรฐาน", type: "main", index: 0 }]] },
   "เป็น Excel?": { main: [[{ node: "อ่าน Excel", type: "main", index: 0 }], [{ node: "อ่าน CSV", type: "main", index: 0 }]] },
   "อ่าน PDF โดยตรง": { main: [[{ node: "ตรวจรายการ PDF ก่อน OCR", type: "main", index: 0 }]] },
   "ตรวจรายการ PDF ก่อน OCR": { main: [[{ node: "PDF มีข้อความ?", type: "main", index: 0 }]] },

@@ -60,7 +60,13 @@ with settings as (
     select count(*)::integer exception_count,
            count(*) filter(where status in ('closed','approved'))::integer resolved_count,
            count(*) filter(where status not in ('closed','approved'))::integer open_count
-    from public.exceptions where run_id=j.last_run_id
+    -- Count only the native, current lifecycle rows.  Carry rows (-C...) are
+    -- retained for audit history, and superseded rows remain traceable, but
+    -- neither represents an actionable exception in the latest run.
+    from public.exceptions
+    where run_id=j.last_run_id
+      and superseded_by_exception_id is null
+      and code not like '%-C%'
   ) e
   where j.business_date between p_from and p_to and not j.is_archived
     and (p_company is null or p_company='ALL' or upper(j.company)=p_company)

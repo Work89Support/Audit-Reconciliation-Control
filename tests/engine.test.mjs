@@ -587,6 +587,27 @@ await (async () => {
 })();
 
 await (async () => {
+  const base={company:'FR8',subco:'FR8',account:'4311918665',bank:'SCB',channel:'MANUAL',direction:'deposit',date:'2026-09-30',noTime:false};
+  const stm=rec({...base,amount:1000,sec:1*3600+28*60,custAccountLast4:'9749',custName:'นาย ประวร วิริชัยชนะ'});
+  const bo=rec({...base,amount:1000,sec:1*3600+28*60+15,via:'เติมมือ',matchTimeColumn:'วันที่ธนาคาร',custAccount:'020117889749',custName:'ประวร วิริชัยชนะ'});
+  let r=await run([stm],[bo],{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: matched bank time is not a review case',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 timed manual bank: auto-close evidence recorded',r.matchEvidence[0]?.sys123ManualBankTimeMatched,true);
+  eq('123 timed manual bank: last four recorded',r.matchEvidence[0]?.sys123CustomerLast4Matched,true);
+  eq('123 timed manual bank: customer name recorded',r.matchEvidence[0]?.sys123CustomerNameMatched,true);
+  eq('123 timed manual bank: auditable method',r.matchEvidence[0]?.method,'sys123-manual-bank-time-amount');
+
+  r=await run([stm],[{...bo,custName:'คนละ ชื่อ'}],{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: conflicting customer name does not auto-match',r.matched,0);
+
+  const stm2=rec({...stm,rowNo:7102,sec:1*3600+29*60,custAccountLast4:'2352',custName:'นาย วรุฒ พรหมมา'});
+  const bo2=rec({...bo,rowNo:7202,sec:1*3600+29*60+10,custAccount:'02832492352',custName:'วรุฒ พรหมมา'});
+  r=await run([stm,stm2],[bo2,bo],{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: duplicate amounts separated by last four and name',r.matched,2);
+  eq('123 timed manual bank: both identity-assisted manual rows close',r.matchEvidence.filter(e=>e.sys123ManualBankTimeMatched).length,2);
+})();
+
+await (async () => {
   const s=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,ktbNextDayCandidateOnly:true});
   const b=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,crossDay:true,boDate:'2026-09-28',bankDate:'2026-09-29',matchTimeColumn:'วันที่ธนาคาร'});
   let r=await run([s],[b]);
@@ -921,6 +942,41 @@ await (async () => {
     eq(`7M TMN OCR amount: ${ocrAmount} แก้กลับเป็น ${actualAmount} เมื่อ BO ยืนยันคู่เดียว`, r.matched, 1);
     eq(`7M TMN OCR amount: ${ocrAmount} เก็บวิธีแก้ที่สอบทานได้`, r.matchEvidence[0]?.method, 'seven-m-tmn-ocr-amount-reciprocal');
   }
+  for (const [large, small, largeSec, smallSec] of [
+    [1000, 100, 23 * 3600 + 51 * 60, 23 * 3600 + 52 * 60],
+    [500, 50, 14 * 3600 + 37 * 60, 14 * 3600 + 38 * 60],
+  ]) {
+    const exactRows = await run(
+      [tmn(large, largeSec), tmn(small, smallSec)],
+      [bo(large, largeSec), bo(small, smallSec)],
+    );
+    eq(`7M TMN exact-first: ${large}/${small} ไม่ถูกซ่อม OCR ไขว้กัน`, exactRows.matched, 2);
+    ok(`7M TMN exact-first: ${large}/${small} จับยอดเดียวกันทั้งสองคู่`,
+      exactRows.matchEvidence.every((e) => e.stmAmount === e.boAmount), JSON.stringify(exactRows.matchEvidence));
+    eq(`7M TMN exact-first: ${large}/${small} ไม่มี OCR amount correction`,
+      exactRows.matchEvidence.filter((e) => e.tmnOcrAmountCorrected).length, 0);
+  }
+
+  const duplicateSource = await run(
+    [
+      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', raw: '03:58 deposit 10.00 same customer' }),
+      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', raw: '03:58 deposit 10.00 same customer' }),
+    ],
+    [bo(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA' })],
+  );
+  eq('7M TMN duplicate OCR: แถวเดียวกันจาก DOCX เดียวถูกนับครั้งเดียว', duplicateSource.stmCount, 1);
+  eq('7M TMN duplicate OCR: รายงานจำนวนแถวที่ตัดอย่างตรวจสอบได้', duplicateSource.tmnOcrDuplicateRowsSuppressed, 1);
+  eq('7M TMN duplicate OCR: คู่จริงยังปิดได้', duplicateSource.matched, 1);
+
+  const missingUnreadable = await run(
+    [tmn(50, 8 * 3600, { account: 'TMN-SORAWISA' })],
+    [
+      bo(50, 8 * 3600, { account: 'TMN-SORAWISA' }),
+      bo(1000, 7 * 3600 + 7 * 60, { account: 'TMN-SORAWISA' }),
+    ],
+  );
+  eq('7M TMN unreadable STM: BO 1,000 เวลา 07:07 ไม่หายจากผลเทียบ',
+    missingUnreadable.exceptions.filter((e) => e.type === 'missing_stm' && e.systemAmount === 1000).length, 1);
   const decimal = await run([tmn(280.41, 2 * 3600 + 3 * 60)], [bo(280, 2 * 3600 + 3 * 60)]);
   eq('7M TMN OCR amount: 280.41 กับ 280 ไม่ถูกแก้เดา', decimal.matched, 0);
   ok('7M TMN OCR amount: ส่วนต่างทศนิยมยังเป็นเคสให้ตรวจ', decimal.exceptions.length > 0);

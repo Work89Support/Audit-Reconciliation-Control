@@ -6,7 +6,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const worker = JSON.parse(await readFile(path.join(root, 'n8n/audit-headless-worker.json'), 'utf8'));
 // Separate staged artifact: do not disable the production timer until the parent is tested.
 worker.nodes.find(n => n.id === 'schedule').disabled = true;
-worker.nodes.push({id:'round-subworkflow',name:'รับงานจากรอบตรวจ',type:'n8n-nodes-base.executeWorkflowTrigger',typeVersion:1.1,position:[-1040,400],parameters:{inputSource:'passthrough'}});
+if (!worker.nodes.some(n => n.name === 'รับงานจากรอบตรวจ')) {
+  worker.nodes.push({id:'round-subworkflow',name:'รับงานจากรอบตรวจ',type:'n8n-nodes-base.executeWorkflowTrigger',typeVersion:1.1,position:[-1040,400],parameters:{inputSource:'passthrough'}});
+}
 worker.connections['รับงานจากรอบตรวจ']={main:[[{node:'รวมเป็นหนึ่งรอบ',type:'main',index:0}]]};
 worker.nodes.find(n => n.id === 'claim').alwaysOutputData = true;
 worker.nodes.find(n => n.id === 'summary').parameters.jsCode = "const job=$('Supabase: จองหนึ่งงาน').first().json; return [{json:{worked:!!job.id,job_id:job.id||null,finished_at:new Date().toISOString()}}];";

@@ -445,6 +445,14 @@ const Engine = (() => {
     const absoluteAmount = (row) => ({ ...row, amount: Math.abs(Number(row && row.amount) || 0) });
     stmRecords = stmRecords.map(absoluteAmount).map(statementCustomer);
     boRecords = boRecords.map(absoluteAmount);
+    const auditCompanyOf = (r) => {
+      /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
+      const raw = String(r && (r.subco || r.company) || "").trim().toUpperCase();
+      return raw === "3X" ? "3XB" : raw;
+    };
+    const isSevenMTmnOcr = (r) => ['7M', 'UFABET7M'].includes(auditCompanyOf(r))
+      && !r.isPmChannel && !!r.ocrWalletScreenshot
+      && /^(?:TMN|TRUEMONEY)$/.test(String(r.channel || r.bank || "").trim().toUpperCase());
     /* Provider exports can be attached more than once while carrying the same
        immutable `_id`. If those duplicate rows enter the matcher together,
        the 1:1 guard rejects the real Sapan pair and a later generic time pass
@@ -463,6 +471,26 @@ const Engine = (() => {
       }
       if (prior.amount !== amount) return true;
       xbProviderDuplicateRowsSuppressed++;
+      return false;
+    });
+    /* A DOCX can contain overlapping phone screenshots of the same TMN row.
+       The OCR service then emits that exact transaction twice from one source
+       file.  Collapse only byte-equivalent transaction evidence from the same
+       source file; rows with a different description, amount, time or source
+       remain separate because TMN has no immutable transaction id. */
+    const tmnOcrSeen = new Set();
+    let tmnOcrDuplicateRowsSuppressed = 0;
+    stmRecords = stmRecords.filter((row) => {
+      if (!isSevenMTmnOcr(row)) return true;
+      const sourceId = String(row.source_file_id || "").trim();
+      const rawEvidence = identityText(row.raw);
+      if (!sourceId || !rawEvidence) return true;
+      const key = [sourceId, recordKey(row), rawEvidence].join("|");
+      if (!tmnOcrSeen.has(key)) {
+        tmnOcrSeen.add(key);
+        return true;
+      }
+      tmnOcrDuplicateRowsSuppressed++;
       return false;
     });
     // TMN Word screenshots can contain the right transaction under a calendar
@@ -535,15 +563,7 @@ const Engine = (() => {
     let timeDiffCount = 0;
     const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
-    const auditCompanyOf = (r) => {
-      /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
-      const raw = String(r && (r.subco || r.company) || "").trim().toUpperCase();
-      return raw === "3X" ? "3XB" : raw;
-    };
     const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase();
-    const isSevenMTmnOcr = (r) => ['7M', 'UFABET7M'].includes(auditCompanyOf(r))
-      && !r.isPmChannel && !!r.ocrWalletScreenshot
-      && /^(?:TMN|TRUEMONEY)$/.test(String(r.channel || r.bank || "").trim().toUpperCase());
     const plausibleTmnOcrAmount = (ocrAmount, boAmount) => {
       if (!Number.isInteger(ocrAmount) || !Number.isInteger(boAmount) || ocrAmount <= boAmount || boAmount <= 0) return false;
       const ratio = ocrAmount / boAmount;
@@ -615,10 +635,36 @@ const Engine = (() => {
     const tmnOcrAmountMatched = new Set();
     const tmnOcrAmountCandidates = new Map();
     const tmnOcrAmountPeers = new Map();
+    /* Exact amount evidence owns its BO row before OCR amount repair.  Without
+       this reservation, 1,000 at 23:51 can be interpreted as a ten-times OCR
+       error against BO 100 at 23:52 and steal the row from the real STM 100;
+       the same defect crosses 500/50. */
+    const tmnExactAmountClaims = new Map();
+    const tmnExactAmountPeers = new Map();
     stmRecords.forEach((s) => {
       if (!isSevenMTmnOcr(s) || internalTransferMatched.has(s)) return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || []).filter((i) => {
+        if (boUsed[i]) return false;
+        const b = boRecords[i];
+        return sameCompany(s, b) && s.date === b.date && s.direction === b.direction
+          && Number.isFinite(s.sec) && Number.isFinite(b.sec) && timeDistance(s, b) <= 60;
+      });
+      tmnExactAmountClaims.set(s, rows);
+      rows.forEach((i) => {
+        let peers = tmnExactAmountPeers.get(i);
+        if (!peers) tmnExactAmountPeers.set(i, (peers = []));
+        peers.push(s);
+      });
+    });
+    stmRecords.forEach((s) => {
+      if (!isSevenMTmnOcr(s) || internalTransferMatched.has(s)) return;
+      if ((tmnExactAmountClaims.get(s) || []).length) {
+        tmnOcrAmountCandidates.set(s, []);
+        return;
+      }
       const candidates = (accIdx.get(s.account) || []).filter((i) => {
         if (boUsed[i]) return false;
+        if ((tmnExactAmountPeers.get(i) || []).length) return false;
         const b = boRecords[i];
         return sameCompany(s, b) && s.date === b.date && s.direction === b.direction
           && Number.isFinite(s.sec) && Number.isFinite(b.sec) && timeDistance(s, b) <= 60
@@ -1098,20 +1144,51 @@ const Engine = (() => {
       const value = String(r.custAccount || "").trim().replace(/[\s-]/g, "");
       return /^\d{5,}$/.test(value) ? value : "";
     };
-    const identityCandidate = (s, b) => sameCompany(s, b) && !!String(s.company || s.subco || "").trim()
-      && !isSys123PmPair(s, b)
-      && !xbProviderRefConflict(s, b)
-      && !xbMemberConflict(s, b)
-      && s.date === b.date && isIsoDate(s.date)
-      && !!s.direction && s.direction === b.direction && s.account === b.account
-      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
-      && !!customerAccount(b)
-      && (customerAccount(s) ? customerAccount(s) === customerAccount(b)
-        : /^\d{4}$/.test(s.custAccountLast4 || '') && customerAccount(b).endsWith(s.custAccountLast4))
-      && (!s.custBank || !b.custBank || String(s.custBank).toUpperCase().replace('KBNK','KBANK') === String(b.custBank).toUpperCase().replace('KBNK','KBANK'))
-      && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
-      && s.sec >= 0 && s.sec < 86400 && b.sec >= 0 && b.sec < 86400
-      && (timeVarianceAutoPassCompanies.has(auditCompanyOf(s)) || timeDistance(s, b) <= 3600);
+    const customerNameIdentity = (value) => String(value || "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/^(?:นาย|นางสาว|นาง|น\.\s*ส\.|mr\.?|mrs\.?|miss)\s*/i, "")
+      .replace(/[^a-z0-9ก-๙]+/g, "");
+    const customerTail = (row) => {
+      const full = customerAccount(row);
+      if (full) return full.slice(-4);
+      const tail = String(row && row.custAccountLast4 || "").replace(/\D/g, "");
+      return /^\d{4}$/.test(tail) ? tail : "";
+    };
+    const isSys123NormalBankPair = (s, b) => sys123Companies.has(auditCompanyOf(s))
+      && sys123Companies.has(auditCompanyOf(b)) && !s.isPmChannel && !b.isPmChannel;
+    const sys123BankCustomerIdentity = (s, b) => {
+      const stmTail = customerTail(s), boTail = customerTail(b);
+      const stmName = customerNameIdentity(s && s.custName), boName = customerNameIdentity(b && b.custName);
+      return {
+        tailMatch: !!stmTail && !!boTail && stmTail === boTail,
+        tailConflict: !!stmTail && !!boTail && stmTail !== boTail,
+        nameMatch: stmName.length >= 4 && stmName === boName,
+        nameConflict: stmName.length >= 4 && boName.length >= 4 && stmName !== boName,
+      };
+    };
+    const identityCandidate = (s, b) => {
+      if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
+      if (isSys123PmPair(s, b) || xbProviderRefConflict(s, b) || xbMemberConflict(s, b)) return false;
+      if (s.date !== b.date || !isIsoDate(s.date)) return false;
+      if (!s.direction || s.direction !== b.direction || s.account !== b.account) return false;
+      if (!Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
+      if (s.noTime || b.noTime || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)) return false;
+      if (s.sec < 0 || s.sec >= 86400 || b.sec < 0 || b.sec >= 86400) return false;
+      const bankConflict = !!s.custBank && !!b.custBank
+        && String(s.custBank).toUpperCase().replace('KBNK','KBANK') !== String(b.custBank).toUpperCase().replace('KBNK','KBANK');
+      if (bankConflict) return false;
+      if (isSys123NormalBankPair(s, b)) {
+        const identity = sys123BankCustomerIdentity(s, b);
+        if (identity.tailConflict || identity.nameConflict) return false;
+        return (identity.tailMatch || identity.nameMatch) && timeDistance(s, b) <= exactUniqueTol;
+      }
+      const boAccount = customerAccount(b), stmAccount = customerAccount(s);
+      if (!boAccount) return false;
+      if (stmAccount ? stmAccount !== boAccount
+        : !/^\d{4}$/.test(s.custAccountLast4 || '') || !boAccount.endsWith(s.custAccountLast4)) return false;
+      return timeVarianceAutoPassCompanies.has(auditCompanyOf(s)) || timeDistance(s, b) <= 3600;
+    };
     const identityMatched = new Set();
     const identityAmbiguous = new Set();
     // Count on original inputs on BOTH sides, before consumption, to avoid order-dependent matches.
@@ -1129,12 +1206,22 @@ const Engine = (() => {
       }
       boUsed[i] = 1;
       identityMatched.add(s);
-      matched.push({ s, b, dt: timeDistance(s, b), customerIdentityMatch: true });
+      const sys123Identity = isSys123NormalBankPair(s, b) ? sys123BankCustomerIdentity(s, b) : null;
+      matched.push({
+        s, b, dt: timeDistance(s, b), customerIdentityMatch: true,
+        sys123BankIdentityMatch: !!sys123Identity,
+        sys123CustomerLast4Match: !!sys123Identity?.tailMatch,
+        sys123CustomerNameMatch: !!sys123Identity?.nameMatch,
+      });
     }
     const dirOK = (s, b) => {
       if (identityAmbiguous.has(s) || identityAmbiguous.has(b)) return false;
       if (xbProviderRefConflict(s, b)) return false;
       if (xbMemberConflict(s, b)) return false;
+      if (isSys123NormalBankPair(s, b)) {
+        const identity = sys123BankCustomerIdentity(s, b);
+        if (identity.tailConflict || identity.nameConflict) return false;
+      }
       if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
           && providerIdentityConflict(s, b)) return false;
       /* คู่ PM 7M ที่ปลอดภัยถูกใช้ไปแล้วใน provider identity / reciprocal
@@ -1326,6 +1413,10 @@ const Engine = (() => {
       const sa = customerAccount(s), ba = customerAccount(b);
       if (sa && ba && sa !== ba) return true;
       if (!sa && /^\d{4}$/.test(s.custAccountLast4 || "") && ba && !ba.endsWith(s.custAccountLast4)) return true;
+      if (isSys123NormalBankPair(s, b)) {
+        const identity = sys123BankCustomerIdentity(s, b);
+        if (identity.tailConflict || identity.nameConflict) return true;
+      }
       const sb = String(s.custBank || "").toUpperCase().replace("KBNK", "KBANK");
       const bb = String(b.custBank || "").toUpperCase().replace("KBNK", "KBANK");
       return !!(sb && bb && sb !== bb);
@@ -1397,11 +1488,6 @@ const Engine = (() => {
        ตั้งใจไม่จับไว้ก่อน ขั้นนี้กู้เฉพาะคู่ที่ปลอดภัยด้วยชื่อเต็มที่ตรงกัน +
        account บริษัท/ยอด/ทิศทาง/วันเดียวกัน และ reciprocal nearest ไม่เกิน
        10 นาที รองรับยอดซ้ำที่จำนวนสองฝั่งไม่เท่ากันโดยเหลือเฉพาะส่วนต่างจริง */
-    const customerNameIdentity = (value) => String(value || "")
-      .normalize("NFKC")
-      .toLowerCase()
-      .replace(/^(?:นาย|นางสาว|นาง|น\.\s*ส\.|mr\.?|mrs\.?|miss)\s*/i, "")
-      .replace(/[^a-z0-9ก-๙]+/g, "");
     const fr8BankNameCandidate = (s, b) => {
       if (auditCompanyOf(s) !== "FR8" || auditCompanyOf(b) !== "FR8") return false;
       if (s.isPmChannel || b.isPmChannel || !sameCompany(s, b)) return false;
@@ -1593,12 +1679,12 @@ const Engine = (() => {
       else if (boTail && stmTail && boTail !== stmTail) exceptions.push(mkException("wrong_account", m.s, m.b, m.dt));
     });
 
-    /* Manual credits normally remain documentary-review cases. Audit approved
-       a narrow System 123 exception for three ordinary-bank deposit accounts:
-       each pair must already match, users and amounts in the manual BO group
-       must be non-empty/unique, and total BO for that account/day/direction may
-       not exceed STM. Any ambiguity keeps the manual_review case. */
-    const sys123ManualAutoCloseAccounts = new Set([
+    /* รายการฝากมือเป็นขั้นตอนปกติของแอดมินในระบบ 123 จึงไม่ควรเปิดเคสเพียง
+       เพราะ BO ระบุว่าเติมมือ เมื่อคู่ STM/BO เดิมจับกันได้ด้วยยอดและเวลา
+       ธนาคารจริงภายในกรอบ และหลักฐานท้าย 4 ตัว/ชื่อที่มีอยู่ไม่ขัดกัน
+       รายการยอดซ้ำต้องเป็นคู่เดียวแบบ reciprocal หรือมี identity ช่วยแยก
+       ส่วน BBL/GSB ที่ STM ไม่มีเวลา คงกฎอนุมัติเดิมแบบจำกัดบัญชีไว้. */
+    const sys123NoTimeManualAutoCloseAccounts = new Set([
       'AT4|6517248040', // BBL นรวร D
       'AT4|2090879114', // KTB เบญจพร D
       'SK8|6517249394', // BBL ดลยา D
@@ -1607,15 +1693,33 @@ const Engine = (() => {
     const manualAutoCloseEligible = (m) => {
       const company = auditCompanyOf(m.b);
       const account = String(m.b.account || '').replace(/\D/g, '');
-      if (!sys123ManualAutoCloseAccounts.has(`${company}|${account}`)) return false;
+      if (!sys123Companies.has(company)) return false;
       if (m.b.isPmChannel || m.s.isPmChannel || m.b.direction !== 'deposit' || m.s.direction !== 'deposit') return false;
       if (!Number.isFinite(m.b.amount) || m.b.amount <= 0 || m.b.amount !== m.s.amount) return false;
+      const identity = sys123BankCustomerIdentity(m.s, m.b);
+      if (identity.tailConflict || identity.nameConflict) return false;
       const sameGroup = (row) => auditCompanyOf(row) === company
         && String(row.account || '').replace(/\D/g, '') === account
         && row.date === m.b.date && row.direction === 'deposit';
       const boGroup = boRecords.filter(sameGroup);
       const stmGroup = stmRecords.concat([...ktbNextDayCandidateMatched]).filter(sameGroup);
       const manualGroup = boGroup.filter(isManualBo);
+      if (!m.s.noTime && !m.b.noTime && Number.isFinite(m.s.sec) && Number.isFinite(m.b.sec)) {
+        if (m.b.matchTimeColumn !== 'วันที่ธนาคาร' && !m.ktbNextDayBankTimeMatch) return false;
+        if (m.dt > exactUniqueTol) return false;
+        const timedCandidate = (left, right) => left.amount === right.amount
+          && !left.noTime && !right.noTime && Number.isFinite(left.sec) && Number.isFinite(right.sec)
+          && timeDistance(left, right) <= exactUniqueTol;
+        const stmCandidates = stmGroup.filter((row) => timedCandidate(row, m.b));
+        const boCandidates = manualGroup.filter((row) => timedCandidate(m.s, row));
+        const identityAssisted = identity.tailMatch || identity.nameMatch || m.sys123BankIdentityMatch;
+        if (!identityAssisted && (stmCandidates.length !== 1 || boCandidates.length !== 1)) return false;
+        m.sys123ManualBankTimeMatched = true;
+        m.sys123CustomerLast4Match = m.sys123CustomerLast4Match || identity.tailMatch;
+        m.sys123CustomerNameMatch = m.sys123CustomerNameMatch || identity.nameMatch;
+        return true;
+      }
+      if (!sys123NoTimeManualAutoCloseAccounts.has(`${company}|${account}`)) return false;
       const users = manualGroup.map((row) => identityText(row.memberCode));
       const amounts = manualGroup.map((row) => Number(row.amount).toFixed(2));
       const currentUser = identityText(m.b.memberCode);
@@ -1670,6 +1774,7 @@ const Engine = (() => {
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
       xbProviderRefMatched: matched.filter(m => m.xbProviderRefMatch).length,
       xbProviderDuplicateRowsSuppressed,
+      tmnOcrDuplicateRowsSuppressed,
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
@@ -1696,7 +1801,7 @@ const Engine = (() => {
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.dt,
-        method: m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? "customer-account-amount-same-day-60m" : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
@@ -1715,6 +1820,9 @@ const Engine = (() => {
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         ktbNextDayBankTimeMatched: !!m.ktbNextDayBankTimeMatch,
+        sys123ManualBankTimeMatched: !!m.sys123ManualBankTimeMatched,
+        sys123CustomerLast4Matched: !!m.sys123CustomerLast4Match,
+        sys123CustomerNameMatched: !!m.sys123CustomerNameMatch,
         sys123ManualAutoClosed: !!m.sys123ManualAutoClosed,
         manualReview: isManualBo(m.b) && !m.sys123ManualAutoClosed,
         customer: {
