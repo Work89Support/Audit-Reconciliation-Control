@@ -598,7 +598,12 @@ await (async () => {
   eq('123 timed manual bank: auditable method',r.matchEvidence[0]?.method,'sys123-manual-bank-time-amount');
 
   r=await run([stm],[{...bo,custName:'คนละ ชื่อ'}],{...settings,exactUniqueTolerance:600});
-  eq('123 timed manual bank: conflicting customer name does not auto-match',r.matched,0);
+  eq('123 timed manual bank: exact last four wins over a name spelling mismatch',r.matched,1);
+  eq('123 timed manual bank: mismatched name remains visible as evidence',r.matchEvidence[0]?.sys123CustomerNameMatched,false);
+  eq('123 timed manual bank: last-four match still auto-closes manual row',r.matchEvidence[0]?.sys123ManualBankTimeMatched,true);
+
+  r=await run([stm],[{...bo,custAccount:'020117882352',custName:'คนละ ชื่อ'}],{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: conflicting last four still blocks auto-match',r.matched,0);
 
   const stm2=rec({...stm,rowNo:7102,sec:1*3600+29*60,custAccountLast4:'2352',custName:'นาย วรุฒ พรหมมา'});
   const bo2=rec({...bo,rowNo:7202,sec:1*3600+29*60+10,custAccount:'02832492352',custName:'วรุฒ พรหมมา'});

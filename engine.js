@@ -1167,6 +1167,12 @@ const Engine = (() => {
         nameConflict: stmName.length >= 4 && boName.length >= 4 && stmName !== boName,
       };
     };
+    // Last-four is the strongest customer identity available in normal-bank
+    // statements. Thai/English spellings, titles and OCR differences can make
+    // the display names differ even when the account tail is identical. Keep
+    // the name as searchable evidence, but do not let it veto an exact tail.
+    const sys123BankIdentityConflict = (identity) =>
+      identity.tailConflict || (!identity.tailMatch && identity.nameConflict);
     const identityCandidate = (s, b) => {
       if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
       if (isSys123PmPair(s, b) || xbProviderRefConflict(s, b) || xbMemberConflict(s, b)) return false;
@@ -1180,7 +1186,7 @@ const Engine = (() => {
       if (bankConflict) return false;
       if (isSys123NormalBankPair(s, b)) {
         const identity = sys123BankCustomerIdentity(s, b);
-        if (identity.tailConflict || identity.nameConflict) return false;
+        if (sys123BankIdentityConflict(identity)) return false;
         return (identity.tailMatch || identity.nameMatch) && timeDistance(s, b) <= exactUniqueTol;
       }
       const boAccount = customerAccount(b), stmAccount = customerAccount(s);
@@ -1220,7 +1226,7 @@ const Engine = (() => {
       if (xbMemberConflict(s, b)) return false;
       if (isSys123NormalBankPair(s, b)) {
         const identity = sys123BankCustomerIdentity(s, b);
-        if (identity.tailConflict || identity.nameConflict) return false;
+        if (sys123BankIdentityConflict(identity)) return false;
       }
       if (['7M','UFABET7M'].includes(auditCompanyOf(s)) && s.isPmChannel && b.isPmChannel
           && providerIdentityConflict(s, b)) return false;
@@ -1415,7 +1421,7 @@ const Engine = (() => {
       if (!sa && /^\d{4}$/.test(s.custAccountLast4 || "") && ba && !ba.endsWith(s.custAccountLast4)) return true;
       if (isSys123NormalBankPair(s, b)) {
         const identity = sys123BankCustomerIdentity(s, b);
-        if (identity.tailConflict || identity.nameConflict) return true;
+        if (sys123BankIdentityConflict(identity)) return true;
       }
       const sb = String(s.custBank || "").toUpperCase().replace("KBNK", "KBANK");
       const bb = String(b.custBank || "").toUpperCase().replace("KBNK", "KBANK");
@@ -1697,7 +1703,7 @@ const Engine = (() => {
       if (m.b.isPmChannel || m.s.isPmChannel || m.b.direction !== 'deposit' || m.s.direction !== 'deposit') return false;
       if (!Number.isFinite(m.b.amount) || m.b.amount <= 0 || m.b.amount !== m.s.amount) return false;
       const identity = sys123BankCustomerIdentity(m.s, m.b);
-      if (identity.tailConflict || identity.nameConflict) return false;
+      if (sys123BankIdentityConflict(identity)) return false;
       const sameGroup = (row) => auditCompanyOf(row) === company
         && String(row.account || '').replace(/\D/g, '') === account
         && row.date === m.b.date && row.direction === 'deposit';
