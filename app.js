@@ -1129,6 +1129,7 @@ const LIVE_KIND_LABEL = {
 
 const LIVE_STATUS = {
   completed: { label: "ระบบประมวลผลเสร็จ", tone: "green" },
+  completed_review: { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" },
   needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
   waiting_files: { label: "รอไฟล์", tone: "amber" },
   ready: { label: "พร้อมกระทบยอด", tone: "blue" },
