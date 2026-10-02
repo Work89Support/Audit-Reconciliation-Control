@@ -7,7 +7,7 @@ const backfill = await load("audit-mail-backfill.json");
 const daily = await load("audit-daily-reconcile.json");
 const worker = await load("audit-headless-worker.json");
 const reconciliationCode = worker.nodes.find(n => n.name === "กระทบยอดและสร้าง Exception").parameters.jsCode;
-const identitySource = reconciliationCode.slice(reconciliationCode.indexOf('const exceptionIdentity='), reconciliationCode.indexOf('\nfor(const e of', reconciliationCode.indexOf('const exceptionIdentity=')));
+const identitySource = reconciliationCode.slice(reconciliationCode.indexOf('const exceptionIdentity='), reconciliationCode.indexOf('\nconst eligibleExceptions=', reconciliationCode.indexOf('const exceptionIdentity=')));
 const exceptionIdentity = new Function(identitySource + '\nreturn exceptionIdentity;')();
 const lateAtRows = [
   [200, 'P2C-20261001-235901-NARCK5'],
@@ -18,6 +18,19 @@ assert.equal(new Set(lateAtRows.map(exceptionIdentity)).size, 3, 'three distinct
 assert.equal(exceptionIdentity(lateAtRows[0]), exceptionIdentity({...lateAtRows[0]}), 'duplicate evidence for the same case must still merge');
 assert.notEqual(exceptionIdentity(lateAtRows[0]), exceptionIdentity({...lateAtRows[0],bankAmount:300}), 'STM amount is part of case identity');
 assert.notEqual(exceptionIdentity(lateAtRows[0]), exceptionIdentity({...lateAtRows[0],customerDetails:{stm:{reference:'another-ref',user:'test-user'}}}), 'same-minute same-amount transactions with distinct refs must not merge');
+for (const change of [{date:'2026-10-02'}, {company:'SK8'}, {direction:'ถอน'}, {customerDetails:{stm:{reference:lateAtRows[0].customerDetails.stm.reference,user:'different-user'}}}]) {
+  assert.notEqual(exceptionIdentity(lateAtRows[0]), exceptionIdentity({...lateAtRows[0],...change}), 'different date/company/direction/user must remain separate');
+}
+const noTimeRows = lateAtRows.map(e=>({...e,account:'BBL',time:'00:00:00'}));
+assert.equal(new Set(noTimeRows.map(exceptionIdentity)).size,3,'no-time bank cases must preserve distinct transactions');
+const missingStmRows = lateAtRows.map(e=>({...e,type:'missing_stm',bankAmount:null,systemAmount:e.bankAmount,customerDetails:{bo:e.customerDetails.stm}}));
+assert.equal(new Set(missingStmRows.map(exceptionIdentity)).size,3,'BO-only rows must preserve distinct transactions too');
+const coverageSource = reconciliationCode.slice(reconciliationCode.indexOf('const verifyExceptionCoverage='), reconciliationCode.indexOf('\nverifyExceptionCoverage(eligibleExceptions',reconciliationCode.indexOf('const verifyExceptionCoverage=')));
+const verifyExceptionCoverage = new Function(coverageSource+'\nreturn verifyExceptionCoverage;')();
+assert.doesNotThrow(()=>verifyExceptionCoverage(lateAtRows,lateAtRows));
+assert.throws(()=>verifyExceptionCoverage(lateAtRows,[lateAtRows[2]]),/lost 2 unmatched transactions/,'a regression that silently drops two STM cases must stop the run');
+assert.throws(()=>verifyExceptionCoverage(missingStmRows,[missingStmRows[0]]),/lost 2 unmatched transactions/,'the completeness guard must also protect BO-only cases');
+assert.doesNotThrow(()=>verifyExceptionCoverage([lateAtRows[0],lateAtRows[0]],[lateAtRows[0]]),'identical duplicates are allowed');
 const xbHistoryRerun = await load("audit-xb-history-rerun-20260915-20.json");
 const clarification = await load("audit-clarification-matcher.json");
 const telegram = await load("audit-telegram-notifications.json");
@@ -226,7 +239,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.75-exception-transaction-identity'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.76-exception-coverage-guard'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -255,7 +268,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.75-exception-transaction-identity'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.76-exception-coverage-guard'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
 assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
 assert.match(workerText, /sys123_manual_bank_safe_close:true/, "worker summary must identify approved manual bank auto-close accounts");

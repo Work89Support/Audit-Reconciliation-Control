@@ -3,6 +3,10 @@ import {readFile} from 'node:fs/promises';
 const load=async name=>JSON.parse(await readFile(new URL('../n8n/'+name,import.meta.url),'utf8'));
 const parent=await load('audit-round-dispatcher.json');
 const child=await load('audit-round-worker.json');
+const headless=await load('audit-headless-worker.json');
+const caseCode=wf=>wf.nodes.find(n=>n.name==='กระทบยอดและสร้าง Exception').parameters.jsCode;
+assert.equal(caseCode(child),caseCode(headless),'round and headless paths must use the same tested exception identity and completeness gate');
+assert.match(caseCode(child),/verifyExceptionCoverage\(eligibleExceptions,\[\.\.\.best.values\(\)\]\)/);
 for(const wf of [parent,child]){
  const names=new Set(wf.nodes.map(n=>n.name));
  assert.equal(names.size,wf.nodes.length);

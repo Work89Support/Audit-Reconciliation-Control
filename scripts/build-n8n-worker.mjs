@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.75-exception-transaction-identity";
+const WORKER_VERSION = "1.9.76-exception-coverage-guard";
 const PARSER_VERSION = "1.9.74-seven-m-cp-request-day";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
@@ -322,10 +322,27 @@ const exceptionIdentity=e=>{
   return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.systemAmount??null,e.bankAmount??null,
     sideIdentity(customer.stm),sideIdentity(customer.bo),e.stmRaw||'',e.boRaw||'']);
 };
-for(const e of (result.exceptions||[]).concat(resolvedRuleExceptions).filter(e=>!isInformationalAuditException(e))){
+const eligibleExceptions=(result.exceptions||[]).concat(resolvedRuleExceptions).filter(e=>!isInformationalAuditException(e));
+for(const e of eligibleExceptions){
   const k=exceptionIdentity(e);
   const old=best.get(k); if(!old||(!old.detail&&e.detail)) best.set(k,e);
 }
+// Independent completeness gate: never report success if deduplication loses
+// a distinct unmatched transaction. This deliberately does not reuse its key.
+const verifyExceptionCoverage=(input,output)=>{
+  const evidence=e=>{
+    const side=e.type==='missing_bo'?'stm':e.type==='missing_stm'?'bo':null;
+    if(!side) return null;
+    const customer=e.customerDetails?.[side]||{};
+    const ref=customer.transactionReference||customer.reference||customer.sourceId||customer.providerReference||'';
+    const raw=side==='stm'?e.stmRaw:e.boRaw;
+    return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.bankAmount??null,e.systemAmount??null,ref,customer.user||'',raw||'']);
+  };
+  const present=new Set(output.map(evidence).filter(Boolean));
+  const missing=input.map(evidence).filter(key=>key&&!present.has(key));
+  if(missing.length) throw new Error('Exception completeness: lost '+missing.length+' unmatched transactions during deduplication');
+};
+verifyExceptionCoverage(eligibleExceptions,[...best.values()]);
 const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).map((e,i)=>({
   code:'EX-'+String(3001+i),business_date:e.date||job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
   bo_date:e.boDate||null,bo_time:e.boTime&&e.boTime!=='-'?e.boTime:null,
