@@ -387,6 +387,8 @@ await (async function () {
   eq("missing_stm: matched", r.matched, 1);
   const types = r.exceptions.map((e) => e.type);
   ok("missing_stm: มี exception missing_stm", types.includes("missing_stm"), JSON.stringify(types));
+  eq("missing_stm: ไม่กล่าวหาว่าเติมมือซ้ำเมื่อยังไม่มีหลักฐาน", r.exceptions.find((e) => e.type === "missing_stm").cause,
+    "ยังไม่พบรายการ STM/PM คู่กัน ต้องตรวจความครบของไฟล์และหลักฐานก่อนระบุสาเหตุ");
 })();
 
 /* ================= 8) SLA aging: asOf จริง vs fallback ================= */
