@@ -102,7 +102,10 @@
       return true;
     });
   }
-  function filter(rows,evidence){return removeDuplicateTransactions(removeMatchedMissing(rows,evidence));}
+  // A browser may not turn an open persisted case into invisible history.
+  // Exact matches and duplicate projections must be resolved in the lifecycle
+  // transaction, with an Audit Log, before disappearing from the work queue.
+  function filter(rows,evidence){return (Array.isArray(rows)?rows:[]).filter(isActionable);}
   const api=Object.freeze({version:'actionable-audit-v6',COMPANIES,companyOf,typeOf,isInformational,isActionable,removeMatchedMissing,removeDuplicateTransactions,filter});
   root.AuditVisiblePolicy=api;
   if(typeof module!=='undefined')module.exports=api;

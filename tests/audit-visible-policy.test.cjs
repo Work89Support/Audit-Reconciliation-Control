@@ -25,8 +25,8 @@ const staleMatchedCases=[
   {id:'stale-stm',company:'MC8',account:'1998545397',direction:'ฝาก',ex_type:'missing_bo',bank_amount:100,stm_date:'2026-09-15',stm_time:'14:40:00',customer_details:{stm:{bank:'BAY',name:'MANIRAT SIK'}}},
   {id:'real-missing',company:'MC8',account:'1998545397',direction:'ฝาก',ex_type:'missing_bo',bank_amount:100,stm_date:'2026-09-15',stm_time:'14:41:00',customer_details:{stm:{bank:'SCB',name:'OTHER'}}},
 ];
-assert.deepEqual(policy.filter(staleMatchedCases,[matchedPair]).map(row=>row.id),['real-missing'],'stored matched evidence must suppress both stale missing halves only');
-assert.deepEqual(policy.filter(staleMatchedCases,[{...matchedPair,company:''}]).map(row=>row.id),['real-missing'],'older evidence without company must use the single-company workspace scope');
+assert.deepEqual(policy.filter(staleMatchedCases,[matchedPair]).map(row=>row.id),staleMatchedCases.map(row=>row.id),'open persisted cases must not disappear before audited backend closure');
+assert.deepEqual(policy.filter(staleMatchedCases,[{...matchedPair,company:''}]).map(row=>row.id),staleMatchedCases.map(row=>row.id));
 
 const sapanPair={company:'3XB',account:'AUTOPEER',direction:'withdraw',boAmount:100,stmAmount:100,
   bo:{date:'2026-09-15',sec:79750},stm:{date:'2026-09-15',sec:79750},
@@ -34,7 +34,7 @@ const sapanPair={company:'3XB',account:'AUTOPEER',direction:'withdraw',boAmount:
 const staleWrongTime={id:'stale-sapan',company:'3XB',account:'AUTOPEER',direction:'ถอน',ex_type:'missing_stm',system_amount:100,
   bo_date:'2026-09-15',bo_time:'21:35:00',bo_raw:'Sapan: 6aa95f3e6f7ddd65ebf18744 | โอนจริง 100 สำเร็จ 100',
   customer_details:{bo:{note:'Sapan: 6aa95f3e6f7ddd65ebf18744 | โอนจริง 100 สำเร็จ 100'}}};
-assert.deepEqual(policy.filter([staleWrongTime],[sapanPair]),[],'exact XB provider id and amount must suppress a stale case even when its old time differs');
+assert.deepEqual(policy.filter([staleWrongTime],[sapanPair]),[staleWrongTime],'identity evidence alone cannot silently hide an open database row');
 
 const duplicatedTransactions=[
   {id:'bo-current',company:'3XB',account:'AZPAY',direction:'ถอน',status:'open',ex_type:'missing_stm',system_amount:150000,customer_details:{bo:{reference:'10494631'}}},
@@ -44,7 +44,7 @@ const duplicatedTransactions=[
   {id:'no-reference-1',company:'3XB',account:'5034632277',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:100},
   {id:'no-reference-2',company:'3XB',account:'5034632277',direction:'ฝาก',status:'open',ex_type:'missing_bo',bank_amount:100},
 ];
-assert.deepEqual(policy.filter(duplicatedTransactions).map(row=>row.id),['bo-current','stm-current','no-reference-1','no-reference-2'],'active case projections with the same persisted reference must appear once; unreferenced rows remain separate');
+assert.deepEqual(policy.filter(duplicatedTransactions).map(row=>row.id),duplicatedTransactions.map(row=>row.id),'deduplication must be persisted with an audit trail, not just hidden');
 
 const view=ReviewOverview.model({run:{matched:0,summary:{match_evidence:[]}},cases:historical,confirmations:[]});
 assert.deepEqual(view.rows.map(row=>row.id),['missing']);

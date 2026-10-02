@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/20261002_current_case_auto_resolution.sql',import.meta.url),'utf8');
+assert.match(sql,/j.status='completed' and not j.is_archived/);
+assert.match(sql,/source_parser_completion/);
+assert.match(sql,/pair_count=1 and c.case_count=1/);
+assert.match(sql,/p.ev->'customer'->'stm'->>'reference'=e.customer_details->'bo'->>'reference'/);
+assert.match(sql,/p.ev->'customer'->'stm'->>'user'=e.customer_details->'bo'->>'user'/);
+assert.match(sql,/boAmount/);
+assert.match(sql,/stmAmount/);
+assert.match(sql,/insert into public.audit_log/);
+assert.doesNotMatch(sql,/delete\s+from\s+public.exceptions/i);
+assert.match(sql,/revoke all.*from public,anon,authenticated/);
+assert.match(sql,/new.last_run_id is distinct from old.last_run_id/);
+console.log('Current case auto-resolution safety guards passed');

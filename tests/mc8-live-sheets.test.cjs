@@ -21,7 +21,7 @@ const staleRows=rowsOf({run:{summary:{match_evidence:[stalePair]}},cases:[
   {id:'old-bo',company:'PS8',account:'MYPAY',direction:'ฝาก',ex_type:'missing_stm',system_amount:900,bo_date:'2026-09-19',bo_time:'10:00:00',customer_details:{bo:{reference:'BO-900'}}},
   {id:'old-stm',company:'PS8',account:'MYPAY',direction:'ฝาก',ex_type:'missing_bo',bank_amount:900,stm_date:'2026-09-19',stm_time:'10:00:00',customer_details:{stm:{bank:'SCB',name:'CUSTOMER'}}},
 ]},'PS8');
-assert.equal(staleRows.length,1,'all-company workbook view must not repeat matched evidence as two stale cases');
+assert.equal(staleRows.length,3,'workbook must retain open persisted cases until backend closes them');
 assert.equal(staleRows[0].isPair,true);
 const xbIdView=tableView(rowsOf({run:{summary:{match_evidence:[{company:'MC8',account:'AUTOPEER',direction:'withdraw',boAmount:2200,stmAmount:2200,bo:{date:'2026-09-16',sec:80000},stm:{date:'2026-09-16',sec:100,timeColumn:'updateTime',amountColumn:'transferredAmount'},customer:{bo:{reference:'2718608',note:'Sapan: 6aaac4bfed5cd6e1fd9d67a6'},stm:{reference:'P2C-20260916-233303-UIHHCL',transactionReference:'P2C-20260916-233303-UIHHCL',sourceId:'P2C-20260916-233303-UIHHCL',providerReference:'6aaac4bfed5cd6e1fd9d67a6'}}}] }},cases:[]},'MC8'),'MC8','2026-09-16',true,'AT ถ',schema);
 assert.equal(xbIdView.rows[0][xbIdView.headers.indexOf('id')],'P2C-20260916-233303-UIHHCL','XB AT column A id must show P2C');

@@ -20,6 +20,6 @@ const deduped=model({run:{matched:1,summary:{match_evidence:[exact]}},cases:[
   {id:'stale-bo',company:'UR9',account:'AUTOPEER',direction:'ฝาก',ex_type:'missing_stm',system_amount:50,bo_date:'2026-09-18',bo_time:'09:00:00',customer_details:{bo:{reference:'REF-50'}}},
   {id:'stale-stm',company:'UR9',account:'AUTOPEER',direction:'ฝาก',ex_type:'missing_bo',bank_amount:50,stm_date:'2026-09-18',stm_time:'09:00:00',customer_details:{stm:{bank:'SCB',name:'TEST'}}},
 ]});
-assert.equal(deduped.rows.length,1,'overview must show the matched pair once and hide its stale missing cases');
-assert.equal(deduped.counts.review,0);
+assert.equal(deduped.rows.length,3,'overview retains persisted cases until audited backend closure');
+assert.equal(deduped.counts.review,2);
 console.log('Unified overview: filters, manual gate, missing evidence and states passed');

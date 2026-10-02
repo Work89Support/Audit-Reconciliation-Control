@@ -332,6 +332,7 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
+  .replace('source_parser_completion:true,','source_parser_completion:true,scb_printed_dates_preserved:true,')
   .replace(
     "worker_version:'1.9.29-seven-m-source-parity'",
     `worker_version:'${WORKER_VERSION}'`,
