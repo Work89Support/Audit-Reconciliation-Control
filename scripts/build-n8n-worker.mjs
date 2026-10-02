@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.74-seven-m-cp-request-day";
+const WORKER_VERSION = "1.9.75-exception-transaction-identity";
 const PARSER_VERSION = "1.9.74-seven-m-cp-request-day";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
@@ -313,8 +313,17 @@ const isInformationalAuditException=e=>auditCompanies.has(auditCompany)&&['large
 // pair and an open BO-only case for the same transaction in one run.
 const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!isInformationalAuditException(e)&&!(e.sourceKey&&matchedBoKeys.has(e.sourceKey)));
 const best=new Map();
+// A missing BO amount is null for every unmatched STM row. Minute-precision
+// exports can therefore share the old key despite different real transactions.
+// Preserve transaction identity and BOTH amounts; identical reports still merge.
+const exceptionIdentity=e=>{
+  const customer=e.customerDetails||{};
+  const sideIdentity=side=>side?[side.transactionReference||side.reference||side.sourceId||side.providerReference||'',side.user||'',side.account||'']:[];
+  return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.systemAmount??null,e.bankAmount??null,
+    sideIdentity(customer.stm),sideIdentity(customer.bo),e.stmRaw||'',e.boRaw||'']);
+};
 for(const e of (result.exceptions||[]).concat(resolvedRuleExceptions).filter(e=>!isInformationalAuditException(e))){
-  const k=[e.type,e.account,e.time,e.systemAmount??''].join('|');
+  const k=exceptionIdentity(e);
   const old=best.get(k); if(!old||(!old.detail&&e.detail)) best.set(k,e);
 }
 const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).map((e,i)=>({
