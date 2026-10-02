@@ -1008,15 +1008,129 @@ const Engine = (() => {
       && !s.noTime && !b.noTime
       && Number.isFinite(s.sec) && Number.isFinite(b.sec)
       && timeDistance(s, b) <= sys123DuplicateTimeTol;
+    /* ตัดสินยอดซ้ำทั้งกลุ่มก่อน greedy reciprocal-nearest:
+       reciprocal รายแถวอาจค้างทั้งกลุ่มเมื่อ STM หนึ่งแถวห่างจาก BO สองแถว
+       เท่ากัน แม้ว่าการจัดคู่รวมจะมีคำตอบที่ดีที่สุดเพียงชุดเดียว (เช่น SK8
+       CYBERPLUS 333 เวลา 12:45/12:48). ในทางกลับกัน greedy อาจเริ่มจับได้
+       ทั้งที่ต้นทุนรวมของสองชุดเสมอกัน ขั้นนี้จึงหา minimum-cost perfect
+       matching ของ connected component และปิดเฉพาะเมื่อ optimum มีชุดเดียว.
+       จำกัดขนาดเพื่อไม่ให้ bitmask โตเกินควบคุม; กลุ่มใหญ่ยังคงใช้กฎเดิม. */
+    const sys123GroupBlockedStm = new Set();
+    const sys123GroupBlockedBo = new Set();
+    const sys123GroupCandidates = new Map();
+    const sys123GroupPeers = new Map();
+    stmRecords.forEach((s) => {
+      if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
+      const rows = sys123BoRows(s)
+        .filter((i) => !boUsed[i] && sys123TimedCandidate(s, boRecords[i]))
+        .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
+      if (!rows.length) return;
+      sys123GroupCandidates.set(s, rows);
+      rows.forEach(({ i, dt }) => {
+        let peers = sys123GroupPeers.get(i);
+        if (!peers) sys123GroupPeers.set(i, (peers = []));
+        peers.push({ s, dt });
+      });
+    });
+    const visitedGroupStm = new Set();
+    const visitedGroupBo = new Set();
+    sys123GroupCandidates.forEach((initialRows, start) => {
+      if (visitedGroupStm.has(start)) return;
+      const groupStm = [];
+      const groupBo = [];
+      const queue = [{ side: 'stm', value: start }];
+      while (queue.length) {
+        const node = queue.shift();
+        if (node.side === 'stm') {
+          const s = node.value;
+          if (visitedGroupStm.has(s)) continue;
+          visitedGroupStm.add(s);
+          groupStm.push(s);
+          (sys123GroupCandidates.get(s) || []).forEach(({ i }) => {
+            if (!visitedGroupBo.has(i)) queue.push({ side: 'bo', value: i });
+          });
+        } else {
+          const i = node.value;
+          if (visitedGroupBo.has(i)) continue;
+          visitedGroupBo.add(i);
+          groupBo.push(i);
+          (sys123GroupPeers.get(i) || []).forEach(({ s }) => {
+            if (!visitedGroupStm.has(s)) queue.push({ side: 'stm', value: s });
+          });
+        }
+      }
+      if (groupStm.length < 2 || groupStm.length !== groupBo.length || groupStm.length > 12) return;
+      groupStm.sort((a, b) => (String(a.date).localeCompare(String(b.date)))
+        || (Number(a.sec) - Number(b.sec)) || (Number(a.rowNo || 0) - Number(b.rowNo || 0)));
+      groupBo.sort((a, b) => (String(boRecords[a].date).localeCompare(String(boRecords[b].date)))
+        || (Number(boRecords[a].sec) - Number(boRecords[b].sec))
+        || (Number(boRecords[a].rowNo || 0) - Number(boRecords[b].rowNo || 0)));
+      const boPosition = new Map(groupBo.map((i, position) => [i, position]));
+      const memo = new Map();
+      const solve = (position, usedMask) => {
+        if (position === groupStm.length) return { cost: 0, count: 1, choice: -1 };
+        const memoKey = `${position}|${usedMask}`;
+        if (memo.has(memoKey)) return memo.get(memoKey);
+        let bestCost = Infinity;
+        let bestCount = 0;
+        let bestChoice = -1;
+        for (const candidate of sys123GroupCandidates.get(groupStm[position]) || []) {
+          const boPos = boPosition.get(candidate.i);
+          if (boPos == null || (usedMask & (1 << boPos))) continue;
+          const tail = solve(position + 1, usedMask | (1 << boPos));
+          if (!Number.isFinite(tail.cost)) continue;
+          const total = candidate.dt + tail.cost;
+          if (total < bestCost) {
+            bestCost = total;
+            bestCount = Math.min(2, tail.count);
+            bestChoice = tail.count === 1 ? boPos : -1;
+          } else if (total === bestCost) {
+            bestCount = Math.min(2, bestCount + tail.count);
+            bestChoice = -1;
+          }
+        }
+        const result = { cost: bestCost, count: bestCount, choice: bestChoice };
+        memo.set(memoKey, result);
+        return result;
+      };
+      const optimum = solve(0, 0);
+      if (!Number.isFinite(optimum.cost)) return;
+      if (optimum.count !== 1) {
+        groupStm.forEach((s) => sys123GroupBlockedStm.add(s));
+        groupBo.forEach((i) => sys123GroupBlockedBo.add(i));
+        return;
+      }
+      let usedMask = 0;
+      groupStm.forEach((s, position) => {
+        const state = solve(position, usedMask);
+        const boPos = state.choice;
+        if (boPos < 0) return;
+        usedMask |= (1 << boPos);
+        const i = groupBo[boPos], b = boRecords[i];
+        boUsed[i] = 1;
+        sys123ProviderMatched.add(s);
+        const provider = sys123ProviderOfPair(s, b);
+        const inferred = sys123GenericProvider(s.account) || sys123GenericProvider(b.account);
+        const base = provider === "CYBERPLUS" && s.direction === "withdraw"
+          ? "sys123-member-amount-group-min-cost"
+          : "sys123-member-account-amount-group-min-cost";
+        matched.push({
+          s, b, dt: timeDistance(s, b), sys123ProviderMatch: true,
+          sys123ProviderGroupMatch: true,
+          sys123MatchMethod: inferred ? base.replace("sys123-", "sys123-provider-inferred-") : base,
+        });
+      });
+    });
     let sys123Progress = true;
     while (sys123Progress) {
       sys123Progress = false;
       const candidates = new Map();
       const peers = new Map();
       stmRecords.forEach((s) => {
-        if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
+        if (sys123ProviderMatched.has(s) || sys123GroupBlockedStm.has(s)
+          || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
         const rows = sys123BoRows(s)
-          .filter((i) => !boUsed[i] && sys123TimedCandidate(s, boRecords[i]))
+          .filter((i) => !boUsed[i] && !sys123GroupBlockedBo.has(i) && sys123TimedCandidate(s, boRecords[i]))
           .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
         candidates.set(s, rows);
         rows.forEach(({ i, dt }) => {
@@ -1093,9 +1207,10 @@ const Engine = (() => {
     const sys123FallbackCandidates = new Map();
     const sys123FallbackPeers = new Map();
     stmRecords.forEach((s) => {
-      if (sys123ProviderMatched.has(s) || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
+      if (sys123ProviderMatched.has(s) || sys123GroupBlockedStm.has(s)
+        || !sys123Companies.has(auditCompanyOf(s)) || !isSys123ProviderRecord(s)) return;
       const rows = sys123BoRows(s)
-        .filter((i) => !boUsed[i] && sys123FallbackCandidate(s, boRecords[i]))
+        .filter((i) => !boUsed[i] && !sys123GroupBlockedBo.has(i) && sys123FallbackCandidate(s, boRecords[i]))
         .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
       sys123FallbackCandidates.set(s, rows);
       rows.forEach(({ i, dt }) => {
@@ -1105,7 +1220,7 @@ const Engine = (() => {
       });
     });
     stmRecords.forEach((s) => {
-      if (sys123ProviderMatched.has(s)) return;
+      if (sys123ProviderMatched.has(s) || sys123GroupBlockedStm.has(s)) return;
       const i = uniqueProviderNearest(sys123FallbackCandidates.get(s) || [], (row) => row.i);
       if (i == null || boUsed[i]) return;
       if (uniqueProviderNearest(sys123FallbackPeers.get(i) || [], (row) => row.s) !== s) return;
@@ -1718,7 +1833,30 @@ const Engine = (() => {
         const stmCandidates = stmGroup.filter((row) => timedCandidate(row, m.b));
         const boCandidates = manualGroup.filter((row) => timedCandidate(m.s, row));
         const identityAssisted = identity.tailMatch || identity.nameMatch || m.sys123BankIdentityMatch;
-        if (!identityAssisted && (stmCandidates.length !== 1 || boCandidates.length !== 1)) return false;
+        // Repeated manual amounts are common in System 123. They remain safe
+        // to close when the pair already selected by the matcher is the unique
+        // nearest choice from both sides. Equal-distance ties remain review
+        // cases, so this does not weaken the ambiguity guard.
+        const reciprocalUniqueNearest = (target, candidates, timeOf) => {
+          if (!candidates.length) return false;
+          let best = null;
+          let bestDt = Infinity;
+          let tied = false;
+          candidates.forEach((candidate) => {
+            const dt = timeDistance(timeOf(candidate), target);
+            if (dt < bestDt) {
+              best = candidate;
+              bestDt = dt;
+              tied = false;
+            } else if (dt === bestDt) tied = true;
+          });
+          return !tied && best === target;
+        };
+        if (!identityAssisted) {
+          const stmNearest = reciprocalUniqueNearest(m.s, stmCandidates, (row) => row);
+          const boNearest = reciprocalUniqueNearest(m.b, boCandidates, (row) => row);
+          if (!stmNearest || !boNearest) return false;
+        }
         m.sys123ManualBankTimeMatched = true;
         m.sys123CustomerLast4Match = m.sys123CustomerLast4Match || identity.tailMatch;
         m.sys123CustomerNameMatch = m.sys123CustomerNameMatch || identity.nameMatch;
@@ -1819,6 +1957,7 @@ const Engine = (() => {
         providerIdentityMatched: !!m.providerIdentityMatch,
         providerNearTimeMatched: !!m.providerNearTimeMatch,
         sys123ProviderMatched: !!m.sys123ProviderMatch,
+        sys123ProviderGroupMatched: !!m.sys123ProviderGroupMatch,
         rescueMatched: !!m.rescueMatch,
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,

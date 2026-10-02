@@ -453,6 +453,27 @@ eq("KBANK reporting lag: อ่านรายการวันก่อนห�
 eq("KBANK reporting lag: จัดเข้าวันที่รายงาน", lagged.records[0] && lagged.records[0].date, "2026-08-10");
 eq("KBANK reporting lag: เก็บวันที่ต้นฉบับ", lagged.records[0] && lagged.records[0].sourceDate, "2026-08-09");
 
+const SCB_PREVIOUS_DAY_ONLY = `
+ธนาคารไทยพาณิชย์ SIAM COMMERCIAL BANK
+เลขที่บัญชี 4311918665
+30/09/26 23:50 X1 ENET 50.00 4,336.73
+30/09/26 23:52 X1 ENET 100.00 4,436.73
+`;
+const scbPreviousDay = await workerSb.__P.parse("FR8_STM_SCB_จิตติพัฒน์_D_2026-10-01.pdf", toPages(SCB_PREVIOUS_DAY_ONLY), "2026-10-01");
+eq("SCB previous-day block: ไม่เปลี่ยนวันที่ 30 ก.ย. เป็น 1 ต.ค.", scbPreviousDay.records.length, 0);
+eq("SCB previous-day block: แยกรายการนอกวันอย่างตรวจสอบได้", scbPreviousDay.dropped["วันที่ไม่ตรงกับวันที่ตรวจ"], 2);
+
+const SCB_MIXED_DAYS = `
+ธนาคารไทยพาณิชย์ SIAM COMMERCIAL BANK
+เลขที่บัญชี 4311918665
+30/09/26 23:50 X1 ENET 50.00 4,336.73
+01/10/26 00:05 X1 ENET 70.00 4,406.73
+`;
+const scbMixedDays = await workerSb.__P.parse("FR8_STM_SCB_จิตติพัฒน์_D_2026-10-01.pdf", toPages(SCB_MIXED_DAYS), "2026-10-01");
+eq("SCB mixed-day statement: รับเฉพาะวันรอบงาน", scbMixedDays.records.length, 1);
+eq("SCB mixed-day statement: เก็บวันจริงของแถวที่รับ", scbMixedDays.records[0]?.sourceDate, "2026-10-01");
+eq("SCB mixed-day statement: ตัดแถววันก่อนหน้า", scbMixedDays.dropped["วันที่ไม่ตรงกับวันที่ตรวจ"], 1);
+
 /* ---- BAY edge: ยอดจำนวนเต็ม + มีเลขทศนิยมในรายละเอียด (ต้องไม่แย่งคอลัมน์ยอด) ---- */
 const BAY_EDGE = `
 19/06/2026 22:28:12 ค่าโอน 5.50 โอนเงิน 144 1278 MOBILE SCB PIMPORN

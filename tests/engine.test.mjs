@@ -627,6 +627,25 @@ await (async () => {
   r=await run([stm,stm2],[bo2,bo],{...settings,exactUniqueTolerance:600});
   eq('123 timed manual bank: duplicate amounts separated by last four and name',r.matched,2);
   eq('123 timed manual bank: both identity-assisted manual rows close',r.matchEvidence.filter(e=>e.sys123ManualBankTimeMatched).length,2);
+
+  const repeatedStm=[
+    rec({...base,rowNo:7301,amount:50,sec:23*3600+50*60,custAccountLast4:'',custName:''}),
+    rec({...base,rowNo:7302,amount:50,sec:23*3600+54*60,custAccountLast4:'',custName:''}),
+  ];
+  const repeatedBo=[
+    rec({...base,rowNo:7401,amount:50,sec:23*3600+50*60+5,via:'เติมมือ',matchTimeColumn:'วันที่ธนาคาร',custAccount:'',custName:''}),
+    rec({...base,rowNo:7402,amount:50,sec:23*3600+54*60+5,via:'เติมมือ',matchTimeColumn:'วันที่ธนาคาร',custAccount:'',custName:''}),
+  ];
+  r=await run(repeatedStm,repeatedBo,{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: repeated amount closes by reciprocal unique nearest time',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 timed manual bank: repeated amount records both auto-closed pairs',r.matchEvidence.filter(e=>e.sys123ManualBankTimeMatched).length,2);
+
+  const tiedBo=[
+    {...repeatedBo[0],rowNo:7501,sec:23*3600+52*60},
+    {...repeatedBo[1],rowNo:7502,sec:23*3600+52*60},
+  ];
+  r=await run(repeatedStm,tiedBo,{...settings,exactUniqueTolerance:600});
+  eq('123 timed manual bank: equal-distance duplicate remains review',r.exceptions.filter(e=>e.type==='manual_review').length,2);
 })();
 
 await (async () => {
@@ -861,9 +880,34 @@ await (async () => {
     rec({...bo,sec:4260,rowNo:2002}),
   ];
   r=await run(repeatedStm,repeatedBo);
-  eq('123 PM: repeated identity closes by reciprocal nearest time',r.matched,2);
+  eq('123 PM: repeated identity closes by unique group minimum cost',r.matched,2);
   eq('123 PM: repeated identity leaves no false missing cases',r.exceptions.length,0);
-  ok('123 PM: repeated identity records auditable method',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-reciprocal-nearest'));
+  ok('123 PM: repeated identity records auditable method',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-group-min-cost'));
+
+  const sk8CyberStm=[
+    rec({...base,company:'SK8',subco:'SK8',account:'CYBERPLUS',direction:'deposit',amount:333,sec:12*3600+45*60+58,memberCode:'igoal26363',custAccount:'9192409504',rowNo:2601}),
+    rec({...base,company:'SK8',subco:'SK8',account:'CYBERPLUS',direction:'deposit',amount:333,sec:12*3600+48*60+49,memberCode:'igoal26363',custAccount:'9192409504',rowNo:2602}),
+  ];
+  const sk8CyberBo=[
+    rec({...base,company:'SK8',subco:'SK8',account:'CYBERPLUS',direction:'deposit',amount:333,sec:12*3600+47*60+53,memberCode:'igoal26363',custAccount:'9192409504',rowNo:2701}),
+    rec({...base,company:'SK8',subco:'SK8',account:'CYBERPLUS',direction:'deposit',amount:333,sec:12*3600+49*60+45,memberCode:'igoal26363',custAccount:'9192409504',rowNo:2702}),
+  ];
+  r=await run(sk8CyberStm,sk8CyberBo);
+  eq('123 SK8 CYBERPLUS: repeated equal amount closes by unique group minimum cost',r.matched,2);
+  eq('123 SK8 CYBERPLUS: group matching leaves no false missing cases',r.exceptions.length,0);
+  ok('123 SK8 CYBERPLUS: group match remains auditable',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-group-min-cost'));
+  ok('123 SK8 CYBERPLUS: evidence marks group matcher',r.matchEvidence.every(e=>e.sys123ProviderGroupMatched===true));
+
+  const globallyTiedStm=[
+    rec({...stm,sec:100,rowNo:2801}),
+    rec({...stm,sec:200,rowNo:2802}),
+  ];
+  const globallyTiedBo=[
+    rec({...bo,sec:300,rowNo:2901}),
+    rec({...bo,sec:400,rowNo:2902}),
+  ];
+  r=await run(globallyTiedStm,globallyTiedBo);
+  eq('123 PM: globally tied group assignment remains open',r.matched,0);
 
   const tiedStm=rec({...stm,sec:3600,rowNo:3001});
   r=await run([tiedStm],[

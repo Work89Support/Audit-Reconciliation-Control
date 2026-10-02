@@ -1107,8 +1107,15 @@ const PdfStm = (() => {
       ? new Date(Date.parse(businessDate + "T00:00:00Z") + 86400000).toISOString().slice(0, 10)
       : null;
     const observedDates = new Set(rows.map((r) => r.date).filter(Boolean));
+    // Only KBANK/LBK use the confirmed one-day report-lag convention. SCB
+    // statements can contain a trailing block from the previous calendar day;
+    // promoting that block to the requested business date creates false STM
+    // rows and duplicate/manual-review cases. Preserve SCB's printed date and
+    // let the normal outside-day filter exclude it from this run.
     const previousDayReport = !!(
-      businessDate && expectedPreviousDate && observedDates.size === 1 && observedDates.has(expectedPreviousDate)
+      (head.bank === "KBANK" || head.bank === "LBK")
+      && businessDate && expectedPreviousDate
+      && observedDates.size === 1 && observedDates.has(expectedPreviousDate)
     );
 
     const company = typeof Formats !== "undefined" ? Formats.companyOf(fileName) : null;

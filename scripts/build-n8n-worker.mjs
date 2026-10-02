@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.70-sys123-notime-amount-only";
-const PARSER_VERSION = "1.9.70-sys123-notime-amount-only";
+const WORKER_VERSION = "1.9.72-sys123-group-min-cost";
+const PARSER_VERSION = "1.9.72-sys123-group-min-cost";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -363,6 +363,10 @@ const deployedReconcileCode = reconcileCode
   .replace(
     "non_success_pm_zero_eligible:true,",
     "non_success_pm_zero_eligible:true,pending_only_pm_zero_eligible:true,",
+  )
+  .replace(
+    "sys123_duplicate_reciprocal_nearest:true,",
+    "sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_group_min_cost:true,",
   );
 const http = (id, name, position, parameters) => ({ parameters, id, name, type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position, credentials: cred });
 const driveCred = { googleDriveOAuth2Api: { id: "wYcR0wVZktx3BmP0", name: "Google Drive account" } };
