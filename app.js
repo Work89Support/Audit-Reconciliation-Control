@@ -3490,15 +3490,20 @@ async function loadExceptionSupport(e, options = {}) {
             const rows=uses.filter(row=>row.clarification_file_id===button.dataset.linkMail);
             const detail=document.createElement('details');
             detail.innerHTML=`<summary>ใช้เป็นหลักฐาน ${rows.length} เคสในบริษัทนี้ (รวมเคสปิดแล้ว)</summary>${rows.map(row=>`<p>${h(row.code)} · ${h(row.business_date)} · ${h(row.status)}</p>`).join('')}`;
-            button.before(detail);
+            button.closest('article').append(detail);
           });
         }catch(error){const note=document.createElement('p');note.textContent='ยังโหลดประวัติการใช้ไฟล์ไม่ได้: '+error.message;list.append(note);}
         list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
           if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
           b.disabled=true;
           const form=document.createElement('form');
+          form.className='case-mail-reason';
           form.innerHTML='<label>เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)<textarea name="reason" required rows="3" aria-label="เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน"></textarea></label><p role="status"></p><button type="submit" class="ghost-button sm">ยืนยันผูกหลักฐาน</button><button type="button" class="ghost-button sm">ยกเลิก</button>';
-          b.after(form);
+          form.querySelector('textarea').placeholder='ระบุรายการ ยอดเงิน วันที่ และเลขอ้างอิงที่เอกสารนี้ยืนยัน';
+          const formActions=document.createElement('div');formActions.className='case-mail-reason-actions';
+          form.querySelector('[type="submit"]').className='primary-button sm';
+          formActions.append(...form.querySelectorAll('button'));form.append(formActions);
+          b.closest('article').append(form);
           const input=form.querySelector('textarea');
           const submit=form.querySelector('[type="submit"]');
           const cancel=form.querySelector('[type="button"]');
