@@ -576,6 +576,11 @@ function dailyCompletionBlockers(data) {
   return blockers;
 }
 
+const caseUiResults = new Map();
+function caseUiKey(e) { return e.dbId || [e.company,e.date,e.runId,e.id].join('|'); }
+function recordCaseUiResult(e, message) {
+  caseUiResults.set(caseUiKey(e), {message, status:e.status, actor:(typeof Sb !== 'undefined' && Sb.currentEmail()) || currentUser().username, at:nowStamp()});
+}
 async function persistCaseClosure(e, note) {
   if (e._closing) return false;
   e._closing = true;
@@ -590,6 +595,7 @@ async function persistCaseClosure(e, note) {
       });
     }
     Object.assign(e, { status: "closed", resolutionNote: note, resolvedAt: stamp, resolvedBy: actor });
+    recordCaseUiResult(e, 'ยืนยันปิดเคสสำเร็จ — ตรวจหลักฐานและประวัติการปิดได้ในเคสนี้');
     if (state.dataset !== "production") saveOverride(e);
     else {
       delete Store.data.exOverrides[e.id];
@@ -619,10 +625,10 @@ async function completeQuickClose(e) {
   e.notes.push({ by: currentUser().username, at: nowStamp(), text: note });
   logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · เวลา ${exceptionTimeDiffLabel(e)}`);
   closeModal();
-  closeDrawer();
   toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
   renderNav();
   render();
+  await openException(e.id);
 }
 
 let bulkCaseApprovalRunning = false;
@@ -3432,6 +3438,12 @@ async function loadExceptionSupport(e, options = {}) {
     }
     host.className = 'case-files-ready';
     host.innerHTML = exceptionFilesMarkup(files, e);
+    const selectedFile=files.find(f=>f.id===e.clarificationFileId);
+    if(selectedFile){
+      const summary=document.createElement('section');summary.className='case-selected-evidence';
+      summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.resolutionNote || e.responseText || 'ตรวจเหตุผลและรายการในเอกสารก่อนยืนยัน')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>ผูกหลักฐานแล้ว ไม่ใช่การยืนยันปิดเคส · ดูสถานะ Audit ด้านบน</small>`;
+      host.prepend(summary);
+    }
     const mailButton=document.createElement('button');
     mailButton.id='caseMailEvidenceButton';mailButton.className='primary-button case-mail-open'; mailButton.textContent='เลือกเอกสารชี้แจงให้เคสนี้';
     const evidenceRange=document.createElement('div');
@@ -3524,6 +3536,7 @@ async function loadExceptionSupport(e, options = {}) {
               const recommendationId=recommended.get(b.dataset.linkMail);
               if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
               else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
+              recordCaseUiResult(e, 'ผูกหลักฐานสำเร็จ — '+(candidates.find(f=>f.id===b.dataset.linkMail)?.file_name || '')+' · รอ Audit ตรวจ ยังไม่ปิดเคส');
               exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
               if(state.selected===e.id)await openException(e.id,{focusFiles:true});
               toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');
@@ -3590,6 +3603,9 @@ async function openException(id, options = {}) {
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
   const ready = !closed && (checklist.every((c) => c.ok) || quickCloseEligible);
+  const missingChecks = ready || closed ? [] : checklist.filter(item=>!item.ok);
+  const lastUiResult = caseUiResults.get(caseUiKey(e));
+  const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
 
   drawer.innerHTML = `
     <header class="drawer-head">
@@ -3601,6 +3617,14 @@ async function openException(id, options = {}) {
     </header>
 
     <div class="drawer-body">
+      <section class="case-work-status" aria-label="สถานะและหน้าที่ของผู้ใช้งาน">
+        <div><span>ผลระบบ</span><b>${e.status==='damage' ? 'ยืนยันความเสียหายแล้ว — ดูทะเบียนและหลักฐาน' : closed ? 'ดูผลและหลักฐานต้นทาง' : 'มีข้อผิดปกติให้ตรวจ — ยังไม่ยืนยันความเสียหาย'}</b></div>
+        <div><span>คำชี้แจง</span><b>${e.status==='answered' ? 'ตอบแล้ว — รอ Audit ตรวจคำตอบ' : e.status==='clarifying' ? 'รอผู้มีสิทธิ์ตอบชี้แจง' : e.responseText ? 'มีคำชี้แจงให้ตรวจ' : e.clarificationFileId ? 'มีเอกสารผูกแล้ว — ต้องอ่านและตรวจ' : 'ยังไม่มีคำชี้แจง'}</b></div>
+        <div><span>การปิดเคส</span><b>${closed ? 'ยืนยันปิดแล้ว' : 'ยังไม่ปิดเคส'}</b></div>
+        <p class="case-permission-help">หน้าที่ของคุณ: ${can('note') ? 'บันทึกผลตรวจได้' : 'ดูข้อมูลได้'} · ${can('respond') ? 'ตอบชี้แจงได้เมื่อเคสรอชี้แจง' : 'ส่งผู้มีสิทธิ์ตอบคำชี้แจง'} · ${can('approve') ? 'ยืนยันปิดได้เมื่อผ่านเกณฑ์' : 'ต้องส่งผู้มีสิทธิ์อนุมัติปิดเคส'}</p>
+      </section>
+      ${uiResult ? `<section class="case-save-result" role="status"><b>${h(uiResult.message)}</b><small>ผลบันทึกในการใช้งานครั้งนี้ · ${h(uiResult.actor)} · ${h(uiResult.at)}</small></section>` : ''}
+      ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt || 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
       ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
       <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
       <div class="case-summary-grid" id="caseSummarySection">
@@ -3638,7 +3662,7 @@ async function openException(id, options = {}) {
 
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
       ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ใช้หลักฐานคู่ BO/PM ต้นทาง" : "คู่ BO/PM ตรงกัน ไม่พบคู่ซ้ำ — Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน"}</p>` : ""}
-      <ul class="close-check">
+      <ul class="close-check" id="caseChecklistSection">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
       ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
@@ -3662,26 +3686,41 @@ async function openException(id, options = {}) {
         </label>
       </div>
 
-      <h3 class="drawer-h3">เพิ่ม Note (ลบข้อมูลเดิมไม่ได้)</h3>
+      <h3 class="drawer-h3">ผลตรวจ / Note ของ Audit</h3>
+      <p class="hint">เก็บผลตรวจในประวัติ ไม่ใช่ส่งคำตอบชี้แจง และไม่ใช่ปิดเคส</p>
       <div class="note-form">
         <textarea id="noteText" rows="3" placeholder="บันทึกสิ่งที่ตรวจพบ..."></textarea>
         <button class="ghost-button" id="btnNote">บันทึก Note</button>
       </div>
-    </div>
-
+      <section class="case-response-section" id="caseResponseSection">
+        <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>ใช้ตอบคำถามพร้อมหลักฐาน แยกจาก Note ผลตรวจด้านบน</p>
+        ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(e.respondedAt || '')}</small></div>` : ''}
+        <label ${e.status!=='clarifying'?'hidden':''}>คำชี้แจง<textarea id="responseText" rows="4" placeholder="ระบุข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และหลักฐาน" ${e.status!=='clarifying'||!can('respond')?'disabled':''}></textarea></label>
+        <button class="primary-button" id="btnRespond" ${e.status!=='clarifying'||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
+        <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
+      </section>
     <footer class="drawer-foot" id="caseActionSection">
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
-      <details class="drawer-more-actions"><summary>เอกสารและการดำเนินการอื่น</summary><div><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnRespond">ตอบชี้แจง + แนบหลักฐาน</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
-    </footer>`;
+      <p class="case-action-help">เลือกเอกสารหรือแนบหลักฐานเพื่อให้ Audit ตรวจต่อ — ยังไม่ปิดเคสจนกว่าจะยืนยันปิดสำเร็จ</p>
+      ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
+    </footer>
+    </div>`;
 
   drawer.hidden = false;
   overlay.hidden = false;
   requestAnimationFrame(() => drawer.classList.add("on"));
 
   $("#drawerClose").addEventListener("click", closeDrawer);
+  $('#btnGoMissing')?.addEventListener('click',()=>{
+    const first=missingChecks[0]?.key;
+    const target=first==='raw'||first==='evidence'?'#caseFilesSection':first==='note'?'#noteText':'#caseChecklistSection';
+    $(target)?.scrollIntoView({behavior:'smooth',block:'center'});
+    if(first==='note')$('#noteText')?.focus();
+  });
   const moveReview = (offset) => {
-    if (String($('#noteText')?.value || '').trim()) return toast('มี Note ที่ยังไม่บันทึก กรุณาบันทึกหรือล้างข้อความก่อนเปลี่ยนเคส', 'warn');
+    if (String($('#noteText')?.value || '').trim() || String($('#responseText')?.value || '').trim()) return toast('มีข้อความที่ยังไม่บันทึก กรุณาบันทึกหรือล้างข้อความก่อนเปลี่ยนเคส', 'warn');
     const nextId = queue[queueIndex + offset];
     if (nextId) openException(nextId);
   };
@@ -3726,6 +3765,7 @@ async function openException(id, options = {}) {
       try {
         for (const file of files) { await Sb.uploadCaseEvidence(e.dbId, file); saved++; }
         e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
+        recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
         toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
       } catch (error) {
         e._uploadResult = `แนบสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message} · หากผลไม่แน่นอน โปรดตรวจทะเบียนหลักฐานก่อนอัปซ้ำ`;
@@ -3743,6 +3783,7 @@ async function openException(id, options = {}) {
     e.hasEvidence = true;
     logAction("attach", "evidence", e.id, `แนบไฟล์ ${files.map((f) => f.name).join(", ")}`);
     saveOverride(e);
+    recordCaseUiResult(e, `แนบหลักฐาน ${files.length} ไฟล์แล้ว — ยังไม่ปิดเคส`);
     toast(`แนบหลักฐาน ${files.length} ไฟล์แล้ว`);
     openException(id);
   });
@@ -3762,6 +3803,7 @@ async function openException(id, options = {}) {
         logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
         saveOverride(e);
       }
+      recordCaseUiResult(e, 'บันทึกผลตรวจ / Note สำเร็จ — ยังไม่ใช่การส่งคำชี้แจงหรือปิดเคส');
       toast("บันทึก note แล้ว");
       if (state.selected === id) await openException(id);
     } catch (err) {
@@ -3780,7 +3822,7 @@ async function openException(id, options = {}) {
     });
   });
   $("#btnDocClr").addEventListener("click", () =>
-    issueClarificationDoc(e, ($("#noteText").value || "").trim() || (e.notes || []).map((n) => n.text).join("\n")),
+    issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
   );
 
   $("#btnClarify").textContent = "ส่งไปชีทชี้แจง";
@@ -3802,6 +3844,7 @@ async function openException(id, options = {}) {
       e.status = "clarifying";
       e.requestedAt = requestedAt;
       e.requestedBy = requestedBy;
+      recordCaseUiResult(e, 'ส่งเข้าชีทรอชี้แจงสำเร็จ — รอผู้มีสิทธิ์ตอบพร้อมหลักฐาน');
       saveOverride(e, false);
       logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
       toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
@@ -3820,7 +3863,7 @@ async function openException(id, options = {}) {
   $("#btnRespond").addEventListener("click", async (event) => {
     if (!can("respond")) return deny("ตอบชี้แจง");
     if (e.status !== "clarifying") return;
-    const answerText = $("#noteText").value.trim() || e.responseText || "";
+    const answerText = $("#responseText").value.trim();
     if (!answerText) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
     const answeringRole=currentUser().role;
     const response=['monitor','lead','admin'].includes(answeringRole)
@@ -3839,6 +3882,7 @@ async function openException(id, options = {}) {
       e.responseText = response;
       e.respondedAt = stamp;
       e.respondedBy = Sb.authUser()?.id || currentUser().username;
+      recordCaseUiResult(e, 'ส่งคำชี้แจงสำเร็จ — รอ Audit ตรวจคำตอบ ยังไม่ปิดเคส');
       saveOverride(e, false);
       logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
       render();
@@ -3897,6 +3941,7 @@ async function openException(id, options = {}) {
           return;
         }
         e.status = "damage";
+        recordCaseUiResult(e, 'บันทึกความเสียหายสำเร็จ — ดูรายการในทะเบียนความเสียหาย');
         DB.damages.push(damage);
         saveOverride(e, false);
         logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
@@ -3905,6 +3950,7 @@ async function openException(id, options = {}) {
         toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
       } else {
         e.status = "damage";
+        recordCaseUiResult(e, 'บันทึกความเสียหายในข้อมูลตัวอย่างแล้ว');
         DB.damages.push(damage);
         Store.data.extraDamages.push(damage);
         saveOverride(e);
@@ -3923,8 +3969,8 @@ async function openException(id, options = {}) {
     if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
     logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
     toast("อนุมัติและปิดเคส " + e.id + " แล้ว");
-    closeDrawer();
     render();
+    await openException(e.id);
   });
 
   const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve", btnDocReq: "request_clarify" };
@@ -3932,6 +3978,7 @@ async function openException(id, options = {}) {
     const el = $("#" + btn);
     if (!can(cap)) {
       el.classList.add("locked");
+      el.disabled = true;
       el.title = `ต้องมีสิทธิ์: ${cap} (บทบาทปัจจุบัน ${DB.roles[state.role].name} ไม่มีสิทธิ์นี้)`;
     }
   });

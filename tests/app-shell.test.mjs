@@ -20,7 +20,8 @@ assert.match(app, /if \(!e\) return toast\('ไม่พบรายละเอ
 assert.match(app, /if \(!canAccessCompany\(e.company\)\) return toast\('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท/);
 assert.match(app, /await openEvidenceRelatedCase\(row\.id, \{focusFiles: true\}\)/, "ปุ่มในตารางต้องโหลดเคสจริงจาก UUID ก่อนเปิด drawer");
 assert.match(app, /ยังไม่นับเป็นความเสียหาย จนกว่า Audit จะยืนยันและบันทึกเข้าทะเบียน/, "ไฟล์ชี้แจงต้องไม่ถูกนับเป็นความเสียหายโดยอัตโนมัติ");
-assert.match(app, /มี Note ที่ยังไม่บันทึก/);
+assert.match(app, /มีข้อความที่ยังไม่บันทึก/);
+assert.ok(app.includes("String($('#responseText')?.value || '').trim()"), 'Protect unsaved clarification as well as Note');
 assert.match(app, /การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส/);
 assert.match(app, /data-review-status="answered"/);
 const hasLiveCoreError = extractFunction('hasLiveCoreError');
@@ -90,16 +91,18 @@ const closureSource = app.match(/async function persistCaseClosure\([^]*?\n}/)[0
 for (const succeeds of [false, true]) {
   const record = { id: "EX-test", dbId: "test", status: "open" };
   const messages = [];
-  const close = new Function("state", "Sb", "Store", "currentUser", "saveOverride", "toast", `${closureSource}; return persistCaseClosure;`)(
+  const savedResults = [];
+  const close = new Function("state", "Sb", "Store", "currentUser", "saveOverride", "toast", "recordCaseUiResult", `${closureSource}; return persistCaseClosure;`)(
     { dataset: "production" },
     { currentEmail: () => "tester", signedIn: () => true, authUser: () => ({ id: "test" }), closeException: async () => { if (!succeeds) throw new Error("network failed"); } },
     { data: { exOverrides: {} }, persist() {} }, () => ({ username: "tester" }),
-    () => { throw new Error("production must not save a local closure override"); }, (message) => messages.push(message),
+    () => { throw new Error("production must not save a local closure override"); }, (message) => messages.push(message), (e,message)=>savedResults.push(message),
   );
   assert.equal(await close(record, "verified"), succeeds);
   assert.equal(record.status, succeeds ? "closed" : "open");
   assert.equal(record._closing, false);
   assert.equal(messages.length, succeeds ? 0 : 1);
+  assert.equal(savedResults.length, succeeds ? 1 : 0, 'Only confirmed saves show a success result');
 }
 const formats = readFileSync(join(root, "formats.js"), "utf8");
 const html = readFileSync(join(root, "index.html"), "utf8");
