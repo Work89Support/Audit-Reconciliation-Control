@@ -588,10 +588,17 @@ const Formats = (() => {
       if (!partial && !sevenMCorepayPendingDeposit && !["success", "successed", "สำเร็จ"].includes(status)) {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
-      const timeSource = xbPolicy
+      let timeSource = xbPolicy
         ? firstValue(f, r, dir === "deposit" ? ["paymentTime", "expiredTime"] : ["updateTime"])
         : firstValue(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]);
-      const t = stamp(timeSource.value);
+      const settlement = stamp(timeSource.value);
+      const requestSource = firstValue(f, r, ["requestTime", "วันที่ทำรายการ", "วันเวลาทำรายการ", "เวลาทำรายการ", "createdAt", "createTime"]);
+      const request = stamp(requestSource.value);
+      const sevenMCpWithdraw = ["7M", "UFABET7M"].includes(subco) && provider === "COREPAY" && dir === "withdraw";
+      // Scope this correction to 7M CP withdrawals. Request day owns the
+      // transaction; a later success timestamp remains separate evidence.
+      if (sevenMCpWithdraw && request) timeSource = requestSource;
+      const t = sevenMCpWithdraw && request ? request : settlement;
       if (!t) return drop("ไม่มีเวลาที่อ่านได้"), null;
       // Never use the requested amount or rounded Progress as a partial payout.
       const paidRaw = valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง"]);
@@ -631,6 +638,11 @@ const Formats = (() => {
         rowNo: i + 1,
         source: "bo",
         formatCode: "pm_provider",
+        requestDate: sevenMCpWithdraw && request ? request.date : null,
+        requestSec: sevenMCpWithdraw && request ? request.sec : null,
+        settlementDate: sevenMCpWithdraw && settlement ? settlement.date : null,
+        settlementSec: sevenMCpWithdraw && settlement ? settlement.sec : null,
+        identityOnly: !!(sevenMCpWithdraw && request && settlement && request.date !== settlement.date),
         date: t.date,
         sec: t.sec,
         amount: Math.round(amount * 100) / 100,

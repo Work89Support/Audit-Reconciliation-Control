@@ -807,6 +807,26 @@ await (async () => {
 })();
 
 await (async () => {
+  const headers=['Ref Id','รหัสสมาชิก','จำนวนเงิน','สถานะ','วันที่ทำรายการ','วันเวลาอัพเดต','ชื่อธนาคารสมาชิก','เลขบัญชีสมาชิก'];
+  const rows=[headers,
+    ['261001231533-65169785-CP','ufpyo7mm149084',3000,'success','2026-10-01 23:15:33','2026-10-02 00:17:56','KBANK','0181346108'],
+    ['261001235239-00526270-CP','ufpyo7mm136871',2050,'success','2026-10-01 23:52:39','2026-10-02 00:14:09','KBANK','0343496079']];
+  const parsed=Engine.normalize('UFABET7M_PM_COREPAY_W_2026-10-01.xlsx',rows,settings,'2026-10-01');
+  eq('7M CP: request-day rows survive next-day success filter',parsed.records.length,2);
+  eq('7M CP: preserve success date separately',parsed.records[0]?.settlementDate,'2026-10-02');
+  const bo=rows.slice(1).map(x=>rec({company:'UFABET7M',account:'COREPAY',isPmChannel:true,direction:'withdraw',date:'2026-10-01',sec:23*3600,amount:x[2],memberCode:x[1],ref:x[0]}));
+  let r=await run(parsed.records,bo);
+  eq('7M CP: both next-day settlements close by identity',r.matched,2);
+  eq('7M CP: no false cross-day exception',r.exceptions.length,0);
+  ok('7M CP: settlement crossing remains evidence',r.matchEvidence.every(e=>e.settlementCrossDay&&e.method==='provider-ref-user-amount'));
+  r=await run(parsed.records,bo.map(b=>({...b,memberCode:'wrong-user'})));
+  eq('7M CP: conflicting identity remains unmatched',r.matched,0);
+  r=await run(parsed.records,[...bo,bo[0]]);
+  eq('7M CP: duplicate BO does not auto-close disputed pair',r.matchEvidence.filter(e=>e.amount===3000).length,0);
+  eq('7M CP: no duplicate inclusion in settlement-day run',Engine.normalize('UFABET7M_PM_COREPAY_W_2026-10-01.xlsx',rows,settings,'2026-10-02').records.length,0);
+})();
+
+await (async () => {
   const base={company:'UFABET7M',account:'COREPAY',isPmChannel:true,direction:'deposit',amount:700,date:'2026-09-20'};
   const s1=rec({...base,sec:3600,memberCode:'',ref:''});
   const s2=rec({...base,sec:4200,memberCode:'',ref:''});

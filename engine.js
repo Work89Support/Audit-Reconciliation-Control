@@ -850,6 +850,7 @@ const Engine = (() => {
       return !!(sr && (br || bn) && !providerRefMatches(s, b));
     };
     const providerNearCandidate = (s, b) => ['7M','UFABET7M'].includes(auditCompanyOf(s))
+      && !s.identityOnly
       && s.isPmChannel && b.isPmChannel && sameCompany(s, b)
       && s.date === b.date && isIsoDate(s.date)
       && s.account === b.account && !!s.direction && s.direction === b.direction
@@ -1940,6 +1941,11 @@ const Engine = (() => {
         direction: m.b.direction,
         amount: m.b.amount,
         pmPayout: m.s.isPmChannel ? { status: m.s.status || null, partial: !!m.s.partial, requested: m.s.requested ?? null, paid: m.s.paidAmount ?? m.s.amount, unpaid: m.s.unpaidAmount ?? null, refundConfirmed: false } : null,
+        settlementCrossDay: !!(m.s.settlementDate && m.s.settlementDate !== m.b.date),
+        requestDate: m.s.requestDate || null,
+        requestSec: m.s.requestSec ?? null,
+        settlementDate: m.s.settlementDate || null,
+        settlementSec: m.s.settlementSec ?? null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
         method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
