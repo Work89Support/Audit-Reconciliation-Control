@@ -106,7 +106,21 @@
     const cases=auditPolicy?auditPolicy.filter(rawCases,pairs):rawCases;
     const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
     const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw);return {key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e};});
-    return [...pairRows,...caseRows];
+    // A closed BBL carry-over is history of an existing matched transaction,
+    // not another BO row. Link only a unique, fully identified saved pair.
+    const linkedPairs=new Set(),remainingCases=[];
+    for(const row of caseRows){
+      const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      const hits=e.status==='closed'&&e.closure_rule==='bbl-continuity-exact-bo-evidence'&&ref&&user&&row.boDate&&row.boTime
+        ? pairRows.filter(p=>p.company===row.company&&p.account===row.account&&p.direction===row.direction&&p.boDate===row.boDate&&p.boTime===row.boTime&&cents(p.boAmount)===cents(row.boAmount)&&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user&&p.pmSource?.fileId&&p.pmSource?.row!==null&&p.pmSource?.row!==undefined)
+        : [];
+      if(hits.length!==1||linkedPairs.has(hits[0])){remainingCases.push(row);continue;}
+      const pair=hits[0];linkedPairs.add(pair);
+      pair.case=e;pair.code=row.code;pair.kind='closed';
+      pair.reason=[pair.reason,'หลักฐานปิดเคสย้อนหลัง',e.resolution_note,`STM ไฟล์ ${pair.pmSource.fileId} · แถว ${pair.pmSource.row}`].filter(Boolean).join(' · ');
+      if(pair.pmSource.noTime)pair.pmTime=`${pair.pmDate} (ไม่มีเวลา)`;
+    }
+    return [...pairRows,...remainingCases];
   }
   function hasSide(row,side){return cents(row[`${side}Amount`])!==null&&(row.isPair||!!(realRaw(row[`${side}Raw`])||row[`${side}Date`]||Object.values(row[side]||{}).some(Boolean)));}
   function sideKey(row,side){
