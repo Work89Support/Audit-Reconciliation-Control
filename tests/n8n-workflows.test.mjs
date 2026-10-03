@@ -222,7 +222,7 @@ assert.match(workerText, /pm_statement:'stm'/, "PM provider reports must be trea
 assert.match(workerText, /healthyNames/, "a healthy later copy must supersede an unreadable file with the same name");
 assert.match(workerText, /created_at/, "duplicate attachments must prefer the newest source copy");
 assert.match(workerText, /const seenNames=new Set\(\)/, "only the newest readable attachment with a logical file name may enter reconciliation");
-assert.match(workerText, /const key=keyOf\(f\.file_name\)/, "a corrected later copy must replace the earlier copy even when its size or checksum changed");
+assert.match(workerText, /const key=bblFile\?'BBL:'\+String\(f\.id\):keyOf\(f\.file_name\)/, "BBL same-name pages must survive; other banks retain latest readable-copy selection");
 assert.match(workerText, /reconKinds=new Set/, "damage and clarification files must not enter reconciliation quality gate");
 assert.match(workerText, /ไม่พบหัวตารางที่รองรับภายใน 30 แถวแรก/, "unsupported headers must fail the parse quality gate");
 assert.match(workerText, /acceptedEmptyPm/, "tiny empty PM exports must be accepted as zero transactions");
@@ -231,7 +231,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.78-xb-ant-bookkeeping'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.79-bbl-balance-continuity'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -239,7 +239,7 @@ assert.match(workerText, /OCR Word อ่านรายการลดลงจ
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.78-xb-ant-bookkeeping'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.79-bbl-balance-continuity'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -268,7 +268,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.78-xb-ant-bookkeeping'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.79-bbl-balance-continuity'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
 assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
 assert.match(workerText, /sys123_manual_bank_safe_close:true/, "worker summary must identify approved manual bank auto-close accounts");

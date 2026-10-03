@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.78-xb-ant-bookkeeping";
-const PARSER_VERSION = "1.9.78-xb-ant-bookkeeping";
+const WORKER_VERSION = "1.9.79-bbl-balance-continuity";
+const PARSER_VERSION = "1.9.79-bbl-balance-continuity";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -221,13 +221,16 @@ if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:pars
 const stm=[],bo=[];
 for(const f of files){
   if(f.format&&f.format.source==='aux') continue;
-  const records=(f.records||[]).map(r=>({...r,source_file:f.file.file_name,source_file_id:f.file.id,source_checksum:f.file.checksum||null}));
+  const records=(f.records||[]).map(r=>({...r,source_file:f.file.file_name,source_file_id:f.file.id,source_checksum:f.file.checksum||null,source_created_at:f.file.created_at||''}));
   if(f.format&&f.format.source==='bo') bo.push(...records);
   else stm.push(...records);
 }
 // เมลอาจแนบไฟล์ STM/PM ชุดเดิมซ้ำต่างเวลา หรือส่งเนื้อหาเดียวกันมาโดยเปลี่ยนชื่อ
 // Provider ผิด (เช่น AZPAY ถูกตั้งชื่อเป็น MYPAY). ถ้าชุดธุรกรรมทั้งไฟล์ตรงกัน
 // ทุก tuple ให้เก็บเพียงฉบับแรก ไม่หักรายการจริงที่บังเอิญยอด/เวลาเท่ากันบางแถว.
+const bblControl=Engine.prepareBblStatements(stm);
+if(bblControl.issues.length) return [{json:{job,result:null,exceptions:[],files:parseResults,quality_errors:bblControl.issues.map(e=>({bank:'BBL',parse_error:e.reason,...e}))},pairedItem:{item:0}}];
+stm.length=0; stm.push(...bblControl.records);
 const sourceGroups=new Map();
 for(const row of stm){
   if(!row.source_file_id) continue;
@@ -358,7 +361,7 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
-  .replace('source_parser_completion:true,','source_parser_completion:true,scb_printed_dates_preserved:true,')
+  .replace('source_parser_completion:true,','source_parser_completion:true,scb_printed_dates_preserved:true,bbl_balance_continuity:true,bbl_overlap_evidence:bblControl.removed,')
   .replace(
     "worker_version:'1.9.29-seven-m-source-parity'",
     `worker_version:'${WORKER_VERSION}'`,
@@ -477,7 +480,7 @@ const nodes = [
     // admits only KTB statements from that adjacent day (never BO or other banks).
     url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=gte.{{ $json.business_date }}&business_date=lte.{{ DateTime.fromISO($json.business_date,{zone:'Asia/Bangkok'}).plus({days:1}).toISODate() }}&select=id,business_date,company,source_files(id,file_name,storage_path,kind,company,parsed,row_count,checksum,size_bytes,created_at,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); const sys123=new Set(['AT4','FR8','SK8']); const jobCompany=String(job.company||'').toUpperCase(); for(const b of $input.all().map(x=>x.json)){const batchDate=String(b.business_date||'').slice(0,10); const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10); for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||'')); if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)) continue; if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const key=keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); const sys123=new Set(['AT4','FR8','SK8']); const jobCompany=String(job.company||'').toUpperCase(); for(const b of $input.all().map(x=>x.json)){const batchDate=String(b.business_date||'').slice(0,10); const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10); for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||'')); const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue; if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''))||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const bblFile=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); const key=bblFile?'BBL:'+String(f.id):keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",

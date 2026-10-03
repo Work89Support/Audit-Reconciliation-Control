@@ -438,7 +438,83 @@ const Engine = (() => {
     });
   }
 
+  // BBL has no clock. Only a unique, continuous multi-row balance anchor
+  // proves an overlap; a repeated amount or closing balance alone never does.
+  function prepareBblStatements(records) {
+    const groups = new Map(), removed = new Set(), evidence = [], issues = [];
+    const cents = n => n !== null && n !== undefined && n !== '' && Number.isFinite(Number(n)) ? Math.round(Number(n) * 100) : null;
+    const key = r => JSON.stringify([r.date, r.direction, cents(r.amount), cents(r.balance)]);
+    const continuous = (a, b) => cents(a.balance) !== null && cents(b.balance) !== null
+      && cents(b.amount) > 0 && ['deposit', 'withdraw'].includes(b.direction)
+      && cents(a.balance) + (b.direction === 'deposit' ? 1 : -1) * cents(b.amount) === cents(b.balance);
+    for (const r of records) {
+      if (String(r.bank || r.channel || '').toUpperCase() !== 'BBL' || r.noTime !== true || r.isPmChannel
+          || r.source !== 'stm' || r.formatCode !== 'stm_pdf') continue;
+      const company = String(r.subco || r.company || '').toUpperCase();
+      if (!company || !r.account || r.account === 'UNKNOWN' || !isIsoDate(r.date)
+          || cents(r.amount) === null || cents(r.balance) === null || !['deposit', 'withdraw'].includes(r.direction)) {
+        issues.push({row:r.rowNo, reason:'BBL ไม่มีเวลา: วันที่ บัญชี ยอด หรือยอดคงเหลือยังไม่ครบ'}); continue;
+      }
+      const groupKey = JSON.stringify([company, r.account, r.date]);
+      const segments = groups.get(groupKey) || new Map();
+      // Missing source/page identity must not collapse real repeated entries.
+      const source = r.source_file_id || r.source_file || r.fileName || 'single-document';
+      const segmentKey = JSON.stringify([source, r.page || 1]);
+      const segment = segments.get(segmentKey) || {source, page:r.page || 1, created:r.source_created_at || '', rows:[]};
+      segment.rows.push(r); segments.set(segmentKey, segment); groups.set(groupKey, segments);
+    }
+    for (const [groupKey, segments] of groups) {
+      const ordered = [...segments.values()].sort((a,b) => a.created.localeCompare(b.created)
+        || (a.source === b.source ? a.page - b.page : 0));
+      const accepted = [];
+      for (const segment of ordered) {
+        const rows = segment.rows.slice().sort((a,b) => Number(a.rowNo || 0) - Number(b.rowNo || 0));
+        let valid = true;
+        for (let i=1;i<rows.length;i++) if (!continuous(rows[i-1], rows[i])) {
+          valid=false; issues.push({source:segment.source,page:segment.page,row:rows[i].rowNo,reason:'BBL ยอดคงเหลือไม่ต่อเนื่อง ห้ามเดาหรือข้ามแถว'});
+        }
+        if (!valid) { accepted.push(...rows); continue; }
+        if (!accepted.length) { accepted.push(...rows); continue; }
+        // Find the longest prefix already present in the accepted source order.
+        const hits=[];
+        for(let start=0;start<accepted.length;start++) {
+          let length=0;
+          while(length<rows.length && start+length<accepted.length && key(rows[length])===key(accepted[start+length])) length++;
+          if(length) hits.push({start,length});
+        }
+        const longest=Math.max(0,...hits.map(h=>h.length));
+        if (longest) {
+          const best=hits.filter(h=>h.length===longest);
+          const anchor=rows.slice(0,longest).map(key);
+          let occurrences=0;
+          for(let start=0;start+longest<=rows.length;start++) if(anchor.every((k,i)=>k===key(rows[start+i]))) occurrences++;
+          const hit=best[0], remainder=rows.slice(longest);
+          const proven=longest>=3 && best.length===1 && occurrences===1
+            && rows.slice(1,longest).every((r,i)=>continuous(rows[i],r))
+            && (!remainder.length || (hit.start+longest===accepted.length && continuous(accepted.at(-1),remainder[0])));
+          if (proven) {
+            for(let i=0;i<longest;i++) {
+              removed.add(rows[i]);
+              evidence.push({source:segment.source,page:segment.page,row:rows[i].rowNo,
+                retainedSource:accepted[hit.start+i].source_file_id || accepted[hit.start+i].source_file || null,
+                retainedRow:accepted[hit.start+i].rowNo,tuple:JSON.parse(key(rows[i])),anchorRows:longest});
+            }
+            accepted.push(...remainder); continue;
+          }
+          issues.push({group:JSON.parse(groupKey),source:segment.source,page:segment.page,reason:'BBL ช่วงซ้อนยังยืนยันไม่ได้แบบ 1:1 (ต้องมีอย่างน้อย 3 แถวต่อเนื่อง)'});
+        } else if (!continuous(accepted.at(-1),rows[0])) {
+          issues.push({group:JSON.parse(groupKey),source:segment.source,page:segment.page,reason:'BBL รอยต่อไฟล์/หน้าไม่ต่อเนื่อง ต้องตรวจเอกสารก่อน'});
+        }
+        accepted.push(...rows);
+      }
+    }
+    return {records:records.filter(r=>!removed.has(r)),removed:evidence,issues};
+  }
+
   async function reconcile(stmRecords, boRecords, settings, masterAccounts, onProgress) {
+    const bblControl = prepareBblStatements(stmRecords);
+    if (bblControl.issues.length) throw new Error('BBL ต้องตรวจลำดับ/ยอดคงเหลือก่อนกระทบยอด: '+bblControl.issues[0].reason);
+    stmRecords = bblControl.records;
     /* ตัวอ่านไฟล์บางชนิด (โดยเฉพาะ statement ถอน/TMN) ส่งยอดถอนเป็นค่าติดลบ
        เข้ามาที่ reconcile โดยตรงโดยไม่ผ่าน Engine.normalize จึงต้อง canonicalize
        อีกชั้นตรงขอบเขตนี้ เพื่อให้ -1,020 ฝั่ง STM จับกับ 1,020 ฝั่ง BO ได้จริง */
@@ -2070,5 +2146,5 @@ const Engine = (() => {
     );
   }
 
-  return { parseCSV, parseSheet, detectFormat, normalize, reconcile, TYPE_NAME, hhmmss, statementCustomer };
+  return { parseCSV, parseSheet, detectFormat, normalize, reconcile, prepareBblStatements, TYPE_NAME, hhmmss, statementCustomer };
 })();
