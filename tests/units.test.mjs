@@ -139,6 +139,35 @@ const transactionBoRows = [
   ["10383528", "2026-08-31 01:03", "ถอน", "ออโต้", "3fx366079", "พร้อมเพย์-CP(corepay)(QR)", "41350", "0", "10", "2026-08-30 22:43", "", "cake x5"],
 ];
 const transactionBo = Formats.parse("3X_BO_2026-08-31.xlsx", transactionBoRows, "2026-08-31");
+const bookkeepingRows=[transactionBoRows[0],
+  ['10602809','2026-10-02 20:57','ฝาก','ฝาก','3fx94742','SCB 5034633029','80','80','0','2026-10-02 20:57','','Admin'],
+  ['10602918','2026-10-02 20:57','เก็บ','เก็บ','','SCB 5034633029','80','','','2026-10-02 21:15','เติมมือแล้ว','น้องแอล x1'],
+  ['10602912','2026-10-02 21:10','ฝาก','ฝาก','3fx260862','SCB 5034633029','50','50','0','2026-10-02 21:10','','Admin'],
+  ['10602915','2026-10-02 21:10','เก็บ','เก็บ','','SCB 5034633029','50','','','2026-10-02 21:15','เติมมือแล้ว','น้องแอล x1'],
+];
+const trackedBo=Formats.parse('3XB_BO_2026-10-02.xlsx',bookkeepingRows,'2026-10-02');
+eq('XB bookkeeping: only actual deposits count',trackedBo.records.length,2);
+eq('XB bookkeeping: actual deposit total stays 130',trackedBo.records.reduce((s,r)=>s+r.amount,0),130);
+eq('XB bookkeeping: both source rows preserved separately',trackedBo.aux.length,2);
+eq('XB bookkeeping: preserve BO reference',trackedBo.aux[0].ref,'10602918');
+eq('XB bookkeeping: preserve note',trackedBo.aux[0].note,'เติมมือแล้ว');
+eq('XB bookkeeping: linked to actual member deposit',trackedBo.aux[0].relatedTransactionRef,'10602809');
+eq('XB bookkeeping: note alone cannot hide unmatched row',Formats.parse('3XB_BO_2026-10-02.xlsx',[bookkeepingRows[0],bookkeepingRows[2]],'2026-10-02').records.length,1);
+eq('XB bookkeeping: preserve original raw evidence',trackedBo.aux[0].raw,bookkeepingRows[2].join(' | '));
+for (const [label,type,user,note] of [['real manual deposit','ฝาก','','เติมมือแล้ว'],['keep with member','เก็บ','3fx94742','เติมมือแล้ว'],['unexplained keep','เก็บ','','รอตรวจ'],['withdrawal','ถอน','','เติมมือแล้ว']]) {
+  const row=[...bookkeepingRows[2]]; row[2]=type;row[4]=user;row[10]=note;
+  eq(`XB bookkeeping guard: ${label} remains a transaction`,Formats.parse('3XB_BO_2026-10-02.xlsx',[bookkeepingRows[0],row],'2026-10-02').records.length,1);
+}
+eq('XB bookkeeping guard: no SYS123 policy expansion',Formats.parse('FR8_BO_2026-10-02.xlsx',bookkeepingRows,'2026-10-02').records.length,4);
+const antBo = Formats.parse('3XB_BO_2026-10-03.xlsx', [transactionBoRows[0],
+  ['ANT-D','2026-10-03 12:00','ฝาก','ออโต้','xb-user','พร้อมเพย์-ANT-AU(anypay)(QR)','200','200','0','2026-10-03 12:00','','Admin'],
+  ['ANT-W','2026-10-03 12:01','ถอน','ออโต้','xb-user','พร้อมเพย์-ANT-AU(anypay)(QR)','300','0','0','2026-10-03 12:01','','Admin'],
+], '2026-10-03');
+eq('ANT BO deposit identifies PM provider', antBo.records[0].account, 'ANT');
+eq('ANT BO withdrawal identifies PM provider', antBo.records[1].account, 'ANT');
+eq('ANT BO is not a bank account', antBo.records[0].isPmChannel, true);
+eq('ANT alias anypay', Formats.canonicalPm('anypay'), 'ANT');
+eq('ANT does not match customer word fragment', Formats.canonicalPm('CHANT'), '');
 eq("BO ธุรกรรม: ตรวจรูปแบบ 12 คอลัมน์", transactionBo.code, "bo_transaction_export");
 eq("BO ธุรกรรม: ดึงเลข KBANK จากคอลัมน์ธนาคาร", transactionBo.records[0].account, "1968766313");
 eq("BO ธุรกรรม: ไม่รวมเลขจากข้อความวงเล็บ", transactionBo.records[1].account, "6242596342");

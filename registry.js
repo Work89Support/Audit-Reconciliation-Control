@@ -1438,6 +1438,10 @@ const Registry = (() => {
 ];
 
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
+  // XB keeps the channel available even when it is temporarily unused.
+  for (const subco of ['3XB','MC8','MR9','PS8','UR9']) {
+    for (const direction of ['ถอน','ฝาก']) ACCOUNTS.push({subco,provider:'ANT',bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:'ANT',source:'pm',file:`${subco} ANT ${direction} ว/ด/ป.xlsx`,note:'ANT-AU (anypay) · เครือ XB'});
+  }
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
                   cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY",
@@ -1469,8 +1473,9 @@ const Registry = (() => {
   function detectFromName(fileName){
     const raw = norm(fileName), toks = tokens(fileName);
     let bank=null, pm=null;
+    if (toks.includes('ant') || toks.includes('anypay')) pm='ANT';
     for (const t of toks){ if (BANK_KW[t]){ bank=BANK_KW[t]; break; } }
-    for (const t of toks){ if (PM_KW[t]){ pm=PM_KW[t]; break; } }
+    if (!pm) for (const t of toks){ if (PM_KW[t]){ pm=PM_KW[t]; break; } }
     if (!pm){ for (const k in PM_KW){ if (k.length>=3 && raw.includes(k)){ pm=PM_KW[k]; break; } } }
     if (!bank){ for (const k in BANK_KW){ if (k.length>=3 && raw.includes(k)){ bank=BANK_KW[k]; break; } } }
     return { bank, pm, toks, raw };

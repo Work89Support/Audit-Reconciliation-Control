@@ -6,9 +6,11 @@
   const COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);
   const BASE_SHEETS=Object.freeze(['AT ถ','AT ฝ','AZ ถ','AZ ฝ','CP ถ','CP ฝ','M ถ','M ฝ']);
   const LOCALPAY_SHEETS=Object.freeze(['LP ถ','LP ฝ']);
+  const ANT_SHEETS=Object.freeze(['ANT ถ','ANT ฝ']);
+  const XB_COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9']);
   const SEVEN_M_SHEETS=Object.freeze(['AT ถ','AT ฝ','CP ถ','CP ฝ','CY ถ','CY ฝ','AZ ฝ','M ถ','M ฝ','LO ถ','LO ฝ']);
   const SYS123_SHEETS=Object.freeze(['AT ถ','AT ฝ','AZ ฝ','CP ถ','CP ฝ','CY ถ','CY ฝ','LP ถ','LP ฝ']);
-  const SHEETS=Object.freeze([...new Set([...BASE_SHEETS,...LOCALPAY_SHEETS,...SEVEN_M_SHEETS,...SYS123_SHEETS])]);
+  const SHEETS=Object.freeze([...new Set([...BASE_SHEETS,...LOCALPAY_SHEETS,...ANT_SHEETS,...SEVEN_M_SHEETS,...SYS123_SHEETS])]);
   const AUDIT_HEADERS=Object.freeze(['เงื่อนไขที่จับคู่','ต่างเวลา','ผลต่างยอด','สถานะ Audit']);
   const BO_HEADERS=Object.freeze(['รหัส','เวลา','ประเภท','ประเภทดำเนินการ','ยูสเซอร์','ธนาคาร','จำนวน','จำนวนที่ได้รับ','ค่าธรรรมเนียม','เวลาทำรายการ','หมายเหตุ','ผู้ดำเนินการ']);
   const BO_COMPACT_HEADERS=Object.freeze(['เวลา','ประเภท','ยูสเซอร์','บัญชี','บัญชีบริษัท','ยอดเงิน','โบนัส','โน้ต','ผู้ดำเนินการ','แก้ไข']);
@@ -48,6 +50,7 @@
   function directionOf(value){const s=String(value||'').trim().toLowerCase();return s==='deposit'||s==='ฝาก'?'deposit':s==='withdraw'||s==='ถอน'?'withdraw':s;}
   function providerOf(value){
     const s=String(value||'').trim().toUpperCase();
+    if(/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/.test(s))return 'ANT';
     if(/AUTOPEER|\bATP\b/.test(s))return 'AT';
     if(/AZPAY|\bAZP?\b/.test(s))return 'AZ';
     if(/COREPAY|CPPAY|CP2|CPXM|\bCP\b/.test(s))return 'CP';
@@ -132,7 +135,8 @@
   function providerSheets(company,rows=[]){
     if(isSevenM(company))return [...SEVEN_M_SHEETS];
     if(isSys123(company))return [...SYS123_SHEETS];
-    return company==='3XB'||rows.some(row=>providerOf(row.account)==='LP')?[...BASE_SHEETS,...LOCALPAY_SHEETS]:[...BASE_SHEETS];
+    const names=company==='3XB'||rows.some(row=>providerOf(row.account)==='LP')?[...BASE_SHEETS,...LOCALPAY_SHEETS]:[...BASE_SHEETS];
+    return XB_COMPANIES.includes(company)?[...names,...ANT_SHEETS]:names;
   }
   function rulePanel(company){
     if(isSevenM(company)) return `<details class="mc8-requirements" open><summary>เงื่อนไขกระทบยอด 7M ที่ใช้รอบนี้</summary><div class="mc8-rule-columns"><div><h4>PM · จับคู่ 3 จุด</h4><ul><li>Ref / Ref Id ใน STM PM ↔ Note ของ BO</li><li>User / Username ใน STM PM ↔ User ใน BO</li><li>ยอดเงินจริงของ Provider ↔ ยอด BO</li><li>ATP ฝาก: โอนจริง · ATP ถอน: P2P จ่าย</li><li>COREPAY/CYBERPLUS ฝาก: จำนวนที่ได้รับ</li><li>AZPAY/MYPAY/LOCALPAY ใช้จำนวนเงินตามช่องรายการ</li></ul></div><div><h4>เกณฑ์ปิดเคส</h4><ul><li>เวลาเป็นข้อมูลประกอบ ไม่ใช่คีย์หลัก</li><li>Ref + User + ยอดตรงกัน ปิดได้แม้เวลาต่าง</li><li>User ไม่ครบ ใช้ Ref + ยอดได้เมื่อเป็นคู่เดียวที่ไม่ซ้ำ</li><li>ค้นหาข้ามแถว/ข้ามชีตได้ แต่คู่ซ้ำหรือกำกวมต้องตรวจเพิ่ม</li><li>Note ที่มีข้อความ P2P/MyPay สำเร็จ ระบบค้นหา Ref ภายในข้อความ</li></ul></div><div><h4>STM ธนาคาร</h4><ul><li>ธนาคารปกติรวมฝาก-ถอน D-W ไว้ชีตเดียวต่อบัญชี</li><li>เฉพาะ TMN แยกชีตฝาก D และถอน W</li><li>รองรับ BO/STM เรียงแถวไม่ตรงกัน</li><li>ใช้เวลาที่ใกล้ที่สุดช่วยเลือกคู่เมื่อยอดซ้ำ</li></ul></div></div><p class="mc8-rule-note">สีเขียว = ปิดได้ทันที · สีเหลือง = รอตรวจ · ระบบไม่ปิดจากเวลาใกล้เคียงเพียงอย่างเดียว</p></details>`;
@@ -214,8 +218,9 @@
   function amountDiff(row){const pm=cents(row.pmAmount),bo=cents(row.boAmount);return pm===null&&bo===null?'':((pm||0)-(bo||0))/100;}
   function detail(row,side,key){return row?.[side]?.[key]??'';}
   function sourceColumns(row){
-    const time=row.pmSource?.timeColumn||(row.direction==='withdraw'?'updateTime':'paymentTime');
-    const amount=row.pmSource?.amountColumn||(row.direction==='deposit'?'realAmount':/^(AT|M)$/.test(providerOf(row.account))?'transferredAmount':'amount');
+    const ant=providerOf(row.account)==='ANT';
+    const time=row.pmSource?.timeColumn||(ant?'รอยืนยันช่องเวลา ANT':row.direction==='withdraw'?'updateTime':'paymentTime');
+    const amount=row.pmSource?.amountColumn||(ant?'รอยืนยันช่องยอด ANT':row.direction==='deposit'?'realAmount':/^(AT|M)$/.test(providerOf(row.account))?'transferredAmount':'amount');
     return {time,amount};
   }
   function sourceCondition(row){const s=sourceColumns(row);return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`].filter(Boolean).join(' · ');}
@@ -267,9 +272,14 @@
     const base=(schema?.sheets||[]).filter(template=>BASE_SHEETS.includes(template.name));
     if(isSevenM(company))return SEVEN_M_SHEETS.map(name=>{const left=[...(SEVEN_M_LEFT[name]||[])],headers=[...left,null,...BO_COMPACT_HEADERS];return {name,headers,boStart:left.length+1};});
     if(isSys123(company))return SYS123_SHEETS.map(name=>{const left=[...(SYS123_LEFT[name]||[])],headers=[...left,null,...BO_COMPACT_HEADERS];return {name,headers,boStart:left.length+1};});
-    if(!providerSheets(company,rows).includes('LP ถ'))return base;
+    const ant=XB_COMPANIES.includes(company)?ANT_SHEETS.map(name=>{
+      const left=['วัน/เวลา','Ref Id','Username','เลขบัญชี','ชื่อ - นามสกุล ผู้รับ',name.endsWith('ฝ')?'จำนวนเงินฝาก':'จำนวนเงินถอน','สถานะ'];
+      return {name,headers:[...left,null,...BO_COMPACT_HEADERS],boStart:left.length+1};
+    }):[];
+    if(!providerSheets(company,rows).includes('LP ถ'))return [...base,...ant];
     const withdrawal=base.find(template=>template.name==='AZ ถ'),deposit=base.find(template=>template.name==='AZ ฝ');
     return [...base,
+      ...ant,
       withdrawal&&{...withdrawal,name:'LP ถ',headers:[...withdrawal.headers]},
       deposit&&{...deposit,name:'LP ฝ',headers:[...deposit.headers]},
     ].filter(Boolean);

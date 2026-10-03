@@ -4473,6 +4473,7 @@ VIEWS.damage = (root) => {
 
 function pmProviderOf(value) {
   const text = String(value || "").toUpperCase();
+  if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/.test(text)) return "ANT";
   if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
   if (/AZPAY/.test(text)) return "AZPAY";
   if (/COREPAY|CP[ _-]?PAY/.test(text)) return "COREPAY";
