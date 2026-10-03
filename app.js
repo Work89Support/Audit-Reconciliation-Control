@@ -3914,6 +3914,9 @@ async function openException(id, options = {}) {
     if (confirmedCents === null || confirmedCents <= 0) return toast("กรอกยอดเสียหายมากกว่า 0 และไม่เกิน 2 ตำแหน่งทศนิยม", "warn");
     try { confirmedCause = DamageSummary.encodeDetails($("#damageCategory").value, $("#damageConfirmedCause").value); }
     catch (error) { return toast(error.message, "warn"); }
+    if ($('#damageCategory').value==='employee' && (!$('#damageEmployee').value.trim() || !$('#damageShift').value.trim()
+        || ['-','ไม่ระบุ','รอยืนยันผู้เกี่ยวข้อง'].includes($('#damageEmployee').value.trim())
+        || ['-','รอยืนยันกะ'].includes($('#damageShift').value.trim()))) return toast('ประเภทพนักงานต้องยืนยันชื่อและกะจากหลักฐานก่อน เพื่อไม่ระบุผิดคน','warn');
     if (state.dataset === 'production' && (!Sb.signedIn() || !e.dbId)) return toast('ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน', 'warn');
     event.currentTarget.disabled = true;
     if (e.status !== "damage") {
@@ -4231,6 +4234,7 @@ const liveDamageState = {
   category: "ALL",
   shift: "ALL",
   employee: "ALL",
+  collectionError: null,
 };
 
 function damageQueryKey() {
@@ -4265,6 +4269,23 @@ async function loadLiveDamage(force = false) {
     if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
     if (result[0].status === "rejected") throw result[0].reason;
     liveDamageState.rows = (result[0].value || []).map(mapLiveDamage);
+    liveDamageState.collectionError = null;
+    try {
+      const ledger = await Sb.damageCollections(liveDamageState.rows.map(d=>d.dbId));
+      if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
+      for (const row of liveDamageState.rows) {
+        row.collectionReady=true;
+        const collection=ledger.collections.find(c=>c.damage_id===row.dbId);
+        row.receipts=ledger.receipts.filter(r=>r.damage_id===row.dbId);
+        if(collection) {
+          if(collection.company!==row.company || collection.category!==DamageSummary.classify(row.cause).category) throw new Error('บริษัทหรือประเภทเคสไม่ตรงยอดเรียกเก็บที่อนุมัติ ต้องตรวจสอบก่อน');
+          const paidCents=row.receipts.filter(r=>!r.voided_at).reduce((s,r)=>s+DamageSummary.cents(r.amount),0);
+          row.collection={...collection,paid_amount:(paidCents/100).toFixed(2)};
+          // Employee identity comes only from explicitly approved collection details.
+          if(collection.category==='employee') row.employeeCode=collection.party_code;
+        }
+      }
+    } catch(error) { liveDamageState.collectionError=error.message || 'โหลดสมุดยอดโอนคืนไม่สำเร็จ'; }
     liveDamageState.evidence = result[1].status === "fulfilled" ? (result[1].value || []) : [];
     liveDamageState.evidenceReady = result[1].status === "fulfilled";
     liveDamageState.ready = true;
@@ -4280,6 +4301,82 @@ async function loadLiveDamage(force = false) {
       if (state.route === "damage") render();
     }
   }
+}
+
+async function openDamageCollection(row) {
+  if (!can('close_case') || !Sb.signedIn()) return deny('อนุมัติยอดเรียกเก็บ');
+  if (!row.collectionReady || liveDamageState.collectionError) return toast('โหลดสมุดยอดโอนคืนให้ครบก่อน','warn');
+  const category=DamageSummary.classify(row.cause).category;
+  if (!['employee','backoffice','pm','game','external'].includes(category)) return toast('ประเภทเดิมยังไม่ชัดเจน ไม่เรียกเก็บอัตโนมัติ','warn');
+  const collection=row.collection;
+  if (!collection) {
+    openModal('อนุมัติผู้รับผิดชอบและยอดเรียกเก็บ', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(DamageSummary.categories[category])} · เสียหายเดิม ${money(row.amount)} บาท</p>
+      <p class="hint">ยืนยันจากหลักฐาน ไม่ใช้ชื่อผู้ตรวจหรือผู้ส่งเมลแทนผู้รับผิดชอบ หลังอนุมัติจะไม่เขียนทับตัวคนเดิม</p>
+      <label>รหัสพนักงาน / รหัสผู้รับผิดชอบ<input id="collectionPartyCode" maxlength="100" placeholder="รหัสประจำตัวที่ตรวจสอบแล้ว ไม่ใช้ชื่ออย่างเดียว"></label>
+      <label>ชื่อผู้รับผิดชอบ<input id="collectionPartyName" maxlength="200" value="${h(category==='employee'?row.employee:'')}" ${category==='employee'?'readonly':''}></label>
+      <label>กะ ณ วันเกิดเหตุ<input id="collectionShift" maxlength="32" value="${h(row.shift==='-'?'':row.shift)}" ${category==='employee'?'readonly':''}></label>
+      <label>ยอดอนุมัติให้เรียกเก็บ (บาท)<input id="collectionApproved" type="number" min="0" max="${h(row.amount)}" step="0.01"></label>
+      <label>เหตุผลและหลักฐานยืนยันตัวตน / ยอด<textarea id="collectionReason"></textarea></label>
+      <label><input type="checkbox" id="collectionIdentityChecked">ตรวจบริษัท รหัส ชื่อ กะ และยอดจากหลักฐานแล้ว เป็นผู้รับผิดชอบที่ถูกต้อง</label>`, '<button class="ghost-button" id="collectionCancel">ยกเลิก</button><button class="primary-button" id="collectionSave">อนุมัติยอดเรียกเก็บ</button>');
+    $('#collectionCancel').addEventListener('click',closeModal);
+    $('#collectionSave').addEventListener('click',async event=>{
+      if(!$('#collectionIdentityChecked').checked) return toast('ต้องตรวจและยืนยันตัวตนก่อน','warn');
+      const amount=DamageSummary.cents($('#collectionApproved').value);
+      if(amount===null || amount>DamageSummary.cents(row.amount)) return toast('ยอดเรียกเก็บไม่ถูกต้อง','warn');
+      const body={p_damage_id:row.dbId,p_party_code:$('#collectionPartyCode').value.trim(),p_party_name:$('#collectionPartyName').value.trim(),p_shift:$('#collectionShift').value.trim(),p_amount:amount/100,p_reason:$('#collectionReason').value.trim()};
+      if(!body.p_party_code || !body.p_party_name || body.p_reason.length<10 || (category==='employee' && (!body.p_shift || body.p_party_name==='ไม่ระบุ'))) return toast('รหัส ชื่อ กะ และเหตุผลต้องครบ ห้ามเดาตัวคน','warn');
+      event.currentTarget.disabled=true;
+      try { await Sb.approveDamageCollection(body); closeModal(); await loadLiveDamage(true); toast('อนุมัติยอดเรียกเก็บแล้ว ยังไม่มีการรับโอนคืน'); }
+      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันการอนุมัติไม่ได้ กรุณาตรวจทะเบียนก่อนลองใหม่: '+error.message,'warn'); }
+    });
+    return;
+  }
+  let files;
+  try { files=(await Sb.evidenceFiles({from:row.date,company:row.company,limit:2000})).filter(f=>f.company===row.company && f.storage_path && !f.is_archived); }
+  catch(error) { return toast('ยังโหลดหลักฐานโอนคืนไม่ได้: '+error.message,'warn'); }
+  const totals=DamageSummary.collectionTotals(row), requestId=crypto.randomUUID();
+  openModal('ตรวจยอดโอนคืน — ไม่ใช่คำสั่งโอนเงิน', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(collection.party_name)} · รหัส ${h(collection.party_code)} · กะ ${h(collection.shift || 'ไม่เกี่ยวกับกะ')}</p>
+    <p>อนุมัติ ${money(totals.approved)} · รับคืนแล้ว ${money(totals.paid)} · คงเหลือ ${money(totals.net)} บาท</p>
+    <p class="hint">เลือกเฉพาะสลิปหรือเอกสารที่ตรวจว่ารับเงินจริงแล้วของรายการนี้ รหัสโอนและไฟล์หลักฐานหนึ่งรายการหักได้ครั้งเดียว หากโอนรวมหลายเคสให้ส่งตรวจจัดสรร ไม่บันทึกซ้ำ</p>
+    <label>วันที่โอนคืน<input id="receiptDate" type="date" min="${h(row.date)}"></label>
+    <label>ยอดโอนคืนที่ยืนยัน (บาท)<input id="receiptAmount" type="number" min="0.01" max="${h(totals.net)}" step="0.01"></label>
+    <label>เลขอ้างอิงการโอนจากธนาคาร<input id="receiptReference" maxlength="200"></label>
+    <label>หลักฐานในระบบบริษัทเดียวกัน<select id="receiptEvidence"><option value="">เลือกไฟล์หลักฐานโอนคืน</option>${files.map(f=>`<option value="${h(f.id)}">${h(f.file_name)}</option>`).join('')}</select></label>
+    <button class="ghost-button sm" id="receiptPreview">เปิดหลักฐานโอนคืนในหน้าต่างใหม่</button>
+    <label>ผลตรวจหลักฐานและผู้ชำระ<textarea id="receiptNote"></textarea></label>
+    <label><input id="receiptChecked" type="checkbox">ตรวจว่ารับเงินจริงแล้ว และตรงบริษัท / ผู้รับผิดชอบ / เคสนี้ ไม่ใช่ยอดที่คาดว่าจะโอน</label>
+    <h3>ประวัติการรับคืน</h3>${(row.receipts || []).map(r=>`<p>${h(r.paid_at)} · ${money(r.amount)} · ${h(r.transfer_reference)} · ${r.voided_at?'ยกเลิกแล้ว: '+h(r.void_reason):`ยืนยันแล้ว <button class="ghost-button sm" data-void-receipt="${h(r.id)}">ยกเลิกบันทึกผิด</button>`}</p>`).join('') || '<p>ยังไม่มีรายการโอนคืน</p>'}`, '<button class="ghost-button" id="receiptCancel">ยกเลิก</button><button class="primary-button" id="receiptSave">ยืนยันรับโอนคืนตามหลักฐาน</button>');
+  $('#receiptCancel').addEventListener('click',closeModal);
+  $('#receiptEvidence').addEventListener('change',()=>{ $('#receiptChecked').checked=false; });
+  $('#receiptPreview').addEventListener('click',async()=>{
+    const file=files.find(f=>f.id===$('#receiptEvidence').value);
+    if(!file) return toast('เลือกหลักฐานก่อน','warn');
+    const preview=window.open('about:blank','_blank');
+    if(preview) preview.opener=null;
+    try { const url=await Sb.signedUrl(file.storage_path); if(preview) preview.location.href=url; else toast('เบราว์เซอร์บล็อกหน้าต่าง กรุณาเปิดไฟล์จากกล่องหลักฐาน','warn'); }
+    catch(error) { if(preview) preview.close(); toast('เปิดหลักฐานไม่ได้: '+error.message,'warn'); }
+  });
+  document.querySelectorAll('[data-void-receipt]').forEach(button=>button.addEventListener('click',()=>{
+    const receiptId=button.dataset.voidReceipt;
+    openModal('ยกเลิกบันทึกโอนคืนผิด — เก็บประวัติเดิม', '<label>เหตุผลและหลักฐานที่ตรวจว่าบันทึกผิด<textarea id="receiptVoidReason"></textarea></label>', '<button class="ghost-button" id="receiptVoidCancel">ยกเลิก</button><button class="primary-button" id="receiptVoidSave">ยืนยันยกเลิกรายการ</button>');
+    $('#receiptVoidCancel').addEventListener('click',closeModal);
+    $('#receiptVoidSave').addEventListener('click',async event=>{
+      const reason=$('#receiptVoidReason').value.trim();
+      if(reason.length<10) return toast('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');
+      event.currentTarget.disabled=true;
+      try { await Sb.voidDamageReceipt(receiptId,reason); closeModal(); await loadLiveDamage(true); toast('ยกเลิกบันทึกผิดและเก็บประวัติแล้ว'); }
+      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันผลไม่ได้: '+error.message,'warn'); }
+    });
+  }));
+  $('#receiptSave').addEventListener('click',async event=>{
+    const amount=DamageSummary.cents($('#receiptAmount').value);
+    if(!$('#receiptChecked').checked || amount===null || amount<=0 || amount>DamageSummary.cents(totals.net)) return toast('ตรวจหลักฐานและระบุยอดไม่เกินคงเหลือ','warn');
+    const body={p_id:requestId,p_damage_id:row.dbId,p_paid_at:$('#receiptDate').value,p_amount:amount/100,p_reference:$('#receiptReference').value.trim(),p_source_file_id:$('#receiptEvidence').value,p_note:$('#receiptNote').value.trim()};
+    if(!body.p_paid_at || !body.p_reference || !body.p_source_file_id || body.p_note.length<10) return toast('วันที่ รหัสโอน หลักฐาน และเหตุผลต้องครบ','warn');
+    event.currentTarget.disabled=true;
+    try { await Sb.confirmDamageReceipt(body); closeModal(); await loadLiveDamage(true); toast('ยืนยันยอดโอนคืนแล้ว ไม่เปลี่ยนยอดเสียหายเดิม'); }
+    catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันยอดโอนไม่ได้ ตรวจทะเบียนก่อนบันทึกซ้ำ: '+error.message,'warn'); }
+  });
 }
 
 function renderLiveDamage(root) {
@@ -4298,11 +4395,11 @@ function renderLiveDamage(root) {
   const scopedRows = (liveDamageState.rows || []).filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
   const categoryRows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
   const shiftRows = categoryRows.filter(d => !liveDamageState.shift || liveDamageState.shift === 'ALL' || DamageSummary.shiftLabel(d) === liveDamageState.shift);
-  const rows = shiftRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeLabel(d) === liveDamageState.employee);
+  const rows = shiftRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeKey(d) === liveDamageState.employee);
   const classifiedSummary = DamageSummary.summarize(rows);
   const drillTable = (records, field, title) => {
     const summary = DamageSummary.groupBy(records, field);
-    return `<section class="panel damage-drill"><h2>${title}</h2><p class="hint">กดยอดรวมเพื่อกรองรายละเอียดด้านล่าง · ยึดวันที่เกิดเหตุ ไม่ใช่วันที่ปิดเคส</p><div class="table-wrap"><table><thead><tr><th>${field==='shift'?'กะ / รหัสทีม':'พนักงาน / ผู้เกี่ยวข้อง'}</th>${Object.entries(DamageSummary.categories).map(([key,label])=>`<th class="right">${h(key==='system'?'ระบบเดิม (ยังไม่แยก)':label)}</th>`).join('')}<th class="right">รวม (บาท)</th></tr></thead><tbody>${summary.map(g=>`<tr><td>${h(g.label)}</td>${g.groups.map(c=>`<td class="right tnum">${money(c.amount)}</td>`).join('')}<td class="right"><button class="link-btn tnum" data-damage-drill="${field}" data-damage-value="${h(g.label)}">${money(g.total)}</button></td></tr>`).join('') || `<tr><td colspan="9" class="empty">ไม่มีรายการที่ยืนยันแล้ว</td></tr>`}</tbody></table></div></section>`;
+    return `<section class="panel damage-drill"><h2>${title}</h2><p class="hint">กดยอดรวมเพื่อดูจำนวนครั้ง วัน เวลา และหลักฐาน · ชื่อซ้ำแยกตามบริษัท รหัส และกะ · ไม่ทราบรหัสจะแยกไว้รายเคส ไม่รวมเป็นคนเดียวกัน</p><div class="table-wrap"><table><thead><tr><th>${field==='shift'?'กะ / รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส'}</th><th>จำนวนครั้ง</th><th>ยอดเสียหายเดิม</th>${Object.entries(DamageSummary.categories).filter(([key])=>!['system','unclassified'].includes(key)).map(([,label])=>`<th class="right">${h(label)}สุทธิคงเหลือ</th>`).join('')}<th>รับโอนคืนแล้ว</th><th>รอยืนยันยอดเรียกเก็บ</th></tr></thead><tbody>${summary.map(g=>`<tr><td>${h(g.label)}</td><td>${num(g.groups.reduce((s,c)=>s+c.count,0))}</td><td class="right"><button class="link-btn tnum" data-damage-drill="${field}" data-damage-value="${h(g.key)}">${money(g.total)}</button></td>${g.netGroups.filter(c=>!['system','unclassified'].includes(c.category)).map(c=>`<td class="right tnum">${liveDamageState.collectionError?'—':money(c.net)}${c.pending?`<small class="sub">รอยืนยัน ${num(c.pending)} เคส</small>`:''}</td>`).join('')}<td>${liveDamageState.collectionError?'—':money(g.netGroups.reduce((s,c)=>s+c.paid,0))}</td><td>${num(g.netGroups.reduce((s,c)=>s+c.pending,0))} เคส</td></tr>`).join('') || `<tr><td colspan="10" class="empty">ไม่มีรายการที่ยืนยันแล้ว</td></tr>`}</tbody></table></div></section>`;
   };
   const evidenceRows = (liveDamageState.evidence || []).filter((file) => {
     const company = normalizeLiveCompanyCode(file.company || file.batch_company);
@@ -4318,11 +4415,14 @@ function renderLiveDamage(root) {
       <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)} น.</p></div>
       <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
     </section>
+    ${liveDamageState.collectionError ? `<div class="alert bad">ยังยืนยันยอดสุทธิไม่ได้: ${h(liveDamageState.collectionError)} · ไม่แสดงเป็นศูนย์และไม่อนุญาตบันทึกเพิ่มจนกว่าจะโหลดสมุดยอดสำเร็จ</div>` : ''}
+    <div class="alert">ยอดสุทธิคงเหลือ = ยอดอนุมัติเรียกเก็บ − ยอดโอนคืนที่ตรวจหลักฐานแล้ว · ยึดเดือนที่เกิดเหตุ แม้โอนคืนในเดือนถัดไป · รายการที่ยังไม่อนุมัติไม่ถือว่ายอดเรียกเก็บเป็นศูนย์</div>
     ${classifiedSummary.issues.length ? `<div class="alert bad">พบ ${num(classifiedSummary.issues.length)} รายการรหัสหรือยอดไม่ถูกต้อง ยอดรวมด้านล่างยังไม่ครบ</div>` : ''}
     ${scopedRows.length >= 5000 ? '<div class="alert warn">ถึงขีดจำกัด 5,000 รายการ กรุณาลดช่วงวันที่ก่อนสรุปหรือ Export</div>' : ''}
     <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · กะ ${h(!liveDamageState.shift || liveDamageState.shift==='ALL' ? 'ทุกกะ' : liveDamageState.shift)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
     ${drillTable(categoryRows, 'shift', 'ยอดรวมแยกกะ / รหัสทีม')}
     ${drillTable(shiftRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
+    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แยกผู้รับผิดชอบเรียกเก็บจากผู้เกี่ยวข้อง · ผู้มีสิทธิ์ต้องตรวจหลักฐานก่อนอนุมัติ · ไม่หักยอดข้ามคนหรือข้ามเคส</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${rows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายที่ยืนยันแล้ว</td></tr>'}</tbody></table></div></section>
     <section class="status-strip four">
       <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
@@ -4345,6 +4445,7 @@ function renderLiveDamage(root) {
     </section>`;
   if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
   $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
+  root.querySelectorAll('[data-damage-collection]').forEach(button=>button.addEventListener('click',()=>openDamageCollection(rows.find(d=>d.dbId===button.dataset.damageCollection))));
   $("#damageMonthApply")?.addEventListener('click', () => {
     try { const range=DamageSummary.monthRange($("#damageMonth").value); Object.assign(state.filters,range); liveDamageState.shift=liveDamageState.employee=liveDamageState.category='ALL'; render(); }
     catch(error) { toast(error.message,'warn'); }
@@ -4358,11 +4459,13 @@ function renderLiveDamage(root) {
   }));
   $("#damageCategoryFilter")?.addEventListener('change', event => { liveDamageState.category=event.target.value; liveDamageState.shift=liveDamageState.employee='ALL'; renderLiveDamage(root); });
   $("#damageExportLive")?.addEventListener('click', () => {
-    if (classifiedSummary.issues.length || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
+    if (classifiedSummary.issues.length || liveDamageState.collectionError || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
     exportSheets('confirmed-damages', [
       {name:'สรุปประเภท',headers:['ประเภท','จำนวน','ยอดที่บันทึก (บาท)'],widths:[38,14,24],rows:classifiedSummary.groups.map(g=>[g.label,g.count,g.amount])},
       {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ / รหัสทีม'],widths:[16,14,42,42,30,18,24,60,14,24,16,24,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d)];})},
-      ...['shift','employee'].map(field=>({name:field==='shift'?'สรุปกะ':'สรุปพนักงาน',headers:[field==='shift'?'กะ / รหัสทีม':'ผู้เกี่ยวข้อง',...Object.values(DamageSummary.categories),'รวม (บาท)'],widths:[28,...Object.keys(DamageSummary.categories).map(()=>24),24],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total])}))
+      ...['shift','employee'].map(field=>({name:field==='shift'?'สรุปกะ':'สรุปพนักงาน',headers:[field==='shift'?'กะ / รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส',...Object.values(DamageSummary.categories),'เสียหายเดิมรวม',...Object.values(DamageSummary.categories).map(c=>c+'สุทธิคงเหลือ'),'โอนคืนแล้ว','รอยืนยัน (เคส)'],widths:[48,...Array(17).fill(24)],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total,...g.netGroups.map(c=>c.pending?`รอยืนยัน ${c.pending} เคส; คงเหลือยืนยันแล้ว ${c.net}`:c.net),g.netGroups.reduce((s,c)=>s+c.paid,0),g.netGroups.reduce((s,c)=>s+c.pending,0)])})),
+      {name:'เรียกเก็บรายเคส',headers:['เคส','บริษัท','ประเภท','ผู้รับผิดชอบ','รหัส','กะ','อนุมัติเรียกเก็บ','โอนคืนแล้ว','สุทธิคงเหลือ'],widths:[42,14,30,30,24,18,24,24,24],rows:rows.map(d=>{const t=DamageSummary.collectionTotals(d);return[d.id,d.company,DamageSummary.categories[DamageSummary.classify(d.cause).category],d.collection?.party_name || 'รอยืนยัน',d.collection?.party_code || '',d.collection?.shift || '',...['approved','paid','net'].map(k=>t[k]??'รอยืนยัน')];})},
+      {name:'ประวัติโอนคืน',headers:['เคส','บริษัท','วันที่โอน','ยอด','รหัสโอน','ไฟล์หลักฐาน ID','สถานะ','เหตุผลยกเลิก'],widths:[42,14,16,24,42,42,20,60],rows:rows.flatMap(d=>(d.receipts || []).map(r=>[d.id,d.company,r.paid_at,Number(r.amount),r.transfer_reference,r.source_file_id,r.voided_at?'ยกเลิกแล้ว':'ยืนยันแล้ว',r.void_reason || '']))}
     ]);
   });
   $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));

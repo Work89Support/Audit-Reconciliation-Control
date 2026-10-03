@@ -352,6 +352,34 @@ const Sb = (() => {
     return rows;
   }
 
+  async function damageCollections(ids) {
+    const collections=[], receipts=[];
+    for (let start=0;start<ids.length;start+=100) {
+      const filter=`damage_id=in.(${ids.slice(start,start+100).map(encodeURIComponent).join(',')})`;
+      for (const [table,target] of [['damage_collections',collections],['damage_receipts',receipts]]) {
+        for(let offset=0;;) {
+          const page=await json(`/rest/v1/${table}?select=*&${filter}&order=${table==='damage_collections'?'damage_id':'id'}.asc&limit=500&offset=${offset}`);
+          if(!Array.isArray(page)) throw new Error('อ่านยอดเรียกเก็บหรือโอนคืนไม่สำเร็จ');
+          if(!page.length) break;
+          target.push(...page);
+          offset+=page.length;
+        }
+      }
+    }
+    return {collections,receipts};
+  }
+  async function approveDamageCollection(body) {
+    const rows=await rpc('approve_damage_collection',body);
+    if(!Array.isArray(rows) || rows.length!==1 || rows[0].damage_id!==body.p_damage_id) throw new Error('ยังยืนยันผลอนุมัติไม่ได้ กรุณารีเฟรชก่อนลองใหม่');
+    return rows[0];
+  }
+  async function confirmDamageReceipt(body) {
+    const rows=await rpc('confirm_damage_receipt',body);
+    if(!Array.isArray(rows) || rows.length!==1 || rows[0].id!==body.p_id || rows[0].damage_id!==body.p_damage_id) throw new Error('ยังยืนยันยอดโอนไม่ได้ กรุณารีเฟรชก่อนลองใหม่');
+    return rows[0];
+  }
+  const voidDamageReceipt=(id,reason)=>rpc('void_damage_receipt',{p_id:id,p_reason:reason});
+
   async function evidenceFiles({ from, to, company, limit = 2000 } = {}) {
     const filters = [
       "select=*,mail_batches!inner(business_date,company,subject,sender,received_at)",
@@ -1017,6 +1045,10 @@ const Sb = (() => {
     boFirstCoverage,
     runtimeSettings,
     damages,
+    damageCollections,
+    approveDamageCollection,
+    confirmDamageReceipt,
+    voidDamageReceipt,
     evidenceFiles,
     auditLogs,
     notifications,
