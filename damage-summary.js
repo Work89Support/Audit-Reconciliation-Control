@@ -15,8 +15,21 @@ const DamageSummary = (() => {
     return `[damage:v2:${category}] ${String(detail).trim()}`;
   }
   // Old X codes were stored as a category, not a confirmed shift. Never infer a shift from them.
-  function shiftLabel(row) { const value=String(row.shift || '').trim(); return !value || value==='-' ? 'รอยืนยันกะ' : value; }
-  function employeeLabel(row) { const value=String(row.employee || '').trim(); return !value || value==='-' || value==='ไม่ระบุ' ? 'รอยืนยันผู้เกี่ยวข้อง' : value; }
+  function shiftLabel(row) { const value=String((row.collection?.category==='employee'?row.collection.shift:row.shift) || '').trim(); return !value || value==='-' ? 'รอยืนยันกะ' : value; }
+  function employeeLabel(row) { const value=String((row.collection?.category==='employee'?row.collection.party_name:row.employee) || '').trim(); return !value || value==='-' || value==='ไม่ระบุ' ? 'รอยืนยันผู้เกี่ยวข้อง' : value; }
+  // A display name is not a person ID. Never merge missing identities across cases.
+  function employeeKey(row) {
+    const code=String(row.employeeCode || '').trim(), shift=shiftLabel(row), name=employeeLabel(row);
+    if (!code || shift==='รอยืนยันกะ' || name==='รอยืนยันผู้เกี่ยวข้อง') return JSON.stringify(['unverified',row.dbId || row.id]);
+    return JSON.stringify([row.company,code,name,shift]);
+  }
+  function identityLabel(row) { return `${employeeLabel(row)} · ${shiftLabel(row)} · ${row.company || 'รอยืนยันบริษัท'} · ${row.employeeCode || 'รอยืนยันรหัส (เคส '+(row.id || row.dbId || 'ไม่ระบุ')+')'}`; }
+  function collectionTotals(row) {
+    if (!row.collectionReady || !row.collection) return { approved:null, paid:null, net:null };
+    const approved=cents(row.collection.approved_amount), paid=cents(row.collection.paid_amount);
+    if (approved===null || paid===null || paid>approved) return {approved:null,paid:null,net:null};
+    return {approved:approved/100,paid:paid/100,net:(approved-paid)/100};
+  }
   function monthRange(month, minimum = '2026-09-15') {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('เลือกเดือนให้ถูกต้อง');
     const [year, m] = month.split('-').map(Number);
@@ -27,11 +40,25 @@ const DamageSummary = (() => {
   function groupBy(rows, field) {
     const grouped = new Map();
     for (const row of rows) {
-      const label = field === 'shift' ? shiftLabel(row) : employeeLabel(row);
-      if (!grouped.has(label)) grouped.set(label, []);
-      grouped.get(label).push(row);
+      const key = field === 'shift' ? shiftLabel(row) : employeeKey(row);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(row);
     }
-    return [...grouped].map(([label, records]) => ({ label, ...summarize(records) }));
+    return [...grouped].map(([key, records]) => {
+      const summary=summarize(records);
+      const netGroups=Object.keys(categories).map(category=>({category,net:0,paid:0,approved:0,pending:0,confirmed:0}));
+      const seen=new Set();
+      for (const row of records) {
+        const id=row.dbId || row.id;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const group=netGroups.find(g=>g.category===classify(row.cause).category), totals=collectionTotals(row);
+        if (totals.net===null) group.pending++;
+        else { group.confirmed++; group.net+=Math.round(totals.net*100); group.paid+=Math.round(totals.paid*100); group.approved+=Math.round(totals.approved*100); }
+      }
+      return {key,label:field==='shift'?key:identityLabel(records[0]),...summary,
+        netGroups:netGroups.map(g=>({...g,net:g.net/100,paid:g.paid/100,approved:g.approved/100}))};
+    });
   }
   function encode(category, subcategory, detail) {
     if (!['employee', 'system', 'external'].includes(category)) throw new Error('เลือกประเภทความเสียหายก่อน');
@@ -64,5 +91,5 @@ const DamageSummary = (() => {
   function financeComplete(status) {
     return ['completed','closed','ปิดแล้ว','ปิดรอบแล้ว','เสร็จแล้ว','เสร็จสิ้น'].includes(String(status || '').trim().toLowerCase());
   }
-  return { categories, classify, encode, encodeDetails, shiftLabel, employeeLabel, monthRange, groupBy, cents, summarize, financeComplete };
+  return { categories, classify, encode, encodeDetails, shiftLabel, employeeLabel, employeeKey, identityLabel, collectionTotals, monthRange, groupBy, cents, summarize, financeComplete };
 })();
