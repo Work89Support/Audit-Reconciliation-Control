@@ -4,8 +4,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.79-bbl-balance-continuity";
-const PARSER_VERSION = "1.9.79-bbl-balance-continuity";
+const WORKER_VERSION = "1.9.80-seven-m-repeated-internal-transfer";
+const PARSER_VERSION = "1.9.80-seven-m-repeated-internal-transfer";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -321,9 +321,10 @@ const best=new Map();
 // Preserve transaction identity and BOTH amounts; identical reports still merge.
 const exceptionIdentity=e=>{
   const customer=e.customerDetails||{};
+  const sourceIdentity=e.type==='missing_bo'?e.stmSource:e.type==='missing_stm'?e.boSource:null;
   const sideIdentity=side=>side?[side.transactionReference||side.reference||side.sourceId||side.providerReference||'',side.user||'',side.account||'']:[];
   return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.systemAmount??null,e.bankAmount??null,
-    sideIdentity(customer.stm),sideIdentity(customer.bo),e.stmRaw||'',e.boRaw||'']);
+    sideIdentity(customer.stm),sideIdentity(customer.bo),e.stmRaw||'',e.boRaw||'',sourceIdentity?.fileId&&sourceIdentity?.row!=null?[sourceIdentity.fileId,sourceIdentity.row]:null]);
 };
 const eligibleExceptions=(result.exceptions||[]).concat(resolvedRuleExceptions).filter(e=>!isInformationalAuditException(e));
 for(const e of eligibleExceptions){
@@ -339,7 +340,8 @@ const verifyExceptionCoverage=(input,output)=>{
     const customer=e.customerDetails?.[side]||{};
     const ref=customer.transactionReference||customer.reference||customer.sourceId||customer.providerReference||'';
     const raw=side==='stm'?e.stmRaw:e.boRaw;
-    return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.bankAmount??null,e.systemAmount??null,ref,customer.user||'',raw||'']);
+    const source=side==='stm'?e.stmSource:e.boSource;
+    return JSON.stringify([e.type,e.company,e.date,e.direction,e.account,e.time,e.bankAmount??null,e.systemAmount??null,ref,customer.user||'',raw||'',source?.fileId&&source?.row!=null?[source.fileId,source.row]:null]);
   };
   const present=new Set(output.map(evidence).filter(Boolean));
   const missing=input.map(evidence).filter(key=>key&&!present.has(key));
@@ -353,7 +355,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   bank:e.bank||null,account:e.account||null,direction:e.direction||null,member_code:e.member||null,ex_type:e.type,type_name:e.typeName||e.type,
   severity:['critical','high','medium','low'].includes(e.severity)?e.severity:'medium',status:e.status||'open',track:e.track||null,
   system_amount:e.systemAmount??null,bank_amount:e.bankAmount??null,amount_diff:e.amountDiff??0,risk_amount:e.riskAmount??0,time_diff_sec:e.timeDiffSec??0,
-  customer_details:e.customerDetails||{},
+  customer_details:{...(e.customerDetails||{}),source_rows:{bo:e.boSource||null,stm:e.stmSource||null}},
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
