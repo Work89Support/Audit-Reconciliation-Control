@@ -703,6 +703,74 @@ const Engine = (() => {
       matched.push({ s, b, dt: timeDistance(s, b), internalTransferMatch: true });
     });
 
+    // Repeated internal transfers need whole-group proof, not a guessed nearest
+    // row. Require two accounts, equal multiplicity on both STM/BO legs, distinct
+    // source rows and consecutive running balances. Pair by source chronology;
+    // identical minute timestamps do not identify duplicate transactions.
+    const transferGroups = new Map();
+    const sourceRowId = (r) => r.source_file_id && Number.isInteger(r.rowNo)
+      ? JSON.stringify([r.source_file_id, r.rowNo]) : null;
+    stmRecords.forEach((s) => {
+      if (!['7M', 'UFABET7M'].includes(auditCompanyOf(s)) || s.isPmChannel
+        || internalTransferMatched.has(s) || s.noTime || !isIsoDate(s.date)
+        || !Number.isFinite(s.sec) || !(s.amount > 0)) return;
+      const key = JSON.stringify([auditCompanyOf(s), s.date, s.amount]);
+      if (!transferGroups.has(key)) transferGroups.set(key, []);
+      transferGroups.get(key).push(s);
+    });
+    const chronological = (a, b) => a.sec - b.sec || a.rowNo - b.rowNo;
+    const balanceChain = (rows) => rows.every((r, i) => {
+      if (!Number.isFinite(r.balance) || !sourceRowId(r)) return false;
+      if (!i) return true;
+      const prev = rows[i - 1];
+      return r.source_file_id === prev.source_file_id && r.rowNo === prev.rowNo + 1
+        && Math.round((r.balance - prev.balance) * 100)
+          === Math.round(r.amount * 100) * (r.direction === 'deposit' ? 1 : -1);
+    });
+    for (const group of transferGroups.values()) {
+      group.sort(chronological);
+      const clusters = [];
+      for (const s of group) {
+        const last = clusters.at(-1);
+        if (!last || s.sec - last.at(-1).sec > internalTransferTol) clusters.push([s]);
+        else last.push(s);
+      }
+      for (const cluster of clusters) {
+        if (cluster.at(-1).sec - cluster[0].sec > internalTransferTol) continue;
+        const accounts = [...new Set(cluster.map(s => s.account))];
+        if (accounts.length !== 2 || !cluster.some(internalStmHint)) continue;
+        const legs = accounts.map(account => cluster.filter(s => s.account === account).sort(chronological));
+        const n = legs[0].length;
+        if (n < 2 || legs[1].length !== n
+          || !oppositeDirection(legs[0][0].direction, legs[1][0].direction)
+          || legs.some(rows => rows.some(r => r.direction !== rows[0].direction) || !balanceChain(rows))
+          || new Set(cluster.map(sourceRowId)).size !== cluster.length) continue;
+        const planned = [];
+        for (const rows of legs) {
+          const s = rows[0];
+          const candidates = boRecords.map((b, i) => ({ b, i })).filter(({ b, i }) => !boUsed[i]
+            && !b.isPmChannel && !b.noTime && Number.isFinite(b.sec)
+            && sameCompany(s, b) && b.date === s.date && b.account === s.account
+            && b.amount === s.amount && oppositeDirection(s.direction, b.direction)
+            && internalBoHint(b) && rows.some(row => timeDistance(row, b) <= internalTransferTol))
+            .sort((a, b) => chronological(a.b, b.b));
+          if (candidates.length !== n || candidates.some(({ b }) => !sourceRowId(b))
+            || new Set(candidates.map(({ b }) => sourceRowId(b))).size !== n
+            || candidates.some(({ b }, i) => timeDistance(rows[i], b) > internalTransferTol)) break;
+          candidates.forEach(({ b, i }, k) => planned.push({ s: rows[k], b, i }));
+        }
+        if (planned.length !== n * 2 || new Set(planned.map(p => sourceRowId(p.b))).size !== n * 2) continue;
+        const groupEvidence = { countPerLeg: n, amountPerLeg: n * cluster[0].amount,
+          accounts, stmRows: cluster.map(s => ({ fileId: s.source_file_id, row: s.rowNo, balance: s.balance })),
+          boRows: planned.map(p => ({ fileId: p.b.source_file_id, row: p.b.rowNo })) };
+        planned.forEach(({ s, b, i }) => {
+          boUsed[i] = 1;
+          internalTransferMatched.add(s);
+          matched.push({ s, b, dt: timeDistance(s, b), internalTransferMatch: true, internalTransferGroup: groupEvidence });
+        });
+      }
+    }
+
     /* TrueMoney phone screenshots are OCR evidence, not native financial
        text. Repair only the known extra-digit class (10->1,000, 53->953,
        40->4,000) when BO independently proves a unique reciprocal pair with
@@ -2032,6 +2100,7 @@ const Engine = (() => {
         ocrOriginalAmount: m.tmnOcrAmountCorrection ? m.s.amount : null,
         correctedAmount: m.tmnOcrAmountCorrection ? m.b.amount : null,
         internalTransferMatched: !!m.internalTransferMatch,
+        internalTransferGroup: m.internalTransferGroup || null,
         xbProviderRefMatched: !!m.xbProviderRefMatch,
         providerSignedAmountNormalized: !!m.providerSignedAmountNormalized,
         providerDirectionMetadataIgnored: !!m.providerDirectionMetadataIgnored,
@@ -2109,7 +2178,7 @@ const Engine = (() => {
         employee: (b && b.username) || (s && s.username) || "ไม่ระบุ",
         customerDetails: {
           bo: b ? { user: b.memberCode || "", account: b.custAccount || "", name: b.custName || "", reference: b.ref || "", providerReference: sapanProviderId(b.note) || sapanProviderId(b.raw), origin: b.via || "", performedBy: b.performedBy || "", note: sapanProviderId(b.note) || sapanProviderId(b.raw) || b.note || "" } : null,
-          stm: s ? customerEvidence(s) : null,
+          stm: s ? { ...customerEvidence(s), sourceFileId: s.source_file_id || null, sourceRow: s.rowNo ?? null } : null,
         },
         assignee: "audit_som",
         track: null, // แอปจะเติมให้จากระบบต้นทางของบริษัท (XB = รายวัน, 123 = รายรอบ)
@@ -2120,6 +2189,8 @@ const Engine = (() => {
         hasEvidence: false,
         stmRaw: s ? s.raw : "— ไม่พบรายการฝั่ง STM ในช่วงเวลาที่ตรวจ —",
         boRaw: b ? b.raw : "— ไม่พบรายการฝั่ง BO ในช่วงเวลาที่ตรวจ —",
+        boSource: b ? { fileId: b.source_file_id || null, row: b.rowNo ?? null } : null,
+        stmSource: s ? { fileId: s.source_file_id || null, row: s.rowNo ?? null } : null,
         boTime: b && !b.noTime ? hhmmss(b.sec) : "-",
         boDate: b ? b.date : "",
         stmTime: s && !s.noTime ? hhmmss(s.sec) : "-",
