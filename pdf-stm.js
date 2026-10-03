@@ -684,6 +684,12 @@ const PdfStm = (() => {
     rows.forEach((r, i) => {
       const scbCode = String(r.code || "").toUpperCase();
       let dir = bank === "SCB" ? ({ X1: "deposit", X2: "withdraw", XB: "adjustment" }[scbCode] || null) : null;
+      // A BBL balance error must not silently flip a printed FR/TO direction.
+      // Preserve the explicit direction so the continuity gate can reject it.
+      if (bank === 'BBL') {
+        if (/TRF FR|deposit/i.test(scbCode)) dir='deposit';
+        else if (/TRF TO|withdraw/i.test(scbCode)) dir='withdraw';
+      }
       if (!dir && prevBal !== null && r.balance !== null && Math.abs(Math.abs(r.balance - prevBal) - r.amount) < 0.01) {
         dir = r.balance > prevBal ? "deposit" : "withdraw";
       }
@@ -748,8 +754,8 @@ const PdfStm = (() => {
        10/06/26 | TRF FR OTH BK | 14.00 | 1,313.58 | mPhone     (FR = เงินเข้า, TO = เงินออก) */
   function parseBbl(pages) {
     const rows = [];
-    pages.forEach((lines) => {
-      lines.forEach((l) => {
+    pages.forEach((lines, pageIndex) => {
+      lines.forEach((l, lineIndex) => {
         const t = l.text;
         if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(t)) return;
         const firstAmtIdx = l.items.findIndex((it) => AMT.test(it.s.trim()));
@@ -758,6 +764,8 @@ const PdfStm = (() => {
         const particulars = l.items.slice(1, firstAmtIdx).map((it) => it.s).join(" ").trim();
         const via = (l.items[l.items.length - 1] || {}).s || "";
         rows.push({
+          page: pageIndex + 1,
+          sourceLine: lineIndex + 1,
           date: isoOf(t),
           sec: 0,
           noTime: true,                                                    // ไม่มีเวลาในสเตทเมนต์
@@ -1173,6 +1181,7 @@ const PdfStm = (() => {
         lateNight: r.sec >= 82800,
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
+        ...(head.bank === 'BBL' ? {page:r.page,sourceLine:r.sourceLine} : {}),
         internalTransferHint: !!r.internalTransferHint,
         ocrWalletScreenshot: !!r.ocrWalletScreenshot,
         ocrDateCandidateOnly,
