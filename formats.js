@@ -273,6 +273,7 @@ const Formats = (() => {
 
   const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "MYPAY", "LOCALPAY", "QPAY"];
   const canonicalPm = (ch) => {
+    if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/i.test(String(ch || ""))) return "ANT";
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
     if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
@@ -332,6 +333,7 @@ const Formats = (() => {
   const PM_PROVIDERS = [["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
+    if (canonicalPm(s) === "ANT") return "ANT";
     const hit = PM_PROVIDERS.find(([k]) => s.includes(k));
     if (hit) return hit[1];
     /* ไฟล์เครือ 123 ใช้ชื่อย่อ Provider ในชื่อไฟล์/ชื่อชีตบ่อยมาก เช่น
@@ -404,7 +406,7 @@ const Formats = (() => {
         drop("วันที่ไม่ตรงกับวันที่ตรวจ");
         continue;
       }
-      if (f.spec.side === "aux") out.aux.push(rec);
+      if (f.spec.side === "aux" || rec.kind === "bookkeeping") out.aux.push(rec);
       else {
         out.records.push(rec);
         const key = rec.channel || "ไม่ระบุ";
@@ -414,6 +416,27 @@ const Formats = (() => {
       }
     }
 
+    // The note alone must not hide a financial row. Require a unique real BO
+    // deposit with a member, same account/date/time/amount before separating it.
+    out.aux = out.aux.filter((rec) => {
+      if (rec.kind !== "bookkeeping") return true;
+      const candidates = out.records.filter((r) => r.originalType === "ฝาก"
+        && r.memberCode && r.account === rec.account && r.date === rec.date
+        && r.sec === rec.sec && r.amount === rec.amount);
+      if (candidates.length === 1) {
+        rec.relatedTransactionRef = candidates[0].ref;
+        return true;
+      }
+      delete rec.kind;
+      delete rec.exclusionReason;
+      out.records.push(rec);
+      const key = rec.channel || "ไม่ระบุ";
+      const channel = out.channels[key] || (out.channels[key] = {count:0,amount:0,isPm:isPm(key),hasStmSide:!isPm(key)});
+      channel.count++;
+      channel.amount += rec.amount;
+      out.warnings.push(`แถวเก็บ ${rec.ref}: ไม่พบรายการฝากจริงที่สัมพันธ์กันแบบคู่เดียว ต้องตรวจเพิ่ม`);
+      return false;
+    });
     if (!out.records.length && !out.aux.length) out.warnings.push("อ่านหัวคอลัมน์ได้แต่ไม่มีบรรทัดข้อมูลที่ใช้ได้");
     return out;
   }
@@ -429,6 +452,13 @@ const Formats = (() => {
       const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
       const identity = boAccountOf(boIdentityRaw);
       const note = val(f, r, "หมายเหตุ");
+      // XB's "เก็บ" row tracks a completed manual credit; it is not another
+      // customer deposit. Keep the original evidence outside transaction totals.
+      // A real deposit with the same note (or a row with a member) stays intact.
+      const bookkeeping = XB_COMPANIES.has(normalizeCompany(company))
+        && type.trim() === "เก็บ"
+        && !val(f, r, "ยูสเซอร์").trim()
+        && /เติมมือ\s*แล้ว/.test(note);
       /* LOCALPAY ฝากใน BO มีเวลา 2 ช่อง:
          - `เวลา` คือเวลาที่รายการถูกสร้างใน BO
          - `เวลาทำรายการ` คือเวลาที่ Provider ทำรายการจริง และตรงกับ paymentTime ใน PM
@@ -439,6 +469,8 @@ const Formats = (() => {
         rowNo: i + 1,
         source: "bo",
         formatCode: "bo_transaction_export",
+        originalType:type.trim(),
+        ...(bookkeeping ? {kind:"bookkeeping", originalType:type, exclusionReason:"แถวเก็บติดตามการเติมมือ ไม่ใช่ยอดฝากเพิ่ม"} : {}),
         date: matchT.date,
         sec: matchT.sec,
         boDate: boT.date,
@@ -555,12 +587,15 @@ const Formats = (() => {
       // column and can turn an otherwise valid AZPAY file into zero-amount
       // rows.  Fall back to the filename only when the row has no recognized
       // provider value.
-      const provider = (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1]
+      const provider = canonicalPm(provRaw) || (PM_PROVIDERS.find(([k]) => provRaw.includes(k)) || [])[1]
         || (meta && meta.provider)
         || providerFromBoAccount
         || providerFromRef
         || (provRaw ? provRaw.toUpperCase() : "PM");
       const subco = normalizeCompany((meta && meta.subco) || company);
+      if (XB_COMPANIES.has(subco) && provider === "ANT") {
+        return drop("ANT/anypay: รอตรวจไฟล์ตัวอย่างเพื่อยืนยันช่องยอดและเวลา PM (ยังไม่ปิดเคสอัตโนมัติ)"), null;
+      }
       const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
       const localPayEnabled = subco === "3XB" && provider === "LOCALPAY";
       if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !localPayEnabled) {

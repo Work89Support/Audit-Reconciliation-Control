@@ -3,6 +3,22 @@ const fs=require('node:fs');
 const schema=require('../mc8-sheet-schema.js');
 delete globalThis.MC8SheetSchema;
 const {rowsOf,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,tableView,providerFooter,pmAmountHeader,buildAuditExportSheets,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
+assert.equal(providerOf('พร้อมเพย์-ANT-AU(anypay)(QR)'), 'ANT');
+assert.equal(providerOf('anypay'), 'ANT');
+assert.equal(providerOf('CHANT'), 'OTHER');
+for (const company of ['3XB','MC8','MR9','PS8','UR9']) {
+  const antRows=['deposit','withdraw'].map((direction,i)=>({key:`ANT-${i}`,company,account:'พร้อมเพย์-ANT-AU(anypay)(QR)',direction,kind:'review',boAmount:200+i*100,boTime:'2026-10-03 12:00:00',bo:{user:'xb-user'}}));
+  assert.equal(sheetOf(antRows[0]), 'ANT ฝ');
+  assert.equal(sheetOf(antRows[1]), 'ANT ถ');
+  const sheets=buildAuditExportSheets(antRows,company,'2026-10-03',true,schema);
+  for (const name of ['ANT ฝ','ANT ถ']) {
+    const sheet=sheets.find(s=>s.name===name);
+    assert.ok(sheet, `${company} retains ${name}`);
+    assert.equal(sheet.rows.length,1);
+    assert.equal(sheet.rows[0][sheet.headers.indexOf('ยอดเงิน')],name.endsWith('ฝ')?200:300);
+  }
+}
+assert.ok(!buildAuditExportSheets([],'FR8','2026-10-03',true,schema).some(s=>s.name.startsWith('ANT ')));
 const input={run:{id:'r1',matched:1,stm_count:999,bo_count:999,jobStatus:'needs_review',summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',amount:355,stmAmount:355,boAmount:355,bo:{fileId:'bo',date:'2026-09-16',sec:3600,row:2},stm:{fileId:'pm',date:'2026-09-16',sec:3700,row:9},customer:{bo:{reference:'ref'},stm:{reference:'ref'}}}]}},complete:true,cases:[{id:'case1',code:'EX-1',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'cross_day'},{id:'case1-warning',code:'EX-2',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'large_amount'}]};
 const before=JSON.stringify(input), rows=rowsOf(input);
 assert.equal(rows.length,2);assert.equal(rows[0].boTime,'2026-09-16 01:00:00');

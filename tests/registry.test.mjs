@@ -20,6 +20,11 @@ const ok = (n, c, extra) => (c ? (passed++, out.push("  ✓ " + n)) : (failed++,
 const eq = (n, a, b) => ok(n, a === b, `ได้ ${JSON.stringify(a)} คาดหวัง ${JSON.stringify(b)}`);
 
 /* ---- normalizeAccount ---- */
+for (const company of ['3XB','MC8','MR9','PS8','UR9']) {
+  eq(`${company} ANT filename`, R.matchFile(`${company}_PM_ANT_D_2026-10-03.xlsx`).match?.provider, 'ANT');
+  eq(`${company} anypay filename`, R.matchFile(`${company}_PM_anypay_W_2026-10-03.xlsx`).match?.subco, company);
+}
+eq('ANT does not match CHANT filename', R.matchFile('3XB_CHANT_D.xlsx').provider, undefined);
 eq("normalize: ตัดขีดออก", R.normalizeAccount("414-232277-8", "SCB"), "4142322778");
 eq("normalize: TMN เติม 0 หน้า", R.normalizeAccount("812792075", "TMN"), "0812792075");
 
