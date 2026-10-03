@@ -145,6 +145,7 @@ create table if not exists public.damages (
   company        text,
   employee       text,
   shift          text,
+  occurred_at    time,
   amount         numeric(16,2) not null,
   currency       text default 'THB',
   fx_rate        numeric(12,4),

@@ -1284,6 +1284,7 @@ function mapLiveDamage(d) {
     company: normalizeLiveCompanyCode(d.company) || d.company || "ไม่ระบุ",
     employee: d.employee || "ไม่ระบุ",
     shift: d.shift || "-",
+    time: String(d.occurred_at || '').slice(0, 8),
     amount: d.amount_thb == null && d.amount == null ? null : Number(d.amount_thb ?? d.amount),
     cause: d.cause || "รอตรวจสอบ",
     cycle: d.cycle || "ไม่ระบุรอบ",
@@ -3898,19 +3899,20 @@ async function openException(id, options = {}) {
     if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
     if (e.status === "damage") return toast("เคสนี้บันทึกเป็นความเสียหายแล้ว");
     openModal("ยืนยันความเสียหาย", `<p>ระบุยอดเสียหายที่ตรวจหลักฐานแล้ว ไม่ใช่ยอดถอนทั้งหมดหรือยอดที่ระบบยังจับคู่ไม่ได้</p>
-      <label>ประเภทหลัก<select id="damageCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([key])=>key!=='unclassified').map(([key,label])=>`<option value="${key}">${h(label)}</option>`).join('')}</select></label>
-      <label>ประเภทย่อยพนักงาน<select id="damageSubcategory" disabled><option value="">ไม่ระบุ</option><option>X1</option><option>X3</option><option>X5</option></select></label>
-      <p class="hint">X1/X3/X5 ใช้ตามนิยามของทีม Audit เท่านั้น ไม่ใช่รหัสฝาก/ถอนของธนาคาร</p>
+      <label>ประเภทความเสียหาย<select id="damageCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([key])=>!['unclassified','system'].includes(key)).map(([key,label])=>`<option value="${key}">${h(label)}</option>`).join('')}</select></label>
+      <div class="damage-form-grid"><label>พนักงาน / ผู้เกี่ยวข้อง<input id="damageEmployee" maxlength="200" placeholder="รอยืนยันผู้เกี่ยวข้อง — ไม่ระบุผู้รับผิดโดยเดา"></label>
+      <label>กะ / รหัสทีม<input id="damageShift" maxlength="32" placeholder="เช่น X1, X3, X5, X8 หรือเว้นไว้รอยืนยัน"></label>
+      <label>เวลาที่เกิดเหตุ<input id="damageTime" type="time" step="1" value="${h(/^\d{2}:\d{2}(:\d{2})?$/.test(e.time || '') ? e.time : '')}"></label></div>
+      <p class="hint">ตรวจสอบชื่อและกะจากหลักฐาน ณ วันที่เกิดเหตุ ไม่ใช้ผู้ตรวจหรือผู้แนบเอกสารแทนผู้เกี่ยวข้อง เวลาที่ไม่ทราบให้เว้นว่าง ไม่ใช้ 00:00 แทน</p>
       <label>ยอดเสียหายที่ยืนยัน (บาท)<input id="damageConfirmedAmount" type="number" min="0.01" step="0.01" inputmode="decimal"></label>
       <label>สาเหตุ / หลักฐานอ้างอิง<textarea id="damageConfirmedCause">${h(e.cause || '')}</textarea></label>
       <p class="hint">บันทึกเข้าทะเบียนเท่านั้น ไม่ส่งข้อความให้บุคคลหรือการเงิน</p>`, `<button class="ghost-button" id="damageCancel">ยกเลิก</button><button class="primary-button" id="damageConfirm">ยืนยันบันทึก</button>`);
     $("#damageCancel").addEventListener('click', closeModal);
-    $("#damageCategory").addEventListener('change', () => { const sub = $("#damageSubcategory"); sub.disabled = $("#damageCategory").value !== 'employee'; if (sub.disabled) sub.value = ''; });
     $("#damageConfirm").addEventListener('click', async (event) => {
     let confirmedCause;
     const confirmedCents = DamageSummary.cents($("#damageConfirmedAmount").value);
     if (confirmedCents === null || confirmedCents <= 0) return toast("กรอกยอดเสียหายมากกว่า 0 และไม่เกิน 2 ตำแหน่งทศนิยม", "warn");
-    try { confirmedCause = DamageSummary.encode($("#damageCategory").value, $("#damageSubcategory").value, $("#damageConfirmedCause").value); }
+    try { confirmedCause = DamageSummary.encodeDetails($("#damageCategory").value, $("#damageConfirmedCause").value); }
     catch (error) { return toast(error.message, "warn"); }
     if (state.dataset === 'production' && (!Sb.signedIn() || !e.dbId)) return toast('ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน', 'warn');
     event.currentTarget.disabled = true;
@@ -3921,8 +3923,9 @@ async function openException(id, options = {}) {
         exceptionId: e.id,
         date: e.date,
         company: e.company,
-        employee: e.employee,
-        shift: e.shift,
+        employee: $("#damageEmployee").value.trim(),
+        shift: $("#damageShift").value.trim(),
+        time: $("#damageTime").value,
         amount: confirmedCents / 100,
         cause: confirmedCause,
         cycle: Number(e.date?.slice(8,10)) <= 15 ? "C1" : Number(e.date?.slice(8,10)) <= 25 ? "C2" : "C3",
@@ -3932,7 +3935,7 @@ async function openException(id, options = {}) {
       };
       if (state.dataset === "production" && Sb.signedIn()) {
         try {
-          const saved = await Sb.confirmDamage(e.dbId, previousStatus, damage.amount, damage.cause);
+          const saved = await Sb.confirmDamage(e.dbId, previousStatus, damage.amount, damage.cause, damage);
           damage.dbId = saved.id;
         } catch (err) {
           toast("ยังยืนยันผลบันทึกไม่ได้ กรุณารีเฟรชทะเบียนก่อนลองใหม่: " + err.message, "warn");
@@ -4226,6 +4229,8 @@ const liveDamageState = {
   requestId: 0,
   updatedAt: null,
   category: "ALL",
+  shift: "ALL",
+  employee: "ALL",
 };
 
 function damageQueryKey() {
@@ -4291,8 +4296,14 @@ function renderLiveDamage(root) {
     return;
   }
   const scopedRows = (liveDamageState.rows || []).filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
-  const rows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
+  const categoryRows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
+  const shiftRows = categoryRows.filter(d => !liveDamageState.shift || liveDamageState.shift === 'ALL' || DamageSummary.shiftLabel(d) === liveDamageState.shift);
+  const rows = shiftRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeLabel(d) === liveDamageState.employee);
   const classifiedSummary = DamageSummary.summarize(rows);
+  const drillTable = (records, field, title) => {
+    const summary = DamageSummary.groupBy(records, field);
+    return `<section class="panel damage-drill"><h2>${title}</h2><p class="hint">กดยอดรวมเพื่อกรองรายละเอียดด้านล่าง · ยึดวันที่เกิดเหตุ ไม่ใช่วันที่ปิดเคส</p><div class="table-wrap"><table><thead><tr><th>${field==='shift'?'กะ / รหัสทีม':'พนักงาน / ผู้เกี่ยวข้อง'}</th>${Object.entries(DamageSummary.categories).map(([key,label])=>`<th class="right">${h(key==='system'?'ระบบเดิม (ยังไม่แยก)':label)}</th>`).join('')}<th class="right">รวม (บาท)</th></tr></thead><tbody>${summary.map(g=>`<tr><td>${h(g.label)}</td>${g.groups.map(c=>`<td class="right tnum">${money(c.amount)}</td>`).join('')}<td class="right"><button class="link-btn tnum" data-damage-drill="${field}" data-damage-value="${h(g.label)}">${money(g.total)}</button></td></tr>`).join('') || `<tr><td colspan="9" class="empty">ไม่มีรายการที่ยืนยันแล้ว</td></tr>`}</tbody></table></div></section>`;
+  };
   const evidenceRows = (liveDamageState.evidence || []).filter((file) => {
     const company = normalizeLiveCompanyCode(file.company || file.batch_company);
     return file.business_date && inRange(file.business_date) && canAccessCompany(company) && (state.filters.company === "ALL" || company === state.filters.company);
@@ -4302,13 +4313,16 @@ function renderLiveDamage(root) {
   const open = rows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
   const loadedAt = liveDamageState.updatedAt ? liveDamageState.updatedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : "-";
   root.innerHTML = `
+    <section class="panel damage-period"><div><h2>สรุปความเสียหายรายเดือน</h2><p class="hint">บริษัทตามตัวกรองด้านบน · ช่วงที่ใช้อยู่ ${h(rangeLabel())} · กันยายน 2569 แสดงตั้งแต่ 15/09 ตามขอบเขตระบบ</p></div><label>เลือกเดือน<input type="month" id="damageMonth" min="2026-09" value="${h(state.filters.from.slice(0,7))}"></label><button class="primary-button sm" id="damageMonthApply">แสดงทั้งเดือน</button><button class="ghost-button sm" id="damageDrillReset">ล้างตัวกรองรายละเอียด</button></section>
     <section class="damage-definition panel">
       <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)} น.</p></div>
       <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
     </section>
     ${classifiedSummary.issues.length ? `<div class="alert bad">พบ ${num(classifiedSummary.issues.length)} รายการรหัสหรือยอดไม่ถูกต้อง ยอดรวมด้านล่างยังไม่ครบ</div>` : ''}
     ${scopedRows.length >= 5000 ? '<div class="alert warn">ถึงขีดจำกัด 5,000 รายการ กรุณาลดช่วงวันที่ก่อนสรุปหรือ Export</div>' : ''}
-    <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจบันทึกเข้าทะเบียน · ยอดพนักงานรวม X1/X3/X5 แล้ว ไม่บวกซ้ำ · รายการเก่าที่ไม่ระบุประเภทจะคงไว้ใน “ยังไม่แยกประเภท”</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.label)}</td><td>${num(g.count)}</td><td class="right tnum">${money(g.amount)}</td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
+    <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · กะ ${h(!liveDamageState.shift || liveDamageState.shift==='ALL' ? 'ทุกกะ' : liveDamageState.shift)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
+    ${drillTable(categoryRows, 'shift', 'ยอดรวมแยกกะ / รหัสทีม')}
+    ${drillTable(shiftRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
     <section class="status-strip four">
       <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
@@ -4326,17 +4340,29 @@ function renderLiveDamage(root) {
       }).join("") || `<tr><td colspan="5" class="empty">${liveDamageState.evidenceReady ? "ยังไม่มีไฟล์หลักฐานในช่วงนี้" : "ยังโหลดรายการไฟล์หลักฐานไม่สำเร็จ — กดรีเฟรชเพื่อลองใหม่"}</td></tr>`}</tbody></table></div>
     </section>
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนความเสียหายจริง</h2></div><span class="health ok">ข้อมูลจริง</span></div>
-      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>รหัส</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
-      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}</td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td>${h(d.employee)}</td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="8"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>หากมีรายการผิดปกติ ให้เปิดเคส ตรวจหลักฐาน แล้วเลือก “บันทึกเป็นความเสียหาย” รายการจึงจะเข้าทะเบียน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
+      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="8"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้ตามตัวกรอง</strong><span>ลองล้างตัวกรอง หรือเปิดเคส ตรวจหลักฐาน แล้วเลือก “บันทึกเป็นความเสียหาย”</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
     </section>`;
   if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
   $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
-  $("#damageCategoryFilter")?.addEventListener('change', event => { liveDamageState.category=event.target.value; renderLiveDamage(root); });
+  $("#damageMonthApply")?.addEventListener('click', () => {
+    try { const range=DamageSummary.monthRange($("#damageMonth").value); Object.assign(state.filters,range); liveDamageState.shift=liveDamageState.employee=liveDamageState.category='ALL'; render(); }
+    catch(error) { toast(error.message,'warn'); }
+  });
+  $("#damageDrillReset")?.addEventListener('click', () => { liveDamageState.shift=liveDamageState.employee=liveDamageState.category='ALL'; renderLiveDamage(root); });
+  root.querySelectorAll('[data-damage-drill]').forEach(button => button.addEventListener('click', () => {
+    liveDamageState[button.dataset.damageDrill]=button.dataset.damageValue;
+    if(button.dataset.damageDrill==='shift') liveDamageState.employee='ALL';
+    if(button.dataset.damageDrill==='category') liveDamageState.shift=liveDamageState.employee='ALL';
+    renderLiveDamage(root);
+  }));
+  $("#damageCategoryFilter")?.addEventListener('change', event => { liveDamageState.category=event.target.value; liveDamageState.shift=liveDamageState.employee='ALL'; renderLiveDamage(root); });
   $("#damageExportLive")?.addEventListener('click', () => {
     if (classifiedSummary.issues.length || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
     exportSheets('confirmed-damages', [
       {name:'สรุปประเภท',headers:['ประเภท','จำนวน','ยอดที่บันทึก (บาท)'],widths:[38,14,24],rows:classifiedSummary.groups.map(g=>[g.label,g.count,g.amount])},
-      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ประเภท','ประเภทย่อย','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน'],widths:[16,14,42,42,30,18,24,60,14,24],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus];})}
+      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ / รหัสทีม'],widths:[16,14,42,42,30,18,24,60,14,24,16,24,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d)];})},
+      ...['shift','employee'].map(field=>({name:field==='shift'?'สรุปกะ':'สรุปพนักงาน',headers:[field==='shift'?'กะ / รหัสทีม':'ผู้เกี่ยวข้อง',...Object.values(DamageSummary.categories),'รวม (บาท)'],widths:[28,...Object.keys(DamageSummary.categories).map(()=>24),24],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total])}))
     ]);
   });
   $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));

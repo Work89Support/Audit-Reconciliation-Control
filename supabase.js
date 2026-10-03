@@ -846,10 +846,11 @@ const Sb = (() => {
     return rows[0];
   }
 
-  async function confirmDamage(id, previousStatus, amount, cause) {
-    const rows = await json('/rest/v1/rpc/confirm_damage', {
+  async function confirmDamage(id, previousStatus, amount, cause, details) {
+    const rows = await json(details ? '/rest/v1/rpc/confirm_damage_details' : '/rest/v1/rpc/confirm_damage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_exception_id: id, p_previous_status: previousStatus, p_amount: amount, p_cause: cause }),
+      body: JSON.stringify({ p_exception_id: id, p_previous_status: previousStatus, p_amount: amount, p_cause: cause,
+        ...(details ? { p_employee: details.employee, p_shift: details.shift, p_occurred_at: details.time || null } : {}) }),
     });
     if (!Array.isArray(rows) || rows.length !== 1 || !rows[0].id || rows[0].exception_id !== id) {
       throw new Error('ยังยืนยันผลบันทึกไม่ได้ กรุณารีเฟรชทะเบียนก่อนลองใหม่');
