@@ -69,7 +69,7 @@
   function isSevenM(value){return ['7M','UFABET7M'].includes(String(value||'').toUpperCase());}
   function isSys123(value){return ['AT4','FR8','SK8'].includes(String(value||'').toUpperCase());}
   function sheetOf(row){let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
-  function stamp(t){return t?.date?`${t.date} ${Number.isFinite(t.sec)&&t.sec>=0&&t.sec<86400?new Date(t.sec*1000).toISOString().slice(11,19):''}`.trim():'';}
+  function stamp(t){return t?.date?`${t.date} ${t.noTime?'(ไม่มีเวลา)':Number.isFinite(t.sec)&&t.sec>=0&&t.sec<86400?new Date(t.sec*1000).toISOString().slice(11,19):''}`.trim():'';}
   function chronologicalRows(rows){
     const key=value=>String(value||'').trim();
     return rows.map((row,index)=>({row,index})).sort((a,b)=>{
@@ -204,6 +204,7 @@
 
   function thaiDirection(row){return row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุ';}
   function secondsBetween(row){
+    if(row.pmSource?.noTime||row.boSource?.noTime||!/[ T]\d{2}:\d{2}/.test(row.pmTime||'')||!/[ T]\d{2}:\d{2}/.test(row.boTime||''))return '';
     const a=Date.parse(row.boTime||''),b=Date.parse(row.pmTime||'');
     if(!Number.isFinite(a)||!Number.isFinite(b))return '';
     const sec=Math.abs(Math.round((a-b)/1000)),h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
@@ -233,11 +234,11 @@
   function detail(row,side,key){return row?.[side]?.[key]??'';}
   function sourceColumns(row){
     const ant=providerOf(row.account)==='ANT';
-    const time=row.pmSource?.timeColumn||(ant?'รอยืนยันช่องเวลา ANT':row.direction==='withdraw'?'updateTime':'paymentTime');
+    const time=row.pmSource?.noTime?'ไม่มีเวลาใน STM':row.pmSource?.timeColumn||(ant?'รอยืนยันช่องเวลา ANT':row.direction==='withdraw'?'updateTime':'paymentTime');
     const amount=row.pmSource?.amountColumn||(ant?'รอยืนยันช่องยอด ANT':row.direction==='deposit'?'realAmount':/^(AT|M)$/.test(providerOf(row.account))?'transferredAmount':'amount');
     return {time,amount};
   }
-  function sourceCondition(row){const s=sourceColumns(row);return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`].filter(Boolean).join(' · ');}
+  function sourceCondition(row){const s=sourceColumns(row);return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`,row.pmSource?.noTime&&row.pmSource?.fileId?`STM ไฟล์ ${row.pmSource.fileId} · แถว ${row.pmSource.row??'ไม่ระบุ'}`:''].filter(Boolean).join(' · ');}
   function allExportRow(row,complete){
     const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pm||{};
     const state=row.kind==='closed'?'ปิดเคสแล้ว':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':row.kind==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
