@@ -15,6 +15,9 @@
 
 const Sb = (() => {
   let session = null; // { access_token, refresh_token, expires_at, user }
+  let refreshInFlight = null;
+  let refreshRetryAt = 0;
+  const REFRESH_RETRY_KEY = "audit-sb-refresh-retry-at";
 
   /* ---------------- config ---------------- */
   const cfg = () => {
@@ -58,10 +61,12 @@ const Sb = (() => {
       if (!session.user) await loadAuthUser();
     }
     else if (s && s.refresh_token) {
+      session = s;
       try {
         await refreshSession(s.refresh_token);
       } catch (e) {
-        localStorage.removeItem(SB_SESSION_KEY);
+        // A transient outage/429 is not a logout. Requests remain blocked by
+        // refresh backoff; do not destroy the user's recoverable session.
       }
     }
     return signedIn();
@@ -89,15 +94,65 @@ const Sb = (() => {
   }
 
   async function refreshSession(refreshToken) {
-    const res = await authFetch(base() + "/auth/v1/token?grant_type=refresh_token", {
-      method: "POST",
-      headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ต่ออายุการเข้าสู่ระบบไม่สำเร็จ");
-    keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
-    return j.user;
+    if (refreshInFlight) return refreshInFlight;
+    const renew = async () => {
+      // Another tab may already have rotated this refresh token while we
+      // waited for the browser lock. Only adopt the same user's new session.
+      try {
+        const saved = JSON.parse(localStorage.getItem(SB_SESSION_KEY) || "null");
+        if (saved?.refresh_token && saved.refresh_token !== refreshToken &&
+            saved.user?.id === session?.user?.id && saved.expires_at > Date.now() / 1000 + 60) {
+          session = saved;
+          return saved.user;
+        }
+        refreshRetryAt = Math.max(refreshRetryAt, Number(localStorage.getItem(REFRESH_RETRY_KEY)) || 0);
+      } catch (e) {}
+      if (!session || session.refresh_token !== refreshToken) {
+        throw new Error("สถานะเข้าสู่ระบบเปลี่ยนแล้ว — กรุณาลองใหม่");
+      }
+      if (Date.now() < refreshRetryAt) {
+        throw new Error("ระบบต่ออายุล็อกอินกำลังพักคำขอ — กรุณารอสักครู่แล้วลองใหม่");
+      }
+      try {
+        const res = await authFetch(base() + "/auth/v1/token?grant_type=refresh_token", {
+          method: "POST",
+          headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) {
+          const retry = res.headers.get("Retry-After");
+          const retryMs = /^\d+$/.test(retry || "") ? Number(retry) * 1000 : Date.parse(retry || "") - Date.now();
+          const delay = Math.max(30000, Math.min(300000, Number.isFinite(retryMs) && retryMs > 0 ? retryMs : 60000));
+          refreshRetryAt = Date.now() + delay;
+          const j = await res.json().catch(() => ({}));
+          throw new Error(res.status === 429 ? "คำขอต่ออายุล็อกอินมากเกินไป — ระบบพักการลองใหม่ชั่วคราว" :
+            j.error_description || j.msg || j.message || "ต่ออายุการเข้าสู่ระบบไม่สำเร็จ");
+        }
+        const j = await res.json();
+        if (!j.access_token || !j.refresh_token || !j.user?.id) {
+          throw new Error("ข้อมูลต่ออายุล็อกอินไม่ครบ — กรุณาลองใหม่");
+        }
+        if (!session || session.refresh_token !== refreshToken) {
+          throw new Error("สถานะเข้าสู่ระบบเปลี่ยนระหว่างต่ออายุ — กรุณาลองใหม่");
+        }
+        keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
+        refreshRetryAt = 0;
+        try { localStorage.removeItem(REFRESH_RETRY_KEY); } catch (e) {}
+        return j.user;
+      } catch (error) {
+        refreshRetryAt = Math.max(refreshRetryAt, Date.now() + 30000);
+        try { localStorage.setItem(REFRESH_RETRY_KEY, String(refreshRetryAt)); } catch (e) {}
+        throw error;
+      }
+    };
+    // Web Locks coordinates same-origin tabs without exposing tokens. The
+    // in-flight promise and shared cooldown still protect unsupported browsers.
+    const locks = typeof navigator !== "undefined" ? navigator.locks : null;
+    const pending = Promise.resolve().then(() => locks?.request ?
+      locks.request("audit-sb-refresh-session", renew) : renew());
+    refreshInFlight = pending;
+    try { return await pending; }
+    finally { if (refreshInFlight === pending) refreshInFlight = null; }
   }
 
   async function ensureFreshSession() {
@@ -131,8 +186,10 @@ const Sb = (() => {
     try {
       let res = await fetch(base() + path, fetchOpts);
       /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
-      if ((res.status === 401 || res.status === 403) && session && session.refresh_token) {
-        await refreshSession(session.refresh_token);
+      if (res.status === 401 && session && session.refresh_token) {
+        if (fetchOpts.headers.Authorization === "Bearer " + session.access_token) {
+          await refreshSession(session.refresh_token);
+        }
         res = await fetch(base() + path, { ...fetchOpts, headers: headers(opts.headers) });
       }
       if (res.status === 401 || res.status === 403) {
