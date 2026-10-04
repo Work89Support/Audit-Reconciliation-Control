@@ -103,7 +103,13 @@
   function rowsOf(data,fallbackCompany=''){
     const pairs=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence:[];
     const rawCases=Array.isArray(data?.cases)?data.cases:[];
-    const cases=auditPolicy?auditPolicy.filter(rawCases,pairs):rawCases;
+    const cases=(auditPolicy?auditPolicy.filter(rawCases,pairs):rawCases).filter(e=>!(
+      e.status==='closed' && e.auto_closed===true
+      && e.closure_rule==='scb-overlap-duplicate-source-verified'
+      && e.resolved_by==='system:scb-overlap-repair'
+    ));
+    // Verified duplicate alerts are retained in case history/Audit Log, not
+    // rendered as additional financial transactions in sheets and exports.
     const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
     const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw);return {key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e};});
     // A closed BBL carry-over is history of an existing matched transaction,
