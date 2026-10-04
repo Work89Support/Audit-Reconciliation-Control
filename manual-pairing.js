@@ -2,6 +2,7 @@
 const ManualPairing=(()=>{
   const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','lead','admin'].includes(state.role);
   const eligible=e=>e.status==='open'&&['missing_bo','missing_stm'].includes(e.type);
+  const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
   const describe=e=>`${e.company} · ${e.business_date} ${e.occurred_at||''} · ${e.account||'-'} · ${e.direction} · ${e.member_code||'-'}`;
   const original=e=>`BO: ${e.system_amount==null?'ไม่พบ':money(e.system_amount)} / STM/PM: ${e.bank_amount==null?'ไม่พบ':money(e.bank_amount)}`;
   async function refresh(ids) {
@@ -16,7 +17,7 @@ const ManualPairing=(()=>{
     const companies=DB.companies.map(c=>typeof c==='string'?c:c.code).filter(c=>c&&canAccessCompany(c)&&(mode==='same'?c===e.company:c!==e.company));
     if(!companies.length)return toast('ไม่มีสิทธิ์บริษัทคู่ที่เลือก','warn');
     const requestId=crypto.randomUUID();let candidates=[],selected=null,evidenceId=null,sent=false;
-    openModal(mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท',`<p class="hint">BO ↔ STM/PM แบบ 1:1 ผลต่างไม่เกิน 5.00 บาท ทั้งสองเคสจะรอหัวหน้าทีมอีกคนอนุมัติ ไม่ปิดทันที</p><div class="manual-pair-source"><b>${h(caseLabel(e))}</b><p>${h(describe(current))}</p><p>${h(original(current))}</p><pre>${h(current.bo_raw||current.stm_raw||'')}</pre></div><div class="form-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label></div><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button><p id="pairSearchStatus" role="status"></p><label>เลือกเคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก</option></select></label><div id="pairCompare"></div><label>เหตุผลและบริบทหลักฐาน (10–2,000 ตัวอักษร)<textarea id="pairReason" minlength="10" maxlength="2000"></textarea></label><label>แนบหลักฐาน ${mode==='cross'?'(บังคับ)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="hint">ไฟล์จะอัปโหลดเข้าคลังและผูกกับเคสต้นทางก่อนส่งคำขอ สำเร็จแล้วไม่อัปซ้ำเมื่อ retry</p><label><input type="checkbox" id="pairChecked">ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว เป็นรายการที่สัมพันธ์กันจริง</label>`, '<button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit">ส่งจับคู่ รอหัวหน้าทีมอนุมัติ</button>');
+    openModal(mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท',`<p class="hint">BO ↔ STM/PM แบบ 1:1 ผลต่างไม่เกิน 5.00 บาท ทั้งสองเคสจะรอหัวหน้าทีมอีกคนอนุมัติ ไม่ปิดทันที</p><div class="manual-pair-source"><b>${h(caseLabel(e))}</b><p>${h(describe(current))}</p><p>${h(original(current))}</p><pre>${h(sourceRaw(current)||'')}</pre></div><div class="form-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label></div><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button><p id="pairSearchStatus" role="status"></p><label>เลือกเคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก</option></select></label><div id="pairCompare"></div><label>เหตุผลและบริบทหลักฐาน (10–2,000 ตัวอักษร)<textarea id="pairReason" minlength="10" maxlength="2000"></textarea></label><label>แนบหลักฐาน ${mode==='cross'?'(บังคับ)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="hint">ไฟล์จะอัปโหลดเข้าคลังและผูกกับเคสต้นทางก่อนส่งคำขอ สำเร็จแล้วไม่อัปซ้ำเมื่อ retry</p><label><input type="checkbox" id="pairChecked">ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว เป็นรายการที่สัมพันธ์กันจริง</label>`, '<button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit">ส่งจับคู่ รอหัวหน้าทีมอนุมัติ</button>');
     $('#pairCancel').onclick=closeModal;
     $('#pairSearch').onclick=async event=>{
       event.target.disabled=true;selected=null;$('#pairCompare').textContent='';
@@ -33,7 +34,7 @@ const ManualPairing=(()=>{
       if(!selected){$('#pairCompare').textContent='';return;}
       const bo=e.type==='missing_stm'?current:selected,stm=e.type==='missing_bo'?current:selected;
       const diff=Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))/100;
-      $('#pairCompare').innerHTML=`<div class="manual-pair-source"><b>BO ${money(bo.system_amount)} ↔ STM/PM ${money(stm.bank_amount)} · ผลต่าง ${money(diff)} บาท ${diff>5?'— เกินเพดาน จับคู่ไม่ได้':''}</b><p>${h(describe(selected))}</p><pre>${h(selected.bo_raw||selected.stm_raw||'')}</pre></div>`;
+      $('#pairCompare').innerHTML=`<div class="manual-pair-source"><b>BO ${money(bo.system_amount)} ↔ STM/PM ${money(stm.bank_amount)} · ผลต่าง ${money(diff)} บาท ${diff>5?'— เกินเพดาน จับคู่ไม่ได้':''}</b><p>${h(describe(selected))}</p><pre>${h(sourceRaw(selected)||'')}</pre></div>`;
     };
     $('#pairSubmit').onclick=async event=>{
       if(sent)return;

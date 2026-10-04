@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync(require('node:path').join(__dirname,'../manual-pairing.js'),'utf8');
+const fn=source.match(/const sourceRaw=(.*);/)[1];
+const sourceRaw=vm.runInNewContext(fn);
+assert.equal(sourceRaw({ex_type:'missing_bo',bo_raw:'— ไม่พบ BO —',stm_raw:'STM real 200'}),'STM real 200');
+assert.equal(sourceRaw({ex_type:'missing_stm',bo_raw:'BO real 200',stm_raw:'— ไม่พบ STM —'}),'BO real 200');
+assert.equal(sourceRaw({ex_type:'other',bo_raw:'not eligible'}),'');
+assert.match(source,/sourceRaw\(current\)/);assert.match(source,/sourceRaw\(selected\)/);
+const sb=fs.readFileSync(require('node:path').join(__dirname,'../supabase.js'),'utf8');
+const coverage=sb.slice(sb.indexOf('  async function boFirstCoverage('),sb.indexOf('  const runtimeSettings'));
+assert.match(coverage,/coverage:summary->bo_first/);assert.match(coverage,/index \+= 10/);
+assert.doesNotMatch(coverage,/created_at,summary&/);
+console.log('Manual pairing correct-side raw and bounded BO-first projection: passed');

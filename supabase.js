@@ -369,10 +369,10 @@ const Sb = (() => {
     const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
     if (!runIds.length) return [];
     const rows = [];
-    for (let index = 0; index < runIds.length; index += 50) {
-      const page = await json(`/rest/v1/recon_runs?id=in.(${runIds.slice(index, index + 50).join(",")})&select=id,business_date,company,created_at,summary&order=business_date.desc,created_at.desc&limit=50`);
+    for (let index = 0; index < runIds.length; index += 10) {
+      const page = await json(`/rest/v1/recon_runs?id=in.(${runIds.slice(index, index + 10).join(",")})&select=id,business_date,company,created_at,coverage:summary->bo_first&order=business_date.desc,created_at.desc&limit=10`);
       for (const run of page || []) {
-        const coverage = run?.summary?.bo_first;
+        const coverage = run?.coverage;
         if (!coverage) continue;
         rows.push({
           run_id: run.id,
