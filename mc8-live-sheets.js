@@ -117,6 +117,21 @@
     const linkedPairs=new Set(),remainingCases=[];
     for(const row of caseRows){
       const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      const closedCrossDay=e.status==='closed'&&e.auto_closed===true&&e.ex_type==='cross_day'
+        &&e.closure_rule==='reserved-unique-bo-identity-match'
+        &&e.closing_run_id===data?.run?.id&&ref&&user;
+      const crossDayHits=closedCrossDay?pairRows.filter(p=>p.company===row.company
+        &&p.account===row.account&&p.direction===row.direction
+        &&cents(p.boAmount)===cents(row.boAmount)
+        &&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user
+        &&(p.boSource?.boDate||p.boDate)===(e.bo_date||e.business_date)
+        &&p.pmSource?.fileId&&p.pmSource?.row!==null&&p.pmSource?.row!==undefined):[];
+      if(crossDayHits.length===1&&!linkedPairs.has(crossDayHits[0])){
+        const pair=crossDayHits[0];linkedPairs.add(pair);
+        pair.case=e;pair.code=row.code;pair.kind='closed';pair.exType='cross_day';
+        pair.reason=[pair.reason,'ปิดเคสข้ามวันโดยระบบ',e.resolution_note].filter(Boolean).join(' · ');
+        continue;
+      }
       // A manual-review case describes an already matched pair, not a third
       // transaction. Merge only the uniquely identified pair, retaining the
       // open case and evidence requirement; never hide the excess BO row.
