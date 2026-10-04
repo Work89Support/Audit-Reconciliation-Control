@@ -111,6 +111,21 @@
     const linkedPairs=new Set(),remainingCases=[];
     for(const row of caseRows){
       const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      // A manual-review case describes an already matched pair, not a third
+      // transaction. Merge only the uniquely identified pair, retaining the
+      // open case and evidence requirement; never hide the excess BO row.
+      const manualHits=e.ex_type==='manual_review'&&ref&&user&&row.boDate&&row.boTime&&row.pmDate&&row.pmTime
+        ? pairRows.filter(p=>p.company===row.company&&p.account===row.account&&p.direction===row.direction
+          &&p.boTime===row.boTime&&p.pmTime===row.pmTime
+          &&cents(p.boAmount)===cents(row.boAmount)&&cents(p.pmAmount)===cents(row.pmAmount)
+          &&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user)
+        : [];
+      if(manualHits.length===1&&!linkedPairs.has(manualHits[0])){
+        const pair=manualHits[0];linkedPairs.add(pair);
+        pair.case=e;pair.code=row.code;pair.exType='manual_review';pair.kind=row.kind;
+        pair.reason=row.reason;pair.boRaw=row.boRaw;pair.pmRaw=row.pmRaw;
+        continue;
+      }
       const hits=e.status==='closed'&&e.closure_rule==='bbl-continuity-exact-bo-evidence'&&ref&&user&&row.boDate&&row.boTime
         ? pairRows.filter(p=>p.company===row.company&&p.account===row.account&&p.direction===row.direction&&p.boDate===row.boDate&&p.boTime===row.boTime&&cents(p.boAmount)===cents(row.boAmount)&&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user&&p.pmSource?.fileId&&p.pmSource?.row!==null&&p.pmSource?.row!==undefined)
         : [];
@@ -218,11 +233,12 @@
     if(row.kind==='matched')return equalPair?'ปิดได้ทันที':'ต้องตรวจเพิ่ม · หลักฐานคู่ไม่สมบูรณ์';
     if(row.kind==='advisory')return 'แจ้งข้อมูล · ไม่ต้องยืนยัน';
     if(row.kind==='pending_next_day'||row.exType==='cross_day')return 'ค้างรอข้อมูลข้ามวัน · รอข้อมูลของวันถัดไป';
+    if(row.exType==='manual_review')return 'ยอดจับคู่แล้ว · รอตรวจหลักฐานเติมมือ';
     // Equal amounts alone do not resolve an open exception. Only the same
     // verified source-evidence gate used by production quick-close can allow it.
     return equalPair&&row.case?._quickSourceEvidence&&row.case.status==='open'?'ปิดได้ทันที':'ปิดไม่ได้/ต้องตรวจ';
   }
-  function toneOf(status){return status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')?'warning':'error';}
+  function toneOf(status){return status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')||status.startsWith('ยอดจับคู่แล้ว')?'warning':'error';}
   function exportTones(rows,complete,statusIndex){
     const tones=rows.map(row=>toneOf(auditStatus(row,complete)));
     return {

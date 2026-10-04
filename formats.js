@@ -740,7 +740,12 @@ const Formats = (() => {
          เป็นตัวผ่อนกรอบเวลา. เก็บทั้งสอง timestamp เพื่อสอบทานย้อนหลัง. */
       const useBankTime = SYS123_COMPANIES.has(normalizeCompany(company))
         && ch.isBankAccount && !["BBL", "GSB"].includes(ch.channel) && !!bankT;
-      const matchT = useBankTime ? bankT : boT;
+      // COREPAY 123: the BO creation timestamp follows the customer's payment;
+      // the second timestamp can be a delayed posting time. Retain both, and
+      // use the first only within the strict member/account/amount PM matcher.
+      const cpPaymentTime = SYS123_COMPANIES.has(normalizeCompany(company))
+        && canonicalPm(ch.channel) === "COREPAY" && !!dep;
+      const matchT = cpPaymentTime ? boT : useBankTime ? bankT : boT;
       return {
         rowNo: i + 1,
         source: "bo",
@@ -752,7 +757,7 @@ const Formats = (() => {
         boSec: boT.sec,
         bankDate: bankT.date,
         bankSec: bankT.sec,
-        matchTimeColumn: useBankTime ? "วันที่ธนาคาร" : "วันที่ทำรายการ",
+        matchTimeColumn: !cpPaymentTime && useBankTime ? "วันที่ธนาคาร" : "วันที่ทำรายการ",
         amount: Math.round(amount * 100) / 100,
         direction: dep ? "deposit" : "withdraw",
         account: canonicalPm(ch.channel) || ch.terminal || "UNKNOWN",
@@ -776,7 +781,7 @@ const Formats = (() => {
         note,
         providerRef: sapanProviderId(note),
         crossDay: !!(boT.date && bankT.date && boT.date !== bankT.date),
-        lateNight: boT.sec >= 82800,
+        lateNight: matchT.sec >= 82800,
         minutePrecision: !matchT.secPrecision,
         raw: r.join(" | "),
       };
