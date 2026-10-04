@@ -1896,7 +1896,7 @@ const Engine = (() => {
       const k = dupKey(m.b.account, m.b.amount, m.b.direction);
       let arr = matchedTimes.get(k);
       if (!arr) matchedTimes.set(k, (arr = []));
-      arr.push(m.b.sec);
+      arr.push(m.b);
     });
     await chunked(
       boRecords,
@@ -1909,7 +1909,13 @@ const Engine = (() => {
         }
         const times = matchedTimes.get(dupKey(b.account, b.amount, b.direction));
         const dupWin = Math.max(tolOf(b.direction, b, b), 120);
-        const dup = times && times.some((t) => Math.abs(t - b.sec) <= dupWin);
+        // Repeated PM amounts from different customers are not duplicates.
+        // Require the same complete customer identity for provider records;
+        // missing identity remains an unmatched case, never an accusation.
+        const dup = times && times.some((other) => Math.abs(other.sec - b.sec) <= dupWin
+          && (!(other.isPmChannel || b.isPmChannel || isSys123ProviderRecord(b))
+            || (identityText(b.memberCode) && identityText(b.memberCode) === identityText(other.memberCode)
+              && accountIdentityMatches(b.custAccount, other.custAccount))));
         /* รายการ 23:00-23:59 หรือข้ามวัน ให้ถือเป็น cross_day ก่อน แม้ยอดจะซ้ำกับรายการอื่น */
         exceptions.push(mkException(b.lateNight || b.crossDay ? "cross_day" : dup ? "duplicate" : "missing_stm", null, b, 0));
       },
