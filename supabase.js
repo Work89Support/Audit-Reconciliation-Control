@@ -522,7 +522,7 @@ const Sb = (() => {
       "bank_amount", "amount_diff", "risk_amount", "currency", "fx_rate", "time_diff_sec", "employee", "shift",
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
-      "responded_by", "responded_at", "approved_by", "approved_at",
+      "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id",
       "bo_date", "bo_time", "stm_date", "stm_time", "customer_details", "superseded_by_exception_id",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
@@ -862,6 +862,22 @@ const Sb = (() => {
     return rows[0];
   }
 
+  async function manualPairCandidates(company,date,type) {
+    if(!company || !date || !['missing_stm','missing_bo'].includes(type)) throw new Error('เลือกบริษัท วันที่ และฝั่งรายการ');
+    const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
+    if(!jobs[0]?.last_run_id || jobs[0].status!=='completed') throw new Error('บริษัท/วันที่นี้ยังไม่มีผลรันสำเร็จล่าสุด');
+    return json(`/rest/v1/exceptions?run_id=eq.${jobs[0].last_run_id}&status=eq.open&manual_pair_id=is.null&superseded_by_exception_id=is.null&ex_type=eq.${type}&select=*&order=occurred_at.asc,id.asc&limit=201`);
+  }
+  async function manualPair(id) {
+    const rows=await json(`/rest/v1/manual_case_pairs?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
+    return rows[0]||null;
+  }
+  async function pendingManualPairs() {
+    return json('/rest/v1/manual_case_pairs?status=eq.pending&select=*&order=submitted_at.asc&limit=201');
+  }
+  const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',body:JSON.stringify(body)});
+  const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',body:JSON.stringify(body)});
+
   async function caseEvidence(id) {
     if (!id) return [];
     return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
@@ -1080,6 +1096,7 @@ const Sb = (() => {
   }
 
   return {
+    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,
     companyHubResults,
     cfg,
     saveConfig,

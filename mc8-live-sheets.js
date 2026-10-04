@@ -226,6 +226,7 @@
     return `${h?'ต่าง '+h+' ชั่วโมง ':''}${m?'ต่าง '+m+' นาที ':''}${!h&&!m||s?s+' วินาที':''}`.trim();
   }
   function auditStatus(row,complete=true){
+    if(row.case?.status==='pair_pending')return 'จับคู่แล้ว รอหัวหน้าทีมอนุมัติ';
     if(row.kind==='closed')return 'ปิดเคสแล้ว';
     if(!complete)return 'ต้องตรวจเพิ่ม · ข้อมูลรอบไม่ครบ';
     const pm=cents(row.pmAmount),bo=cents(row.boAmount);
@@ -238,7 +239,7 @@
     // verified source-evidence gate used by production quick-close can allow it.
     return equalPair&&row.case?._quickSourceEvidence&&row.case.status==='open'?'ปิดได้ทันที':'ปิดไม่ได้/ต้องตรวจ';
   }
-  function toneOf(status){return status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')||status.startsWith('ยอดจับคู่แล้ว')?'warning':'error';}
+  function toneOf(status){return status==='จับคู่แล้ว รอหัวหน้าทีมอนุมัติ'?'neutral':status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')||status.startsWith('ยอดจับคู่แล้ว')?'warning':'error';}
   function exportTones(rows,complete,statusIndex){
     const tones=rows.map(row=>toneOf(auditStatus(row,complete)));
     return {

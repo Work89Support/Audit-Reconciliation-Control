@@ -1221,6 +1221,7 @@ function mapLiveException(e) {
     code: e.code || e.id,
     dbId: e.id,
     runId: e.run_id,
+    manualPairId: e.manual_pair_id || null,
     date: e.business_date,
     time: String(e.occurred_at || "").slice(0, 8),
     boTime: String(e.bo_time || "").slice(0, 8),
@@ -3157,7 +3158,7 @@ VIEWS.exceptions = (root) => {
       ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
       : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
     const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
-    return `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
+    return `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
       <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(caseLabel(e))}</small></td>
       <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
       <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
@@ -3172,7 +3173,7 @@ VIEWS.exceptions = (root) => {
     </tr>`;
   }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
 
-  const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
+  const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
     <td><b>${h(caseLabel(e))}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
     <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td><td>${h(e.typeName)}</td>
     <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
@@ -3577,6 +3578,12 @@ async function openException(id, options = {}) {
   state.selected = id;
   if (state.dataset === "production" && e.dbId) {
     try {
+      const fresh=await Sb.exceptionDetail(e.dbId);
+      if(state.selected!==id) return;
+      if(!fresh) throw new Error('ไม่พบเคสล่าสุด');
+      Object.assign(e,mapLiveException(fresh),{notes:e.notes||[],evidence:e.evidence||[]});
+    } catch(err) { return toast('ตรวจสถานะล่าสุดไม่ได้: '+err.message,'warn'); }
+    try {
       e.notes = await Sb.caseNotes(e.dbId);
     } catch (err) {
       e.notes = [];
@@ -3603,7 +3610,7 @@ async function openException(id, options = {}) {
     { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const ready = !closed && (checklist.every((c) => c.ok) || quickCloseEligible);
+  const ready = !closed && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
   const missingChecks = ready || closed ? [] : checklist.filter(item=>!item.ok);
   const lastUiResult = caseUiResults.get(caseUiKey(e));
   const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
@@ -3704,7 +3711,8 @@ async function openException(id, options = {}) {
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
       <p class="case-action-help">เลือกเอกสารหรือแนบหลักฐานเพื่อให้ Audit ตรวจต่อ — ยังไม่ปิดเคสจนกว่าจะยืนยันปิดสำเร็จ</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${e.status!=='open'?'disabled':''}>จับคู่เอง</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div id="manualPairReview"></div>
       <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>
     </div>`;
@@ -3737,6 +3745,9 @@ async function openException(id, options = {}) {
     if (picker) picker.click();
     else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
   });
+  $('#btnManualPair').addEventListener('click',()=>ManualPairing.open(e,'same'));
+  $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
+  ManualPairing.mountReview(e,$('#manualPairReview'));
   $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
   drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
     const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : $("#caseSummarySection");
@@ -4146,12 +4157,13 @@ VIEWS.matching = (root) => {
    ============================================================= */
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status));
+  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage", "pair_pending"].includes(e.status));
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
+    <section class="panel" id="pendingManualPairQueue"></section>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
-      <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status === "answered").length)}</strong><small>Audit Lead ต้องตรวจทาน</small></article>
+      <article class="warn"><span>ชี้แจง / จับคู่แล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => ['answered','pair_pending'].includes(e.status)).length)}</strong><small>Audit Lead ต้องตรวจทาน</small></article>
       <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
       <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
     </section>
@@ -4178,7 +4190,7 @@ VIEWS.approvals = (root) => {
               <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
               <td class="right nowrap">
                 <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
-                <button class="primary-button xs" data-approve="${e.id}" ${!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>อนุมัติ</button>
+                <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'อนุมัติ'}</button>
               </td>
             </tr>`,
                 )
@@ -4190,6 +4202,7 @@ VIEWS.approvals = (root) => {
     </section>`;
 
   root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
+  ManualPairing.mountQueue($('#pendingManualPairQueue'));
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("อนุมัติ");
@@ -4201,6 +4214,7 @@ VIEWS.approvals = (root) => {
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("ส่งกลับ");
       const e = DB.exceptions.find((x) => x.id === b.dataset.reject);
+      if(e.status==='pair_pending') return openException(e.id);
       e.status = "clarifying";
       logAction("reject", "exception", e.id, "ส่งกลับให้ชี้แจงเพิ่ม");
       saveOverride(e);

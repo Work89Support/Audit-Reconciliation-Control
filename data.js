@@ -145,6 +145,7 @@ const DB = (() => {
   ];
 
   const statuses = [
+    { code: "pair_pending", name: "จับคู่แล้ว รอหัวหน้าทีมอนุมัติ", tone: "grey" },
     { code: "open", name: "รอตรวจ", tone: "amber" },
     { code: "clarifying", name: "รอผู้ชี้แจง", tone: "blue" },
     { code: "answered", name: "ชี้แจงแล้ว", tone: "violet" },
