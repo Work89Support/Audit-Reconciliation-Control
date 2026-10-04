@@ -1,2 +1,42 @@
 .manual-pair-source,.manual-pair-review{border:1px solid #cdd8e7;border-radius:12px;padding:16px;margin:12px 0;background:#f0f2f5}.manual-pair-source pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:160px;overflow:auto;font-size:13px}.manual-pair-review label{display:block;margin:12px 0}.manual-pair-review textarea{width:100%;min-height:80px}tr.pair-pending-row,tr.pair-pending-row td{background:#eceff3!important;color:#606977}.drawer-primary-actions{flex-wrap:wrap}
 .mc8-grid tr:has(td[title="จับคู่แล้ว รอหัวหน้าทีมอนุมัติ"]),.mc8-grid tr:has(td[title="จับคู่แล้ว รอหัวหน้าทีมอนุมัติ"]) td{background:#eceff3!important;color:#606977}
+
+/* Scoped to pairing: other approval and evidence dialogs retain their layout. */
+.modal:has(.manual-pair-form){width:min(780px,calc(100vw - 24px));max-height:92vh}
+.manual-pair-form{color:#142b45;font-size:14px;line-height:1.5}
+.manual-pair-form label{display:block;font-weight:500;margin:0 0 12px;min-width:0}
+.manual-pair-form label select,.manual-pair-form label input:not([type=checkbox]),.manual-pair-form textarea{display:block;width:100%;max-width:100%;box-sizing:border-box;margin-top:6px;font:inherit}
+.manual-pair-form textarea{min-height:86px;resize:vertical}
+.pair-policy{padding:12px 16px;border-radius:10px;background:#eef6ff;color:#174f88}
+.pair-policy span{display:block;font-size:12px;margin-top:4px}
+.pair-step{margin-top:20px}
+.pair-step h3{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:16px}
+.pair-step h3>span{display:grid;place-items:center;width:25px;height:25px;background:#0569c9;color:white;border-radius:50%;font-size:13px;flex-shrink:0}
+.pair-card{padding:14px 16px;border:1px solid #d7e2ee;border-radius:10px;background:#fff;margin-top:10px}
+.pair-card-top{display:flex;justify-content:space-between;gap:16px;align-items:start}
+.pair-card-top strong{display:block;overflow-wrap:anywhere}
+.pair-eyebrow,.pair-amount>span{display:block;color:#61758b;font-size:12px;margin-bottom:3px}
+.pair-amount{text-align:right;flex-shrink:0}
+.pair-amount strong{font-size:24px;color:#105b9d;line-height:1.3}
+.manual-pair-form small{font-size:12px;font-weight:400}
+.pair-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin:14px 0 10px}
+.pair-facts div{min-width:0}
+.pair-facts dt{font-size:12px;color:#61758b}
+.pair-facts dd{margin:2px 0 0;overflow-wrap:anywhere}
+.pair-raw{border-top:1px solid #e6edf4;padding-top:8px;font-size:12px;color:#61758b}
+.pair-raw summary{cursor:pointer;color:#1761a8}
+.pair-raw pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:140px;overflow:auto;font-size:12px;color:#263e55;background:#f5f8fb;padding:10px}
+.pair-search-grid{display:grid;grid-template-columns:1fr 1.3fr auto;gap:12px;align-items:end}
+.pair-search-grid label{margin:0}
+.pair-search-grid button{min-height:40px;white-space:nowrap}
+.pair-search-status,.pair-field-hint{display:block;font-size:12px;color:#61758b;font-weight:400;margin:8px 0}
+.pair-comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.pair-comparison>div{border-radius:8px;background:#f3f7fb;padding:12px;text-align:center}
+.pair-comparison span{display:block;font-size:12px;color:#61758b}
+.pair-comparison strong{font-size:22px}
+.pair-difference{padding:10px 12px;border-radius:8px;font-size:13px;margin:8px 0 0}
+.pair-difference.within{background:#eff7f1;color:#23603b}
+.pair-difference.over{background:#fff0ee;color:#a32f26}
+.manual-pair-form .pair-confirm{display:flex;gap:10px;align-items:flex-start;background:#f3f7fb;padding:12px;border-radius:8px;font-weight:400}
+.pair-confirm input{margin-top:4px;flex-shrink:0}
+@media(max-width:560px){.pair-search-grid{grid-template-columns:1fr 1fr}.pair-search-grid button{grid-column:1/-1}.pair-card-top{flex-wrap:wrap}.pair-amount{text-align:left}.pair-facts{grid-template-columns:1fr}.pair-comparison strong{font-size:19px}.modal:has(.manual-pair-form) .modal-foot button{flex:1;white-space:normal}}
