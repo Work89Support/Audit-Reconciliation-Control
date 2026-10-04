@@ -10,8 +10,9 @@ function setup(mode='same',amountDifference=false) {
   if(amountDifference){Object.assign(source,{ex_type:'amount_diff',system_amount:24,bank_amount:24.27,bo_raw:'BO real 24',stm_raw:'STM real 24.27'});item.type='amount_diff';}
   let html='';
   const context={state:{dataset:'production',role:'monitor'},DB:{companies:['FR8','3XB'],exceptions:[]},crypto:{randomUUID:()=> 'request-id'},h:s=>String(s??''),money:n=>Number(n).toFixed(2),$:s=>node(s.slice(1)),caseLabel:e=>e.id,canAccessCompany:()=>true,toast:m=>notices.push(m),openModal:(_title,body)=>{html=body;node('pairCompany').value=other.company;node('pairDate').value=item.date;},closeModal:()=>{},render:()=>{},openException:async()=>{},Sb:{signedIn:()=>true,exceptionDetail:async()=>source,manualPairCandidates:async()=>[other],submitManualPair:async p=>{requests.push(p);return {id:p.p_id};}}};
+  context.companyMaster=()=>context.DB.companies.map(c=>({code:(typeof c==='string'?c:c.code)==='7M'?'UFABET7M':(typeof c==='string'?c:c.code)}));
   vm.createContext(context);vm.runInContext(code+';this.pairing=ManualPairing;',context);
-  return {context,source,other,node,notices,requests,open:()=>context.pairing.open(item,mode),html:()=>html};
+  return {context,source,other,item,node,notices,requests,open:()=>context.pairing.open(item,mode),html:()=>html};
 }
 (async()=>{
   const t=setup();await t.open();
@@ -40,6 +41,7 @@ function setup(mode='same',amountDifference=false) {
   await cross.node('pairSubmit').onclick({target:cross.node('pairSubmit')});assert.equal(cross.requests.length,0);assert.match(cross.notices.at(-1),/ต้องแนบหลักฐาน/);
   const custom=setup();await custom.open();await custom.node('pairSearch').onclick({target:custom.node('pairSearch')});custom.node('pairCandidate').value='bo';custom.node('pairCandidate').onchange();custom.node('pairReasonType').value='other';custom.node('pairReason').value='อ้างอิงหลักฐานที่ตรวจสอบได้';custom.node('pairChecked').checked=true;await custom.node('pairSubmit').onclick({target:custom.node('pairSubmit')});assert.equal(custom.requests.length,1);assert.match(custom.requests[0].p_reason,/อื่น ๆ: อ้างอิงหลักฐาน/);
   const cents=setup('same',true);await cents.open();assert.match(cents.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(cents.node('.pair-search-grid').hidden,true);cents.node('pairReasonType').value='small_difference';cents.node('pairChecked').checked=true;await cents.node('pairSubmit').onclick({target:cents.node('pairSubmit')});assert.equal(cents.requests.length,1);assert.equal(cents.requests[0].p_bo,'stm');assert.equal(cents.requests[0].p_stm,'stm');
+  const alias=setup('same',true);alias.context.DB.companies=[{code:'7M'},{code:'FR8'}];alias.source.company=alias.item.company='UFABET7M';await alias.open();assert.match(alias.html(),/<option>UFABET7M<\/option>/);assert.match(alias.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(alias.notices.length,0);
   const wrongMode=setup('cross',true);await wrongMode.open();assert.match(wrongMode.notices.at(-1),/ไม่ใช่จับคู่ข้ามบริษัท/);assert.equal(wrongMode.html(),'');
   const centsHigh=setup('same',true);centsHigh.source.bank_amount=29.01;await centsHigh.open();centsHigh.node('pairReasonType').value='small_difference';centsHigh.node('pairChecked').checked=true;await centsHigh.node('pairSubmit').onclick({target:centsHigh.node('pairSubmit')});assert.equal(centsHigh.requests.length,0);assert.match(centsHigh.notices.at(-1),/เกิน 5 บาท/);
   console.log('Pairing UI: three steps, collapsed source, amount comparison, reset, 5-baht cap and cross-company evidence guards passed');
