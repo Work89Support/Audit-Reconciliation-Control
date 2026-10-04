@@ -138,10 +138,12 @@ assert.match(app, /requestId !== cloudState\.requestId \|\| key !== cloudQueryKe
 assert.match(app, /retryTransientFileRequest\(action, attempts = 3\)/, "Preview ต้องลองใหม่เมื่อ Storage หรือฐานข้อมูล timeout");
 assert.match(app, /const exceptionsAvailable = liveOverviewState\.exceptionsReady/, "หน้า Exception ต้องแยกข้อมูลไม่พร้อมออกจากศูนย์จริง");
 assert.match(app, /const operationsAvailable = Array\.isArray\(liveOverviewState\.operations\)/, "หน้ารายงานต้องแยกคิวไม่พร้อมออกจากไม่มีข้อมูล");
-assert.match(app, /ภาพรวมการกระทบยอด · เครือ XB/, "หน้ารายงานต้องมียอดรวมการกระทบยอดของเครือ XB");
-assert.match(app, /companyReconciliation = xbGroup\.companies\.map/, "หน้ารายงานต้องสรุปแยกครบทุกบริษัทในเครือ XB");
-assert.match(app, /คงเหลือจากฝั่ง STM\/PM/, "ภาพรวมต้องแสดงรายการที่ยังไม่จับคู่แยกจากยอดจับคู่แล้ว");
-assert.match(app, /data-recon-company=/, "ยอดแยกบริษัทต้องกดเปิดสรุปรายวันได้");
+assert.match(app, /AuditCompanyOverview\.markup/, "หน้ารายงานต้องใช้สรุปทุกเครือ");
+assert.match(app, /companies:companyMaster\(\)\.filter/, "สรุปใช้บริษัทที่มีสิทธิ์ใน catalogue");
+assert.match(app, /ชีต AUDIT ทุกบริษัท/, "ชื่อเมนูไม่ผูกกับจำนวนบริษัท");
+const overview = readFileSync(join(root, 'audit-company-overview.js'), 'utf8');
+assert.match(overview, /STM\/PM ยังไม่จับคู่/, "ภาพรวมแสดงรายการที่ยังไม่จับคู่");
+assert.match(overview, /data-recon-company=/, "บริษัทต้องเปิดสรุปรายวันได้");
 assert.match(app, /const logsAvailable = liveOverviewState\.logsReady/, "Audit Log ต้องไม่แสดงศูนย์เมื่อ query ล้มเหลว");
 assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษัทจริงออกจากแถวรวมชื่อระบบ");
 assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");

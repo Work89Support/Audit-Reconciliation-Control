@@ -4,6 +4,7 @@ do $qa$
 declare u uuid:=gen_random_uuid(); l uuid:=gen_random_uuid(); f uuid:=gen_random_uuid(); r uuid:=gen_random_uuid();
  a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); d uuid:=gen_random_uuid();
  p uuid:=gen_random_uuid(); p2 uuid:=gen_random_uuid(); r2 uuid:=gen_random_uuid(); f2 uuid:=gen_random_uuid(); result public.manual_case_pairs; blocked boolean;
+ e uuid:=gen_random_uuid(); p3 uuid:=gen_random_uuid(); p4 uuid:=gen_random_uuid();
 begin
  insert into auth.users(id,email) values(u,'pairing-qa-'||u||'@example.invalid'),(l,'pairing-qa-'||l||'@example.invalid');
  insert into public.app_profiles(user_id,email,role,active) values(u,'pairing-qa-'||u||'@example.invalid','monitor',true),(l,'pairing-qa-'||l||'@example.invalid','lead',true)
@@ -56,6 +57,44 @@ begin
  result:=public.decide_manual_case_pair(p2,'reject','หัวหน้าอีกคนตรวจและไม่อนุมัติ');
  if result.status<>'rejected' or (select count(*) from public.exceptions where id in(c,d) and status='open' and manual_pair_id is null)<>2
    or exists(select 1 from public.manual_pair_members where pair_id=p2 and released_at is null) then raise exception 'QA failed: rejection release'; end if;
+ insert into public.exceptions(id,run_id,code,company,business_date,direction,account,ex_type,status,system_amount,bank_amount,bo_raw,stm_raw,currency)
+ values(e,r,'QA-AMOUNT-DIFF','FR8','2099-01-01','ฝาก','QA-ACCOUNT','amount_diff','open',24,24.27,'QA-BO-CENTS','QA-STM-CENTS','THB');
+ result:=public.submit_manual_case_pair(p3,e,e,'same','ตรวจหลักฐานรายการเดียวกันยอดต่างสตางค์',null);
+ if result.difference<>0.27 or result.snapshot->>'review_type'<>'amount_difference'
+   or (select count(*) from public.manual_pair_members where pair_id=p3 and secondary_source_key is not null)<>1
+   or (select status from public.exceptions where id=e)<>'pair_pending' then raise exception 'QA failed: same case amount difference'; end if;
+ result:=public.submit_manual_case_pair(p3,e,e,'same','ตรวจหลักฐานรายการเดียวกันยอดต่างสตางค์',null);
+ blocked:=false;
+ begin perform public.decide_manual_case_pair(p3,'approve','ทดสอบห้ามอนุมัติคำขอตนเอง'); exception when others then if sqlerrm like '%ตนเอง%' then blocked:=true; else raise; end if; end;
+ if not blocked then raise exception 'QA failed: same case self approval'; end if;
+ perform set_config('request.jwt.claim.sub',l::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',l,'role','authenticated')::text,true);
+ result:=public.decide_manual_case_pair(p3,'reject','ตรวจคืนเคสยอดต่างเพื่อทดสอบใหม่');
+ if exists(select 1 from public.manual_pair_members where pair_id=p3 and released_at is null) or (select status from public.exceptions where id=e)<>'open' then raise exception 'QA failed: same case rejection'; end if;
+ result:=public.submit_manual_case_pair(p4,e,e,'same','ตรวจรายการเดิมอีกครั้งหลังคืนเคส',null);
+ perform set_config('request.jwt.claim.sub',u::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',u,'role','authenticated')::text,true);
+ update public.source_files set parsed=false where id=f;
+ blocked:=false;
+ begin perform public.decide_manual_case_pair(p4,'approve','ต้องปฏิเสธเพราะต้นทางอ่านไม่ครบ'); exception when others then if sqlerrm like '%อ่านไฟล์ครบ%' then blocked:=true; else raise; end if; end;
+ if not blocked then raise exception 'QA failed: amount difference parser gate'; end if;
+ update public.source_files set parsed=true where id=f;
+ blocked:=false;
+ begin update public.exceptions set stm_raw='QA-STM-CENTS-CHANGED' where id=e; exception when others then if sqlerrm like '%คู่เคสถูกจองไว้%' then blocked:=true; else raise; end if; end;
+ if not blocked then raise exception 'QA failed: amount difference pending source mutation'; end if;
+ result:=public.decide_manual_case_pair(p4,'approve','หัวหน้าอีกคนตรวจคู่ยอดต่างแล้ว');
+ if result.status<>'approved' or not exists(select 1 from public.exceptions where id=e and status='closed' and system_amount=24 and bank_amount=24.27 and approved_by=u) then raise exception 'QA failed: same case approval preserves amounts'; end if;
+ update public.exceptions set stm_raw='QA-STM-CENTS',bank_amount=200 where id=c;
+ blocked:=false;
+ begin perform public.submit_manual_case_pair(gen_random_uuid(),d,c,'same','ทดสอบห้ามใช้ STM ที่อนุมัติแล้วซ้ำ',null); exception when unique_violation then blocked:=true; end;
+ if not blocked then raise exception 'QA failed: secondary source reuse'; end if;
+ blocked:=false;
+ begin perform public.validate_manual_pair(e,e,'cross',null); exception when others then blocked:=true; end;
+ if not blocked then raise exception 'QA failed: same case cross mode'; end if;
+ update public.exceptions set bank_amount=29.01 where id=e;
+ blocked:=false;
+ begin perform public.validate_manual_pair(e,e,'same',null); exception when others then if sqlerrm like '%5 บาท%' then blocked:=true; else raise; end if; end;
+ if not blocked then raise exception 'QA failed: same case 5.01 allowed'; end if;
  insert into public.source_files(id,file_name,storage_path,company,kind,parsed,row_count) values(f2,'3XB_BO_2099-01-01.xlsx','qa-rollback/'||f2,'3XB','bo_main',true,1);
  insert into public.recon_runs(id,business_date,company,file_ids,summary) values(r2,'2099-01-01','3XB',array[f2],'{"source_parser_completion":true,"bo_first":{"complete":true}}');
  insert into public.daily_recon_jobs(company,business_date,status,last_run_id) values('3XB','2099-01-01','completed',r2);
@@ -66,5 +105,5 @@ begin
  end;
  if not blocked then raise exception 'QA failed: cross evidence'; end if;
 end $qa$;
-select 'DB smoke passed: 0.02 pair, 5 allowed, 5.01 denied, retry, source reuse denied, direct close denied, role/self approval denied, atomic close, reject release, cross evidence required. All synthetic users/cases rolled back.' as test_result;
+select 'DB smoke passed: same-case 24/24.27 review, pending/approve/reject, preserved amounts, secondary source reservation, parser/snapshot guards; legacy 0.02 pair, 5 cap, retry, source reuse, direct close, roles, cross evidence. All synthetic users/cases rolled back.' as test_result;
 rollback;

@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const context={};vm.createContext(context);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../audit-company-overview.js'),'utf8')+';this.api=AuditCompanyOverview',context);
+const groups=[{id:'XB',name:'เครือ XB',companies:['3XB','MC8','MR9','PS8','UR9']},{id:'123',name:'เครือ 123',companies:['AT4','FR8','SK8']},{id:'7M',name:'เครือ 7M',companies:['UFABET7M']}];
+const companies=groups.flatMap(group=>group.companies).map(code=>({code}));
+const quality=companies.map(({code})=>({company:code,business_date:'2026-10-03',stm_count:100,bo_count:120,matched:99,exception_count:3,status:'completed'}));
+const build=options=>context.api.build({groups,companies,quality,available:true,...options});
+let model=build();assert.equal(model.groups.length,3);assert.equal(model.companyCount,9);assert.equal(model.withResults,9);assert.equal(model.total.stm,900);assert.equal(model.total.bo,1080);assert.equal(model.groups[1].companies.length,3);assert.equal(model.groups[2].companies[0].company,'UFABET7M');
+let html=context.api.markup(model,{h:s=>String(s),num:s=>String(s)});assert.match(html,/3 เครือ · 9 บริษัท/);assert.equal((html.match(/audit-network-divider/g)||[]).length,3);assert.match(html,/ไม่ใช่จำนวนเคสเปิดปัจจุบัน/);
+model=build({companies:companies.slice(0,-1)});assert.equal(model.companyCount,8);assert.equal(model.groups.length,2);
+model=build({companies:[...companies,{code:'NEW'}]});assert.equal(model.companyCount,10);assert.equal(model.groups.at(-1).name,'ยังไม่ระบุเครือ');
+model=build({quality:quality.slice(1)});assert.equal(model.withResults,8);assert.equal(model.groups[0].companies[0].rows,0);html=context.api.markup(model,{h:s=>String(s),num:String});assert.match(html,/ยังไม่มีผลรัน/);
+model=build({available:false});assert.equal(model.withResults,0);assert.equal(model.total.stm,0);html=context.api.markup(model,{h:String,num:String});assert.match(html,/รอข้อมูลจริง/);assert.match(html,/โหลดไม่สำเร็จ/);
+model=build({quality:[{...quality[0],stm_count:0,matched:0}]});assert.equal(model.groups[0].companies[0].rate,null);
+console.log('All-company summary: 3 groups/9 companies, dynamic membership, missing/error/zero distinctions and totals passed');

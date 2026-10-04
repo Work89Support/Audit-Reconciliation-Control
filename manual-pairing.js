@@ -1,7 +1,7 @@
 /* Production UI: the RPC, not the browser, decides permissions and reservation. */
 const ManualPairing=(()=>{
   const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','lead','admin'].includes(state.role);
-  const eligible=e=>e.status==='open'&&['missing_bo','missing_stm'].includes(e.type);
+  const eligible=e=>e.status==='open'&&['missing_bo','missing_stm','amount_diff'].includes(e.type);
   const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
   const describe=e=>`${e.company} · ${e.business_date} ${e.occurred_at||''} · ${e.account||'-'} · ${e.direction} · ${e.member_code||'-'}`;
   const original=e=>`BO: ${e.system_amount==null?'ไม่พบ':money(e.system_amount)} / STM/PM: ${e.bank_amount==null?'ไม่พบ':money(e.bank_amount)}`;
@@ -16,12 +16,16 @@ const ManualPairing=(()=>{
   }
   async function open(e,mode) {
     if(!canSubmit())return toast('เฉพาะเจ้าหน้าที่ Audit ในระบบจริงส่งคำขอได้','warn');
-    if(!eligible(e))return toast('เลือกเคสเปิดที่มีรายการฝั่งเดียว BO ขาด STM หรือ STM/PM ขาด BO','warn');
+    if(!eligible(e))return toast('เลือกเคสเปิดที่ขาดอีกฝั่ง หรือเคสยอด BO กับ STM/PM ต่างกัน','warn');
+    const amountDifference=e.type==='amount_diff';
+    if(amountDifference&&mode!=='same')return toast('เคสยอดต่างที่มีทั้งสองฝั่งแล้ว ให้ใช้จับคู่เอง ไม่ใช่จับคู่ข้ามบริษัท','warn');
     const current=await Sb.exceptionDetail(e.dbId).catch(err=>{toast(err.message,'warn');return null;});
     if(!current||current.status!=='open')return toast('สถานะเคสเปลี่ยน กรุณารีเฟรช','warn');
+    if(amountDifference&&current.ex_type!=='amount_diff')return toast('ประเภทเคสเปลี่ยน กรุณารีเฟรช','warn');
     const companies=DB.companies.map(c=>typeof c==='string'?c:c.code).filter(c=>c&&canAccessCompany(c)&&(mode==='same'?c===e.company:c!==e.company));
     if(!companies.length)return toast('ไม่มีสิทธิ์บริษัทคู่ที่เลือก','warn');
-    const requestId=crypto.randomUUID();let candidates=[],selected=null,evidenceId=null,sent=false;
+    const requestId=crypto.randomUUID();let candidates=[],selected=amountDifference?current:null,evidenceId=null,sent=false;
+    const sides=()=>({bo:amountDifference||e.type==='missing_stm'?current:selected,stm:amountDifference||e.type==='missing_bo'?current:selected});
     const reasonOptions=[
       ['small_difference','ยอดต่างเล็กน้อย / การปัดเศษ (ไม่เกิน 5 บาท)'],
       ['posting_time','เวลาบันทึก BO กับ STM/PM ต่างกัน'],
@@ -54,14 +58,25 @@ const ManualPairing=(()=>{
       }catch(err){if(version===searchVersion){candidates=[];$('#pairCandidate').innerHTML='<option value="">โหลดไม่สำเร็จ</option>';$('#pairSearchStatus').textContent=err.message;}}
       finally{event.target.disabled=false;}
     };
-    $('#pairCandidate').onchange=()=>{
-      selected=candidates.find(c=>c.id===$('#pairCandidate').value)||null;
-      $('#pairChecked').checked=false;
+    const renderComparison=()=>{
       if(!selected){$('#pairCompare').textContent='';return;}
-      const bo=e.type==='missing_stm'?current:selected,stm=e.type==='missing_bo'?current:selected;
+      const {bo,stm}=sides();
       const diff=Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))/100;
       $('#pairCompare').innerHTML=`${sourceCard(selected,'เคสคู่ที่เลือก',sourceRaw(selected))}<div class="pair-comparison"><div><span>ยอด BO</span><strong>${money(bo.system_amount)} <small>บาท</small></strong></div><div><span>ยอด STM/PM</span><strong>${money(stm.bank_amount)} <small>บาท</small></strong></div></div><p class="pair-difference ${diff>5?'over':'within'}">ผลต่าง <b>${money(diff)} บาท</b> · ${diff>5?'เกิน 5 บาท จับคู่ไม่ได้':'อยู่ในเกณฑ์ยอด — ต้องตรวจบริบทและรออนุมัติ'}</p>`;
+      if(amountDifference)$('#pairCompare .pair-card').outerHTML=sourceCard({...current,ex_type:'missing_bo'},'STM/PM ในเคสเดียวกัน',current.stm_raw);
     };
+    $('#pairCandidate').onchange=()=>{selected=candidates.find(c=>c.id===$('#pairCandidate').value)||null;$('#pairChecked').checked=false;renderComparison();};
+    if(amountDifference){
+      const form=$('#pairCompare').closest('.manual-pair-form');
+      form.querySelector('.pair-policy span').textContent='ยอดทั้งสองฝั่งอยู่ในเคสเดียวกัน ส่งแล้วรอหัวหน้าทีมอีกคนอนุมัติ ยังไม่ปิดทันที';
+      form.querySelector('.pair-card').outerHTML=sourceCard({...current,ex_type:'missing_stm'},caseLabel(e)+' · BO',current.bo_raw);
+      $('#pairCompany').closest('.pair-search-grid').hidden=true;
+      $('#pairCompany').disabled=$('#pairDate').disabled=$('#pairSearch').disabled=true;
+      $('#pairCandidate').closest('label').hidden=true;$('#pairCandidate').disabled=true;
+      $('#pairSearchStatus').textContent='ใช้ BO และ STM/PM ที่มีอยู่ในเคสนี้ ไม่ต้องเลือกเคสใหม่';
+      $('#pairCompare').closest('.pair-step').querySelector('h3').innerHTML='<span>2</span> ตรวจยอดทั้งสองฝั่งในเคสเดียวกัน';
+      renderComparison();
+    }
     $('#pairSubmit').onclick=async event=>{
       if(sent)return;
       const reasonType=$('#pairReasonType').value;
@@ -71,7 +86,7 @@ const ManualPairing=(()=>{
       if(reasonType==='other'&&detail.length<10)return toast('เหตุผลอื่น ๆ ต้องอธิบายอย่างน้อย 10 ตัวอักษร','warn');
       const reason=reasonType==='other'?'อื่น ๆ: '+detail:'เหตุผล: '+reasonOption[1]+(detail?'\nรายละเอียด: '+detail:'');
       if(reason.length>2000)return toast('เหตุผลรวมรายละเอียดต้องไม่เกิน 2,000 ตัวอักษร','warn');
-      const bo=e.type==='missing_stm'?current:selected,stm=e.type==='missing_bo'?current:selected;
+      const {bo,stm}=sides();
       if(Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))>500)return toast('ผลต่างเกิน 5 บาท จับคู่ไม่ได้','warn');
       const file=$('#pairFile').files[0];if(mode==='cross'&&!file&&!evidenceId)return toast('ข้ามบริษัทต้องแนบหลักฐาน','warn');
       event.target.disabled=true;
@@ -93,12 +108,21 @@ const ManualPairing=(()=>{
       host.className='manual-pair-review';
       host.innerHTML=`<h3>${p.status==='pending'?'จับคู่แล้ว รอหัวหน้าทีมอนุมัติ':'ประวัติการจับคู่'}</h3><p>${h(p.bo_company)} BO ↔ ${h(p.stm_company)} STM/PM · ผลต่าง ${money(p.difference)} บาท</p><p>${h(p.reason)}</p><p>คำขอ ${h(p.id)} · ผู้ส่ง ${h(p.submitted_by)} · ${h(p.submitted_at)}</p><p>${h(p.decision_note||'')}</p><button class="ghost-button sm" id="pairOther">เปิดเคสคู่</button>${p.evidence_id?'<button class="ghost-button sm" id="pairEvidence">เปิดหลักฐานจับคู่</button>':''}${p.status==='pending'?'<label>เหตุผลผลอนุมัติ (อย่างน้อย 10 ตัวอักษร)<textarea id="pairDecision" maxlength="2000"></textarea></label><label><input type="checkbox" id="pairDecisionChecked">ตรวจทั้งสองเคสและหลักฐานแล้ว</label><button class="primary-button" id="pairApprove">อนุมัติและปิดทั้งคู่</button><button class="ghost-button" id="pairReject">ไม่อนุมัติ คืนทั้งสองเคส</button>':''}`;
       $('#pairOther').onclick=async()=>{try{await openEvidenceRelatedCase(p.bo_case_id===e.dbId?p.stm_case_id:p.bo_case_id);}catch(err){toast(err.message,'warn');}};
+      const singleCase=p.bo_case_id===p.stm_case_id;
+      if(singleCase){
+        $('#pairOther').hidden=true;
+        if(p.status==='pending'){
+          $('#pairApprove').textContent='อนุมัติและปิดเคสยอดต่าง';
+          $('#pairReject').textContent='ไม่อนุมัติ คืนเคส';
+          $('#pairDecisionChecked').parentElement.lastChild.textContent='ตรวจ BO และ STM/PM ในเคสนี้และหลักฐานแล้ว';
+        }
+      }
       $('#pairEvidence')?.addEventListener('click',async()=>{try{const files=(await Promise.all([Sb.caseEvidence(p.bo_case_id),Sb.caseEvidence(p.stm_case_id)])).flat();const file=files.find(f=>f.id===p.evidence_id);if(!file)throw new Error('หลักฐานไม่อยู่ในทะเบียน');window.open(await Sb.signedUrl(file.storage_path),'_blank','noopener');}catch(err){toast(err.message,'warn');}});
       for(const [id,action] of [['pairApprove','approve'],['pairReject','reject']]){
         const button=$('#'+id);if(!button)continue;
         button.disabled=!can('approve')||p.submitted_by===Sb.authUser()?.id;
         button.title=p.submitted_by===Sb.authUser()?.id?'ให้หัวหน้าทีมอีกคนตรวจ ไม่อนุมัติคำขอตนเอง':'';
-        button.onclick=async()=>{const note=$('#pairDecision').value.trim();if(note.length<10||!$('#pairDecisionChecked').checked)return toast('ตรวจหลักฐานและระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');$('#pairApprove').disabled=$('#pairReject').disabled=true;try{await Sb.decideManualPair({p_id:p.id,p_action:action,p_note:note});await refresh([p.bo_case_id,p.stm_case_id]);await openException(e.id);toast(action==='approve'?'หัวหน้าทีมอนุมัติ ปิดทั้งสองเคสแล้ว':'ไม่อนุมัติ คืนคู่เคสแล้ว');}catch(err){toast(err.message,'warn');$('#pairApprove').disabled=$('#pairReject').disabled=false;}};
+        button.onclick=async()=>{const note=$('#pairDecision').value.trim();if(note.length<10||!$('#pairDecisionChecked').checked)return toast('ตรวจหลักฐานและระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');$('#pairApprove').disabled=$('#pairReject').disabled=true;try{await Sb.decideManualPair({p_id:p.id,p_action:action,p_note:note});await refresh([...new Set([p.bo_case_id,p.stm_case_id])]);await openException(e.id);toast(action==='approve'?(singleCase?'หัวหน้าทีมอนุมัติ ปิดเคสยอดต่างแล้ว':'หัวหน้าทีมอนุมัติ ปิดทั้งสองเคสแล้ว'):(singleCase?'ไม่อนุมัติ คืนเคสแล้ว':'ไม่อนุมัติ คืนคู่เคสแล้ว'));}catch(err){toast(err.message,'warn');$('#pairApprove').disabled=$('#pairReject').disabled=false;}};
       }
     }catch(err){host.textContent='ตรวจคำขอจับคู่ไม่ได้: '+err.message+' — ห้ามปิดผ่านปุ่มเดิม';}
   }
