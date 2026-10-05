@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ctx={state:{dataset:'production',role:'lead'},Sb:{signedIn:()=>true,authUser:()=>({id:'head'})},can:()=>true};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync('manual-pairing.js','utf8')+'\nthis.api=ManualPairing;',ctx);
+const p={status:'pending',submitted_by:'head',mode:'same',bo_company:'UFABET7M',stm_company:'UFABET7M',difference:.07,evidence_id:'file'};
+assert.equal(ctx.api.decisionBlockReason(p),'');
+for(const change of [{difference:5.01},{difference:null},{difference:'NaN'},{mode:'cross'},{stm_company:'FR8'},{evidence_id:null}])assert.notEqual(ctx.api.decisionBlockReason({...p,...change}),'');
+assert.equal(ctx.api.decisionBlockReason({...p,difference:5}),'');
+assert.equal(ctx.api.decisionBlockReason({...p,evidence_id:null,_hasStoredEvidence:true}),'');
+ctx.state.role='monitor';ctx.can=()=>false;assert.notEqual(ctx.api.decisionBlockReason(p),'');
+ctx.state.role='lead';ctx.can=()=>true;
+for(const status of ['open','answered','clarifying'])assert.equal(ctx.api.eligible({type:'amount_diff',status}),true);
+for(const status of ['closed','damage','pair_pending'])assert.equal(ctx.api.eligible({type:'amount_diff',status}),false);
+assert.equal(ctx.api.eligible({type:'missing_bo',status:'answered'}),false);
+const sql=fs.readFileSync('supabase/20261005_head_evidence_pair_review.sql','utf8');
+for(const term of ['storage.objects','self_approved','manual_pair_self_approve','validate_manual_pair','ต้นทางหรือยอดเปลี่ยน','released_at=now()'])assert.ok(sql.includes(term));
+assert.match(sql,/status=coalesce\(case when id=p.bo_case_id/);
+assert.match(sql,/p_action<>'approve' or p.mode<>'same'/);
+console.log('Head evidence review: limits, evidence, roles, lifecycle and SQL guards passed');

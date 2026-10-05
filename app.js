@@ -111,6 +111,7 @@ const ROUTES = [
       { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
       { id: "users", label: "ผู้ใช้และสิทธิ์", icon: "users", title: "ผู้ใช้ บทบาท และบริษัท", desc: "กำหนดหน้าที่และบริษัทที่ผู้ใช้แต่ละคนรับผิดชอบ สิทธิ์ถูกบังคับซ้ำที่ฐานข้อมูล", filters: false },
+      { id: "case-settings", label: "ตั้งค่าเคส / SLA", icon: "rules", title: "ตั้งค่า SLA แยกบริษัท", desc: "กำหนดเวลาขอเอกสารของแต่ละบริษัท ไม่เปลี่ยนกำหนดเคสเก่าและไม่ปิดความเสียหายอัตโนมัติ", filters: false },
     ],
   },
 ];
@@ -226,7 +227,7 @@ function auditRuleBookMarkup(selectedCompany = "") {
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "case-settings"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
@@ -396,7 +397,7 @@ function deny(what) {
 
 /* ---------------- data selectors ---------------- */
 function belongsToClarificationSheet(e) {
-  return Boolean(e.requestedAt || e.respondedAt || ["clarifying", "answered"].includes(e.status));
+  return !e.closureRequestId && Boolean(e.requestedAt || e.respondedAt || ["clarifying", "answered"].includes(e.status));
 }
 function filteredExceptions(source = DB.exceptions) {
   const f = state.filters;
@@ -581,6 +582,20 @@ function caseUiKey(e) { return e.dbId || [e.company,e.date,e.runId,e.id].join('|
 function recordCaseUiResult(e, message) {
   caseUiResults.set(caseUiKey(e), {message, status:e.status, actor:(typeof Sb !== 'undefined' && Sb.currentEmail()) || currentUser().username, at:nowStamp()});
 }
+function showCaseSubmissionReceipt(kind, label = '') {
+  const receipts = {
+    request: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำขอปิดเคสถูกบันทึกและส่งเข้าคิวหัวหน้าแล้ว เคสยังไม่ปิดจนกว่าหัวหน้าจะตรวจและอนุมัติสำเร็จ'],
+    clarification: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำชี้แจงพร้อมหลักฐานถูกส่งเข้าคิวตรวจแล้ว หัวหน้าต้องตรวจผลยอดและหลักฐานก่อนอนุมัติ เคสยังไม่ปิด'],
+    evidence: ['แนบหลักฐานเรียบร้อย', 'บันทึกไฟล์และผูกกับเคสแล้ว แต่การแนบไฟล์หรือบันทึก Note อย่างเดียวยังไม่ได้ส่งคำขอปิดเคส ให้ส่งคำชี้แจงหรือคำขอจับคู่ตามประเภทเคส'],
+    additional_evidence: ['เพิ่มหลักฐานในเคสรออนุมัติเรียบร้อย', 'บันทึกหลักฐานเพิ่มแล้ว คำขอเดิมยังรอหัวหน้าตรวจ ไม่ต้องส่งซ้ำ และยังไม่ใช่การปิดเคส'],
+    review_evidence: ['ส่งหลักฐานเข้าคิวตรวจเรียบร้อย', 'ผูกเอกสารกับเคสและรอผู้ตรวจทานแล้ว ยังไม่ใช่การยืนยันยอดหรืออนุมัติปิดเคส'],
+  };
+  const receipt = receipts[kind];
+  if (!receipt) throw new Error('Unknown case submission receipt');
+  openModal(receipt[0], `<div role="status"><p>${h(label)}</p><p>${h(receipt[1])}</p><p>กลับไปหน้าภาพรวมเคสเพื่อดำเนินการเคสถัดไป</p></div>`, '<button class="ghost-button" id="receiptViewCase">ดูเคสนี้ต่อ</button><button class="primary-button" id="receiptOverview">กลับไปหน้าภาพรวมเคส</button>');
+  $('#receiptViewCase').onclick = closeModal;
+  $('#receiptOverview').onclick = () => { closeModal(); closeDrawer(); go('exceptions'); };
+}
 async function persistCaseClosure(e, note) {
   if (e._closing) return false;
   e._closing = true;
@@ -755,14 +770,14 @@ function scopedWorkflowMetrics() {
   return {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
-    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || ManualPairing.queueState.rows !== null),
-    approvals: DB.exceptions.filter((row) => inScope(row) && (row.status === "answered" || (row.status === 'open' && row.clarificationFileId))).length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
-    followUps: DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
+    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null)),
+    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && (row.status === "answered" || (row.status === 'open' && row.clarificationFileId))).length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
+    followUps: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
   };
 }
 
 function renderNav() {
-  if(state.dataset==='production'&&Sb.signedIn())ManualPairing.loadPending();
+  if(state.dataset==='production'&&Sb.signedIn()){ManualPairing.loadPending();CaseClosure.loadPending();}
   const allowed = ROUTE_ROLES[state.role];
   const workflow = scopedWorkflowMetrics();
   $("#navList").innerHTML = ROUTES.map((g) => {
@@ -1242,6 +1257,8 @@ function mapLiveException(e) {
     status,
     track: e.track,
     dueAt: e.due_at,
+    documentDueAt: e.document_due_at || null,
+    closureRequestId: e.case_closure_request_id || null,
     systemAmount: e.system_amount == null ? null : Number(e.system_amount),
     bankAmount: e.bank_amount == null ? null : Number(e.bank_amount),
     amountDiff: Number(e.amount_diff || 0),
@@ -1257,7 +1274,7 @@ function mapLiveException(e) {
     boRaw: e.bo_raw || "—",
     ageHours,
     slaHours,
-    overSla: ageHours > slaHours && !["closed", "approved"].includes(status),
+    overSla: !e.case_closure_request_id && !["closed", "approved"].includes(status) && (e.document_due_at ? status==='clarifying'&&Date.now()>Date.parse(e.document_due_at) : ageHours > slaHours),
     notes: [],
     evidence: [],
     hasEvidence: !!e.clarification_file_id,
@@ -3547,7 +3564,7 @@ async function loadExceptionSupport(e, options = {}) {
               recordCaseUiResult(e, 'ผูกหลักฐานสำเร็จ — '+(candidates.find(f=>f.id===b.dataset.linkMail)?.file_name || '')+' · รอ Audit ตรวจ ยังไม่ปิดเคส');
               exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
               if(state.selected===e.id)await openException(e.id,{focusFiles:true});
-              toast('ผูกเอกสารแล้ว รอ Audit ตรวจยืนยัน ไม่ได้ปิดเคสหรือส่งข้อความ');
+              showCaseSubmissionReceipt(e.status==='answered'?'clarification':'review_evidence',e.id);
             }catch(err){status.textContent='ผูกหลักฐานไม่สำเร็จ: '+err.message;}
             finally{saving=false;submit.disabled=false;cancel.disabled=false;input.disabled=false;}
           };
@@ -3613,11 +3630,11 @@ async function openException(id, options = {}) {
     { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
     { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — คู่ตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
     { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
-    { key: "amount", label: "ยอดตรงกัน หรือบันทึกความเสียหายแล้ว", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
+    { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : "ยืนยันผลตรวจยอด: ยอดตรง / ยอมรับยอดต่างจากหลักฐาน / ความเสียหายจริง", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const ready = !closed && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
-  const missingChecks = ready || closed ? [] : checklist.filter(item=>!item.ok);
+  const ready = !closed && !e.closureRequestId && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
+  const missingChecks = ready || closed || e.closureRequestId || e.status==='pair_pending' || (state.dataset==='production' && e.hasEvidence && ['monitor','lead','admin'].includes(state.role)) ? [] : checklist.filter(item=>!item.ok);
   const lastUiResult = caseUiResults.get(caseUiKey(e));
   const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
 
@@ -3714,11 +3731,13 @@ async function openException(id, options = {}) {
         <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
       </section>
     <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : !e.hasEvidence ? "เปิดไฟล์ แล้วขอชี้แจงหรือแนบหลักฐาน" : !ready ? `ทำเช็กลิสต์ให้ครบอีก ${num(checklist.filter((item) => !item.ok).length)} ข้อ` : "หลักฐานครบ — พร้อมอนุมัติและปิดเคส"}</b></div>
-      <p class="case-action-help">เลือกเอกสารหรือแนบหลักฐานเพื่อให้ Audit ตรวจต่อ — ยังไม่ปิดเคสจนกว่าจะยืนยันปิดสำเร็จ</p>
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้าอนุมัติด้านล่าง ไม่ใช่รอผู้ชี้แจง" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส" : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
+      <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากยอดต่างเล็กน้อยและไม่เสียหาย ให้ใช้ “ตรวจยอดต่าง / จับคู่เอง” ระบุเหตุผลและตรวจหลักฐาน ไม่ต้องบันทึกความเสียหายเพื่อให้ผ่านเช็กลิสต์</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${e.status!=='open'?'disabled':''}>จับคู่เอง</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
+      <div id="caseClosureReview"></div>
+      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','lead','admin'].includes(state.role)?'<button class="primary-button" id="btnSendClosure">Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส</button>':''}
       <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>
     </div>`;
@@ -3754,6 +3773,8 @@ async function openException(id, options = {}) {
   $('#btnManualPair').addEventListener('click',()=>ManualPairing.open(e,'same'));
   $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
   ManualPairing.mountReview(e,$('#manualPairReview'));
+  CaseClosure.mountReview(e,$('#caseClosureReview'));
+  $('#btnSendClosure')?.addEventListener('click',()=>CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn')));
   $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
   drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
     const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : $("#caseSummarySection");
@@ -3780,8 +3801,10 @@ async function openException(id, options = {}) {
       input.disabled = true;
       let saved = 0;
       e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
+      let uploadComplete = false;
       try {
         for (const file of files) { await Sb.uploadCaseEvidence(e.dbId, file); saved++; }
+        uploadComplete = true;
         e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
         recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
         toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
@@ -3792,7 +3815,10 @@ async function openException(id, options = {}) {
         input.value = "";
         input.disabled = false;
         e._caseEvidenceLoaded = false;
-        if (state.selected === e.id) openException(e.id);
+        if (state.selected === e.id) {
+          await openException(e.id);
+          if (uploadComplete) showCaseSubmissionReceipt(['pair_pending','answered'].includes(e.status)?'additional_evidence':'evidence',e.id);
+        }
       }
       return;
     }
@@ -3843,10 +3869,11 @@ async function openException(id, options = {}) {
     issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
   );
 
-  $("#btnClarify").textContent = "ส่งไปชีทชี้แจง";
+  $("#btnClarify").textContent = e.hasEvidence ? "ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส" : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
   $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
+    if(e.hasEvidence)return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
     if (!["open", "answered"].includes(e.status)) return;
     const button = event.currentTarget;
     button.disabled = true;
@@ -3904,14 +3931,15 @@ async function openException(id, options = {}) {
       saveOverride(e, false);
       logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
       render();
-      openException(id);
-      toast("บันทึกคำตอบแล้ว — ยังไม่ปิดเคส");
+      await openException(id);
+      showCaseSubmissionReceipt('clarification', e.id);
     } catch (err) {
       toast("ยังยืนยันการบันทึกไม่ได้: " + err.message, "warn");
       button.disabled = false;
     }
   });
   $("#btnDamage").addEventListener("click", async () => {
+    if (state.dataset === 'production' && ['monitor','lead','admin'].includes(state.role)) return CaseClosure.openSubmit(e,'damage');
     if (!can("close_case")) return deny("บันทึกความเสียหาย");
     if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
     if (e.status === "damage") return toast("เคสนี้บันทึกเป็นความเสียหายแล้ว");
@@ -3988,6 +4016,7 @@ async function openException(id, options = {}) {
   $("#btnApprove").addEventListener("click", async () => {
     if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
     if (quickCloseEligible) return confirmQuickClose(e);
+    if (state.dataset === 'production') return CaseClosure.openSubmit(e);
     if (!ready) return toast("เช็คลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
     if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
     logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
@@ -4163,10 +4192,11 @@ VIEWS.matching = (root) => {
    ============================================================= */
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status) || (e.status==='open'&&e.clarificationFileId));
+  const queue = DB.exceptions.filter((e) => !e.closureRequestId&&(["answered", "clarifying", "damage"].includes(e.status) || (e.status==='open'&&e.clarificationFileId)));
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
+    <section class="panel" id="pendingDocumentClosureQueue"></section>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
       <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status==='answered').length)}</strong><small>เฉพาะขอบเขตเคสที่โหลด · คำขอจับคู่แสดงในคิวด้านบน</small></article>
@@ -4210,6 +4240,7 @@ VIEWS.approvals = (root) => {
   root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
   root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
   ManualPairing.mountQueue($('#pendingManualPairQueue'));
+  CaseClosure.mountQueue($('#pendingDocumentClosureQueue'));
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("อนุมัติ");
@@ -5158,6 +5189,7 @@ VIEWS.rules = (root) => {
 /* =============================================================
    VIEW: Users & permission
    ============================================================= */
+VIEWS['case-settings'] = (root) => CaseClosure.mountSettings(root);
 VIEWS.users = async (root) => {
   const caps = [
     ["view", "ดูหน้าที่ได้รับสิทธิ์ / dashboard"],
@@ -5555,8 +5587,8 @@ async function openStoredFilePreview(meta) {
         exceptionSupportCache.clear();
         logAction("clarification_manual_multi_match", "source_file", meta.id, `จับคู่ ${name} กับ ${ids.length} เคสของ ${meta.company}`);
         closeModal();
-        toast(`แนบไฟล์ชี้แจงกับ ${num(result?.matched_count || ids.length)} เคสแล้ว — รอ Audit ตรวจและอนุมัติ`, "ok");
         render();
+        showCaseSubmissionReceipt('clarification',`ส่งเอกสารให้ตรวจ ${num(result?.matched_count || ids.length)} เคส`);
         setTimeout(() => loadLiveOverview(true), 300);
       } catch (error) {
         button.disabled = false;
@@ -7366,6 +7398,7 @@ function cycleOf(iso) {
 
 /* กำหนดส่งคืนของแต่ละสาย */
 function dueOf(e) {
+  if(e.documentDueAt){const label=new Date(e.documentDueAt).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});return {label,short:label,detail:'SLA เอกสารตามบริษัท ณ วันส่งคำขอ ไม่เปลี่ยนเมื่อส่งซ้ำหรือแก้ตั้งค่า และไม่ยืนยันความเสียหายอัตโนมัติ'};}
   const c = DB.settings.clarify;
   const t = e.track || trackOfException(e).track;
   if (t === "daily") {
@@ -7438,7 +7471,7 @@ function issueClarificationDoc(e, narrative) {
 VIEWS.clarify = (root) => {
   if (!ensureLiveOverview(root)) return;
   if (state.dataset === "production" && Sb.signedIn()) {
-    const rows = scopedExceptions().filter((e) => ["open", "clarifying", "answered"].includes(e.status));
+    const rows = scopedExceptions().filter((e) => !e.closureRequestId&&["open", "clarifying", "answered"].includes(e.status)&&(state.role!=='shift_lead'||!!e.requestedAt));
     const newRows = rows.filter((e) => e.status === "open");
     const waitingRows = rows.filter((e) => e.status === "clarifying");
     const answeredRows = rows.filter((e) => e.status === "answered");

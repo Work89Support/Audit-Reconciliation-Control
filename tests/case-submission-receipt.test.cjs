@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const app=fs.readFileSync('app.js','utf8');
+const fn=app.slice(app.indexOf('function showCaseSubmissionReceipt('),app.indexOf('async function persistCaseClosure('));
+let modal,calls=[];const buttons={};
+const ctx={h:s=>String(s??''),openModal:(title,body,foot)=>{modal={title,body,foot}},$:id=>buttons[id]??=( {} ),closeModal:()=>calls.push('modal'),closeDrawer:()=>calls.push('drawer'),go:route=>calls.push(route)};
+vm.createContext(ctx);vm.runInContext(fn+'\nthis.receipt=showCaseSubmissionReceipt;',ctx);
+ctx.receipt('request','7M');assert.equal(modal.title,'ส่งขออนุมัติปิดเคสเรียบร้อย');assert.match(modal.body,/เคสยังไม่ปิด/);
+buttons['#receiptOverview'].onclick();assert.deepEqual(calls,['modal','drawer','exceptions']);
+ctx.receipt('evidence','7M');assert.equal(modal.title,'แนบหลักฐานเรียบร้อย');assert.match(modal.body,/ยังไม่ได้ส่งคำขอปิดเคส/);
+ctx.receipt('additional_evidence','7M');assert.match(modal.body,/ไม่ต้องส่งซ้ำ/);
+ctx.receipt('clarification','7M');assert.match(modal.body,/หัวหน้าต้องตรวจผลยอดและหลักฐาน/);
+assert.throws(()=>ctx.receipt('invalid'),/Unknown/);
+assert.match(app,/if \(uploadComplete\) showCaseSubmissionReceipt/);
+assert.match(app,/await Sb\.submitClarification[\s\S]*?showCaseSubmissionReceipt\('clarification'/);
+const pairing=fs.readFileSync('manual-pairing.js','utf8');
+assert.match(pairing,/if\(!pair\?\.id\)throw[\s\S]*?showCaseSubmissionReceipt\('request'/);
+console.log('Submission receipts: confirmed request, attachment-only, no duplicate, overview navigation and success guards passed');

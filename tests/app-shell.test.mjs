@@ -139,11 +139,11 @@ assert.match(app, /retryTransientFileRequest\(action, attempts = 3\)/, "Preview 
 assert.match(app, /const exceptionsAvailable = liveOverviewState\.exceptionsReady/, "หน้า Exception ต้องแยกข้อมูลไม่พร้อมออกจากศูนย์จริง");
 assert.match(app, /const operationsAvailable = Array\.isArray\(liveOverviewState\.operations\)/, "หน้ารายงานต้องแยกคิวไม่พร้อมออกจากไม่มีข้อมูล");
 assert.match(app, /AuditCompanyOverview\.markup/, "หน้ารายงานต้องใช้สรุปทุกเครือ");
-assert.match(app, /companies:companyMaster\(\)\.filter/, "สรุปใช้บริษัทที่มีสิทธิ์ใน catalogue");
+assert.match(app, /companies:companyMaster\(\)\.filter/, "สรุปทุกเครือใช้บริษัทที่มีสิทธิ์ใน catalogue ไม่ล็อกจำนวนบริษัท");
 assert.match(app, /ชีต AUDIT ทุกบริษัท/, "ชื่อเมนูไม่ผูกกับจำนวนบริษัท");
 const overview = readFileSync(join(root, 'audit-company-overview.js'), 'utf8');
-assert.match(overview, /STM\/PM ยังไม่จับคู่/, "ภาพรวมแสดงรายการที่ยังไม่จับคู่");
-assert.match(overview, /data-recon-company=/, "บริษัทต้องเปิดสรุปรายวันได้");
+assert.match(overview, /STM\/PM ยังไม่จับคู่/, "ภาพรวมต้องแสดงรายการที่ยังไม่จับคู่แยกจากยอดจับคู่แล้ว");
+assert.match(overview, /data-recon-company=/, "ยอดแยกบริษัทต้องกดเปิดสรุปรายวันได้");
 assert.match(app, /const logsAvailable = liveOverviewState\.logsReady/, "Audit Log ต้องไม่แสดงศูนย์เมื่อ query ล้มเหลว");
 assert.match(app, /LIVE_COMPANY_CODES/, "ต้องแยก 9 บริษัทจริงออกจากแถวรวมชื่อระบบ");
 assert.match(app, /\.filter\(isLiveCompanyRow\)/, "ผลคิวและผลกระทบยอดต้องกรองแถว PM\/SYS123\/XXX ออก");
@@ -173,7 +173,7 @@ assert.match(app, /ไฟล์ประกอบของเคสนี้/, "
 assert.match(app, /id="btnChooseClarification"/, "เคสต้องมีปุ่มเลือกเอกสารชี้แจงโดยตรง");
 assert.match(app, /id='caseMailEvidenceButton'/, "ตัวเลือกเอกสารชี้แจงต้องมีจุดเปิดที่แน่นอนหลังโหลดไฟล์เสร็จ");
 assert.match(app, /await Sb\.manualMatchClarificationFile\(b\.dataset\.linkMail,\[e\.dbId\],note\)/, "การเลือกเอกสารต้องบันทึกการผูกกับเคสจริงและไม่ใช่ปุ่มจำลอง");
-assert.match(app, /ยอดตรงกัน หรือบันทึกความเสียหายแล้ว/, "เงื่อนไขปิดเคสต้องไม่วนกลับจนอนุมัติไม่ได้");
+assert.match(app, /ยืนยันผลตรวจยอด: ยอดตรง \/ ยอมรับยอดต่างจากหลักฐาน \/ ความเสียหายจริง/, "เช็กลิสต์ต้องแยกยอดต่างไม่เสียหายออกจากความเสียหายจริง");
 assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
 assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
 assert.match(app, /function safeExceptionDetail\(e\)/, "เคสย้อนหลังที่วันที่เสียต้องไม่แสดง undefined หรือ NaN ต่อผู้ใช้");

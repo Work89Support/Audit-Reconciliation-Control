@@ -532,7 +532,7 @@ const Sb = (() => {
       "bank_amount", "amount_diff", "risk_amount", "currency", "fx_rate", "time_diff_sec", "employee", "shift",
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
-      "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id",
+      "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id", "case_closure_request_id", "document_due_at",
       "bo_date", "bo_time", "stm_date", "stm_time", "customer_details", "superseded_by_exception_id",
     ].join(",");
     /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
@@ -901,6 +901,21 @@ const Sb = (() => {
   }
   const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  async function pendingCaseClosures() {
+    const rows=[];
+    for(let offset=0;;offset+=200){
+      const page=await json(`/rest/v1/case_closure_requests?status=eq.pending&select=*&order=requested_at.asc,id.asc&limit=200&offset=${offset}`);
+      if(!Array.isArray(page))throw new Error('อ่านคิวปิดเคสไม่สำเร็จ');
+      rows.push(...page);if(page.length<200)return rows;
+    }
+  }
+  async function caseClosureRequest(id) {
+    const rows=await json(`/rest/v1/case_closure_requests?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);return rows[0]||null;
+  }
+  const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const decideCaseClosure=body=>json('/rest/v1/rpc/decide_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const companyCaseSlas=()=>json('/rest/v1/company_case_sla?select=*&order=company.asc');
+  const saveCompanyCaseSla=(company,days)=>json('/rest/v1/rpc/save_company_case_sla',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_company:company,p_days:days})});
 
   async function caseEvidence(id) {
     if (!id) return [];
@@ -1122,6 +1137,7 @@ const Sb = (() => {
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,
+    pendingCaseClosures,caseClosureRequest,submitCaseClosure,decideCaseClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
     saveConfig,
