@@ -756,7 +756,7 @@ function scopedWorkflowMetrics() {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
     approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || ManualPairing.queueState.rows !== null),
-    approvals: DB.exceptions.filter((row) => inScope(row) && row.status === "answered").length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
+    approvals: DB.exceptions.filter((row) => inScope(row) && (row.status === "answered" || (row.status === 'open' && row.clarificationFileId))).length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
     followUps: DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
   };
 }
@@ -829,7 +829,8 @@ function nextActionForState() {
   if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดดูรายชื่อไฟล์ปัญหาทั้งหมดและสาเหตุก่อน แล้วค่อยเปิดตรวจทีละรายการ", tone: "bad" };
   if (needsBoReview.length) return { route: "cloud", label: `เทียบ BO สำหรับไฟล์ที่อ่านแล้ว ${num(needsBoReview.length)} ไฟล์`, detail: "ไม่พบรายการในวันตรวจ ไม่ใช่ไฟล์เสีย — ตรวจบัญชีและวันกับ BO ก่อนสรุป ไม่ต้องรันไฟล์เดิมซ้ำ", tone: "warn" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
-  if (workflow.followUps) return { route: "clarify", label: `ตรวจคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "อนุมัติ ส่งกลับ หรือปิดเคสจากหลักฐาน", tone: "warn" };
+  if (workflow.approvalsAvailable && workflow.approvals && can('approve')) return { route: "approvals", label: `ตรวจคำชี้แจง / คำขออนุมัติ ${num(workflow.approvals)} งาน`, detail: "เปิดเคสและเอกสารที่ผูกไว้ ตรวจหลักฐานก่อนอนุมัติ", tone: "warn" };
+  if (workflow.followUps) return { route: "clarify", label: `ติดตามคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "ติดตามคำตอบและหลักฐานจากผู้ชี้แจง", tone: "warn" };
   if (workflow.openAvailable && workflow.open) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(workflow.open)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
   if (!workflow.openAvailable) return { route: "dashboard", label: "กำลังตรวจยอดเคสจากฐานข้อมูล", detail: "ยังไม่สรุปว่างานหมดจนกว่าจะโหลดยอดจริงสำเร็จ", tone: "warn" };
   return { route: "reports", label: "ดูสรุปและออกรายงาน", detail: "งานที่ต้องดำเนินการหมดแล้ว ตรวจรายวันและ Export หลักฐาน", tone: "ok" };
@@ -3539,6 +3540,10 @@ async function loadExceptionSupport(e, options = {}) {
               const recommendationId=recommended.get(b.dataset.linkMail);
               if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
               else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
+              const saved=await Sb.exceptionDetail(e.dbId);
+              if(!saved||saved.clarification_file_id!==b.dataset.linkMail)throw new Error('ยังยืนยันไฟล์ที่ผูกกับเคสไม่ได้ กรุณาตรวจสถานะล่าสุดก่อนเลือกซ้ำ');
+              Object.assign(e,mapLiveException(saved),{id:e.id,notes:e.notes,evidence:e.evidence});
+              renderNav();
               recordCaseUiResult(e, 'ผูกหลักฐานสำเร็จ — '+(candidates.find(f=>f.id===b.dataset.linkMail)?.file_name || '')+' · รอ Audit ตรวจ ยังไม่ปิดเคส');
               exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
               if(state.selected===e.id)await openException(e.id,{focusFiles:true});
@@ -4158,7 +4163,7 @@ VIEWS.matching = (root) => {
    ============================================================= */
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status));
+  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status) || (e.status==='open'&&e.clarificationFileId));
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
@@ -4187,7 +4192,7 @@ VIEWS.approvals = (root) => {
               <td>${h(e.typeName)}</td>
               <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
               <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
-              <td>${e.hasEvidence ? '<span class="badge green">ครบ</span>' : '<span class="badge red">ยังไม่มี</span>'}</td>
+              <td>${e.clarificationFileId ? `<button class="ghost-button xs" data-review-evidence="${h(e.dbId||e.id)}">เปิดเอกสารที่เลือก</button>` : e.hasEvidence ? '<span class="badge green">มีหลักฐานแนบ</span>' : '<span class="badge red">ยังไม่มี</span>'}</td>
               <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
               <td class="right nowrap">
                 <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
@@ -4203,6 +4208,7 @@ VIEWS.approvals = (root) => {
     </section>`;
 
   root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
+  root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
   ManualPairing.mountQueue($('#pendingManualPairQueue'));
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
