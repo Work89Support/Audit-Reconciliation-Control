@@ -50,7 +50,7 @@ Deno.serve(async (request) => {
     const fullName = String(body.full_name || "").trim();
     const role = String(body.role || "monitor");
     const active = body.active !== false;
-    const allowedRoles = new Set(["monitor", "lead", "shift_lead", "exec", "admin"]);
+    const allowedRoles = new Set(["monitor", "audit_assistant", "lead", "shift_lead", "exec", "admin"]);
     const companies = [...new Set(
       (Array.isArray(body.companies) ? body.companies : [])
         .map((value: unknown) => String(value || "").trim().toUpperCase())
@@ -59,9 +59,9 @@ Deno.serve(async (request) => {
     if (!/^\S+@\S+\.\S+$/.test(email)) return json({ message: "รูปแบบอีเมลไม่ถูกต้อง" }, 400);
     if (!fullName) return json({ message: "กรุณากรอกชื่อที่แสดง" }, 400);
     if (!allowedRoles.has(role)) return json({ message: "บทบาทไม่ถูกต้อง" }, 400);
-    if (usernameMode && ['monitor','shift_lead'].includes(role) && !companies.length) return json({message:'เลือกบริษัทที่รับผิดชอบก่อนสร้างบัญชี'},400);
-    if (usernameMode && companies.includes('*')) return json({message:'เลือกบริษัทเป็นรายบริษัท ไม่ใช้สิทธิ์ *'},400);
-    if (usernameMode && companies.length) {
+    if ((usernameMode || role==='audit_assistant') && ['monitor','audit_assistant','shift_lead'].includes(role) && !companies.length) return json({message:'เลือกบริษัทที่รับผิดชอบก่อนสร้างบัญชี'},400);
+    if ((usernameMode || role==='audit_assistant') && companies.includes('*')) return json({message:'เลือกบริษัทเป็นรายบริษัท ไม่ใช้สิทธิ์ *'},400);
+    if ((usernameMode || role==='audit_assistant') && companies.length) {
       const {data:known,error} = await admin.from('audit_company_file_rules').select('company');
       if(error) throw error;
       if(companies.some(c=>!known?.some(row=>row.company===c))) return json({message:'บริษัทที่เลือกไม่อยู่ในทะเบียน'},400);

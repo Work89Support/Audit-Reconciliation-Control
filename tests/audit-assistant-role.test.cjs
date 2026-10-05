@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const sql=fs.readFileSync('supabase/20261005_audit_assistant_role.sql','utf8');
+assert.match(sql,/when role='audit_assistant' then 'monitor'/);
+assert.doesNotMatch(sql,/delete from public\.user_company_access/);
+assert.match(sql,/self_approval_role='audit_assistant'/);
+assert.match(sql,/p\.difference is null or p\.difference>5/);
+assert.match(sql,/storage\.objects/);
+assert.match(sql,/q\.requested_by=auth\.uid\(\) or public\.current_audit_assistant/);
+const data=fs.readFileSync('data.js','utf8');
+const role=data.match(/audit_assistant: \{([\s\S]*?)\n    \}/)[1];
+assert.match(role,/"approve"/);assert.doesNotMatch(role,/"users"|"settings"|"rules"|"close_cycle"/);
+assert.match(fs.readFileSync('app.js','utf8'),/audit_assistant: \[.*"approvals"/);
+assert.match(fs.readFileSync('manual-pairing.js','utf8'),/state.role==='audit_assistant'\|\|/);
+console.log('Assistant role: scoped Audit baseline, evidence and <=5 cap, no admin/settings/loss-cycle powers passed');

@@ -8,7 +8,7 @@ const ManualPairing=(()=>{
       return (filters.company==='ALL'||company===filters.company)&&(!filters.from||(date&&date>=filters.from))&&(!filters.to||(date&&date<=filters.to));
     }));
   }
-  const selfApprovalCandidate=p=>['lead','admin'].includes(state.role)&&p.mode==='same'&&p.bo_company===p.stm_company&&p.difference!=null&&Number.isFinite(Number(p.difference))&&Number(p.difference)>=0&&Number(p.difference)<=5&&!!(p._hasStoredEvidence||p.evidence_id||p.snapshot?.bo?.clarification_file_id||p.snapshot?.stm?.clarification_file_id);
+  const selfApprovalCandidate=p=>['audit_assistant','lead','admin'].includes(state.role)&&(state.role==='audit_assistant'||(p.mode==='same'&&p.bo_company===p.stm_company))&&p.difference!=null&&Number.isFinite(Number(p.difference))&&Number(p.difference)>=0&&Number(p.difference)<=5&&!!(p._hasStoredEvidence||p.evidence_id||p.snapshot?.bo?.clarification_file_id||p.snapshot?.stm?.clarification_file_id);
   const decisionBlockReason=p=>!Sb.signedIn()?'กรุณาเข้าสู่ระบบก่อนตรวจคำขอ':!can('approve')?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ — ให้หัวหน้าทีม / ผู้ดูแลระบบตรวจ':p.status!=='pending'?'คำขอนี้ไม่ได้รออนุมัติ':p.submitted_by===Sb.authUser()?.id&&!selfApprovalCandidate(p)?'คำขอตัวเองต้องเป็นบริษัทเดียวกัน ยอดต่างไม่เกิน 5 บาท และมีหลักฐานจริง มิฉะนั้นให้หัวหน้าอีกบัญชีตรวจ':'';
   async function loadPending(force=false){
     if(state.dataset!=='production'||!Sb.signedIn())return;
@@ -20,7 +20,7 @@ const ManualPairing=(()=>{
     catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;}}
     finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
   }
-  const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','lead','admin'].includes(state.role);
+  const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const eligible=e=>['missing_bo','missing_stm','amount_diff'].includes(e.type)&&(e.status==='open'||(e.type==='amount_diff'&&['clarifying','answered'].includes(e.status)));
   const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
   const describe=e=>`${e.company} · ${e.business_date} ${e.occurred_at||''} · ${e.account||'-'} · ${e.direction} · ${e.member_code||'-'}`;

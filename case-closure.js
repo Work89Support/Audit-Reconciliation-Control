@@ -1,7 +1,7 @@
 /* Document review is not a company clarification request or an automatic loss. */
 const CaseClosure=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
-  const auditable=()=>Sb.signedIn()&&['monitor','lead','admin'].includes(state.role);
+  const auditable=()=>Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const outcomeLabel=q=>q.outcome==='no_loss'?'ไม่มีความเสียหาย (0 บาท)':`เสียหายจริง ${money(q.loss_amount)} บาท`;
   function approvalNote(action,value){
     const note=String(value||'').trim();
@@ -49,7 +49,7 @@ const CaseClosure=(()=>{
     host.textContent='กำลังโหลดผลตรวจรอหัวหน้า…';
     try{
       const q=await Sb.caseClosureRequest(e.closureRequestId);if(!q)throw Error('ไม่พบคำขอหรือไม่มีสิทธิ์');if(!host.isConnected)return;
-      const own=q.requested_by===Sb.authUser()?.id,blocked=!can('approve')||(own&&!selfEligible(q));
+      const own=q.requested_by===Sb.authUser()?.id,blocked=!can('approve')||((own||state.role==='audit_assistant')&&!selfEligible(q));
       host.innerHTML=`<h3>${q.status==='pending'?'Audit ตรวจแล้ว — รอหัวหน้าปิดเคส':'ผลปิดเคส'}</h3><p><b>${h(outcomeLabel(q))}</b></p><p>${h(q.audit_reason)}</p><p>${h(q.decision_note||'')}</p><p>คำขอ ${h(q.id)} · ผู้ส่ง ${h(q.requested_by)}</p>${q.status==='pending'?`<p>${blocked?'บัญชีนี้อนุมัติไม่ได้ หรือคำขอตัวเองไม่ผ่านเงื่อนไข ต้องให้หัวหน้าอีกบัญชีตรวจ':'หัวหน้าตรวจเอกสารและผลยอดก่อนอนุมัติ — เหตุผลอนุมัติไม่บังคับ'}</p><label>เหตุผลอนุมัติ (ไม่บังคับ) / ส่งกลับต้องระบุเหตุผล<textarea id="closureHeadNote" maxlength="2000"></textarea></label><label><input type="checkbox" id="closureHeadChecked">ตรวจเอกสารและผล Audit แล้ว ยืนยัน ${h(outcomeLabel(q))}</label><button class="primary-button" id="closureApprove" ${blocked?'disabled':''}>อนุมัติ</button><button class="ghost-button" id="closureReject" ${blocked||own?'disabled':''}>ส่งกลับ Audit</button>`:''}`;
       if(q.status!=='pending')return;
       for(const [buttonId,action] of [['closureApprove','approve'],['closureReject','reject']])$('#'+buttonId).onclick=async event=>{

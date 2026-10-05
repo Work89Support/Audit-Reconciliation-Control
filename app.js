@@ -227,6 +227,7 @@ function auditRuleBookMarkup(selectedCompany = "") {
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
+  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "approvals", "reports", "notifications"],
   lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "case-settings"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
@@ -3320,7 +3321,7 @@ VIEWS.exceptions = (root) => {
     render();
   };
   $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
-  if(state.dataset==='production'&&['monitor','lead','admin'].includes(state.role)){
+  if(state.dataset==='production'&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
     const historyHost=document.createElement('section');historyHost.className='panel';historyHost.id='overviewClosureHistory';root.prepend(historyHost);CaseClosure.mountQueue(historyHost);
   }
   root.querySelectorAll('[data-review-sheet]').forEach((button) => button.addEventListener('click', () => {
@@ -3641,7 +3642,7 @@ async function openException(id, options = {}) {
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
   const ready = !closed && !e.closureRequestId && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
-  const missingChecks = ready || closed || e.closureRequestId || e.status==='pair_pending' || (state.dataset==='production' && e.hasEvidence && ['monitor','lead','admin'].includes(state.role)) ? [] : checklist.filter(item=>!item.ok);
+  const missingChecks = ready || closed || e.closureRequestId || e.status==='pair_pending' || (state.dataset==='production' && e.hasEvidence && ['monitor','audit_assistant','lead','admin'].includes(state.role)) ? [] : checklist.filter(item=>!item.ok);
   const lastUiResult = caseUiResults.get(caseUiKey(e));
   const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
 
@@ -3744,7 +3745,7 @@ async function openException(id, options = {}) {
       <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
       <div id="caseClosureReview"></div>
-      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','lead','admin'].includes(state.role)?'<button class="primary-button" id="btnSendClosure">Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส</button>':''}
+      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?'<button class="primary-button" id="btnSendClosure">Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส</button>':''}
       <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>
     </div>`;
@@ -3918,7 +3919,7 @@ async function openException(id, options = {}) {
     const answerText = $("#responseText").value.trim();
     if (!answerText) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
     const answeringRole=currentUser().role;
-    const response=['monitor','lead','admin'].includes(answeringRole)
+    const response=['monitor','audit_assistant','lead','admin'].includes(answeringRole)
       ? `[คำชี้แจงโดย ${answeringRole==='admin'?'แอดมินระบบ':'Audit'} — ไม่ใช่การอนุมัติปิดเคส]\n${answerText}` : answerText;
     if (state.dataset === "production" && !e.clarificationFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
     const button = event.currentTarget;
@@ -3946,7 +3947,7 @@ async function openException(id, options = {}) {
     }
   });
   $("#btnDamage").addEventListener("click", async () => {
-    if (state.dataset === 'production' && ['monitor','lead','admin'].includes(state.role)) return CaseClosure.openSubmit(e,'damage');
+    if (state.dataset === 'production' && ['monitor','audit_assistant','lead','admin'].includes(state.role)) return CaseClosure.openSubmit(e,'damage');
     if (!can("close_case")) return deny("บันทึกความเสียหาย");
     if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
     if (e.status === "damage") return toast("เคสนี้บันทึกเป็นความเสียหายแล้ว");
@@ -5814,7 +5815,7 @@ async function openStoredFilePreview(meta) {
           const ocr = await Sb.fileOcr(meta.id);
           if (pendingReplacementFile || !target.isConnected) return;
           PdfReview.mount(target, { url: originalUrl, evidence: ocr, name });
-          if (meta.kind === 'stm_pdf' && ['monitor','lead','admin'].includes(state.role)) {
+          if (meta.kind === 'stm_pdf' && ['monitor','audit_assistant','lead','admin'].includes(state.role)) {
             PdfSourceApproval.mount(target, {
               loadSource: () => Sb.recoverySource(meta.id),
               download: getDownload,

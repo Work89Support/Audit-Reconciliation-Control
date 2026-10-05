@@ -73,6 +73,11 @@ const DB = (() => {
       desc: "ตรวจไฟล์และรายการ ใส่หมายเหตุ และส่งให้บริษัทชี้แจง",
       can: ["view", "note", "status", "request_clarify", "respond", "export"],
     },
+    audit_assistant: {
+      name: "ผู้ช่วย AUDIT",
+      desc: "จับคู่เอง / ข้ามบริษัท และอนุมัติปิดเมื่อมีหลักฐาน ผลต่างไม่เกิน 5 บาท ตามบริษัทที่รับผิดชอบ",
+      can: ["view", "note", "status", "request_clarify", "respond", "attach", "approve", "close_case", "export"],
+    },
     lead: {
       name: "Audit Lead",
       desc: "ตรวจทาน อนุมัติ ปิดเคส ปิดรอบความเสียหาย",
