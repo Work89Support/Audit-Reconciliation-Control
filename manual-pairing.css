@@ -40,3 +40,14 @@
 .manual-pair-form .pair-confirm{display:flex;gap:10px;align-items:flex-start;background:#f3f7fb;padding:12px;border-radius:8px;font-weight:400}
 .pair-confirm input{margin-top:4px;flex-shrink:0}
 @media(max-width:560px){.pair-search-grid{grid-template-columns:1fr 1fr}.pair-search-grid button{grid-column:1/-1}.pair-card-top{flex-wrap:wrap}.pair-amount{text-align:left}.pair-facts{grid-template-columns:1fr}.pair-comparison strong{font-size:19px}.modal:has(.manual-pair-form) .modal-foot button{flex:1;white-space:normal}}
+.pair-permission-notice{padding:12px 16px;border-radius:10px;background:#fff6e6;color:#694509;line-height:1.6;font-size:14px}
+.pair-queue-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}
+.pair-queue-item{margin:0;padding:16px;border:1px solid #dbe5f0;border-radius:12px;background:#f8fbff}
+.pair-queue-select{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pair-queue-select input{width:18px;height:18px;accent-color:#0067ce}
+.pair-bulk-review{margin-top:20px;padding:20px;border:1px solid #bdd6ef;border-radius:12px;background:#eff6ff}
+.pair-bulk-review label{display:block;margin:12px 0}
+.pair-bulk-review textarea{display:block;width:100%;min-height:85px;box-sizing:border-box;margin-top:8px;font:inherit;border:1px solid #bdd6ef;border-radius:8px;padding:12px}
+.pair-queue-filters{display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin:16px 0}
+.pair-queue-filters label{display:flex;flex-direction:column;gap:6px;min-width:170px;flex:1}
+.pair-queue-filters select,.pair-queue-filters input{width:100%;box-sizing:border-box;font:inherit;padding:10px;border:1px solid #bdd6ef;border-radius:8px;background:white}

@@ -1,5 +1,24 @@
 /* Production UI: the RPC, not the browser, decides permissions and reservation. */
 const ManualPairing=(()=>{
+  const queueState={rows:null,loading:false,error:'',at:0,user:null};
+  const queueFilters={company:'ALL',from:'',to:'',user:null};
+  function filterPairs(pairs,filters){
+    return pairs.filter(p=>['bo','stm'].some(side=>{
+      const company=p[side+'_company'],date=p.snapshot?.[side]?.business_date;
+      return (filters.company==='ALL'||company===filters.company)&&(!filters.from||(date&&date>=filters.from))&&(!filters.to||(date&&date<=filters.to));
+    }));
+  }
+  const decisionBlockReason=p=>!Sb.signedIn()?'กรุณาเข้าสู่ระบบก่อนตรวจคำขอ':!can('approve')?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ — ให้หัวหน้าทีม / ผู้ดูแลระบบตรวจ':p.submitted_by===Sb.authUser()?.id?'คุณเป็นผู้ส่งคำขอนี้ — ต้องให้หัวหน้าทีมอีกบัญชีตรวจและอนุมัติ':p.status!=='pending'?'คำขอนี้ไม่ได้รออนุมัติ':'';
+  async function loadPending(force=false){
+    if(state.dataset!=='production'||!Sb.signedIn())return;
+    const user=Sb.authUser()?.id;
+    if(queueState.user!==user){Object.assign(queueState,{rows:null,error:'',at:0,user});}
+    if(queueState.loading||(!force&&Date.now()-queueState.at<60000))return;
+    queueState.loading=true;
+    try{const rows=await Sb.pendingManualPairs();if(Sb.authUser()?.id!==user)return;queueState.rows=rows;queueState.error='';}
+    catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;}}
+    finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
+  }
   const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','lead','admin'].includes(state.role);
   const eligible=e=>e.status==='open'&&['missing_bo','missing_stm','amount_diff'].includes(e.type);
   const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
@@ -12,6 +31,7 @@ const ManualPairing=(()=>{
   };
   async function refresh(ids) {
     for(const id of ids){const row=await Sb.exceptionDetail(id);const index=DB.exceptions.findIndex(e=>e.dbId===id);if(row&&index>=0)Object.assign(DB.exceptions[index],mapLiveException(row));}
+    await loadPending(true);
     render();
   }
   async function open(e,mode) {
@@ -118,22 +138,63 @@ const ManualPairing=(()=>{
         }
       }
       $('#pairEvidence')?.addEventListener('click',async()=>{try{const files=(await Promise.all([Sb.caseEvidence(p.bo_case_id),Sb.caseEvidence(p.stm_case_id)])).flat();const file=files.find(f=>f.id===p.evidence_id);if(!file)throw new Error('หลักฐานไม่อยู่ในทะเบียน');window.open(await Sb.signedUrl(file.storage_path),'_blank','noopener');}catch(err){toast(err.message,'warn');}});
+      const blocked=decisionBlockReason(p);
+      if(p.status==='pending'){
+        const notice=document.createElement('p');notice.className='pair-permission-notice';notice.setAttribute('role','status');
+        notice.textContent=blocked||'หัวหน้าทีม: ตรวจหลักฐาน ระบุเหตุผล และติ๊กยืนยันก่อนอนุมัติ ระบบจะตรวจต้นทางและยอดไม่เกิน 5 บาทซ้ำอีกครั้ง';host.prepend(notice);
+      }
       for(const [id,action] of [['pairApprove','approve'],['pairReject','reject']]){
         const button=$('#'+id);if(!button)continue;
-        button.disabled=!can('approve')||p.submitted_by===Sb.authUser()?.id;
-        button.title=p.submitted_by===Sb.authUser()?.id?'ให้หัวหน้าทีมอีกคนตรวจ ไม่อนุมัติคำขอตนเอง':'';
-        button.onclick=async()=>{const note=$('#pairDecision').value.trim();if(note.length<10||!$('#pairDecisionChecked').checked)return toast('ตรวจหลักฐานและระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');$('#pairApprove').disabled=$('#pairReject').disabled=true;try{await Sb.decideManualPair({p_id:p.id,p_action:action,p_note:note});await refresh([...new Set([p.bo_case_id,p.stm_case_id])]);await openException(e.id);toast(action==='approve'?(singleCase?'หัวหน้าทีมอนุมัติ ปิดเคสยอดต่างแล้ว':'หัวหน้าทีมอนุมัติ ปิดทั้งสองเคสแล้ว'):(singleCase?'ไม่อนุมัติ คืนเคสแล้ว':'ไม่อนุมัติ คืนคู่เคสแล้ว'));}catch(err){toast(err.message,'warn');$('#pairApprove').disabled=$('#pairReject').disabled=false;}};
+        button.disabled=!!blocked;button.title=blocked;
+        button.onclick=async()=>{const reason=decisionBlockReason(p);if(reason)return toast(reason,'warn');const note=$('#pairDecision').value.trim();if(note.length<10||note.length>2000||!$('#pairDecisionChecked').checked)return toast('ตรวจหลักฐานและระบุเหตุผล 10–2,000 ตัวอักษร','warn');$('#pairApprove').disabled=$('#pairReject').disabled=true;try{await Sb.decideManualPair({p_id:p.id,p_action:action,p_note:note});await refresh([...new Set([p.bo_case_id,p.stm_case_id])]);await openException(e.id);toast(action==='approve'?(singleCase?'หัวหน้าทีมอนุมัติ ปิดเคสยอดต่างแล้ว':'หัวหน้าทีมอนุมัติ ปิดทั้งสองเคสแล้ว'):(singleCase?'ไม่อนุมัติ คืนเคสแล้ว':'ไม่อนุมัติ คืนคู่เคสแล้ว'));}catch(err){toast('ยังยืนยันผลไม่ได้: '+err.message+' — โหลดคำขอใหม่ก่อนลองอีกครั้ง','warn');await mountReview(e,host);}};
       }
     }catch(err){host.textContent='ตรวจคำขอจับคู่ไม่ได้: '+err.message+' — ห้ามปิดผ่านปุ่มเดิม';}
   }
-  async function mountQueue(host) {
+  async function mountQueue(host,cachedPairs=null) {
     if(!host||state.dataset!=='production'||!Sb.signedIn())return;
     host.textContent='กำลังโหลดคู่รออนุมัติทุกวันที่ตามสิทธิ์…';
     try {
-      const pairs=await Sb.pendingManualPairs();if(!host.isConnected)return;
-      host.innerHTML='<h3>คู่รออนุมัติทุกวันที่ตามสิทธิ์</h3><p class="hint">รวมคำขอจากผลรันเก่า หากมีการรันใหม่ต้องตรวจใหม่หรือคืนคู่ ห้ามปิดข้ามผลรัน</p>'+ (pairs.length>200?'<p>แสดง 200 คู่แรก ยังไม่ใช่รายการครบทั้งหมด</p>':'')+pairs.slice(0,200).map(p=>`<div class="manual-pair-source"><b>${h(p.bo_company)} BO ↔ ${h(p.stm_company)} STM/PM</b> · ผลต่าง ${money(p.difference)} บาท · ${h(p.submitted_at)}<p>${h(p.reason)}</p><button class="ghost-button sm" data-pair-case="${h(p.bo_case_id)}">ตรวจคู่ / คืนคู่</button></div>`).join('')+(pairs.length?'':'<p>ไม่พบคู่รออนุมัติตามสิทธิ์ทั้งสองบริษัท</p>');
+      // Fetch the complete RLS-scoped request queue, independent of the 250-case page.
+      const user=Sb.authUser()?.id;
+      const pairs=cachedPairs||await Sb.pendingManualPairs();if(!host.isConnected||user!==Sb.authUser()?.id)return;
+      Object.assign(queueState,{rows:pairs,error:'',at:Date.now(),user:Sb.authUser()?.id});if(typeof renderNav==='function')renderNav();
+      if(queueFilters.user!==user)Object.assign(queueFilters,{company:'ALL',from:'',to:'',user});
+      const companies=[...new Set(pairs.flatMap(p=>[p.bo_company,p.stm_company]))].sort();
+      const visible=filterPairs(pairs,queueFilters);
+      const caseDate=(p,side)=>h(p.snapshot?.[side]?.business_date||'ไม่ระบุวันที่เคส');
+      host.innerHTML=`<div class="panel-heading"><div><h3>คำขอจับคู่รออนุมัติ <span class="badge amber">${visible.length} / ${pairs.length} คำขอ</span></h3><p class="hint">1 คู่ = 1 คำขอ · ผู้ส่งอนุมัติคำขอตัวเองไม่ได้</p></div><button class="ghost-button sm" data-pair-reload>รีเฟรชคิว</button></div>
+      <div class="pair-queue-filters"><label>บริษัท<select data-pair-filter-company><option value="ALL">ทุกบริษัทตามสิทธิ์</option>${companies.map(c=>`<option value="${h(c)}" ${queueFilters.company===c?'selected':''}>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสตั้งแต่<input type="date" data-pair-filter-from value="${h(queueFilters.from)}"></label><label>ถึง<input type="date" data-pair-filter-to value="${h(queueFilters.to)}"></label><button class="ghost-button sm" data-pair-filter-clear>ล้างตัวกรอง</button></div><p class="hint">กรองจากวันที่ธุรกรรมในเคส ไม่ใช่วันที่ส่งคำขอ · ข้ามบริษัท/ข้ามวันแสดงเมื่อฝั่งใดฝั่งหนึ่งตรงทั้งบริษัทและช่วงวันที่</p>
+      <div class="pair-queue-list">`+visible.map(p=>`<article class="manual-pair-source pair-queue-item"><label class="pair-queue-select"><input type="checkbox" data-pair-select="${h(p.id)}" ${decisionBlockReason(p)?'disabled':''} aria-label="เลือกคำขอ ${h(p.id)}"><strong>${h(p.bo_company)} BO ↔ ${h(p.stm_company)} STM/PM</strong><span class="badge amber">รออนุมัติ</span></label><p>วันที่ BO: ${caseDate(p,'bo')} · STM/PM: ${caseDate(p,'stm')}</p><p>ผลต่าง <b>${money(p.difference)} บาท</b> · ส่งคำขอ ${h(p.submitted_at)}</p><p>${h(p.reason)}</p>${decisionBlockReason(p)?`<p class="pair-permission-notice">${h(decisionBlockReason(p))}</p>`:''}<button class="ghost-button sm" data-pair-case="${h(p.bo_case_id)}">เปิดรายละเอียดเคส / อนุมัติ</button>${p.bo_case_id!==p.stm_case_id?` <button class="ghost-button sm" data-pair-case="${h(p.stm_case_id)}">เปิดเคสฝั่ง STM/PM</button>`:''}</article>`).join('')+(visible.length?'':'<p>ไม่พบคำขอรออนุมัติตามตัวกรองนี้</p>')+'</div>'+ (can('approve')&&visible.length?`<section class="pair-bulk-review"><h4>อนุมัติหลายรายการ</h4><p>เลือกได้สูงสุด 50 คำขอ เฉพาะรายการที่แสดง ต้องเปิดตรวจหลักฐานของแต่ละรายการก่อน ระบบตรวจและบันทึกทีละคำขอ ไม่ปิดข้ามผลรัน</p><label>เหตุผลผลตรวจร่วม (10–2,000 ตัวอักษร)<textarea data-pair-bulk-note maxlength="2000" placeholder="ระบุผลตรวจและหลักฐานที่ใช้"></textarea></label><label><input type="checkbox" data-pair-bulk-checked>ตรวจ BO, STM/PM และหลักฐานของทุกรายการที่เลือกแล้ว</label><button class="primary-button" data-pair-bulk-approve disabled>อนุมัติรายการที่เลือก (0)</button><p role="status" data-pair-bulk-result></p></section>`:'');
+      const filterChange=()=>{
+        const company=host.querySelector('[data-pair-filter-company]').value,from=host.querySelector('[data-pair-filter-from]').value,to=host.querySelector('[data-pair-filter-to]').value;
+        if(from&&to&&from>to)return toast('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด','warn');
+        Object.assign(queueFilters,{company,from,to});mountQueue(host,pairs);
+      };
+      host.querySelectorAll('[data-pair-filter-company],[data-pair-filter-from],[data-pair-filter-to]').forEach(n=>n.onchange=filterChange);
+      host.querySelector('[data-pair-filter-clear]').onclick=()=>{Object.assign(queueFilters,{company:'ALL',from:'',to:''});mountQueue(host,pairs);};
       host.querySelectorAll('[data-pair-case]').forEach(b=>b.onclick=()=>openEvidenceRelatedCase(b.dataset.pairCase).catch(err=>toast(err.message,'warn')));
+      host.querySelector('[data-pair-reload]').onclick=()=>mountQueue(host);
+      const selected=()=>visible.filter(p=>host.querySelector(`[data-pair-select="${p.id}"]`)?.checked);
+      const bulk=host.querySelector('[data-pair-bulk-approve]');
+      if(bulk){
+        const note=host.querySelector('[data-pair-bulk-note]'),checked=host.querySelector('[data-pair-bulk-checked]'),result=host.querySelector('[data-pair-bulk-result]');let busy=false;
+        const sync=()=>{const n=selected().length;bulk.textContent=`อนุมัติรายการที่เลือก (${n})`;bulk.disabled=busy||!n||n>50||!checked.checked||note.value.trim().length<10||note.value.trim().length>2000;};
+        host.querySelectorAll('[data-pair-select]').forEach(c=>c.onchange=()=>{checked.checked=false;sync();});note.oninput=()=>{checked.checked=false;sync();};checked.onchange=sync;
+        bulk.onclick=async()=>{
+          const chosen=selected(),text=note.value.trim();
+          if(busy||!chosen.length||chosen.length>50||!checked.checked||text.length<10||text.length>2000)return;
+          const denied=chosen.map(decisionBlockReason).find(Boolean);if(denied)return toast(denied,'warn');
+          busy=true;sync();host.querySelectorAll('input,textarea,button').forEach(n=>n.disabled=true);
+          let done=0,error='';
+          for(const p of chosen){try{await Sb.decideManualPair({p_id:p.id,p_action:'approve',p_note:text});done++;result.textContent=`บันทึกแล้ว ${done}/${chosen.length} คำขอ`;}catch(err){error=err.message;break;}}
+          await loadPending(true);
+          // Stop on the first failure; never retry a possibly committed decision automatically.
+          await mountQueue(host);
+          const report=document.createElement('p');report.className='pair-permission-notice';report.setAttribute('role','status');report.textContent=`ยืนยันบันทึกสำเร็จ ${done}/${chosen.length} คำขอ`+(error?` · หยุดตรวจต่อ: ${error} — ตรวจสถานะล่าสุดก่อนลองใหม่`: ' · คิวอัปเดตแล้ว');host.prepend(report);
+          loadLiveOverview(true);
+        };
+      }
     } catch(err){if(host.isConnected)host.textContent='โหลดคู่รออนุมัติไม่สำเร็จ: '+err.message;}
   }
-  return {open,mountReview,mountQueue};
+  return {open,mountReview,mountQueue,queueState,loadPending,decisionBlockReason,filterPairs};
 })();

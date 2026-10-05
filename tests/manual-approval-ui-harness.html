@@ -1,0 +1,21 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบคิวอนุมัติ — ข้อมูลจำลอง</title>
+<link rel="stylesheet" href="../styles.css"><link rel="stylesheet" href="../manual-pairing.css">
+<style>body{font-family:system-ui;background:#f3f7fb;color:#14283d;padding:24px;max-width:1050px;margin:auto}button{cursor:pointer;padding:10px;border-radius:8px}button:disabled{opacity:.45;cursor:not-allowed}.panel{padding:24px;background:white;border-radius:16px}.badge{background:#fff0c9;padding:4px 8px;border-radius:12px}.panel-heading{display:flex;justify-content:space-between;gap:12px}.primary-button{background:#0067ce;color:white;border:0}.ghost-button{background:white;color:#164f88;border:1px solid #b5cce3}</style>
+<h1>คิวหัวหน้าทีม · ตัวอย่างทดสอบเท่านั้น</h1><p>ไม่ต่อฐานข้อมูล ไม่ปิดเคสจริง</p><p id="nav">กำลังโหลด</p><section id="queue" class="panel"></section><p id="result"></p>
+<script>
+const state={dataset:'production',role:'lead'};
+const pairs=[
+ {id:'demo-1',bo_case_id:'case-1',stm_case_id:'case-1',bo_company:'UFABET7M',stm_company:'UFABET7M',difference:.07,reason:'ยอดต่างเล็กน้อย / การปัดเศษ',submitted_at:'05/10/2026 13:00',submitted_by:'employee',status:'pending'},
+ {id:'demo-2',bo_case_id:'case-2',stm_case_id:'case-3',bo_company:'FR8',stm_company:'FR8',difference:.02,reason:'ยอดต่างเล็กน้อย / การปัดเศษ',submitted_at:'05/10/2026 13:10',submitted_by:'employee',status:'pending'},
+ {id:'demo-own',bo_case_id:'case-4',stm_case_id:'case-4',bo_company:'MC8',stm_company:'MC8',difference:1,reason:'คำขอที่หัวหน้าส่งเอง',submitted_at:'05/10/2026 13:20',submitted_by:'lead',status:'pending'}];
+pairs.forEach((p,i)=>p.snapshot={bo:{business_date:i===0?'2026-10-02':'2026-10-03'},stm:{business_date:i===0?'2026-10-02':'2026-10-03'}});
+const calls=[];
+const Sb={signedIn:()=>true,authUser:()=>({id:'lead'}),pendingManualPairs:async()=>pairs.filter(p=>p.status==='pending'),decideManualPair:async body=>{const p=pairs.find(p=>p.id===body.p_id);if(p.submitted_by==='lead')throw Error('ห้ามอนุมัติตัวเอง');if(p.status!=='pending')throw Error('สถานะเปลี่ยน');if(location.search.includes('fail')&&p.id==='demo-2')throw Error('ต้นทางเปลี่ยน');p.status='approved';calls.push(body);return p;}};
+const can=cap=>cap==='approve'&&state.role==='lead';
+const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>Number(n).toFixed(2),$=s=>document.querySelector(s);
+const toast=m=>$('#result').textContent=m;
+const openEvidenceRelatedCase=async id=>{$('#result').textContent='เปิดตรวจเคสจำลอง '+id;};
+function renderNav(){if(typeof ManualPairing!=='undefined')$('#nav').textContent='อนุมัติ / ปิดเคส · '+(ManualPairing.queueState.rows?.length??'—')+' คำขอ';}
+async function loadLiveOverview(){return;}
+</script><script src="../manual-pairing.js"></script><script>ManualPairing.mountQueue($('#queue'));</script></html>

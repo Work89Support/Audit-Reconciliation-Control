@@ -755,13 +755,14 @@ function scopedWorkflowMetrics() {
   return {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
-    approvalsAvailable: liveOverviewState.exceptionsReady,
-    approvals: DB.exceptions.filter((row) => inScope(row) && row.status === "answered").length,
+    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || ManualPairing.queueState.rows !== null),
+    approvals: DB.exceptions.filter((row) => inScope(row) && row.status === "answered").length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
     followUps: DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
   };
 }
 
 function renderNav() {
+  if(state.dataset==='production'&&Sb.signedIn())ManualPairing.loadPending();
   const allowed = ROUTE_ROLES[state.role];
   const workflow = scopedWorkflowMetrics();
   $("#navList").innerHTML = ROUTES.map((g) => {
@@ -775,7 +776,7 @@ function renderNav() {
             `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}" title="${h(it.label)}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[it.icon]}"/></svg><span>${h(it.label)}</span>
               ${it.id === "exceptions" ? `<b class="nav-count">${workflow.openAvailable ? num(workflow.open) : "—"}</b>` : ""}
-              ${it.id === "approvals" ? `<b class="nav-count">${workflow.approvalsAvailable ? num(workflow.approvals) : "—"}</b>` : ""}
+              ${it.id === "approvals" ? `<b class="nav-count" title="คำขอจับคู่ทุกวันที่ตามสิทธิ์ รวมเคสชี้แจงแล้วในขอบเขตที่โหลด">${workflow.approvalsAvailable ? num(workflow.approvals) : "—"}</b>` : ""}
             </a>`,
         )
         .join("")
@@ -4157,13 +4158,13 @@ VIEWS.matching = (root) => {
    ============================================================= */
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage", "pair_pending"].includes(e.status));
+  const queue = DB.exceptions.filter((e) => ["answered", "clarifying", "damage"].includes(e.status));
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
-      <article class="warn"><span>ชี้แจง / จับคู่แล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => ['answered','pair_pending'].includes(e.status)).length)}</strong><small>Audit Lead ต้องตรวจทาน</small></article>
+      <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status==='answered').length)}</strong><small>เฉพาะขอบเขตเคสที่โหลด · คำขอจับคู่แสดงในคิวด้านบน</small></article>
       <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
       <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
     </section>

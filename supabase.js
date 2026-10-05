@@ -891,7 +891,13 @@ const Sb = (() => {
     return rows[0]||null;
   }
   async function pendingManualPairs() {
-    return json('/rest/v1/manual_case_pairs?status=eq.pending&select=*&order=submitted_at.asc&limit=201');
+    const rows=[];
+    for(let offset=0;;offset+=200){
+      const page=await json(`/rest/v1/manual_case_pairs?status=eq.pending&select=*&order=submitted_at.asc,id.asc&limit=200&offset=${offset}`);
+      if(!Array.isArray(page))throw new Error('อ่านคิวอนุมัติไม่สำเร็จ');
+      rows.push(...page);
+      if(page.length<200)return rows;
+    }
   }
   const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
