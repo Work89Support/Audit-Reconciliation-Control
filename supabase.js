@@ -912,6 +912,14 @@ const Sb = (() => {
   async function caseClosureRequest(id) {
     const rows=await json(`/rest/v1/case_closure_requests?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);return rows[0]||null;
   }
+  async function caseClosureHistory() {
+    const rows=[];
+    for(let offset=0;;offset+=200){
+      const page=await json(`/rest/v1/case_closure_requests?select=*&order=requested_at.desc,id.desc&limit=200&offset=${offset}`);
+      if(!Array.isArray(page))throw new Error('อ่านประวัติคำขอปิดเคสไม่สำเร็จ');
+      rows.push(...page);if(page.length<200)return rows;
+    }
+  }
   const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideCaseClosure=body=>json('/rest/v1/rpc/decide_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const companyCaseSlas=()=>json('/rest/v1/company_case_sla?select=*&order=company.asc');
@@ -1137,7 +1145,7 @@ const Sb = (() => {
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,
-    pendingCaseClosures,caseClosureRequest,submitCaseClosure,decideCaseClosure,companyCaseSlas,saveCompanyCaseSla,
+    pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
     saveConfig,

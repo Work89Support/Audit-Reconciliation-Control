@@ -1,0 +1,39 @@
+.closure-hub{padding:28px!important;color:#17324d}
+.closure-hub-heading{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.closure-hub .closure-eyebrow{margin:0 0 6px;color:#1767b4;font-size:12px;font-weight:500;letter-spacing:.03em}
+.closure-hub h3{margin:0;font-size:26px;line-height:1.35}
+.closure-hub .closure-subtitle{margin:8px 0 0;color:#6b7f95;font-size:14px}
+.closure-pending-total{display:flex;flex-direction:column;align-items:center;min-width:140px;padding:16px 22px;border-radius:16px;background:#eef5ff;border:1px solid #dceaff}
+.closure-pending-total strong{font-size:32px;line-height:1.2;color:#126ac6;font-variant-numeric:tabular-nums}
+.closure-pending-total span{font-size:12px;color:#527495;margin-top:4px}
+.closure-flow{display:flex;gap:22px;margin:22px 0;padding:14px 18px;background:#f7faff;border-radius:12px;color:#59728b;font-size:13px;flex-wrap:wrap}
+.closure-flow span{display:flex;align-items:center;gap:8px}
+.closure-flow i{font-style:normal;background:#e5effc;color:#2164a5;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:500}
+.closure-filter-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;gap:14px;padding-bottom:22px;border-bottom:1px solid #e5edf5}
+.closure-filter-grid label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:500;color:#52708d;margin:0;min-width:0}
+.closure-filter-grid select,.closure-filter-grid input{width:100%;box-sizing:border-box;min-width:0;margin:0;background:#fff;color:#17324d;border:1px solid #d4e1ef;border-radius:10px;min-height:44px;font:inherit;font-size:14px;padding:10px 12px}
+.closure-filter-grid select:focus-visible,.closure-filter-grid input:focus-visible,.closure-hub button:focus-visible{outline:3px solid #8ac5ff;outline-offset:2px}
+.closure-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 12px;font-size:14px}
+.closure-list-heading>span{font-size:12px;color:#6b7f95}
+.closure-card-list{display:grid;gap:14px}
+.closure-case-card{border:1px solid #dce7f1;border-radius:14px;background:#fff;overflow:hidden}
+.closure-case-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:18px 20px 14px}
+.closure-case-top>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.closure-company{font-size:12px;font-weight:600;color:#2764a0;background:#edf5ff;padding:5px 9px;border-radius:7px}
+.closure-case-top h4{font-size:17px;margin:0;overflow-wrap:anywhere}
+.closure-case-date{font-size:12px;color:#70859b}
+.closure-state{font-size:12px;font-weight:500;padding:6px 10px;border-radius:20px;white-space:nowrap}
+.closure-state.is-pending{background:#fff4d9;color:#8c6105}.closure-state.is-approved{background:#e8f6ee;color:#207447}.closure-state.is-returned{background:#fff0ea;color:#ae5130}
+.closure-case-amounts{display:grid;grid-template-columns:1fr 1fr 1.35fr;gap:12px;margin:0 20px 16px}
+.closure-case-amounts>div{background:#f7f9fc;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.closure-case-amounts span,.closure-case-bottom>div>span{font-size:12px;color:#6b7f95}
+.closure-case-amounts strong{font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.closure-case-amounts .is-zero{background:#edf8f2;color:#256d49}.closure-case-amounts .is-loss{background:#fff1ec;color:#a4482b}
+.closure-case-bottom{border-top:1px solid #e9eff5;background:#fbfdff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.closure-case-bottom>div{min-width:0;flex:1}.closure-case-bottom p{font-size:13px;line-height:1.65;margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#435b72}
+.closure-case-bottom button{flex-shrink:0;min-height:40px;white-space:nowrap}
+.closure-empty{padding:32px 20px;border:1px dashed #d0deed;background:#f8fbff;border-radius:14px;text-align:center;color:#52708d}
+.closure-empty b{font-size:15px;color:#294c6c}.closure-empty p{font-size:13px;line-height:1.8;margin:8px 0 0}
+.closure-hub .closure-history-note{font-size:12px;color:#71849a;margin:16px 0 0;line-height:1.7}
+@media(max-width:900px){.closure-filter-grid{grid-template-columns:1fr 1fr}.closure-case-amounts{grid-template-columns:1fr 1fr}.closure-case-amounts .closure-outcome{grid-column:1/-1}}
+@media(max-width:560px){.closure-hub{padding:18px!important}.closure-hub-heading{align-items:flex-start;gap:12px}.closure-hub h3{font-size:22px}.closure-pending-total{min-width:92px;padding:12px}.closure-flow{gap:10px;padding:12px;font-size:12px}.closure-list-heading{align-items:flex-start;flex-direction:column}.closure-case-top{padding:16px;flex-direction:column}.closure-case-amounts{margin:0 16px 14px}.closure-case-bottom{padding:14px 16px;flex-direction:column;align-items:stretch}.closure-case-bottom button{width:100%}}

@@ -262,7 +262,7 @@ const state = {
   filters: { date: DEFAULT_WORK_DATE, from: DEFAULT_RANGE_FROM, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
   filtersOpen: false,
   exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
-  reviewSheet: "normal",
+  reviewSheet: "all",
   auditDocumentView: "excel",
   exceptionView: "sheet",
   sort: { key: "time", dir: "asc" },
@@ -404,14 +404,15 @@ function filteredExceptions(source = DB.exceptions) {
   const x = state.exFilter;
   return source.filter((e) => {
     if (!canAccessCompany(e.company)) return false;
-    if (state.route === "exceptions" && belongsToClarificationSheet(e) !== (state.reviewSheet === "clarification")) return false;
+    if (state.route === "exceptions" && state.reviewSheet !== "all" && belongsToClarificationSheet(e) !== (state.reviewSheet === "clarification")) return false;
     if (!inRange(e.date)) return false;
     if (f.company !== "ALL" && e.company !== f.company) return false;
     if (f.direction !== "ALL" && e.direction !== f.direction) return false;
     if (x.type !== "ALL" && e.type !== x.type) return false;
     if (x.severity !== "ALL" && e.severity !== x.severity) return false;
     if (x.status === "ACTION" && ["closed", "approved", "damage"].includes(e.status)) return false;
-    if (!['ALL', 'ACTION'].includes(x.status) && e.status !== x.status) return false;
+    if (x.status === 'CLOSURE_PENDING' && !(e.closureRequestId && e.status === 'answered')) return false;
+    if (!['ALL', 'ACTION', 'CLOSURE_PENDING'].includes(x.status) && e.status !== x.status) return false;
     if (x.sla && !e.overSla) return false;
     if (x.q) {
       const q = x.q.toLowerCase();
@@ -525,6 +526,7 @@ function evidenceTimeDiffLabel(e) {
 const sumRisk = (list) => list.reduce((a, c) => a + (c.riskAmount || 0), 0);
 const severityColor = (s) => Charts.STATUS[s] || "#7c8ea2";
 const statusMeta = (code) => DB.statuses.find((s) => s.code === code) || { name: code, tone: "grey" };
+const caseStatusMeta = (e) => e.closureRequestId && e.status === 'answered' ? {name:'รอหัวหน้าปิดเคส',tone:'grey'} : statusMeta(e.status);
 const sevMeta = (code) => DB.severities.find((s) => s.code === code) || { name: code };
 const isEmptyPmFile = (file) => file?.parsed && !file?.parse_error && file?.kind === "pm_statement" && Number(file?.row_count || 0) === 0 && Number(file?.size_bytes || 0) <= 16;
 const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรายการ (0)" : "พร้อมใช้งาน";
@@ -585,7 +587,7 @@ function recordCaseUiResult(e, message) {
 function showCaseSubmissionReceipt(kind, label = '') {
   const receipts = {
     request: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำขอปิดเคสถูกบันทึกและส่งเข้าคิวหัวหน้าแล้ว เคสยังไม่ปิดจนกว่าหัวหน้าจะตรวจและอนุมัติสำเร็จ'],
-    clarification: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำชี้แจงพร้อมหลักฐานถูกส่งเข้าคิวตรวจแล้ว หัวหน้าต้องตรวจผลยอดและหลักฐานก่อนอนุมัติ เคสยังไม่ปิด'],
+    clarification: ['ส่งคำชี้แจงพร้อมหลักฐานเรียบร้อย — รอ Audit ตรวจ', 'คำชี้แจงพร้อมหลักฐานถูกบันทึกแล้ว แต่ยังไม่ได้ส่งคำขอให้หัวหน้าปิดเคส ให้ Audit ตรวจเอกสารและผลยอด แล้วกดส่งหัวหน้ารอปิดเคส เคสเดิมยังอยู่ในภาพรวม'],
     evidence: ['แนบหลักฐานเรียบร้อย', 'บันทึกไฟล์และผูกกับเคสแล้ว แต่การแนบไฟล์หรือบันทึก Note อย่างเดียวยังไม่ได้ส่งคำขอปิดเคส ให้ส่งคำชี้แจงหรือคำขอจับคู่ตามประเภทเคส'],
     additional_evidence: ['เพิ่มหลักฐานในเคสรออนุมัติเรียบร้อย', 'บันทึกหลักฐานเพิ่มแล้ว คำขอเดิมยังรอหัวหน้าตรวจ ไม่ต้องส่งซ้ำ และยังไม่ใช่การปิดเคส'],
     review_evidence: ['ส่งหลักฐานเข้าคิวตรวจเรียบร้อย', 'ผูกเอกสารกับเคสและรอผู้ตรวจทานแล้ว ยังไม่ใช่การยืนยันยอดหรืออนุมัติปิดเคส'],
@@ -594,7 +596,7 @@ function showCaseSubmissionReceipt(kind, label = '') {
   if (!receipt) throw new Error('Unknown case submission receipt');
   openModal(receipt[0], `<div role="status"><p>${h(label)}</p><p>${h(receipt[1])}</p><p>กลับไปหน้าภาพรวมเคสเพื่อดำเนินการเคสถัดไป</p></div>`, '<button class="ghost-button" id="receiptViewCase">ดูเคสนี้ต่อ</button><button class="primary-button" id="receiptOverview">กลับไปหน้าภาพรวมเคส</button>');
   $('#receiptViewCase').onclick = closeModal;
-  $('#receiptOverview').onclick = () => { closeModal(); closeDrawer(); go('exceptions'); };
+  $('#receiptOverview').onclick = () => { closeModal(); closeDrawer(); state.reviewSheet='all'; state.exFilter.status='ALL'; go('exceptions'); };
 }
 async function persistCaseClosure(e, note) {
   if (e._closing) return false;
@@ -3178,7 +3180,7 @@ VIEWS.exceptions = (root) => {
       : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
     const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
     return `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
-      <td class="sheet-state"><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span><small>${h(caseLabel(e))}</small></td>
+      <td class="sheet-state"><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span><small>${h(caseLabel(e))}</small></td>
       <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
       <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
       <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
@@ -3200,7 +3202,7 @@ VIEWS.exceptions = (root) => {
     <td class="right tnum">${diffLabel(e)}${e.riskAmount ? `<small class="sub">ตรวจ ${money(e.riskAmount)}</small>` : ""}</td>
     <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
     <td>${h(e.employee)}<small class="sub">${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift || "-")}</small></td>
-    <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+    <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
     <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
   </tr>`).join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
 
@@ -3222,7 +3224,7 @@ VIEWS.exceptions = (root) => {
       </div>
     </section>
     <section class="panel">
-      <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>กรองต่อจากวันที่และบริษัทด้านบน · เลือกแล้วรายการเปลี่ยนทันที</p></div>
+      <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>เคสเดิมยังอยู่ในภาพรวมเสมอ · เลือก “ทั้งหมด” และ “ทุกสถานะ” เพื่อย้อนดูรวมปิดแล้ว · รอหัวหน้าตรวจได้ที่ “อนุมัติ / ปิดเคส”</p></div>
       <div class="case-filter-fields">
         <label class="case-filter-search" for="exSearch">ค้นหาเคสหรือบัญชี
         <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / ท้าย 4 / ชื่อลูกค้า / สมาชิก / Provider" value="${h(x.q)}" /></label>
@@ -3230,6 +3232,7 @@ VIEWS.exceptions = (root) => {
         <select id="exStatus">
           <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>ยังต้องดำเนินการ (ไม่รวมปิดแล้ว)</option>
           <option value="ALL" ${x.status === "ALL" ? "selected" : ""}>ทุกสถานะ · รวมปิดแล้ว</option>
+          <option value="CLOSURE_PENDING" ${x.status === 'CLOSURE_PENDING' ? 'selected' : ''}>รอหัวหน้าปิดเคส</option>
           ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
         </select></label>
         <label for="exType">ประเภทปัญหาที่พบ
@@ -3260,7 +3263,8 @@ VIEWS.exceptions = (root) => {
       <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
         <div><b>บริษัท ${h(state.filters.company)} · โต๊ะตรวจเคส</b><small>ทุกชีทในหน้านี้เป็นของบริษัทนี้เท่านั้น</small><button type="button" class="ghost-button sm" id="reviewChangeCompany">เปลี่ยนบริษัท</button></div>
         <div class="audit-view-switch" role="group" aria-label="ชีทการทำงาน">
-          <button type="button" data-review-sheet="normal" aria-pressed="${state.reviewSheet !== "clarification"}" class="${state.reviewSheet !== "clarification" ? "active" : ""}">1. ตรวจปกติ</button>
+          <button type="button" data-review-sheet="all" aria-pressed="${state.reviewSheet === 'all'}" class="${state.reviewSheet === 'all' ? 'active' : ''}">ทั้งหมด · รวมรอปิดและประวัติ</button>
+          <button type="button" data-review-sheet="normal" aria-pressed="${state.reviewSheet === "normal"}" class="${state.reviewSheet === "normal" ? "active" : ""}">1. ตรวจปกติ</button>
           <button type="button" data-review-sheet="clarification" aria-pressed="${state.reviewSheet === "clarification"}" class="${state.reviewSheet === "clarification" ? "active" : ""}">2. ต้องชี้แจง</button>
         </div>
         <div class="audit-view-switch" role="group" aria-label="แยกตรวจฝากและถอน">
@@ -3316,9 +3320,12 @@ VIEWS.exceptions = (root) => {
     render();
   };
   $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
+  if(state.dataset==='production'&&['monitor','lead','admin'].includes(state.role)){
+    const historyHost=document.createElement('section');historyHost.className='panel';historyHost.id='overviewClosureHistory';root.prepend(historyHost);CaseClosure.mountQueue(historyHost);
+  }
   root.querySelectorAll('[data-review-sheet]').forEach((button) => button.addEventListener('click', () => {
     state.reviewSheet = button.dataset.reviewSheet;
-    state.exFilter.status = state.reviewSheet === "clarification" ? "ALL" : "ACTION";
+    state.exFilter.status = state.reviewSheet === "normal" ? "ACTION" : "ALL";
     reviewQueueIds = [];
     rerender();
   }));
@@ -3642,7 +3649,7 @@ async function openException(id, options = {}) {
     <header class="drawer-head">
       <div>
         <p class="eyebrow">${h(e.typeName)} · ${h(e.company)}</p>
-        <h2 id="drawerTitle">${h(caseLabel(e))} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></h2>
+        <h2 id="drawerTitle">${h(caseLabel(e))} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></h2>
       </div>
       <button class="icon-btn" id="drawerClose" aria-label="ปิด">✕</button>
     </header>
@@ -4223,7 +4230,7 @@ VIEWS.approvals = (root) => {
               <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
               <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
               <td>${e.clarificationFileId ? `<button class="ghost-button xs" data-review-evidence="${h(e.dbId||e.id)}">เปิดเอกสารที่เลือก</button>` : e.hasEvidence ? '<span class="badge green">มีหลักฐานแนบ</span>' : '<span class="badge red">ยังไม่มี</span>'}</td>
-              <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+              <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
               <td class="right nowrap">
                 <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
                 <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'อนุมัติ'}</button>
@@ -7455,7 +7462,7 @@ function issueClarificationDoc(e, narrative) {
     cycleName: cy.name,
     title: `${e.typeName} — ${e.account} ยอด ${money(e.riskAmount || Math.abs(e.amountDiff))} บาท เวลา ${e.time}`,
     severityName: sevMeta(e.severity).name,
-    statusName: statusMeta(e.status).name,
+    statusName: caseStatusMeta(e).name,
     damage: e.status === "damage",
     narrative: narrative,
     responder: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
@@ -7493,7 +7500,7 @@ VIEWS.clarify = (root) => {
           return `<article class="company-overview-card action-card" role="button" tabindex="0" data-clarify-company="${h(company)}" aria-label="เปิดเคสของบริษัท ${h(company)}"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small class="${own.some((e) => e.overSla) ? "danger" : ""}">เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span>ยังไม่ได้ส่ง <b>${num(ownNew)}</b></span><span class="warn">รอทีมตอบ <b>${num(ownWaiting)}</b></span><span class="ok">ตอบแล้ว <b>${num(ownAnswered)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div><div class="company-card-action">ดูเคสทั้งหมด <span aria-hidden="true">→</span></div></article>`;
         }).join("") || `<p class="empty-box">ไม่มีงานชี้แจงในช่วงที่เลือก</p>`}</div>
       </section>
-      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
     root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
     const openCompanyCases = (company) => go("exceptions", {
       filters: { company },
@@ -7645,7 +7652,7 @@ VIEWS.clarify = (root) => {
                 <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
                 <td>${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift)}<small class="sub">${h(e.employee)}</small></td>
                 <td class="${e.overSla ? "danger" : ""}">${h(d.short)}</td>
-                <td><span class="badge ${statusMeta(e.status).tone}">${h(statusMeta(e.status).name)}</span></td>
+                <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
                 <td class="right nowrap"><button class="ghost-button xs" data-clr="${e.id}">เอกสารชี้แจง</button></td>
               </tr>`;
                 })
@@ -7756,7 +7763,7 @@ const SHEET_BUILDERS = {
             ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
             : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
           return [
-            statusMeta(e.status).name, e.id, e.date, e.company, e.direction, e.account,
+            caseStatusMeta(e).name, e.id, e.date, e.company, e.direction, e.account,
             hasBo ? exceptionSideTimestamp(e, "bo") : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
             hasStm ? exceptionSideTimestamp(e, "stm") : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
             hasStm && hasBo ? exceptionTimeDiffLabel(e) : "", hasStm && hasBo ? e.amountDiff : "", result,

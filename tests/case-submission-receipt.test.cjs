@@ -2,13 +2,14 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const app=fs.readFileSync('app.js','utf8');
 const fn=app.slice(app.indexOf('function showCaseSubmissionReceipt('),app.indexOf('async function persistCaseClosure('));
 let modal,calls=[];const buttons={};
-const ctx={h:s=>String(s??''),openModal:(title,body,foot)=>{modal={title,body,foot}},$:id=>buttons[id]??=( {} ),closeModal:()=>calls.push('modal'),closeDrawer:()=>calls.push('drawer'),go:route=>calls.push(route)};
+const ctx={state:{reviewSheet:'clarification',exFilter:{status:'open'}},h:s=>String(s??''),openModal:(title,body,foot)=>{modal={title,body,foot}},$:id=>buttons[id]??=( {} ),closeModal:()=>calls.push('modal'),closeDrawer:()=>calls.push('drawer'),go:route=>calls.push(route)};
 vm.createContext(ctx);vm.runInContext(fn+'\nthis.receipt=showCaseSubmissionReceipt;',ctx);
 ctx.receipt('request','7M');assert.equal(modal.title,'ส่งขออนุมัติปิดเคสเรียบร้อย');assert.match(modal.body,/เคสยังไม่ปิด/);
 buttons['#receiptOverview'].onclick();assert.deepEqual(calls,['modal','drawer','exceptions']);
+assert.equal(ctx.state.reviewSheet,'all');assert.equal(ctx.state.exFilter.status,'ALL');
 ctx.receipt('evidence','7M');assert.equal(modal.title,'แนบหลักฐานเรียบร้อย');assert.match(modal.body,/ยังไม่ได้ส่งคำขอปิดเคส/);
 ctx.receipt('additional_evidence','7M');assert.match(modal.body,/ไม่ต้องส่งซ้ำ/);
-ctx.receipt('clarification','7M');assert.match(modal.body,/หัวหน้าต้องตรวจผลยอดและหลักฐาน/);
+ctx.receipt('clarification','7M');assert.match(modal.title,/รอ Audit ตรวจ/);assert.match(modal.body,/ยังไม่ได้ส่งคำขอให้หัวหน้าปิดเคส/);assert.match(modal.body,/เคสเดิมยังอยู่ในภาพรวม/);
 assert.throws(()=>ctx.receipt('invalid'),/Unknown/);
 assert.match(app,/if \(uploadComplete\) showCaseSubmissionReceipt/);
 assert.match(app,/await Sb\.submitClarification[\s\S]*?showCaseSubmissionReceipt\('clarification'/);

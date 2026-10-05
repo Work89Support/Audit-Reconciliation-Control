@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const app=fs.readFileSync('app.js','utf8');
+const start=app.indexOf('function belongsToClarificationSheet('),end=app.indexOf('function scopedExceptions()',start);
+const context={state:{route:'exceptions',reviewSheet:'all',filters:{company:'ALL',direction:'ALL'},exFilter:{type:'ALL',severity:'ALL',status:'ALL',sla:false,q:''}},DB:{exceptions:[]},canAccessCompany:()=>true,inRange:()=>true};
+vm.createContext(context);vm.runInContext(app.slice(start,end)+'\nthis.filter=filteredExceptions;',context);
+context.DB.exceptions=[{id:'pending',status:'answered',closureRequestId:'q'},{id:'closed',status:'closed',closureRequestId:'q2'},{id:'clarifying',status:'clarifying',requestedAt:'2026-10-05'},{id:'open',status:'open'}];
+assert.equal(context.filter().length,4);
+context.state.exFilter.status='CLOSURE_PENDING';assert.deepEqual(Array.from(context.filter(),e=>e.id),['pending']);
+context.state.exFilter.status='ALL';context.state.reviewSheet='clarification';assert.equal(context.filter().some(e=>e.id==='clarifying'),true);
+assert.equal(context.DB.exceptions.length,4,'filters never delete cases');
+assert.match(app,/overviewClosureHistory/);
+assert.match(app,/caseStatusMeta = .*รอหัวหน้าปิดเคส/);
+const closureSource=fs.readFileSync('case-closure.js','utf8');
+assert.match(closureSource,/caseClosureHistory/);assert.match(closureSource,/ทุกคำขอ · รวมประวัติ/);assert.match(closureSource,/openEvidenceRelatedCase\(b.dataset.closureOpen/);
+console.log('Closure overview: pending and closed remain in all overview; exact case details and history retained');

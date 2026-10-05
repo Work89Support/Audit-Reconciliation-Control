@@ -17,8 +17,8 @@ for (const [row, expected] of [
   workflowContext.row = row;
   assert.equal(vm.runInContext('belongsToClarificationSheet(row)', workflowContext), expected);
 }
-assert.ok(app.includes('reviewSheet: "normal"'));
-assert.ok(app.includes('state.route === "exceptions" && belongsToClarificationSheet(e)'));
+assert.ok(app.includes('reviewSheet: "all"'));
+assert.ok(app.includes('state.route === "exceptions" && state.reviewSheet !== "all" && belongsToClarificationSheet(e)'));
 const start = app.indexOf('function buildReviewExportSheets()');
 const end = app.indexOf('/* ตัวสร้างชุดข้อมูลแต่ละชีต', start);
 const rows = [['a', 'ฝาก'], ['b', 'ถอน'], ['c', 'PM']];
