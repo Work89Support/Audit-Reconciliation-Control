@@ -4042,6 +4042,35 @@ async function openException(id, options = {}) {
     }
   });
 }
+async function openApprovalReview(exceptionId, kind) {
+  if (!can('approve')) return toast('เฉพาะหัวหน้าทีม / ผู้ดูแลระบบอนุมัติได้', 'warn');
+  const row = await Sb.exceptionDetail(exceptionId);
+  if (!row) throw new Error('ไม่พบเคสของคำขอนี้ กรุณารีเฟรชคิว');
+  const e = mapLiveException(row);
+  openModal('อนุมัติ', '<div id="approvalQueueReview"></div>', '<button class="ghost-button" id="approvalReviewEvidence">ดูรายละเอียดและหลักฐาน</button><button class="ghost-button" id="approvalReviewCancel">ยกเลิก</button>');
+  $('#approvalReviewCancel').onclick = closeModal;
+  $('#approvalReviewEvidence').onclick = async () => {
+    closeModal();
+    try { await openEvidenceRelatedCase(exceptionId, {focusFiles:true}); }
+    catch (err) { toast(err.message, 'warn'); }
+  };
+  const host = $('#approvalQueueReview');
+  await (kind === 'pair' ? ManualPairing : CaseClosure).mountReview(e, host);
+}
+
+async function finishApprovalReview() {
+  // A saved decision must not reopen the old case or send the head away
+  // from the queue. A refresh failure is not a failed database decision.
+  closeModal();
+  closeDrawer();
+  try {
+    if (state.route !== 'approvals') go('approvals');
+    else render();
+    await loadLiveOverview(true);
+    return true;
+  }
+  catch (err) { toast('บันทึกอนุมัติแล้ว แต่โหลดภาพรวมใหม่ไม่ได้ กรุณารีเฟรชคิว: ' + err.message, 'warn'); return false; }
+}
 function closeDrawer() {
   const d = $("#drawer");
   if (!d || d.hidden) return;

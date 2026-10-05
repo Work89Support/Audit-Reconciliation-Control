@@ -900,7 +900,19 @@ const Sb = (() => {
     }
   }
   const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  async function verifyDecision(path, body, readBack) {
+    let requestError;
+    try { await json(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+    catch (err) { requestError=err; }
+    // Also recover a committed decision after a lost response, without
+    // submitting the request again. Never infer success from HTTP alone.
+    const saved=await readBack(body.p_id);
+    const expected=body.p_action==='approve'?'approved':'rejected';
+    if(saved?.id!==body.p_id||saved.status!==expected||saved.decided_by!==authUser()?.id)
+      throw requestError||new Error('สถานะที่บันทึกในฐานข้อมูลยังไม่ตรงกับคำขอนี้ กรุณาโหลดคิวใหม่ก่อนลองซ้ำ');
+    return saved;
+  }
+  const decideManualPair=body=>verifyDecision('/rest/v1/rpc/decide_manual_case_pair',body,manualPair);
   async function pendingCaseClosures() {
     const rows=[];
     for(let offset=0;;offset+=200){
@@ -921,7 +933,7 @@ const Sb = (() => {
     }
   }
   const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const decideCaseClosure=body=>json('/rest/v1/rpc/decide_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const decideCaseClosure=body=>verifyDecision('/rest/v1/rpc/decide_case_closure',body,caseClosureRequest);
   const companyCaseSlas=()=>json('/rest/v1/company_case_sla?select=*&order=company.asc');
   const saveCompanyCaseSla=(company,days)=>json('/rest/v1/rpc/save_company_case_sla',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_company:company,p_days:days})});
 
