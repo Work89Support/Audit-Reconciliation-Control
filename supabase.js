@@ -875,8 +875,8 @@ const Sb = (() => {
   async function pendingManualPairs() {
     return json('/rest/v1/manual_case_pairs?status=eq.pending&select=*&order=submitted_at.asc&limit=201');
   }
-  const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',body:JSON.stringify(body)});
-  const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',body:JSON.stringify(body)});
+  const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const decideManualPair=body=>json('/rest/v1/rpc/decide_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
   async function caseEvidence(id) {
     if (!id) return [];
