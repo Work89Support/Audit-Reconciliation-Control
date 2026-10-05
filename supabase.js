@@ -218,7 +218,16 @@ const Sb = (() => {
   };
 
   /* ---------------- Auth ---------------- */
+  const usernameDomain = '@users.audit.invalid';
+  const loginIdentity = value => {
+    const identifier = String(value || '').trim().toLowerCase();
+    if (identifier.includes('@')) return identifier;
+    if (!/^[a-z][a-z0-9_.-]{2,31}$/.test(identifier)) throw new Error('ชื่อผู้ใช้ต้องเป็นอังกฤษ 3–32 ตัว เริ่มด้วยตัวอักษร ใช้ตัวเลข _ . - ได้');
+    return identifier + usernameDomain;
+  };
+  const displayLogin = value => String(value || '').endsWith(usernameDomain) ? String(value).slice(0,-usernameDomain.length) : String(value || '');
   async function signIn(email, password) {
+    email = loginIdentity(email);
     const res = await fetch(base() + "/auth/v1/token?grant_type=password", {
       method: "POST",
       headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
@@ -227,7 +236,7 @@ const Sb = (() => {
     const j = await res.json();
     if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ล็อกอินไม่สำเร็จ");
     keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
-    saveConfig({ email });
+    saveConfig({ email: displayLogin(email) });
     return j.user;
   }
 
@@ -276,6 +285,7 @@ const Sb = (() => {
   }
 
   async function requestPasswordReset(email) {
+    if (!String(email || '').includes('@') || String(email).endsWith(usernameDomain)) throw new Error('บัญชีชื่อผู้ใช้ไม่มีอีเมลรับลิงก์ กรุณาติดต่อผู้ดูแลระบบเรื่องรหัสผ่าน');
     const redirect = location.origin + location.pathname.replace(/index\.html$/, "");
     const res = await fetch(base() + "/auth/v1/recover?redirect_to=" + encodeURIComponent(redirect), {
       method: "POST",
@@ -668,6 +678,14 @@ const Sb = (() => {
         active: !!active,
         companies: [...new Set((companies || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))],
       }),
+    });
+
+  const adminCreateUsernameUser = (username, password, fullName, role, active, companies) =>
+    json('/functions/v1/admin-invite-user', {
+      method:'POST', headers:{'Content-Type':'application/json'}, timeoutMs:45000,
+      body:JSON.stringify({login_mode:'username',username:displayLogin(loginIdentity(username)),password,
+        full_name:String(fullName || '').trim(),role,active:!!active,
+        companies:[...new Set((companies || []).map(value=>String(value).trim().toUpperCase()).filter(Boolean))]}),
     });
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
@@ -1096,6 +1114,7 @@ const Sb = (() => {
   }
 
   return {
+    loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,
     companyHubResults,
     cfg,

@@ -5182,7 +5182,9 @@ VIEWS.users = async (root) => {
       <div class="panel-heading"><div><p class="eyebrow">User access</p><h2 id="accessFormTitle">เพิ่มผู้ใช้ใหม่</h2><small class="head-sub">กรอกข้อมูลครั้งเดียว ระบบจะส่งอีเมลเชิญเข้าใช้งานและกำหนดสิทธิ์ให้ทันที ไม่ต้องเปิดหน้า Supabase</small></div>
       <button class="primary-button" type="button" id="newAccessUser">+ เพิ่มผู้ใช้</button></div>
       <form id="accessUserForm" class="access-user-form">
-        <label>อีเมล<input id="accessEmail" type="email" required placeholder="name@company.com"></label>
+        <label>วิธีสร้างบัญชี<select id="accessLoginMode"><option value="email">อีเมล / ส่งคำเชิญ</option><option value="username">ชื่อผู้ใช้ / ไม่ใช้อีเมล</option></select></label>
+        <label><span id="accessIdentityLabel">อีเมล</span><input id="accessEmail" type="email" required placeholder="name@company.com" autocomplete="off"></label>
+        <label id="accessPasswordLabel" hidden>รหัสผ่านบัญชีใหม่<input id="accessPassword" type="password" autocomplete="new-password" minlength="9" maxlength="128"><small>อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเดียวกับบัญชีอื่น</small></label>
         <label>ชื่อที่แสดง<input id="accessName" type="text" required placeholder="ชื่อ-นามสกุล"></label>
         <label>บทบาท<select id="accessRole">${Object.entries(DB.roles).map(([key, role]) => `<option value="${key}">${h(role.name)}</option>`).join("")}</select></label>
         <label class="access-active"><input id="accessActive" type="checkbox" checked> เปิดใช้งาน</label>
@@ -5218,11 +5220,11 @@ VIEWS.users = async (root) => {
       <div class="panel-heading"><div><p class="eyebrow">Users</p><h2>ผู้ใช้งานในระบบ</h2></div></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>บริษัทที่รับผิดชอบ</th><th>สถานะ</th></tr></thead>
+          <thead><tr><th>ชื่อผู้ใช้ / อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>บริษัทที่รับผิดชอบ</th><th>สถานะ</th></tr></thead>
           <tbody>
             ${users
               .map(
-                (u) => `<tr class="access-user-row" data-email="${h(u.email)}"><td class="mono">${h(u.email)}</td><td>${h(u.full_name || "-")}</td>
+                (u) => `<tr class="access-user-row" data-email="${h(u.email)}"><td class="mono">${h(Sb.displayLogin(u.email))}</td><td>${h(u.full_name || "-")}</td>
               <td><span class="badge blue">${h(DB.roles[u.role]?.name || u.role)}</span></td>
               <td>${(u.companies || []).length ? (u.companies || []).map((company) => `<span class="badge">${h(company)}</span>`).join(" ") : '<span class="muted">ทุกบริษัทตามบทบาท</span>'}</td>
               <td>${u.active ? '<span class="badge green">ใช้งาน</span>' : '<span class="badge red">ระงับ</span>'}</td></tr>`,
@@ -5233,11 +5235,25 @@ VIEWS.users = async (root) => {
       </div>
     </section>`;
 
+  const setAccessMode = (editing=false) => {
+    const username = $('#accessLoginMode').value === 'username';
+    $('#accessEmail').type = username ? 'text' : 'email';
+    $('#accessIdentityLabel').textContent = username ? 'ชื่อผู้ใช้' : 'อีเมล';
+    $('#accessEmail').placeholder = username ? 'clarifier_test' : 'name@company.com';
+    $('#accessPasswordLabel').hidden = !username || editing;
+    $('#accessPassword').required = username && !editing;
+    $('#accessPassword').disabled = !username || editing;
+    $('#accessSubmitHint').textContent = editing ? 'บันทึกสิทธิ์โดยไม่เปลี่ยนรหัสผ่าน' : username ? 'สร้างชื่อผู้ใช้ทันที ไม่ส่งอีเมล / ลืมรหัสผ่านให้ติดต่อผู้ดูแล' : 'ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน';
+    $("#accessUserForm button[type='submit']").textContent = editing ? 'บันทึกการเปลี่ยนแปลง' : username ? 'สร้างผู้ใช้และบันทึกสิทธิ์' : 'ส่งคำเชิญและบันทึกสิทธิ์';
+  };
+  $('#accessLoginMode').onchange = () => { $('#accessPassword').value=''; setAccessMode(); };
   const resetAccessForm = () => {
     $("#accessUserForm").reset();
     $("#accessActive").checked = true;
     $("#accessRole").value = "monitor";
     $("#accessEmail").readOnly = false;
+    $('#accessLoginMode').disabled=false;
+    setAccessMode();
     $("#accessFormTitle").textContent = "เพิ่มผู้ใช้ใหม่";
     $("#accessSubmitHint").textContent = "ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน";
     $("#accessUserForm button[type='submit']").textContent = "ส่งคำเชิญและบันทึกสิทธิ์";
@@ -5249,7 +5265,11 @@ VIEWS.users = async (root) => {
   root.querySelectorAll(".access-user-row").forEach((row) => row.addEventListener("click", () => {
     const user = users.find((item) => item.email === row.dataset.email);
     if (!user) return;
-    $("#accessEmail").value = user.email || "";
+    $('#accessLoginMode').value = Sb.displayLogin(user.email) === user.email ? 'email' : 'username';
+    $('#accessLoginMode').disabled=true;
+    $("#accessEmail").value = Sb.displayLogin(user.email);
+    $('#accessPassword').value='';
+    setAccessMode(true);
     $("#accessName").value = user.full_name || "";
     $("#accessRole").value = user.role || "monitor";
     $("#accessActive").checked = user.active !== false;
@@ -5268,21 +5288,26 @@ VIEWS.users = async (root) => {
     button.textContent = "กำลังบันทึก...";
     try {
       const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
-      const email = $("#accessEmail").value.trim().toLowerCase();
+      const usernameMode = $('#accessLoginMode').value === 'username';
+      const identity = $("#accessEmail").value.trim().toLowerCase();
+      const email = usernameMode ? Sb.loginIdentity(identity) : identity;
       const existing = users.some((user) => String(user.email || "").toLowerCase() === email);
       if (existing) {
         await Sb.adminSaveUserAccess(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      } else if (usernameMode) {
+        await Sb.adminCreateUsernameUser(identity,$('#accessPassword').value,$('#accessName').value,$('#accessRole').value,$('#accessActive').checked,companies);
+        $('#accessPassword').value='';
       } else {
         await Sb.adminInviteUser(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
       }
-      toast(existing ? "บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว" : "ส่งอีเมลเชิญและกำหนดสิทธิ์แล้ว");
+      toast(existing ? "บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว" : usernameMode ? 'สร้างชื่อผู้ใช้และกำหนดสิทธิ์แล้ว' : "ส่งอีเมลเชิญและกำหนดสิทธิ์แล้ว");
       logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
       VIEWS.users(root);
     } catch (error) {
       toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
     } finally {
       button.disabled = false;
-      button.textContent = users.some((user) => String(user.email || "").toLowerCase() === $("#accessEmail").value.trim().toLowerCase()) ? "บันทึกการเปลี่ยนแปลง" : "ส่งคำเชิญและบันทึกสิทธิ์";
+      setAccessMode($('#accessEmail').readOnly);
     }
   });
 };
