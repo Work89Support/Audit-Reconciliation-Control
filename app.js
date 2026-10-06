@@ -850,7 +850,7 @@ function nextActionForState() {
   if (needsBoReview.length) return { route: "cloud", label: `เทียบ BO สำหรับไฟล์ที่อ่านแล้ว ${num(needsBoReview.length)} ไฟล์`, detail: "ไม่พบรายการในวันตรวจ ไม่ใช่ไฟล์เสีย — ตรวจบัญชีและวันกับ BO ก่อนสรุป ไม่ต้องรันไฟล์เดิมซ้ำ", tone: "warn" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (workflow.approvalsAvailable && workflow.approvals && can('approve')) return { route: "approvals", label: `ตรวจคำชี้แจง / คำขออนุมัติ ${num(workflow.approvals)} งาน`, detail: "เปิดเคสและเอกสารที่ผูกไว้ ตรวจหลักฐานก่อนอนุมัติ", tone: "warn" };
-undefined
+  const auditWaiting = AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length;
   if (auditWaiting && ROUTE_ROLES[state.role].includes('audit-review')) return { route: 'audit-review', label: `Audit รอตรวจ ${num(auditWaiting)} เคส`, detail: 'ตรวจคำตอบและหลักฐานในเคสเดิมก่อนส่งหัวหน้า', tone: 'warn' };
   if (workflow.followUps) return { route: "clarify", label: `ติดตามคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "ติดตามคำตอบและหลักฐานจากผู้ชี้แจง", tone: "warn" };
   if (workflow.openAvailable && workflow.open) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(workflow.open)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
