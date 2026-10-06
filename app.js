@@ -3739,13 +3739,13 @@ async function openException(id, options = {}) {
         <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
       </section>
     <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้าอนุมัติด้านล่าง ไม่ใช่รอผู้ชี้แจง" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส" : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
       <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากยอดต่างเล็กน้อยและไม่เสียหาย ให้ใช้ “ตรวจยอดต่าง / จับคู่เอง” ระบุเหตุผลและตรวจหลักฐาน ไม่ต้องบันทึกความเสียหายเพื่อให้ผ่านเช็กลิสต์</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "อนุมัติและปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "ปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
       <div id="caseClosureReview"></div>
-      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?'<button class="primary-button" id="btnSendClosure">Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส</button>':''}
+      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?`<button class="primary-button" id="btnSendClosure">${can('approve')?'ปิดเคส':'Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส'}</button>`:''}
       <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
     </footer>
     </div>`;
@@ -3877,7 +3877,7 @@ async function openException(id, options = {}) {
     issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
   );
 
-  $("#btnClarify").textContent = e.hasEvidence ? "ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส" : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
+  $("#btnClarify").textContent = e.hasEvidence ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
   $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
@@ -4263,7 +4263,7 @@ VIEWS.approvals = (root) => {
               <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
               <td class="right nowrap">
                 <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
-                <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'อนุมัติ'}</button>
+                <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'ปิดเคส'}</button>
               </td>
             </tr>`,
                 )
@@ -4281,8 +4281,12 @@ VIEWS.approvals = (root) => {
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("อนุมัติ");
-      // Use the same evidence/amount checklist as the case drawer; no queue bypass.
-      openException(b.dataset.approve);
+      const e=DB.exceptions.find(x=>x.id===b.dataset.approve);
+      if(!e)return toast('ไม่พบเคส กรุณาโหลดใหม่','warn');
+      if(e.manualPairId)return openApprovalReview(e.dbId,'pair').catch(err=>toast(err.message,'warn'));
+      if(e.closureRequestId)return openApprovalReview(e.dbId,'closure').catch(err=>toast(err.message,'warn'));
+      // Document review by a closer is one atomic close, not another pending queue.
+      CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
     }),
   );
   root.querySelectorAll("[data-reject]").forEach((b) =>

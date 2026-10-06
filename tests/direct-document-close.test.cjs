@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const sql=fs.readFileSync('supabase/20261006_direct_document_close_and_pending_proof.sql','utf8');
+for(const token of ['close_document_case','q:=public.submit_case_closure','q:=public.decide_case_closure','review_origin=\'head_direct\'','public.current_audit_assistant()','public.has_company_access(p.bo_company)','public.has_company_access(p.stm_company)','p.submitted_by=auth.uid()','uploaded_by=auth.uid()','o.owner_id=auth.uid()::text'])assert.ok(sql.includes(token),token);
+assert.doesNotMatch(sql,/update public\.exceptions set (system_amount|bank_amount|risk_amount)/);
+assert.ok(sql.indexOf('q:=public.submit_case_closure')<sql.indexOf('q:=public.decide_case_closure'));
+const app=fs.readFileSync('app.js','utf8'),ui=fs.readFileSync('case-closure.js','utf8'),sb=fs.readFileSync('supabase.js','utf8');
+assert.match(ui,/direct\?Sb\.closeDocumentCase:Sb\.submitCaseClosure/);
+assert.match(ui,/direct\?'approved':'pending'/);
+assert.match(ui,/if\(direct\).*finishApprovalReview.*return;/);
+assert.match(app,/CaseClosure\.openSubmit\(e\)\.catch/);
+assert.match(app,/can\('approve'\)\?'ปิดเคส'/);
+assert.match(sb,/e\?\.status!=='closed'/);
+assert.match(sb,/e\.case_closure_request_id!==saved\.id/);
+const pairing=fs.readFileSync('manual-pairing.js','utf8');
+assert.match(pairing,/pairPendingUpload/);assert.match(pairing,/await Sb\.uploadCaseEvidence\(e\.dbId,file\)/);
+console.log('Direct document close: atomic request + decision, verified closed read-back, pending proof without requeue passed');

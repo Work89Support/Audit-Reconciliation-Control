@@ -16,11 +16,18 @@ const ManualPairing=(()=>{
     if(queueState.user!==user){Object.assign(queueState,{rows:null,error:'',at:0,user});}
     if(queueState.loading||(!force&&Date.now()-queueState.at<60000))return;
     queueState.loading=true;
-    try{const rows=await Sb.pendingManualPairs();if(Sb.authUser()?.id!==user)return;queueState.rows=rows;queueState.error='';}
+    try{const rows=await Sb.pendingManualPairs();await hydrateOwnEvidence(rows);if(Sb.authUser()?.id!==user)return;queueState.rows=rows;queueState.error='';}
     catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;}}
     finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
   }
   const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
+  async function hydrateOwnEvidence(rows){
+    const own=rows.filter(p=>p.status==='pending'&&p.submitted_by===Sb.authUser()?.id);
+    const ids=[...new Set(own.flatMap(p=>[p.bo_case_id,p.stm_case_id]).filter(Boolean))];
+    const files=new Map();
+    await Promise.all(ids.map(async id=>{try{files.set(id,await Sb.caseEvidence(id));}catch{files.set(id,[]);}}));
+    own.forEach(p=>p._hasStoredEvidence=[...(files.get(p.bo_case_id)||[]),...(files.get(p.stm_case_id)||[])].some(f=>f.storage_path&&Number(f.size_bytes)>0));
+  }
   const eligible=e=>['missing_bo','missing_stm','amount_diff'].includes(e.type)&&(e.status==='open'||(e.type==='amount_diff'&&['clarifying','answered'].includes(e.status)));
   const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
   const describe=e=>`${e.company} · ${e.business_date} ${e.occurred_at||''} · ${e.account||'-'} · ${e.direction} · ${e.member_code||'-'}`;
@@ -131,8 +138,14 @@ const ManualPairing=(()=>{
         p._hasStoredEvidence=proofFiles.some(f=>f.storage_path&&Number(f.size_bytes)>0);
       }
       host.className='manual-pair-review';
-      host.innerHTML=`<h3>${p.status==='pending'?'จับคู่แล้ว รอหัวหน้าทีมอนุมัติ':'ประวัติการจับคู่'}</h3><p>${h(p.bo_company)} BO ↔ ${h(p.stm_company)} STM/PM · ผลต่าง ${money(p.difference)} บาท</p><p>${h(p.reason)}</p><p>คำขอ ${h(p.id)} · ผู้ส่ง ${h(p.submitted_by)} · ${h(p.submitted_at)}</p><p>${h(p.decision_note||'')}</p><button class="ghost-button sm" id="pairOther">เปิดเคสคู่</button>${p.evidence_id?'<button class="ghost-button sm" id="pairEvidence">เปิดหลักฐานจับคู่</button>':''}${p.status==='pending'?'<label>เหตุผลอนุมัติ (ไม่บังคับ) / ส่งกลับต้องระบุเหตุผล<textarea id="pairDecision" maxlength="2000"></textarea></label><label><input type="checkbox" id="pairDecisionChecked">ตรวจทั้งสองเคสและหลักฐานแล้ว</label><button class="primary-button" id="pairApprove">อนุมัติ</button><button class="ghost-button" id="pairReject">ไม่อนุมัติ คืนทั้งสองเคส</button>':''}`;
+      host.innerHTML=`<h3>${p.status==='pending'?'จับคู่แล้ว รอหัวหน้าทีมอนุมัติ':'ประวัติการจับคู่'}</h3><p>${h(p.bo_company)} BO ↔ ${h(p.stm_company)} STM/PM · ผลต่าง ${money(p.difference)} บาท</p><p>${h(p.reason)}</p><p>คำขอ ${h(p.id)} · ผู้ส่ง ${h(p.submitted_by)} · ${h(p.submitted_at)}</p><p>${h(p.decision_note||'')}</p><button class="ghost-button sm" id="pairOther">เปิดเคสคู่</button>${p.evidence_id?'<button class="ghost-button sm" id="pairEvidence">เปิดหลักฐานจับคู่</button>':''}${p.status==='pending'&&canSubmit()&&(p.submitted_by===Sb.authUser()?.id||can('approve'))?'<section class="pair-proof-recovery"><h4>แนบหลักฐานให้คำขอนี้</h4><p>บันทึกไฟล์เข้าคลังและผูกกับเคสเดิม ไม่สร้างคำขอจับคู่ซ้ำ</p><input type="file" id="pairPendingFile" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.csv,.xlsx,.txt" aria-label="หลักฐานคำขอจับคู่ค้าง"><button class="ghost-button" id="pairPendingUpload">บันทึกหลักฐาน</button></section>':''}${p.status==='pending'?'<label>เหตุผลอนุมัติ (ไม่บังคับ) / ส่งกลับต้องระบุเหตุผล<textarea id="pairDecision" maxlength="2000"></textarea></label><label><input type="checkbox" id="pairDecisionChecked">ตรวจทั้งสองเคสและหลักฐานแล้ว</label><button class="primary-button" id="pairApprove">อนุมัติ</button><button class="ghost-button" id="pairReject">ไม่อนุมัติ คืนทั้งสองเคส</button>':''}`;
       $('#pairOther').onclick=async()=>{try{await openEvidenceRelatedCase(p.bo_case_id===e.dbId?p.stm_case_id:p.bo_case_id);}catch(err){toast(err.message,'warn');}};
+      $('#pairPendingUpload')?.addEventListener('click',async event=>{
+        const file=$('#pairPendingFile').files[0];if(!file)return toast('เลือกหลักฐานจริงก่อนบันทึก','warn');
+        event.currentTarget.disabled=true;
+        try{await Sb.uploadCaseEvidence(e.dbId,file);await loadPending(true);await mountReview(e,host);toast('บันทึกหลักฐานแล้ว — ตรวจและติ๊กยืนยันก่อนปิดเคส');}
+        catch(err){toast('ยังยืนยันหลักฐานไม่ได้: '+err.message+' — ตรวจทะเบียนไฟล์ก่อนอัปซ้ำ','warn');event.currentTarget.disabled=false;}
+      });
       const singleCase=p.bo_case_id===p.stm_case_id;
       if(singleCase){
         $('#pairOther').hidden=true;
@@ -162,7 +175,7 @@ const ManualPairing=(()=>{
     try {
       // Fetch the complete RLS-scoped request queue, independent of the 250-case page.
       const user=Sb.authUser()?.id;
-      const pairs=cachedPairs||await Sb.pendingManualPairs();if(!host.isConnected||user!==Sb.authUser()?.id)return;
+      const pairs=cachedPairs||await Sb.pendingManualPairs();await hydrateOwnEvidence(pairs);if(!host.isConnected||user!==Sb.authUser()?.id)return;
       Object.assign(queueState,{rows:pairs,error:'',at:Date.now(),user:Sb.authUser()?.id});if(typeof renderNav==='function')renderNav();
       if(queueFilters.user!==user)Object.assign(queueFilters,{company:'ALL',from:'',to:'',user});
       const companies=[...new Set(pairs.flatMap(p=>[p.bo_company,p.stm_company]))].sort();
