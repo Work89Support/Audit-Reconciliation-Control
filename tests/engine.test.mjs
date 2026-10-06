@@ -532,6 +532,7 @@ await (async () => {
   eq('manual: documentary review stays open',review?.status,'open');
   eq('manual: no assumed financial loss',review?.riskAmount,0);
   eq('manual: operator N preserved',review?.customerDetails.bo.performedBy,'Meta X8');
+  eq('matched: BO operator retained',r.matchEvidence[0].customer.bo.performedBy,'Meta X8');
   eq('manual: note O preserved',review?.customerDetails.bo.note,'รอเอกสาร');
   eq('pair evidence: retain leading zeros',r.matchEvidence[0].customer.bo.account,'0012345678');
   eq('pair evidence: manual is not approved',r.matchEvidence[0].manualReview,true);

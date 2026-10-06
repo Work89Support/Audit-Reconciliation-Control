@@ -122,6 +122,7 @@ eq("BO แบบย่อ: ตรวจรูปแบบ", compactBo.code, "bo_
 eq("BO แบบย่อ: provider ATP เป็น AUTOPEER", compactBo.records[0].account, "AUTOPEER");
 eq("BO แบบย่อ: ทิศทางถอน", compactBo.records[0].direction, "withdraw");
 eq("BO แบบย่อ: อ่าน ref จากโน้ต", compactBo.records[0].ref, "P2C-20260827-234211-EUBLWK");
+eq("BO แบบย่อ: ชื่อผู้ดำเนินการ", compactBo.records[0].performedBy, "ไว");
 
 const compactBoKeepRows = [
   ...compactBoRows,

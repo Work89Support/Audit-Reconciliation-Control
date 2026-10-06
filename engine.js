@@ -2125,7 +2125,7 @@ const Engine = (() => {
         sys123ManualAutoClosed: !!m.sys123ManualAutoClosed,
         manualReview: isManualBo(m.b) && !m.sys123ManualAutoClosed,
         customer: {
-          bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "", providerReference: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw), note: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw) || m.b.note || "" },
+          bo: { account: m.b.custAccount || "", name: m.b.custName || "", user: m.b.memberCode || "", reference: m.b.ref || "", performedBy: m.b.performedBy || "", providerReference: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw), note: sapanProviderId(m.b.note) || sapanProviderId(m.b.raw) || m.b.note || "" },
           stm: customerEvidence(m.s),
         },
         boAmount: m.b.amount,

@@ -82,10 +82,33 @@
   }
   function realRaw(value){const s=String(value||'').trim();return s&&!/^[—–-]|^ไม่พบรายการ|^รอข้อมูล|^ไม่มีข้อมูล/i.test(s)?s:'';}
   function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);return hit?hit[1].toLowerCase():'';}
-  function normalizedBo(bo,raw=''){
+  async function hydrateBoOperators(data,files,readRows){
+    const names={};
+    if(typeof readRows!=='function')return;
+    const company=data?.run?.company;
+    const needed=new Set([
+      ...(data?.run?.summary?.match_evidence||[]).filter(p=>!p.customer?.bo?.performedBy).map(p=>p.bo?.fileId),
+      ...(data?.cases||[]).filter(e=>!e.customer_details?.bo?.performedBy).map(e=>e.customer_details?.source_rows?.bo?.fileId)
+    ].filter(Boolean));
+    const errors=[];
+    for(const file of files.filter(f=>needed.has(f.id)&&f.kind==='bo_main'&&f.parsed&&!f.parse_error&&f.company===company)){
+      try{
+        const result=await readRows(file,data.run.business_date);
+        if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
+        for(const r of result){
+          const name=String(r.performedBy||r.username||'').trim();
+          if(r.company===company&&Number.isInteger(r.rowNo)&&r.rowNo>0&&name&&!/^(—|–|-|ไม่ระบุ)$/.test(name))names[`${file.id}|${r.rowNo}`]=name;
+        }
+      }catch(e){errors.push(`${file.file_name}: ${e.message}`);}
+    }
+    data.boOperators=names;
+    return errors;
+  }
+  function normalizedBo(bo,raw='',sourceOperator=''){
     const source=bo&&typeof bo==='object'?bo:{};
     const providerReference=String(source.providerReference||'').trim().toLowerCase()||sapanProviderId(source.note)||sapanProviderId(raw);
-    return providerReference?{...source,providerReference,note:providerReference}:source;
+    const performedBy=source.performedBy||sourceOperator||'';
+    return {...source,performedBy,...(providerReference?{providerReference,note:providerReference}:{})};
   }
   function uniqueProviderId(value){
     const ids=[...new Set(String(value??'').toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g)||[])];
@@ -110,8 +133,8 @@
     ));
     // Verified duplicate alerts are retained in case history/Audit Log, not
     // rendered as additional financial transactions in sheets and exports.
-    const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
-    const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw);return {key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e};});
+    const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo,'',data.boOperators?.[`${p.bo?.fileId}|${p.bo?.row}`]);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
+    const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw,data.boOperators?.[`${e.customer_details?.source_rows?.bo?.fileId}|${e.customer_details?.source_rows?.bo?.row}`]);return {key:e.id,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company:e.company||fallbackCompany,account:e.account||'ไม่ระบุ PM',direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:e.code||e.id,exType:e.ex_type||'',case:e};});
     // A closed BBL carry-over is history of an existing matched transaction,
     // not another BO row. Link only a unique, fully identified saved pair.
     const linkedPairs=new Set(),remainingCases=[];
@@ -505,10 +528,10 @@
     }
     async function load(){
       const g=++generation;data=null;files=[];error='';fileError='';loading=true;page=0;draw();
-      try{if(!opts.signedIn())throw new Error('กรุณาเข้าสู่ระบบจริงก่อนอ่านข้อมูล Audit');const next=await opts.load(company,date);if(!alive()||g!==generation)return;if(!Array.isArray(next?.cases))throw new Error('รูปแบบผลกระทบยอดไม่ถูกต้อง');data=next;if(next.run?.id&&opts.loadFiles){try{files=await opts.loadFiles(next.run.id);}catch(e){fileError=`โหลดทะเบียนไฟล์ไม่ได้: ${e.message}`;}}}catch(e){error=e.message;}finally{if(alive()&&g===generation){loading=false;draw();}}
+      try{if(!opts.signedIn())throw new Error('กรุณาเข้าสู่ระบบจริงก่อนอ่านข้อมูล Audit');const next=await opts.load(company,date);if(!alive()||g!==generation)return;if(!Array.isArray(next?.cases))throw new Error('รูปแบบผลกระทบยอดไม่ถูกต้อง');data=next;if(next.run?.id&&opts.loadFiles){try{files=await opts.loadFiles(next.run.id);if(!alive()||g!==generation)return;const operatorErrors=await hydrateBoOperators(next,files,opts.readBoRecords);if(operatorErrors?.length)fileError='อ่านชื่อผู้ดำเนินการไม่ครบ: '+operatorErrors.join(' · ');}catch(e){fileError=`โหลดทะเบียนไฟล์ไม่ได้: ${e.message}`;}}}catch(e){error=e.message;}finally{if(alive()&&g===generation){loading=false;draw();}}
     }
     load();
   }
-  root.MC8LiveSheets={mount,rowsOf,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
+  root.MC8LiveSheets={mount,hydrateBoOperators,rowsOf,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
   if(typeof module!=='undefined')module.exports=root.MC8LiveSheets;
 })(typeof window==='undefined'?globalThis:window);

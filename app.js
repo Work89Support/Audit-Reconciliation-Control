@@ -1014,6 +1014,15 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+async function readAuditBoOperatorRecords(file,date) {
+  if(state.dataset!=='production'||!Sb.signedIn()||file.kind!=='bo_main'||!canAccessCompany(file.company))throw new Error('ไม่มีสิทธิ์อ่าน BO ต้นทาง');
+  if(!/\.xlsx$/i.test(file.file_name))throw new Error('ไฟล์ BO นี้ไม่ใช่ XLSX ที่รองรับ');
+  const response=await fetch(await Sb.signedUrl(file.storage_path));
+  if(!response.ok)throw new Error('ดาวน์โหลด BO ไม่สำเร็จ ('+response.status+')');
+  const result=Formats.parse(file.file_name,await XlsxReader.read(await response.arrayBuffer()),date);
+  if(!['bo_compact','bo_transaction_export','bo_main'].includes(result.code))throw new Error('ไม่พบรูปแบบ BO ที่ตรวจสอบได้');
+  return result.records;
+}
 VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   date: state.filters.date || DEFAULT_WORK_DATE,
   company: MC8LiveSheets.COMPANIES.includes(state.dailySummary.company) ? state.dailySummary.company : 'MC8',
@@ -1021,6 +1030,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   signedIn: () => state.dataset === 'production' && Sb.signedIn(),
   load: Sb.reconciliationOverview,
   loadFiles: runId => Sb.exceptionFiles(runId),
+  readBoRecords: readAuditBoOperatorRecords,
   isActive: () => state.route === 'mc8-sheets',
   onLocal: () => MC8Sheets.render(root),
   onCompany: company => { state.dailySummary.company = company; },
@@ -3043,6 +3053,7 @@ VIEWS.exceptions = (root) => {
         signedIn: () => state.dataset === 'production' && Sb.signedIn(),
         load: Sb.reconciliationOverview,
         loadFiles: runId => Sb.exceptionFiles(runId),
+        readBoRecords: readAuditBoOperatorRecords,
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
         onCase: async row => {
