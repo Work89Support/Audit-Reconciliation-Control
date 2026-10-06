@@ -1373,16 +1373,46 @@ function offerLiveOverviewUpdate() {
     button.textContent = "แสดงข้อมูลล่าสุด";
     button.onclick = () => {
       // Applying is explicit; never discard a form or open case silently.
-      if (!window.confirm("แสดงข้อมูลล่าสุด? หากมีข้อความหรือเคสที่ยังไม่บันทึก กรุณากดยกเลิกและบันทึกก่อน")) return;
-      const x = window.scrollX, y = window.scrollY;
-      render();
-      window.scrollTo(x, y);
+      if ($("#modal") && !$("#modal").hidden) {
+        toast("กรุณาบันทึกและปิดหน้ารายละเอียดที่เปิดอยู่ก่อน — ยังไม่ได้เปลี่ยนหน้าหรือทิ้งข้อความ", "warn");
+        return;
+      }
+      if (notice.querySelector("div")) return;
+      const confirm = document.createElement("div");
+      confirm.setAttribute("role", "group");
+      confirm.setAttribute("aria-label", "ยืนยันแสดงข้อมูลล่าสุด");
+      const warning = document.createElement("p");
+      warning.textContent = "แสดงข้อมูลล่าสุด? หากมีข้อความที่ยังไม่บันทึก ให้ยกเลิกและบันทึกก่อน";
+      const cancel = document.createElement("button");
+      cancel.className = "ghost-button sm";
+      cancel.textContent = "ยกเลิก";
+      cancel.onclick = () => confirm.remove();
+      const apply = document.createElement("button");
+      apply.className = "primary-button sm";
+      apply.textContent = "ยืนยันแสดงข้อมูลล่าสุด";
+      apply.onclick = () => {
+        if ($("#modal") && !$("#modal").hidden) return;
+        const x = window.scrollX, y = window.scrollY;
+        render();
+        window.scrollTo(x, y);
+      };
+      confirm.append(warning, cancel, apply);
+      notice.append(confirm);
     };
-    notice.append(text, button);
+    const retry = document.createElement("button");
+    retry.className = "ghost-button sm";
+    retry.textContent = "ลองโหลดใหม่";
+    retry.onclick = async () => {
+      retry.disabled = true;
+      try { await loadLiveOverview(true); }
+      finally { retry.disabled = false; }
+    };
+    notice.append(text, button, retry);
     root.append(notice);
   }
-  notice.querySelector("span").textContent = liveOverviewState.error || liveOverviewState.auxiliaryError
-    ? "ข้อมูลบางส่วนโหลดไม่สำเร็จ · กดแสดงข้อมูลล่าสุดเพื่อดูรายละเอียด"
+  const errors = [liveOverviewState.error, liveOverviewState.auxiliaryError].filter(Boolean);
+  notice.querySelector("span").textContent = errors.length
+    ? "ข้อมูลบางส่วนโหลดไม่สำเร็จ: " + errors.join(" · ") + " — ไม่ใช่ยอดค้างเป็นศูนย์; กดลองโหลดใหม่โดยไม่ทิ้งงานที่เปิดอยู่"
     : "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
 }
 async function loadLiveOverview(force = false) {
@@ -1530,7 +1560,10 @@ async function loadLiveOverview(force = false) {
     if (aux[2].status === "fulfilled") liveOverviewState.logs = logRows;
     if (aux[3].status === "fulfilled") liveOverviewState.notifications = value(3);
     if (aux[4].status === "fulfilled") liveOverviewState.clarifications = value(4);
-    liveOverviewState.auxiliaryError = aux.some((item) => item.status === "rejected") ? "รายละเอียดบางส่วนโหลดไม่สำเร็จ — กดรีเฟรชเพื่อโหลดใหม่" : null;
+    const auxiliaryNames = ["รายการเคส", "ทะเบียนความเสียหาย", "ประวัติงาน", "การแจ้งเตือน", "คำชี้แจง", "หลักฐานจับคู่"];
+    const auxiliaryErrors = aux.flatMap((item, index) => item.status === "rejected"
+      ? [auxiliaryNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
+    liveOverviewState.auxiliaryError = auxiliaryErrors.length ? auxiliaryErrors.join(" · ") : null;
     liveOverviewState.auxiliaryLoading = false;
     liveOverviewState.updatedAt = new Date();
     hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], exceptionRows, damageRows, logRows);

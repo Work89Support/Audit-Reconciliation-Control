@@ -8,17 +8,32 @@ assert.equal((load.match(/\brender\(\);/g)||[]).length,1,'Only first untouched d
 assert.match(load,/firstDashboardLoad && state.route === "dashboard" && liveInteractionVersion === interactionAtStart/);
 assert.match(load,/auxiliaryLoading = false;\s+offerLiveOverviewUpdate\(\);/);
 const elements=new Map();
-function element(){return {children:[],setAttribute(){},append(...items){this.children.push(...items);for(const i of items)if(i.id)elements.set(i.id,i);},querySelector(tag){return this.children.find(i=>i.tag===tag);}};}
+function element(){return {children:[],setAttribute(){},append(...items){this.children.push(...items);for(const i of items){i.parent=this;if(i.id)elements.set(i.id,i);}},remove(){this.parent.children=this.parent.children.filter(i=>i!==this);},querySelector(tag){return this.children.find(i=>i.tag===tag);}};}
 const root=element(); elements.set('viewRoot',root);
-let renders=0,confirm=false,scroll;
-const context={document:{createElement(tag){return {...element(),tag};}},$:s=>elements.get(s.slice(1)),Sb:{signedIn:()=>true},liveOverviewState:{},render(){renders++;},window:{confirm:()=>confirm,scrollX:12,scrollY:700,scrollTo(...args){scroll=args;}}};
+let renders=0,retries=0,scroll;
+const messages=[];
+const context={document:{createElement(tag){return {...element(),tag};}},$:s=>elements.get(s.slice(1)),Sb:{signedIn:()=>true},liveOverviewState:{},render(){renders++;},toast(message){messages.push(message);},async loadLiveOverview(force){assert.equal(force,true);retries++;},window:{confirm(){throw Error('Native browser dialogs must not be used');},scrollX:12,scrollY:700,scrollTo(...args){scroll=args;}}};
 vm.createContext(context);vm.runInContext(helper,context);
 context.offerLiveOverviewUpdate();context.offerLiveOverviewUpdate();
 assert.equal(root.children.length,1,'Repeated responses reuse the notice');
 assert.equal(renders,0,'Background response never replaces active content');
 const notice=root.children[0]; const button=notice.querySelector('button');
-button.onclick();assert.equal(renders,0,'Cancel keeps drafts and view untouched');
-confirm=true;button.onclick();assert.equal(renders,1);assert.deepEqual(scroll,[12,700]);
+button.onclick();assert.equal(renders,0,'Opening confirmation keeps drafts and view untouched');
+let group=notice.querySelector('div');
+group.children.find(i=>i.textContent==='ยกเลิก').onclick();
+assert.equal(notice.querySelector('div'),undefined);
+assert.equal(renders,0,'Cancel keeps drafts and view untouched');
+button.onclick();button.onclick();assert.equal(notice.children.filter(i=>i.tag==='div').length,1);
+group=notice.querySelector('div');
+group.children.find(i=>i.textContent==='ยืนยันแสดงข้อมูลล่าสุด').onclick();assert.equal(renders,1);assert.deepEqual(scroll,[12,700]);
+elements.set('modal',{hidden:false});button.onclick();assert.equal(renders,1);assert.equal(messages.length,1,'An open case is protected');
+group.children.find(i=>i.textContent==='ยืนยันแสดงข้อมูลล่าสุด').onclick();assert.equal(renders,1,'A case opened after confirmation also stays protected');
 context.liveOverviewState.error='timeout';context.offerLiveOverviewUpdate();
 assert.match(notice.querySelector('span').textContent,/โหลดไม่สำเร็จ/);
-console.log('Background updates: no unsolicited render, one notice, cancel and scroll preservation passed');
+assert.match(notice.querySelector('span').textContent,/timeout/,'Show the actual failure without applying a new page');
+context.liveOverviewState.auxiliaryError='รายการเคส: missing permission';context.offerLiveOverviewUpdate();
+assert.match(notice.querySelector('span').textContent,/missing permission/);
+const retry=notice.children.find(i=>i.textContent==='ลองโหลดใหม่');
+await retry.onclick();assert.equal(retries,1);assert.equal(retry.disabled,false);assert.equal(renders,1,'Retry does not replace a draft');
+assert.match(load,/auxiliaryNames/);assert.match(load,/item.reason\?\.message/);
+console.log('Background updates: inline confirmation, draft protection, visible errors and non-destructive retry passed');
