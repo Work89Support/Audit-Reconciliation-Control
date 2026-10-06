@@ -1,0 +1,10 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const sql=fs.readFileSync('supabase/20261006_head_legacy_document_approval.sql','utf8');
+for(const term of ["not in('lead','admin')","q.requested_by<>auth.uid()","q.outcome<>'no_loss'","q.loss_amount<>0",'case_has_stored_document(e.id)','j.last_run_id=e.run_id','decide_case_closure(q.id','head_legacy_document_approve','from public,anon'])assert.ok(sql.includes(term),term);
+assert.ok(!/update public\.exceptions|update public\.manual_case_pairs|delete from/i.test(sql));
+const ui=fs.readFileSync('case-closure.js','utf8'),sb=fs.readFileSync('supabase.js','utf8');
+assert.ok(ui.includes('q.snapshot?.stored_document_at_submit===true'));
+assert.ok(ui.includes("legacyHead&&action==='approve'"));
+assert.ok(sb.includes("/rest/v1/rpc/approve_own_document_closure"));
+assert.ok(sb.includes("e?.status!=='closed'"));
+console.log('Head legacy document recovery: guarded role/evidence/lineage, independent manual rules, closed read-back passed');

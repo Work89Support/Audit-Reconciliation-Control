@@ -54,7 +54,9 @@ const CaseClosure=(()=>{
     host.textContent='กำลังโหลดผลตรวจรอหัวหน้า…';
     try{
       const q=await Sb.caseClosureRequest(e.closureRequestId);if(!q)throw Error('ไม่พบคำขอหรือไม่มีสิทธิ์');if(!host.isConnected)return;
-      const own=q.requested_by===Sb.authUser()?.id,directHead=q.review_origin==='head_direct'&&['lead','admin'].includes(state.role),blocked=!can('approve')||(((own&&!directHead)||state.role==='audit_assistant')&&!selfEligible(q));
+      const own=q.requested_by===Sb.authUser()?.id;
+      const legacyHead=own&&['lead','admin'].includes(state.role)&&q.review_origin==='audit_submission'&&q.outcome==='no_loss'&&Number(q.loss_amount)===0&&q.snapshot?.stored_document_at_submit===true;
+      const directHead=(q.review_origin==='head_direct'||legacyHead)&&['lead','admin'].includes(state.role),blocked=!can('approve')||(((own&&!directHead)||state.role==='audit_assistant')&&!selfEligible(q));
       host.innerHTML=`<h3>${q.status==='pending'?'Audit ตรวจแล้ว — รอหัวหน้าปิดเคส':'ผลปิดเคส'}</h3><p><b>${h(outcomeLabel(q))}</b></p><p>${h(q.audit_reason)}</p><p>${h(q.decision_note||'')}</p><p>คำขอ ${h(q.id)} · ผู้ส่ง ${h(q.requested_by)}</p>${q.status==='pending'?`<p>${blocked?'บัญชีนี้อนุมัติไม่ได้ หรือคำขอตัวเองไม่ผ่านเงื่อนไข ต้องให้หัวหน้าอีกบัญชีตรวจ':'หัวหน้าตรวจเอกสารและผลยอดก่อนอนุมัติ — เหตุผลอนุมัติไม่บังคับ'}</p><label>เหตุผลอนุมัติ (ไม่บังคับ) / ส่งกลับต้องระบุเหตุผล<textarea id="closureHeadNote" maxlength="2000"></textarea></label><label><input type="checkbox" id="closureHeadChecked">ตรวจเอกสารและผล Audit แล้ว ยืนยัน ${h(outcomeLabel(q))}</label><button class="primary-button" id="closureApprove" ${blocked?'disabled':''}>อนุมัติ</button><button class="ghost-button" id="closureReject" ${blocked||own?'disabled':''}>ส่งกลับ Audit</button>`:''}`;
       if(q.status!=='pending')return;
       for(const [buttonId,action] of [['closureApprove','approve'],['closureReject','reject']])$('#'+buttonId).onclick=async event=>{
@@ -62,7 +64,7 @@ const CaseClosure=(()=>{
         let note;try{note=approvalNote(action,$('#closureHeadNote').value);}catch(err){return toast(err.message,'warn');}
         event.target.disabled=true;
         let saved;
-        try{saved=await Sb.decideCaseClosure({p_id:q.id,p_action:action,p_note:note});if(saved?.status!==(action==='approve'?'approved':'rejected'))throw Error('ยังยืนยันผลไม่ได้');}
+        try{saved=legacyHead&&action==='approve'?await Sb.approveOwnDocumentClosure({p_id:q.id,p_note:note}):await Sb.decideCaseClosure({p_id:q.id,p_action:action,p_note:note});if(saved?.status!==(action==='approve'?'approved':'rejected'))throw Error('ยังยืนยันผลไม่ได้');}
         catch(err){toast('ยังยืนยันผลไม่ได้: '+err.message+' — โหลดคำขอใหม่ก่อนลองซ้ำ','warn');await mountReview(e,host);return;}
         await loadPending(true);if(await finishApprovalReview()!==false)toast(action==='approve'?`อนุมัติแล้ว — ${outcomeLabel(saved)}`:'ส่งกลับ Audit แล้ว');
       };

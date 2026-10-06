@@ -934,6 +934,13 @@ const Sb = (() => {
   }
   const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideCaseClosure=body=>verifyDecision('/rest/v1/rpc/decide_case_closure',body,caseClosureRequest);
+  const approveOwnDocumentClosure=async body=>{
+    const saved=await verifyDecision('/rest/v1/rpc/approve_own_document_closure',body,caseClosureRequest,'approve');
+    const e=await exceptionDetail(saved.exception_id);
+    if(e?.status!=='closed'||e.case_closure_request_id!==saved.id||e.approved_by!==authUser()?.id)
+      throw new Error('ยังยืนยันการปิดเคสไม่ได้ กรุณาโหลดใหม่ก่อนลองซ้ำ');
+    return saved;
+  };
   const closeDocumentCase=async body=>{
     const saved=await verifyDecision('/rest/v1/rpc/close_document_case',body,caseClosureRequest,'approve');
     const e=await exceptionDetail(body.p_case);
@@ -1164,7 +1171,7 @@ const Sb = (() => {
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeDocumentCase,
-    pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,companyCaseSlas,saveCompanyCaseSla,
+    pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
     saveConfig,
