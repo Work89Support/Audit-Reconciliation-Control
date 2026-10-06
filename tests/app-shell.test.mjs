@@ -86,7 +86,9 @@ for (const changes of [{ _detailLoaded: false }, { stmRaw: "—" }, { boRaw: "" 
   assert.ok(!quickClose({ ...eligible, ...changes }), JSON.stringify(changes));
 }
 assert.match(app, /await Sb\.closeException/);
-assert.match(app, /openException\(b\.dataset\.approve\)/, "approval queue must use the case evidence checklist");
+assert.match(app, /if\(e\.manualPairId\)return openApprovalReview\(e\.dbId,'pair'\)/, "reserved pair must use the evidence review");
+assert.match(app, /if\(e\.closureRequestId\)return openApprovalReview\(e\.dbId,'closure'\)/, "pending document request must use the head review");
+assert.match(app, /CaseClosure\.openSubmit\(e\)\.catch/, "new document close must use the checked atomic closure form");
 const closureSource = app.match(/async function persistCaseClosure\([^]*?\n}/)[0];
 for (const succeeds of [false, true]) {
   const record = { id: "EX-test", dbId: "test", status: "open" };
