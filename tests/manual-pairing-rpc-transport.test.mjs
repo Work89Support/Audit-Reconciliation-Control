@@ -17,8 +17,8 @@ const context = {
     if(opts.method==='POST')assert.equal(opts.headers['Content-Type'],'application/json');
     assert.equal(opts.headers.Authorization,'Bearer test-token');
     assert.equal(opts.headers.apikey,'public-test-key');
-    if(opts.method!=='POST'&&url.includes('/exceptions?'))return new Response(JSON.stringify([{id:'case-id',status:closedStatus,case_closure_request_id:'request-id',approved_by:readActor}]),{status:200});
-    if(opts.method!=='POST')return new Response(JSON.stringify([{id:'request-id',status:readStatus,decided_by:readActor}]),{status:200});
+    if(opts.method!=='POST'&&url.includes('/exceptions?'))return new Response(JSON.stringify([{id:'case-id',status:closedStatus,manual_pair_id:'request-id',case_closure_request_id:'request-id',approved_by:readActor}]),{status:200});
+    if(opts.method!=='POST')return new Response(JSON.stringify([{id:'request-id',exception_id:'case-id',bo_case_id:'case-id',stm_case_id:'case-id',status:readStatus,decided_by:readActor}]),{status:200});
     if(loseResponse)throw new Error('connection lost after commit');
     return new Response(JSON.stringify({id:'request-id',status:'pending'}),{status:200});
   },
@@ -46,9 +46,21 @@ const direct={p_id:'request-id',p_case:'case-id',p_outcome:'no_loss',p_amount:0,
 assert.equal((await client.closeDocumentCase(direct)).status,'approved');
 loseResponse=true;assert.equal((await client.closeDocumentCase(direct)).status,'approved');loseResponse=false;
 closedStatus='answered';await assert.rejects(client.closeDocumentCase(direct),/ยังยืนยันสถานะปิดเคสไม่ได้/);
+closedStatus='closed';
+const legacy={p_id:'request-id',p_note:null};
+assert.equal((await client.approveOwnDocumentClosure(legacy)).status,'approved');
+loseResponse=true;assert.equal((await client.approveOwnDocumentClosure(legacy)).status,'approved');loseResponse=false;
+closedStatus='answered';await assert.rejects(client.approveOwnDocumentClosure(legacy),/ยังยืนยันการปิดเคสไม่ได้/);
+closedStatus='closed';readActor='other-user';await assert.rejects(client.approveOwnDocumentClosure(legacy),/สถานะที่บันทึก/);
 assert.deepEqual(JSON.parse(calls[0].body),submission);
 assert.deepEqual(JSON.parse(calls[1].body),submission);
 assert.deepEqual(JSON.parse(calls[2].body),decision);
 assert.ok(calls[0].url.endsWith('/rpc/submit_manual_case_pair'));
 assert.ok(calls[2].url.endsWith('/rpc/decide_manual_case_pair'));
+readStatus='approved';readActor='test-user';closedStatus='closed';
+assert.equal((await client.closeManualPair(submission)).status,'approved');
+loseResponse=true;assert.equal((await client.closeManualPair(submission)).status,'approved');loseResponse=false;
+closedStatus='open';await assert.rejects(client.closeManualPair(submission),/ยังยืนยันสถานะปิดคู่/);closedStatus='closed';
+readStatus='pending';await assert.rejects(client.closeManualPair(submission),/สถานะที่บันทึก/);readStatus='approved';
+assert.ok(calls.some(c=>c.url.endsWith('/rpc/close_manual_case_pair')));
 console.log('Manual pairing RPC JSON transport: passed');

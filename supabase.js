@@ -913,6 +913,14 @@ const Sb = (() => {
     return saved;
   }
   const decideManualPair=body=>verifyDecision('/rest/v1/rpc/decide_manual_case_pair',body,manualPair);
+  async function closeManualPair(body) {
+    const saved=await verifyDecision('/rest/v1/rpc/close_manual_case_pair',body,manualPair,'approve');
+    if(saved.bo_case_id!==body.p_bo||saved.stm_case_id!==body.p_stm)throw new Error('คู่ที่บันทึกไม่ตรงกับรายการที่เลือก');
+    const cases=await Promise.all([...new Set([body.p_bo,body.p_stm])].map(exceptionDetail));
+    if(cases.some(e=>!e||e.status!=='closed'||e.manual_pair_id!==saved.id||e.approved_by!==authUser()?.id))
+      throw new Error('ยังยืนยันสถานะปิดคู่ในฐานข้อมูลไม่ได้ กรุณาตรวจสถานะก่อนลองซ้ำ');
+    return saved;
+  }
   async function pendingCaseClosures() {
     const rows=[];
     for(let offset=0;;offset+=200){
@@ -1170,7 +1178,7 @@ const Sb = (() => {
 
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
-    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeDocumentCase,
+    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
