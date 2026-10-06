@@ -91,7 +91,8 @@ const ROUTES = [
   {
     group: "ตรวจสอบและอนุมัติ",
     items: [
-      { id: "clarify", label: "ติดตามและอนุมัติ", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ติดตาม Exception กำหนดส่ง และเปิดคิวอนุมัติจากจุดเดียว โดยไม่แบ่งกะ", filters: true },
+      { id: "clarify", label: "ติดตามคำชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ส่งและติดตามเอกสารจากผู้ชี้แจงตาม SLA บริษัท เมื่อส่งกลับให้ Audit ตรวจในหน้า Audit รอตรวจ", filters: true },
+      { id: "audit-review", label: "Audit รอตรวจ", icon: "exceptions", title: "Audit รอตรวจเอกสาร", desc: "เอกสารหรือคำตอบจากผู้ชี้แจงกลับมาแล้ว ตรวจในเคสเดิมก่อนส่งหัวหน้าอนุมัติปิด", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
     ],
@@ -226,9 +227,9 @@ function auditRuleBookMarkup(selectedCompany = "") {
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "reports", "notifications"],
-  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "approvals", "reports", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "case-settings"],
+  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "notifications"],
+  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "notifications"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "case-settings"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
@@ -774,7 +775,7 @@ function scopedWorkflowMetrics() {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
     approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null)),
-    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && (row.status === "answered" || (row.status === 'open' && row.clarificationFileId))).length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
+    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && row.status === 'damage').length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
     followUps: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
   };
 }
@@ -794,6 +795,7 @@ function renderNav() {
             `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}" title="${h(it.label)}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[it.icon]}"/></svg><span>${h(it.label)}</span>
               ${it.id === "exceptions" ? `<b class="nav-count">${workflow.openAvailable ? num(workflow.open) : "—"}</b>` : ""}
+              ${it.id === "audit-review" ? `<b class="nav-count" title="เคสรอ Audit ตรวจในบริษัทและวันที่ที่เลือก">${liveOverviewState.exceptionsReady ? num(AuditReview.rows(DB.exceptions, {filters:state.filters,canAccessCompany}).length) : "—"}</b>` : ""}
               ${it.id === "approvals" ? `<b class="nav-count" title="คำขอจับคู่ทุกวันที่ตามสิทธิ์ รวมเคสชี้แจงแล้วในขอบเขตที่โหลด">${workflow.approvalsAvailable ? num(workflow.approvals) : "—"}</b>` : ""}
             </a>`,
         )
@@ -848,6 +850,8 @@ function nextActionForState() {
   if (needsBoReview.length) return { route: "cloud", label: `เทียบ BO สำหรับไฟล์ที่อ่านแล้ว ${num(needsBoReview.length)} ไฟล์`, detail: "ไม่พบรายการในวันตรวจ ไม่ใช่ไฟล์เสีย — ตรวจบัญชีและวันกับ BO ก่อนสรุป ไม่ต้องรันไฟล์เดิมซ้ำ", tone: "warn" };
   if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
   if (workflow.approvalsAvailable && workflow.approvals && can('approve')) return { route: "approvals", label: `ตรวจคำชี้แจง / คำขออนุมัติ ${num(workflow.approvals)} งาน`, detail: "เปิดเคสและเอกสารที่ผูกไว้ ตรวจหลักฐานก่อนอนุมัติ", tone: "warn" };
+undefined
+  if (auditWaiting && ROUTE_ROLES[state.role].includes('audit-review')) return { route: 'audit-review', label: `Audit รอตรวจ ${num(auditWaiting)} เคส`, detail: 'ตรวจคำตอบและหลักฐานในเคสเดิมก่อนส่งหัวหน้า', tone: 'warn' };
   if (workflow.followUps) return { route: "clarify", label: `ติดตามคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "ติดตามคำตอบและหลักฐานจากผู้ชี้แจง", tone: "warn" };
   if (workflow.openAvailable && workflow.open) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(workflow.open)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
   if (!workflow.openAvailable) return { route: "dashboard", label: "กำลังตรวจยอดเคสจากฐานข้อมูล", detail: "ยังไม่สรุปว่างานหมดจนกว่าจะโหลดยอดจริงสำเร็จ", tone: "warn" };
@@ -3219,7 +3223,7 @@ VIEWS.exceptions = (root) => {
       </div>
       <div class="recon-work-grid">
         <button type="button" class="warn" data-action-route="exceptions"><i>${resultMetric(exceptionsAvailable, sorted.length)}</i><span><b>รายการรอตรวจ</b><small>${qualityAvailable ? `สร้างจากผลรัน ${num(generatedExceptionTotal)} รายการ` : "กำลังรอข้อมูลจริง"}</small></span><em>ดูรายการด้านล่าง ↓</em></button>
-        <button type="button" class="amber" data-action-route="clarify"><i>${num(answeredCount)}</i><span><b>รอ Audit อนุมัติ</b><small>มีคำชี้แจงหรือหลักฐานแล้ว</small></span><em>เปิดตรวจ →</em></button>
+        <button type="button" class="amber" data-action-route="audit-review"><i>${num(answeredCount)}</i><span><b>Audit รอตรวจ</b><small>มีคำชี้แจงหรือหลักฐานแล้ว · ยังไม่ปิดเคส</small></span><em>เปิดตรวจ →</em></button>
         <button type="button" class="red" data-action-route="clarify"><i>${num(reviewCount)}</i><span><b>ต้องให้คุณตรวจ</b><small>ข้อมูลกำกวมหรือไฟล์อ่านไม่ได้</small></span><em>ดำเนินการ →</em></button>
         <button type="button" class="green" data-action-route="daily-summary"><i>${num(autoClosedCount)}</i><span><b>ปิดเคสอัตโนมัติ</b><small>ยืนยันจากไฟล์ชี้แจงสำเร็จ</small></span><em>ดูสรุป →</em></button>
       </div>
@@ -4227,16 +4231,27 @@ VIEWS.matching = (root) => {
 /* =============================================================
    VIEW: Approvals
    ============================================================= */
+VIEWS['audit-review'] = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  AuditReview.mount(root, {
+    exceptions: DB.exceptions, filters: state.filters, canAccessCompany, h, money, caseLabel, openException, toast,
+    openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
+    refresh: async () => { await loadLiveOverview(true); if (state.route === 'audit-review') render(); },
+  });
+};
+
+
+
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => !e.closureRequestId&&(["answered", "clarifying", "damage"].includes(e.status) || (e.status==='open'&&e.clarificationFileId)));
+  const queue = DB.exceptions.filter((e) => !e.closureRequestId && e.status === 'damage');
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
     <section class="panel" id="pendingDocumentClosureQueue"></section>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
-      <article class="warn"><span>ชี้แจงแล้ว รออนุมัติ</span><strong>${num(DB.exceptions.filter((e) => e.status==='answered').length)}</strong><small>เฉพาะขอบเขตเคสที่โหลด · คำขอจับคู่แสดงในคิวด้านบน</small></article>
+      <article class="warn"><span>Audit รอตรวจเอกสาร</span><strong>${num(AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length)}</strong><small><a href="#/audit-review">เปิดคิว Audit รอตรวจ →</a> · ยังไม่ใช่คำขอหัวหน้าปิด</small></article>
       <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
       <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
     </section>
