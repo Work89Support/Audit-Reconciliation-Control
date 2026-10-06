@@ -10,10 +10,10 @@ const ManualPairing=(()=>{
   }
   const sourcePairCandidate=p=>{
     const a=p.snapshot?.bo,b=p.snapshot?.stm,validRaw=v=>typeof v==='string'&&v.trim().length>=2&&!/^(—|–|-|ไม่พบ|รอข้อมูล)/.test(v.trim());
-    return ['lead','admin'].includes(state.role)&&p.mode==='same'&&!!p.bo_company&&p.bo_company===p.stm_company&&a?.company===p.bo_company&&b?.company===p.stm_company&&a.currency==='THB'&&b.currency==='THB'&&a.direction===b.direction&&['ฝาก','ถอน'].includes(a.direction)&&Number.isFinite(Number(a.system_amount))&&Number(a.system_amount)>0&&Number.isFinite(Number(b.bank_amount))&&Number(b.bank_amount)>0&&Math.abs(Number(a.system_amount)-Number(b.bank_amount))<=5&&validRaw(a.bo_raw)&&validRaw(b.stm_raw);
+    return ['audit_assistant','lead','admin'].includes(state.role)&&p.mode==='same'&&!!p.bo_company&&p.bo_company===p.stm_company&&a?.company===p.bo_company&&b?.company===p.stm_company&&a.currency==='THB'&&b.currency==='THB'&&a.direction===b.direction&&['ฝาก','ถอน'].includes(a.direction)&&Number.isFinite(Number(a.system_amount))&&Number(a.system_amount)>0&&Number.isFinite(Number(b.bank_amount))&&Number(b.bank_amount)>0&&(state.role!=='audit_assistant'||(Number(a.system_amount)<=30000&&Number(b.bank_amount)<=30000))&&Math.abs(Number(a.system_amount)-Number(b.bank_amount))<=5&&validRaw(a.bo_raw)&&validRaw(b.stm_raw);
   };
-  const selfApprovalCandidate=p=>['audit_assistant','lead','admin'].includes(state.role)&&(state.role==='audit_assistant'||(p.mode==='same'&&p.bo_company===p.stm_company))&&p.difference!=null&&Number.isFinite(Number(p.difference))&&Number(p.difference)>=0&&Number(p.difference)<=5&&(sourcePairCandidate(p)||!!(p._hasStoredEvidence||p.evidence_id||p.snapshot?.bo?.clarification_file_id||p.snapshot?.stm?.clarification_file_id));
-  const decisionBlockReason=p=>!Sb.signedIn()?'กรุณาเข้าสู่ระบบก่อนตรวจคำขอ':!can('approve')?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ — ให้หัวหน้าทีม / ผู้ดูแลระบบตรวจ':p.status!=='pending'?'คำขอนี้ไม่ได้รออนุมัติ':p.submitted_by===Sb.authUser()?.id&&!selfApprovalCandidate(p)?'หัวหน้าปิดคำขอตัวเองได้เฉพาะบริษัทเดียวกัน ต่างไม่เกิน 5 บาท มี BO/STM ต้นทางจริง หรือหลักฐานตามสิทธิ์ มิฉะนั้นให้หัวหน้าอีกบัญชีตรวจ':'';
+  const selfApprovalCandidate=p=>state.role==='audit_assistant'?sourcePairCandidate(p):['lead','admin'].includes(state.role)&&p.mode==='same'&&p.bo_company===p.stm_company&&p.difference!=null&&Number.isFinite(Number(p.difference))&&Number(p.difference)>=0&&Number(p.difference)<=5&&(sourcePairCandidate(p)||!!(p._hasStoredEvidence||p.evidence_id||p.snapshot?.bo?.clarification_file_id||p.snapshot?.stm?.clarification_file_id));
+  const decisionBlockReason=p=>!Sb.signedIn()?'กรุณาเข้าสู่ระบบก่อนตรวจคำขอ':!can('approve')?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ — ให้หัวหน้าทีม / ผู้ดูแลระบบตรวจ':p.status!=='pending'?'คำขอนี้ไม่ได้รออนุมัติ':state.role==='audit_assistant'&&!sourcePairCandidate(p)?'ผู้ช่วย Audit ปิดเองได้เฉพาะบริษัทเดียวกัน ยอดแต่ละฝั่งไม่เกิน 30,000 บาท ต่างไม่เกิน 5 บาท และต้นทางครบ — รายการนี้ต้องให้หัวหน้าอนุมัติ':p.submitted_by===Sb.authUser()?.id&&!selfApprovalCandidate(p)?'หัวหน้าปิดคำขอตัวเองได้เฉพาะบริษัทเดียวกัน ต่างไม่เกิน 5 บาท มี BO/STM ต้นทางจริง หรือหลักฐานตามสิทธิ์ มิฉะนั้นให้หัวหน้าอีกบัญชีตรวจ':'';
   async function loadPending(force=false){
     if(state.dataset!=='production'||!Sb.signedIn())return;
     const user=Sb.authUser()?.id;
@@ -106,7 +106,7 @@ const ManualPairing=(()=>{
     $('#pairCandidate').onchange=()=>{selected=candidates.find(c=>c.id===$('#pairCandidate').value)||null;$('#pairChecked').checked=false;renderComparison();};
     if(amountDifference){
       const form=$('#pairCompare').closest('.manual-pair-form');
-      form.querySelector('.pair-policy span').textContent=canDirectClose()?'หัวหน้าตรวจคู่ BO–STM นี้แล้วปิดได้ทันที ไม่ส่งเข้าคิว และไม่บันทึกความเสียหาย':'ยอดทั้งสองฝั่งอยู่ในเคสเดียวกัน ส่งแล้วรอหัวหน้าทีมอนุมัติ';
+      form.querySelector('.pair-policy span').textContent=canDirectClose()?(state.role==='audit_assistant'?'ผู้ช่วย Audit ปิดคู่บริษัทเดียวกันได้ ยอดแต่ละฝั่งไม่เกิน 30,000 บาท ต่างไม่เกิน 5 บาท ระบบตรวจต้นทางก่อนบันทึกจริง':'หัวหน้าตรวจคู่ BO–STM นี้แล้วปิดได้ทันที ไม่ส่งเข้าคิว และไม่บันทึกความเสียหาย'):'ยอดทั้งสองฝั่งอยู่ในเคสเดียวกัน ส่งแล้วรอหัวหน้าทีมอนุมัติ';
       form.querySelector('.pair-card').outerHTML=sourceCard({...current,ex_type:'missing_stm'},caseLabel(e)+' · BO',current.bo_raw);
       $('#pairCompany').closest('.pair-search-grid').hidden=true;
       $('#pairCompany').disabled=$('#pairDate').disabled=$('#pairSearch').disabled=true;

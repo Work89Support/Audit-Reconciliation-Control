@@ -10,5 +10,5 @@ const data=fs.readFileSync('data.js','utf8');
 const role=data.match(/audit_assistant: \{([\s\S]*?)\n    \}/)[1];
 assert.match(role,/"approve"/);assert.doesNotMatch(role,/"users"|"settings"|"rules"|"close_cycle"/);
 assert.match(fs.readFileSync('app.js','utf8'),/audit_assistant: \[.*"approvals"/);
-assert.match(fs.readFileSync('manual-pairing.js','utf8'),/state.role==='audit_assistant'\|\|/);
+assert.match(fs.readFileSync('manual-pairing.js','utf8'),/state.role==='audit_assistant'\?sourcePairCandidate\(p\)/);
 console.log('Assistant role: scoped Audit baseline, evidence and <=5 cap, no admin/settings/loss-cycle powers passed');
