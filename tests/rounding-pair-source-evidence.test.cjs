@@ -1,0 +1,14 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ctx={state:{role:'lead'},Sb:{signedIn:()=>true,authUser:()=>({id:'head'})},can:()=>true};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync('manual-pairing.js','utf8')+'\nthis.api=ManualPairing;',ctx);
+const row={company:'UFABET7M',currency:'THB',direction:'ถอน',system_amount:88,bank_amount:87.93,bo_raw:'88 original BO',stm_raw:'87.93 original STM'};
+const pair={status:'pending',submitted_by:'head',mode:'same',bo_company:'UFABET7M',stm_company:'UFABET7M',difference:.07,evidence_id:null,snapshot:{bo:{...row},stm:{...row}}};
+assert.equal(ctx.api.decisionBlockReason(pair),'');
+for(const delta of [{difference:5.01},{difference:null},{mode:'cross'},{stm_company:'FR8'},{snapshot:{bo:row,stm:{...row,bank_amount:null}}},{snapshot:{bo:{...row,bo_raw:'ไม่พบรายการ'},stm:row}},{snapshot:{bo:row,stm:{...row,stm_raw:'—'}}},{snapshot:{bo:row,stm:{...row,bank_amount:82}}}])assert.notEqual(ctx.api.decisionBlockReason({...pair,...delta}),'');
+ctx.state.role='audit_assistant';assert.notEqual(ctx.api.decisionBlockReason(pair),'');
+ctx.state.role='monitor';ctx.can=()=>false;assert.notEqual(ctx.api.decisionBlockReason(pair),'');
+ctx.state.role='admin';ctx.can=()=>true;assert.equal(ctx.api.decisionBlockReason(pair),'');
+const sql=fs.readFileSync('supabase/20261006_rounding_pair_source_evidence.sql','utf8');
+for(const token of ["public.current_app_role() in ('lead','admin')","p.mode='same'","p.bo_company=p.stm_company",'validate_manual_pair','ต้นทางหรือยอดเปลี่ยน','manual_pair_self_approve','p.difference is null'])assert.ok(sql.includes(token));
+assert.ok(!/update public\.exceptions|update public\.manual_case_pairs|grant execute|drop policy/.test(sql));
+console.log('Same-company rounding: no extra upload for head/admin; real BO/STM required; limits/roles/cross-company guards preserved');
