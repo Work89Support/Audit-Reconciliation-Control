@@ -179,7 +179,25 @@
       pair.reason=[pair.reason,'หลักฐานปิดเคสย้อนหลัง',e.resolution_note,`STM ไฟล์ ${pair.pmSource.fileId} · แถว ${pair.pmSource.row}`].filter(Boolean).join(' · ');
       if(pair.pmSource.noTime)pair.pmTime=`${pair.pmDate} (ไม่มีเวลา)`;
     }
-    return [...pairRows,...remainingCases];
+    const financialRows=[...pairRows,...remainingCases];
+    const foldedAlerts=new Set();
+    financialRows.filter(row=>row.exType==='duplicate'&&row.case?.status!=='closed').forEach(alert=>{
+      // Legacy Rules alerts hold both BO UUIDs in raw text. Link only when
+      // BOTH UUIDs independently resolve to one real transaction each within
+      // this company/account/direction. Never fold by equal amounts or time.
+      const refs=[...new Set(String(alert.boRaw||'').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)||[])];
+      if(refs.length!==2)return;
+      const hits=refs.map(ref=>financialRows.filter(row=>row!==alert&&row.exType!=='duplicate'
+        &&row.company===alert.company&&row.account===alert.account&&row.direction===alert.direction
+        &&String(row.bo?.reference||'').toLowerCase()===ref.toLowerCase()
+        &&cents(row.boAmount)===cents(alert.boAmount)));
+      if(hits.some(rows=>rows.length!==1)||hits[0][0]===hits[1][0])return;
+      const target=hits[1][0];
+      (target.relatedAlerts ||= []).push(alert.case);
+      target.reason=[target.reason,'สงสัยเติมซ้ำ — ต้องตรวจ STM ไม่ใช่ความเสียหายที่ยืนยันแล้ว',`คำเตือน ${alert.code}`].filter(Boolean).join(' · ');
+      foldedAlerts.add(alert);
+    });
+    return financialRows.filter(row=>!foldedAlerts.has(row));
   }
   function hasSide(row,side){return cents(row[`${side}Amount`])!==null&&(row.isPair||!!(realRaw(row[`${side}Raw`])||row[`${side}Date`]||Object.values(row[side]||{}).some(Boolean)));}
   function sideKey(row,side){
@@ -200,7 +218,9 @@
     const pairKeys=new Set(),matched=[];rows.filter(r=>r.isPair).forEach(row=>{const key=`${sideKey(row,'pm')}|${sideKey(row,'bo')}`;if(!pairKeys.has(key)){pairKeys.add(key);matched.push(row);}});
     const crossDay=new Map(),duplicate=new Map();
     rows.filter(r=>r.crossDay).forEach(r=>{const key=sideKey(r,'bo');if(key&&!crossDay.has(key))crossDay.set(key,r);});
-    review.filter(r=>/duplicate|ambig|ซ้ำ|กำกวม/i.test(`${r.exType} ${r.reason}`)).forEach(r=>{const key=sideKey(r,'bo')||sideKey(r,'pm')||r.key;if(!duplicate.has(key))duplicate.set(key,r);});
+    rows.filter(r=>(r.relatedAlerts||[]).some(e=>e.status!=='closed')
+      ||(r.kind!=='closed'&&(r.case?.customer_details?.reviewAlerts||[]).some(e=>e.type==='suspected_duplicate'))
+      ||(!r.isPair&&/duplicate|ambig|ซ้ำ|กำกวม/i.test(`${r.exType} ${r.reason}`))).forEach(r=>{const key=sideKey(r,'bo')||sideKey(r,'pm')||r.key;if(!duplicate.has(key))duplicate.set(key,r);});
     const total=(map,side)=>[...map.values()].reduce((sum,r)=>sum+(cents(r[`${side}Amount`])||0),0);
     const pmCents=total(pm,'pm'),boCents=total(bo,'bo'),crossDayBoCents=total(crossDay,'bo');
     return {pmCount:pm.size,pmCents,boCount:bo.size,boCents,matchedCount:matched.length,matchedPmCents:matched.reduce((s,r)=>s+(cents(r.pmAmount)||0),0),matchedBoCents:matched.reduce((s,r)=>s+(cents(r.boAmount)||0),0),unmatchedPmCount:unmatchedPm.size,unmatchedPmCents:total(unmatchedPm,'pm'),unmatchedBoCount:unmatchedBo.size,unmatchedBoCents:total(unmatchedBo,'bo'),crossDayCount:crossDay.size,crossDayBoCents,duplicateCount:duplicate.size,duplicateCents:[...duplicate.values()].reduce((s,r)=>s+(cents(r.boAmount)??cents(r.pmAmount)??0),0),diffBeforeCents:pmCents-(boCents-crossDayBoCents),diffAfterCents:pmCents-boCents};
@@ -270,14 +290,16 @@
     return `${h?'ต่าง '+h+' ชั่วโมง ':''}${m?'ต่าง '+m+' นาที ':''}${!h&&!m||s?s+' วินาที':''}`.trim();
   }
   function auditStatus(row,complete=true){
+    const duplicateWarning=(row.relatedAlerts||[]).some(e=>e.status!=='closed')
+      ||(row.kind!=='closed'&&(row.case?.customer_details?.reviewAlerts||[]).some(e=>e.type==='suspected_duplicate'));
     if(row.case?.status==='pair_pending')return 'จับคู่แล้ว รอหัวหน้าทีมอนุมัติ';
     if(row.kind==='closed')return 'ปิดเคสแล้ว';
     if(!complete)return 'ต้องตรวจเพิ่ม · ข้อมูลรอบไม่ครบ';
     const pm=cents(row.pmAmount),bo=cents(row.boAmount);
     const equalPair=hasSide(row,'pm')&&hasSide(row,'bo')&&pm!==null&&pm===bo;
-    if(row.kind==='matched')return equalPair?'ปิดได้ทันที':'ต้องตรวจเพิ่ม · หลักฐานคู่ไม่สมบูรณ์';
+    if(row.kind==='matched')return duplicateWarning?'ต้องตรวจเพิ่ม · สงสัยเติมซ้ำ':equalPair?'ปิดได้ทันที':'ต้องตรวจเพิ่ม · หลักฐานคู่ไม่สมบูรณ์';
     if(row.kind==='advisory')return 'แจ้งข้อมูล · ไม่ต้องยืนยัน';
-    if(row.kind==='pending_next_day'||row.exType==='cross_day')return 'ค้างรอข้อมูลข้ามวัน · รอข้อมูลของวันถัดไป';
+    if(row.kind==='pending_next_day'||row.exType==='cross_day')return 'ค้างรอข้อมูลข้ามวัน · รอข้อมูลของวันถัดไป'+(duplicateWarning?' · สงสัยเติมซ้ำ':'');
     if(row.exType==='manual_review')return 'ยอดจับคู่แล้ว · รอตรวจหลักฐานเติมมือ';
     // Equal amounts alone do not resolve an open exception. Only the same
     // verified source-evidence gate used by production quick-close can allow it.
@@ -514,8 +536,10 @@
       for(const key of ['pm','direction','status'])container.querySelector(`#mc8-live-${key}`).onchange=e=>{if(key==='pm')pm=e.target.value;else if(key==='direction')direction=e.target.value;else status=e.target.value;page=0;draw();};
       container.querySelectorAll('[data-live-sheet]').forEach(b=>b.onclick=()=>{sheet=b.dataset.liveSheet;page=0;draw();});
       const prev=container.querySelector('#mc8-live-prev'),next=container.querySelector('#mc8-live-next');if(prev)prev.onclick=()=>{page--;draw();};if(next)next.onclick=()=>{page++;draw();};
+      const related=shown.flatMap(row=>(row.relatedAlerts||[]).map(alert=>({row,alert})));
+      if(related.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนที่ผูกกับรายการเดิม"><b>คำเตือนสงสัยเติมซ้ำ — ไม่เพิ่มจำนวนหรือยอดธุรกรรม</b>${related.map(({row,alert})=>`<p>${esc(row.code)} · ${esc(alert.code||alert.id)} <button data-live-case="${esc(alert.id)}">ตรวจคำเตือน</button></p>`).join('')}</section>`);
       container.querySelectorAll('[data-live-case]').forEach(b=>b.onclick=async()=>{
-        const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case;
+        const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case||all.flatMap(r=>r.relatedAlerts||[]).find(e=>e.id===b.dataset.liveCase);
         if(!liveCase?.id){opts.onCaseError?.(new Error('ไม่พบ UUID ของเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่'),null,company);return;}
         const original=b.textContent;b.disabled=true;b.textContent='กำลังเปิด…';
         try{
