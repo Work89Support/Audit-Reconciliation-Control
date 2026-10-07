@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ctx={Sb:{signedIn:()=>true},state:{role:'audit_assistant'},money:String};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync('case-closure.js','utf8')+'\nthis.api=CaseClosure;',ctx);
+const e={system_amount:100,bank_amount:99.93,currency:'THB'};
+assert.equal(ctx.api.assistantCloseBlock(e),'');
+for(const patch of [{bank_amount:null},{system_amount:30000.01},{bank_amount:94.99},{currency:'USD'},{bank_amount:0},{review_flags:{uncertain:true}}])assert.ok(ctx.api.assistantCloseBlock({...e,...patch}));
+assert.equal(ctx.api.assistantCloseBlock({...e,system_amount:30000,bank_amount:29995}),'');
+ctx.state.role='lead';assert.equal(ctx.api.assistantCloseBlock({...e,bank_amount:null}),'');
+const sql=fs.readFileSync('supabase/20261007_closure_actor_labels.sql','utf8');
+for(const s of ['public.current_audit_assistant()','หัวหน้า Audit','ผู้ช่วย Audit','ผู้ดูแลระบบ','Unrecognized document closure label baseline','Unrecognized manual pair label baseline'])assert.ok(sql.includes(s));
+assert.doesNotMatch(sql,/update public\.exceptions|delete from|grant execute|replace\(def,[^\n]*42501/);
+console.log('Assistant document routing and trusted actor labels passed; no approval rules or historical closures changed');

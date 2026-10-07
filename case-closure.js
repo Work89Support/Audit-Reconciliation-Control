@@ -3,6 +3,16 @@ const CaseClosure=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
   const auditable=()=>Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const directCloser=()=>can('approve')&&['lead','admin','audit_assistant'].includes(state.role);
+  function assistantCloseBlock(e){
+    if(state.role!=='audit_assistant')return '';
+    const a=e.system_amount,b=e.bank_amount;
+    if(a==null||b==null||!Number.isFinite(Number(a))||!Number.isFinite(Number(b)))return 'ยังไม่มียอด BO และ STM/PM ครบทั้งสองฝั่ง';
+    if(e.currency!=='THB'||Number(a)<=0||Number(b)<=0)return 'ยอดต้นทางหรือสกุลเงินไม่ผ่านเงื่อนไขปิดเอง';
+    if(Number(a)>30000||Number(b)>30000)return 'ยอดฝั่งใดฝั่งหนึ่งเกิน 30,000 บาท';
+    if(Math.abs(Number(a)-Number(b))>5)return 'ผลต่างเกิน 5 บาท';
+    if(['repeat','manual','uncertain'].some(k=>e.review_flags?.[k]))return 'พบรายการซ้ำ การแก้ไขมือ หรือข้อมูลที่ยังไม่ยืนยัน';
+    return '';
+  }
   const outcomeLabel=q=>q.outcome==='no_loss'?'ไม่มีความเสียหาย (0 บาท)':`เสียหายจริง ${money(q.loss_amount)} บาท`;
   function approvalNote(action,value){
     const note=String(value||'').trim();
@@ -27,10 +37,15 @@ const CaseClosure=(()=>{
     if(state.dataset!=='production'||!auditable())return toast('เฉพาะ Audit ในระบบจริงส่งผลตรวจให้หัวหน้าได้','warn');
     const fresh=await Sb.exceptionDetail(e.dbId);
     if(!fresh||!['open','clarifying','answered'].includes(fresh.status)||fresh.manual_pair_id||fresh.case_closure_request_id)return toast('มีคำขออยู่แล้วหรือสถานะเปลี่ยน กรุณาโหลดเคสใหม่','warn');
-    const direct=directCloser();
+    const blockedReason=assistantCloseBlock(fresh),direct=directCloser()&&!blockedReason;
     const id=crypto.randomUUID();let sent=false;
     openModal(direct?'ปิดเคส':'Audit ตรวจผลและส่งหัวหน้ารอปิดเคส',`<p>${h(caseLabel(e))}</p><p>${direct?'ตรวจหลักฐานและยืนยันผลเพื่อปิดเคสทันที ไม่ส่งเข้าคิวต่อ':'มีเอกสารแล้ว: ตรวจและส่งหัวหน้า ไม่ส่งงานให้ผู้ชี้แจงบริษัทซ้ำ'}</p><label>ผลตรวจ<select id="closureOutcome"><option value="no_loss">ไม่มีความเสียหาย — ปิด 0 บาท</option><option value="damage">ยืนยันความเสียหายจริง</option></select></label><div id="closureLossFields" hidden><label>ยอดเสียหายจริง (บาท)<input type="number" step="0.01" min="0.01" id="closureLossAmount"></label><label>ประเภทความเสียหาย<select id="closureLossCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([k])=>!['unclassified','system'].includes(k)).map(([k,v])=>`<option value="${h(k)}">${h(v)}</option>`).join('')}</select></label><p>ไม่มีเอกสาร: ต้องส่งขอชี้แจงและครบ SLA ตามบริษัทก่อนเสนอ แต่หมด SLA อย่างเดียวไม่ได้แปลว่าพิสูจน์ความเสียหายแล้ว</p></div><label>${direct?'เหตุผลปิดเคส / หลักฐานอ้างอิง (ไม่บังคับ ไม่เกิน 2,000 ตัวอักษร)':'ผลตรวจ Audit / หลักฐานอ้างอิง (10–2,000 ตัวอักษร)'}<textarea id="closureAuditReason" maxlength="2000">${h((e.notes||[]).map(n=>n.text).filter(Boolean).join('\n')||e.resolutionNote||'')}</textarea></label><label><input type="checkbox" id="closureAuditChecked">ตรวจเอกสารที่เกี่ยวกับเคสนี้ และยืนยันผลยอดจริงแล้ว ไม่ได้สรุปจากยอดต่างหรือหมด SLA อย่างเดียว</label>`, `<button class="ghost-button" id="closureCancel">ยกเลิก</button><button class="primary-button" id="closureSend">${direct?'ปิดเคส':'ส่งหัวหน้ารอปิดเคส'}</button>`);
     $('#closureCancel').onclick=closeModal;
+    if(blockedReason){
+      const hint=document.createElement('p');hint.setAttribute('role','status');
+      hint.textContent='ผู้ช่วย Audit ปิดเคสนี้เองไม่ได้: '+blockedReason+' — ตรวจเอกสารแล้วส่งหัวหน้าอนุมัติ หากยังไม่มีเอกสารให้ส่งผู้ชี้แจงก่อน';
+      $('#closureAuditReason').parentElement.before(hint);
+    }
     if(state.role==='audit_assistant')$('#closureOutcome').querySelector('option[value="damage"]').disabled=true;
     $('#closureOutcome').onchange=()=>{$('#closureLossFields').hidden=$('#closureOutcome').value!=='damage';$('#closureAuditChecked').checked=false;};
     if(initialOutcome==='damage'){$('#closureOutcome').value='damage';$('#closureOutcome').onchange();}
@@ -103,5 +118,5 @@ const CaseClosure=(()=>{
       root.querySelectorAll('[data-sla-company]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const days=Number(form.elements.days.value);if(!Number.isInteger(days)||days<1||days>365)return toast('กำหนด 1–365 วัน','warn');const button=form.querySelector('button');button.disabled=true;try{const saved=await Sb.saveCompanyCaseSla(form.dataset.slaCompany,days);if(saved?.document_days!==days)throw Error('ยังยืนยันค่าไม่ได้');form.querySelector('[role=status]').textContent='บันทึกแล้ว ใช้กับคำขอใหม่';}catch(err){form.querySelector('[role=status]').textContent='บันทึกไม่สำเร็จ: '+err.message;}finally{button.disabled=false;}});
     }catch(err){root.innerHTML=`<section class="panel"><p>โหลดการตั้งค่าไม่ได้: ${h(err.message)} — ไม่ถือว่าเป็นค่าศูนย์</p></section>`;}
   }
-  return {queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel};
+  return {queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel,assistantCloseBlock};
 })();
