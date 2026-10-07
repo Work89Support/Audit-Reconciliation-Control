@@ -314,7 +314,22 @@ const isInformationalAuditException=e=>auditCompanies.has(auditCompany)&&['large
 // matched a BO row, no Rules exception for that exact source row is still
 // actionable (not only cross_day). Keeping it would create a green matched
 // pair and an open BO-only case for the same transaction in one run.
-const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!isInformationalAuditException(e)&&!(e.sourceKey&&matchedBoKeys.has(e.sourceKey)));
+const pendingCrossDayDuplicates=alert=>{
+  if(alert.type!=='duplicate')return false;
+  const refs=[...new Set(String(alert.boRaw||'').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)||[])];
+  if(refs.length!==2)return false;
+  const targets=refs.map(ref=>(result.exceptions||[]).filter(e=>e.type==='cross_day'
+    &&e.company===alert.company&&e.account===alert.account&&e.direction===alert.direction
+    &&e.systemAmount===alert.systemAmount
+    &&String(e.customerDetails?.bo?.reference||'').toLowerCase()===ref.toLowerCase()));
+  if(targets.some(rows=>rows.length!==1)||targets[0][0]===targets[1][0])return false;
+  const target=targets[1][0];
+  target.customerDetails={...target.customerDetails,reviewAlerts:[...(target.customerDetails?.reviewAlerts||[]),
+    {type:'suspected_duplicate',confirmed:false,boReferences:refs,detail:alert.detail}]};
+  target.detail=[target.detail,'สงสัยเติมซ้ำ — รอตรวจ STM วันถัดไป ไม่ใช่ความเสียหายที่ยืนยันแล้ว',alert.detail].filter(Boolean).join(' · ');
+  return true;
+};
+const resolvedRuleExceptions=(biz.exceptions||[]).filter(e=>!isInformationalAuditException(e)&&!(e.sourceKey&&matchedBoKeys.has(e.sourceKey))&&!pendingCrossDayDuplicates(e));
 const best=new Map();
 // A missing BO amount is null for every unmatched STM row. Minute-precision
 // exports can therefore share the old key despite different real transactions.
