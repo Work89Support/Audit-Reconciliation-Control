@@ -51,7 +51,7 @@ const ManualPairing=(()=>{
     if(!eligible(e))return toast('เลือกเคสเปิดที่ขาดอีกฝั่ง หรือเคสยอด BO กับ STM/PM ต่างกัน','warn');
     const amountDifference=e.type==='amount_diff';
     if(amountDifference&&mode!=='same')return toast('เคสยอดต่างที่มีทั้งสองฝั่งแล้ว ให้ใช้จับคู่เอง ไม่ใช่จับคู่ข้ามบริษัท','warn');
-    const current=await Sb.exceptionDetail(e.dbId).catch(err=>{toast(err.message,'warn');return null;});
+    let current=await Sb.exceptionDetail(e.dbId).catch(err=>{toast(err.message,'warn');return null;});
     if(!current||!eligible({type:current.ex_type,status:current.status}))return toast('สถานะเคสเปลี่ยน กรุณารีเฟรช','warn');
     if(amountDifference&&current.ex_type!=='amount_diff')return toast('ประเภทเคสเปลี่ยน กรุณารีเฟรช','warn');
     const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>c&&canAccessCompany(c)&&(mode==='same'?c===e.company:c!==e.company));
@@ -73,6 +73,53 @@ const ManualPairing=(()=>{
     ];
     openModal(mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท',`<div class="manual-pair-form"><div class="pair-policy">จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b><span>พนักงานส่งให้หัวหน้าอนุมัติ · หัวหน้าทำเองได้เฉพาะบริษัทเดียวกัน มี BO/STM ต้นทางจริง ต่างไม่เกิน 5 บาท ไม่ต้องแนบไฟล์เพิ่ม · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label></section></div>`, '<button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit">ส่งให้หัวหน้าทีมอนุมัติ</button>');
     $('#pairCancel').onclick=closeModal;
+    // Refresh data, never the page/session or the user's draft. No automatic writes.
+    const submitButton=$('#pairSubmit');
+    let checking=false,blocked=false,saving=false,nextCheck=Date.now()+15000;
+    let statusNode=null;
+    if(typeof document!=='undefined'){
+      statusNode=document.createElement('p');statusNode.setAttribute('role','status');
+      statusNode.id='pairLiveStatus';submitButton.parentElement.prepend(statusNode);
+      const retry=document.createElement('button');retry.className='ghost-button sm';
+      retry.textContent='ตรวจสถานะล่าสุด · เก็บข้อความเดิม';
+      retry.onclick=()=>checkCurrent();submitButton.parentElement.prepend(retry);
+    }
+    async function checkCurrent(){
+      if(checking||saving)return false;
+      checking=true;submitButton.disabled=true;
+      if(statusNode)statusNode.textContent='กำลังตรวจสถานะล่าสุด — ไม่ส่งคำขอปิดซ้ำ';
+      try{
+        const {bo,stm}=sides();
+        if(!bo||!stm){blocked=false;if(statusNode)statusNode.textContent='เลือกคู่ก่อนตรวจสถานะ · ข้อความเดิมยังอยู่';return false;}
+        const fresh=await Sb.exceptionDetail(bo.id);
+        const counterpart=bo.id===stm.id?fresh:await Sb.exceptionDetail(stm.id);
+        if(typeof document!=='undefined'&&document.getElementById('pairSubmit')!==submitButton)return false;
+        if(!fresh||!counterpart)throw new Error('ไม่พบต้นทางล่าสุดตามสิทธิ์');
+        const rows=[fresh,counterpart];
+        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.manual_pair_id||r.case_closure_request_id||r.superseded_by_exception_id);
+        if(blocked){
+          const closed=rows.some(r=>['closed','approved'].includes(r.status));
+          if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการมีคำขอเดิมหรือสถานะเปลี่ยนแล้ว — ตรวจคำขอเดิมก่อน ไม่สร้างคำขอซ้ำ';
+          return false;
+        }
+        const own=fresh.id===e.dbId?fresh:counterpart,other=own===fresh?counterpart:fresh;
+        if(rows.some(r=>['system_amount','bank_amount','bo_raw','stm_raw','direction','currency','company'].some(k=>r[k]!== (r.id===bo.id?bo:stm)[k]))){
+          $('#pairChecked').checked=false;
+          if(statusNode)statusNode.textContent='ข้อมูลต้นทางเปลี่ยน — ตรวจยอดใหม่และติ๊กยืนยันอีกครั้ง ข้อความเดิมยังอยู่';
+        }else if(statusNode)statusNode.textContent='ตรวจสถานะล่าสุดแล้ว · ข้อความและไฟล์ที่เลือกยังอยู่';
+        current=own;selected=amountDifference?own:other;renderComparison();updateSubmitLabel();
+        return true;
+      }catch(err){blocked=true;if(statusNode)statusNode.textContent='ตรวจสถานะไม่ได้: '+err.message+' — รอเชื่อมต่อใหม่ในหน้านี้ ข้อความเดิมยังอยู่';return false;}
+      finally{checking=false;nextCheck=Date.now()+15000;submitButton.disabled=blocked;}
+    }
+    if(typeof document!=='undefined'&&typeof setTimeout==='function'){
+      const tick=()=>{
+        if(document.getElementById('pairSubmit')!==submitButton)return;
+        if(!saving&&!checking&&document.visibilityState!=='hidden'&&Date.now()>=nextCheck)void checkCurrent();
+        else if(!saving&&!checking&&statusNode)statusNode.textContent=statusNode.textContent.replace(/ · ตรวจอีก \d+ วินาที$/,'')+' · ตรวจอีก '+Math.max(0,Math.ceil((nextCheck-Date.now())/1000))+' วินาที';
+        setTimeout(tick,1000);
+      };setTimeout(tick,1000);
+    }
     $('#pairReasonType').onchange=()=>{
       const other=$('#pairReasonType').value==='other';
       $('#pairReasonLabel').textContent=other?'ระบุเหตุผลอื่น ๆ (อย่างน้อย 10 ตัวอักษร)':'รายละเอียดเพิ่มเติม (ถ้ามี)';
@@ -116,7 +163,8 @@ const ManualPairing=(()=>{
       renderComparison();
     }
     $('#pairSubmit').onclick=async event=>{
-      if(sent)return;
+      if(sent||saving||checking)return;
+      if(!await checkCurrent())return;
       const reasonType=$('#pairReasonType').value;
       const reasonOption=reasonOptions.find(([key])=>key===reasonType);
       const detail=$('#pairReason').value.trim();
@@ -128,7 +176,7 @@ const ManualPairing=(()=>{
       if(Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))>500)return toast('ผลต่างเกิน 5 บาท จับคู่ไม่ได้','warn');
       const file=$('#pairFile').files[0];if(mode==='cross'&&!file&&!evidenceId)return toast('ข้ามบริษัทต้องแนบหลักฐาน','warn');
       const direct=canDirectClose();
-      event.target.disabled=true;
+      saving=true;event.target.disabled=true;
       try{
         if(file&&!evidenceId)evidenceId=(await Sb.uploadCaseEvidence(e.dbId,file)).id;
         const payload={p_id:requestId,p_bo:bo.id,p_stm:stm.id,p_mode:mode,p_reason:reason,p_evidence:evidenceId};
@@ -139,7 +187,7 @@ const ManualPairing=(()=>{
         if(direct)toast('ปิดเคสและบันทึกผลอนุมัติเรียบร้อยแล้ว','success');
         else {await openException(e.id);showCaseSubmissionReceipt('request',e.id);}
       }catch(err){toast((sent?(direct?'บันทึกปิดเคสแล้ว แต่โหลดหน้าจอไม่สำเร็จ: ':'บันทึกจับคู่แล้ว แต่โหลดหน้าจอไม่สำเร็จ: '):(direct?'ยังยืนยันการปิดเคสไม่ได้ กรุณาตรวจสถานะหรือลองในหน้าต่างเดิม: ':'ยังยืนยันคำขอไม่ได้ กรุณาลองในหน้าต่างเดิมเพื่อไม่สร้างคำขอซ้ำ: '))+err.message,'warn');}
-      finally{event.target.disabled=false;}
+      finally{saving=false;event.target.disabled=sent||blocked;nextCheck=0;}
     };
   }
   async function mountReview(e,host) {
