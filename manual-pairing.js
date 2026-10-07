@@ -103,7 +103,7 @@ const ManualPairing=(()=>{
           return false;
         }
         const own=fresh.id===e.dbId?fresh:counterpart,other=own===fresh?counterpart:fresh;
-        if(rows.some(r=>['system_amount','bank_amount','bo_raw','stm_raw','direction','currency','company'].some(k=>r[k]!== (r.id===bo.id?bo:stm)[k]))){
+        if(rows.some(r=>['system_amount','bank_amount','bo_raw','stm_raw','direction','currency','company'].some(k=>JSON.stringify(r[k])!==JSON.stringify((r.id===bo.id?bo:stm)[k])))){
           $('#pairChecked').checked=false;
           if(statusNode)statusNode.textContent='ข้อมูลต้นทางเปลี่ยน — ตรวจยอดใหม่และติ๊กยืนยันอีกครั้ง ข้อความเดิมยังอยู่';
         }else if(statusNode)statusNode.textContent='ตรวจสถานะล่าสุดแล้ว · ข้อความและไฟล์ที่เลือกยังอยู่';
