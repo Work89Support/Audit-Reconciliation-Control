@@ -1,6 +1,7 @@
 /* Document review is not a company clarification request or an automatic loss. */
 const CaseClosure=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
+  let pendingLoad=null;
   const auditable=()=>Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const directCloser=()=>can('approve')&&['lead','admin','audit_assistant'].includes(state.role);
   function assistantCloseBlock(e){
@@ -27,11 +28,15 @@ const CaseClosure=(()=>{
     if(state.dataset!=='production'||!auditable())return;
     const user=Sb.authUser()?.id;
     if(queueState.user!==user)Object.assign(queueState,{rows:null,error:'',at:0,user});
-    if(queueState.loading||(!force&&Date.now()-queueState.at<60000))return;
+    if(pendingLoad)return pendingLoad;
+    if(!force&&Date.now()-queueState.at<60000)return;
     queueState.loading=true;
-    try{const rows=await Sb.pendingCaseClosures();if(Sb.authUser()?.id===user){queueState.rows=rows;queueState.error='';}}
-    catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;}}
-    finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
+    pendingLoad=(async()=>{
+      try{const rows=await Sb.pendingCaseClosures();if(Sb.authUser()?.id===user){queueState.rows=rows;queueState.error='';queueState.at=Date.now();}}
+      catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;queueState.at=0;}}
+      finally{queueState.loading=false;if(typeof renderNav==='function')renderNav();}
+    })();
+    try{await pendingLoad;}finally{pendingLoad=null;}
   }
   async function openSubmit(e,initialOutcome='no_loss'){
     if(state.dataset!=='production'||!auditable())return toast('เฉพาะ Audit ในระบบจริงส่งผลตรวจให้หัวหน้าได้','warn');
@@ -65,7 +70,8 @@ const CaseClosure=(()=>{
     };
   }
   async function mountReview(e,host){
-    if(!host||!e.closureRequestId)return;
+    if(!host)return;
+    if(!e.closureRequestId){host.textContent='เคสนี้ไม่มีคำขอรออนุมัติที่เชื่อมอยู่ กรุณารีเฟรชคิวหรือดูประวัติคำขอ ไม่ใช่ผลอนุมัติล้มเหลว';return;}
     host.textContent='กำลังโหลดผลตรวจรอหัวหน้า…';
     try{
       const q=await Sb.caseClosureRequest(e.closureRequestId);if(!q)throw Error('ไม่พบคำขอหรือไม่มีสิทธิ์');if(!host.isConnected)return;
@@ -73,7 +79,11 @@ const CaseClosure=(()=>{
       const legacyHead=own&&['lead','admin'].includes(state.role)&&q.review_origin==='audit_submission'&&q.outcome==='no_loss'&&Number(q.loss_amount)===0&&q.snapshot?.stored_document_at_submit===true;
       const directHead=(q.review_origin==='head_direct'||legacyHead)&&['lead','admin'].includes(state.role),blocked=!can('approve')||(((own&&!directHead)||state.role==='audit_assistant')&&!selfEligible(q));
       host.innerHTML=`<h3>${q.status==='pending'?'Audit ตรวจแล้ว — รอหัวหน้าปิดเคส':'ผลปิดเคส'}</h3><p><b>${h(outcomeLabel(q))}</b></p><p>${h(q.audit_reason)}</p><p>${h(q.decision_note||'')}</p><p>คำขอ ${h(q.id)} · ผู้ส่ง ${h(q.requested_by)}</p>${q.status==='pending'?`<p>${blocked?'บัญชีนี้อนุมัติไม่ได้ หรือคำขอตัวเองไม่ผ่านเงื่อนไข ต้องให้หัวหน้าอีกบัญชีตรวจ':'หัวหน้าตรวจเอกสารและผลยอดก่อนอนุมัติ — เหตุผลอนุมัติไม่บังคับ'}</p><label>เหตุผลอนุมัติ (ไม่บังคับ) / ส่งกลับต้องระบุเหตุผล<textarea id="closureHeadNote" maxlength="2000"></textarea></label><label><input type="checkbox" id="closureHeadChecked">ตรวจเอกสารและผล Audit แล้ว ยืนยัน ${h(outcomeLabel(q))}</label><button class="primary-button" id="closureApprove" ${blocked?'disabled':''}>อนุมัติ</button><button class="ghost-button" id="closureReject" ${blocked||own?'disabled':''}>ส่งกลับ Audit</button>`:''}`;
-      if(q.status!=='pending')return;
+      if(q.status!=='pending'){
+        const info=document.createElement('p');info.setAttribute('role','status');
+        info.textContent=q.status==='approved'?'คำขอนี้อนุมัติแล้ว จึงออกจากคิวรอ ไม่ต้องกดอนุมัติซ้ำ':'คำขอนี้ส่งกลับ Audit แล้ว จึงไม่อยู่ในคิวรออนุมัติ';
+        host.append(info);return;
+      }
       for(const [buttonId,action] of [['closureApprove','approve'],['closureReject','reject']])$('#'+buttonId).onclick=async event=>{
         if(blocked||!$('#closureHeadChecked').checked)return toast('ต้องตรวจหลักฐานและติ๊กยืนยันผลก่อน','warn');
         let note;try{note=approvalNote(action,$('#closureHeadNote').value);}catch(err){return toast(err.message,'warn');}
@@ -89,9 +99,28 @@ const CaseClosure=(()=>{
     if(host&&!auditable()){host.textContent='คิวนี้สำหรับ Audit และหัวหน้าเท่านั้น ผู้ชี้แจงติดตามคำตอบของตนในเมนูติดตามและอนุมัติ';return;}
     if(!host)return;await loadPending(true);if(!host.isConnected)return;
     if(queueState.rows===null){host.textContent='ยังโหลดยอดรอหัวหน้าไม่ครบ: '+queueState.error;return;}
-    let rows=queueState.rows;const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>canAccessCompany(c));
+    let rows=queueState.rows;
+    let recentHistory=[];
+    if(!rows.length){
+      try{recentHistory=(await Sb.caseClosureHistory()).filter(q=>q.status!=='pending').slice(0,6);}
+      catch(err){queueState.error='อ่านประวัติไม่สำเร็จ: '+err.message;}
+      if(!host.isConnected)return;
+    }
+    const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>canAccessCompany(c));
     host.classList.add('closure-hub');
     host.innerHTML=`<header class="closure-hub-heading"><div><p class="closure-eyebrow">ตรวจเอกสาร · อนุมัติ · ย้อนดูประวัติ</p><h3>ศูนย์รอปิดเคส</h3><p class="closure-subtitle">เปิดเคสเดิม ตรวจหลักฐาน แล้วดำเนินการตามสิทธิ์</p></div><div class="closure-pending-total"><strong>${rows.length}</strong><span>คำขอรอหัวหน้า</span></div></header><div class="closure-flow" aria-label="ขั้นตอนปิดเคส"><span><i>1</i> Audit ตรวจเอกสาร</span><span><i>2</i> ส่งหัวหน้ารอปิด</span><span><i>3</i> หัวหน้าอนุมัติ</span></div><div class="closure-filter-grid"><label for="closureQueueStatus">สถานะคำขอ<select id="closureQueueStatus"><option value="pending">รอหัวหน้าปิดเคส</option><option value="ALL">ทุกคำขอ · รวมประวัติ</option><option value="approved">อนุมัติปิดแล้ว</option><option value="rejected">ส่งกลับ Audit</option></select></label><label for="closureQueueCompany">บริษัท<select id="closureQueueCompany"><option value="ALL">ทุกบริษัทตามสิทธิ์</option>${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label for="closureQueueFrom">วันที่เคสตั้งแต่<input type="date" id="closureQueueFrom"></label><label for="closureQueueTo">ถึงวันที่<input type="date" id="closureQueueTo"></label></div><div class="closure-list-heading"><b>รายการคำขอ <span id="closureVisibleCount"></span></b><span>เคสเดิมและเอกสารยังอยู่ในภาพรวม</span></div><div id="closureQueueRows" class="closure-card-list" aria-live="polite"></div><p class="closure-history-note">การส่งหัวหน้ารอปิดไม่ส่งงานให้ผู้ชี้แจงซ้ำ · อนุมัติสำเร็จจึงถือว่าปิดเคส · ย้อนดูรายละเอียดและหลักฐานได้เสมอ</p>`;
+    const queueActions=document.createElement('div');
+    const retry=document.createElement('button');retry.className='ghost-button sm';retry.textContent='รีเฟรชคิวจากฐานข้อมูล';
+    retry.onclick=async()=>{retry.disabled=true;try{await mountQueue(host);}finally{retry.disabled=false;}};
+    queueActions.append(retry);host.querySelector('.closure-hub-heading').append(queueActions);
+    if(recentHistory.length){
+      const info=document.createElement('p');info.setAttribute('role','status');
+      info.textContent='ไม่มีคำขอรอในฐานข้อมูลขณะตรวจ ประวัติคำขอล่าสุด: '+recentHistory.map(q=>(q.company||'')+' '+(q.snapshot?.code||q.exception_id)+' ('+(q.status==='approved'?'อนุมัติแล้ว':'ส่งกลับ Audit')+')').join(' · ');
+      const historyButton=document.createElement('button');historyButton.className='ghost-button sm';historyButton.textContent='ดูคำขอที่อนุมัติแล้วและประวัติ';
+      historyButton.onclick=()=>{const select=$('#closureQueueStatus');select.value='ALL';select.onchange({target:select});};
+      host.querySelector('.closure-list-heading').before(info,historyButton);
+    }
+    if(queueState.error){const info=document.createElement('p');info.setAttribute('role','alert');info.textContent=queueState.error;host.querySelector('.closure-list-heading').before(info);}
     const draw=()=>{
       const company=$('#closureQueueCompany').value,from=$('#closureQueueFrom').value,to=$('#closureQueueTo').value;
       if(from&&to&&from>to){$('#closureVisibleCount').textContent='';$('#closureQueueRows').innerHTML='<div class="closure-empty" role="status">วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด</div>';return;}
@@ -104,7 +133,10 @@ const CaseClosure=(()=>{
         return `<article class="closure-case-card"><div class="closure-case-top"><div><span class="closure-company">${h(q.company)}</span><h4>${h(q.snapshot?.code||q.exception_id)}</h4><span class="closure-case-date">วันที่เคส ${h(date)}</span></div><span class="closure-state ${q.status==='approved'?'is-approved':q.status==='pending'?'is-pending':'is-returned'}">${h(statusText)}</span></div><div class="closure-case-amounts"><div><span>ยอด BO</span><strong>${h(amount(q.snapshot?.system_amount))}</strong></div><div><span>ยอด STM / PM</span><strong>${h(amount(q.snapshot?.bank_amount))}</strong></div><div class="closure-outcome ${q.outcome==='no_loss'?'is-zero':'is-loss'}"><span>ผลตรวจที่เสนอ</span><strong>${h(outcomeLabel(q))}</strong></div></div><div class="closure-case-bottom"><div><span>ผลตรวจ Audit / หลักฐานอ้างอิง</span><p>${h(q.audit_reason||'ไม่ระบุ')}</p></div><button class="${q.status==='pending'?'primary-button':'ghost-button'} sm" data-closure-open="${h(q.exception_id)}">${q.status==='pending'?'เปิดเคสเพื่อตรวจ':'ดูรายละเอียดและประวัติ'} →</button>${q.status==='pending'&&can('approve')?`<button class="primary-button sm" data-closure-review="${h(q.exception_id)}">อนุมัติ</button>`:''}</div></article>`;
       }).join('')||'<div class="closure-empty"><b>ไม่มีคำขอตามตัวกรองนี้</b><p>เคสที่แนบเอกสารอย่างเดียว ยังต้องให้ Audit ตรวจผลและส่งหัวหน้าก่อน<br>ดูเคสเดิมได้ในรายการภาพรวมด้านล่าง หรือเลือกสถานะ “ทุกคำขอ” เพื่อดูประวัติ</p></div>';
       host.querySelectorAll('[data-closure-open]').forEach(b=>b.onclick=()=>openEvidenceRelatedCase(b.dataset.closureOpen,{focusFiles:true}).catch(err=>toast(err.message,'warn')));
-      host.querySelectorAll('[data-closure-review]').forEach(b=>b.onclick=()=>openApprovalReview(b.dataset.closureReview,'closure').catch(err=>toast(err.message,'warn')));
+      host.querySelectorAll('[data-closure-review]').forEach(b=>b.onclick=()=>{
+        const q=visible.find(q=>q.exception_id===b.dataset.closureReview);
+        return openApprovalReview(b.dataset.closureReview,'closure',q?.id).catch(err=>toast(err.message,'warn'));
+      });
     };
     ['closureQueueCompany','closureQueueFrom','closureQueueTo'].forEach(id=>$('#'+id).onchange=draw);
     $('#closureQueueStatus').onchange=async event=>{const status=event.target.value;$('#closureQueueRows').textContent='กำลังอ่านประวัติจริง…';try{const all=await Sb.caseClosureHistory();if(!host.isConnected||$('#closureQueueStatus').value!==status)return;rows=all.filter(q=>status==='ALL'||q.status===status);draw();}catch(err){if(host.isConnected)$('#closureQueueRows').textContent='อ่านประวัติไม่สำเร็จ: '+err.message;}};draw();
