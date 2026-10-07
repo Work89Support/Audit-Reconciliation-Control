@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+(async()=>{
+  let release,calls=0,fail=false;
+  const ctx={state:{dataset:'production',role:'lead'},Sb:{signedIn:()=>true,authUser:()=>({id:'head'}),pendingCaseClosures:()=>{calls++;if(fail)return Promise.reject(Error('offline'));return new Promise(resolve=>{release=resolve;});}},window:{},renderNav:()=>{}};
+  const source=fs.readFileSync('case-closure.js','utf8');
+  vm.runInNewContext(source+'\nwindow.closure=CaseClosure;',ctx);
+  const c=ctx.window.closure;
+  c.queueState.rows=[{id:'stale'}];
+  const first=c.loadPending(true),second=c.loadPending(true);
+  let done=false;second.then(()=>{done=true;});
+  await Promise.resolve();assert.equal(done,false,'Concurrent render must wait for the current database read');
+  assert.equal(calls,1);release([]);await Promise.all([first,second]);
+  assert.equal(c.queueState.rows.length,0);
+  fail=true;await c.loadPending(true);assert.equal(c.queueState.rows,null);assert.equal(c.queueState.at,0);
+  assert.match(c.queueState.error,/offline/,'Failure must not become an empty successful queue');
+  const host={textContent:''};await c.mountReview({},host);assert.match(host.textContent,/ไม่มีคำขอ/);
+  assert.match(source,/recentHistory/);assert.match(source,/ดูคำขอที่อนุมัติแล้วและประวัติ/);
+  assert.match(source,/openApprovalReview\(b.dataset.closureReview,'closure',q\?\.id\)/);
+  console.log('Closure queue freshness: shared in-flight read, explicit error, missing pointer message and request identity passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

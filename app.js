@@ -4092,11 +4092,13 @@ async function openException(id, options = {}) {
     }
   });
 }
-async function openApprovalReview(exceptionId, kind) {
+async function openApprovalReview(exceptionId, kind, requestId) {
   if (!can('approve')) return toast('เฉพาะหัวหน้าทีม / ผู้ดูแลระบบอนุมัติได้', 'warn');
   const row = await Sb.exceptionDetail(exceptionId);
   if (!row) throw new Error('ไม่พบเคสของคำขอนี้ กรุณารีเฟรชคิว');
   const e = mapLiveException(row);
+  // The queue identifies a request, not just a case whose pointer may change.
+  if (kind === 'closure' && requestId) e.closureRequestId = requestId;
   openModal('อนุมัติ', '<div id="approvalQueueReview"></div>', '<button class="ghost-button" id="approvalReviewEvidence">ดูรายละเอียดและหลักฐาน</button><button class="ghost-button" id="approvalReviewCancel">ยกเลิก</button>');
   $('#approvalReviewCancel').onclick = closeModal;
   $('#approvalReviewEvidence').onclick = async () => {
