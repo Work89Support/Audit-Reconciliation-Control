@@ -356,6 +356,10 @@ const ReviewOverview = (() => {
       } catch(e){if(g===generation&&isActive())draw('บันทึกแล้ว แต่โหลดผลล่าสุดไม่ได้ กรุณารีเฟรช: '+e.message);}
     }
     async function refresh(){const g=++generation;selected.clear();data=null;view=null;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
+    root.auditRefreshInPlace=async()=>{
+      if(!isActive()||instances.get(root)!==instance)return false;
+      await refreshInPlace();return true;
+    };
     await refresh();
     return ()=>{generation++;};
   }

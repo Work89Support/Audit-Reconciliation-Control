@@ -646,7 +646,7 @@ async function completeQuickClose(e) {
   closeModal();
   toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
   renderNav();
-  render();
+  await refreshCaseView();
   await openException(e.id);
 }
 
@@ -1048,6 +1048,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   },
 });
 function showLoginGate(message) {
+  $('#accessCheckRetry')?.remove();
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
   $("#loginForm").hidden = false;
@@ -4107,14 +4108,21 @@ async function openApprovalReview(exceptionId, kind) {
   await (kind === 'pair' ? ManualPairing : CaseClosure).mountReview(e, host);
 }
 
+async function refreshCaseView() {
+  const root = $('#viewRoot');
+  const refresh = root?.auditRefreshInPlace;
+  if (typeof refresh === 'function' && await refresh() !== false) return;
+  const x = window.scrollX, y = window.scrollY;
+  render();
+  window.scrollTo(x, y);
+}
 async function finishApprovalReview() {
   // A saved decision must not reopen the old case or send the head away
   // from the queue. A refresh failure is not a failed database decision.
   closeModal();
   closeDrawer();
   try {
-    if (state.route !== 'approvals') go('approvals');
-    else render();
+    await refreshCaseView();
     await loadLiveOverview(true);
     return true;
   }
@@ -8215,7 +8223,11 @@ async function applyAuthenticatedRole() {
     if (!bootstrapRole) throw error;
     access = { email, full_name: email, role: bootstrapRole, active: true, companies: ["*"], migration_pending: true };
   }
-  if (!access?.active) throw new Error("บัญชีนี้ถูกระงับหรือยังไม่ได้กำหนดสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ");
+  if (!access?.active) {
+    const error = new Error("บัญชีนี้ถูกระงับหรือยังไม่ได้กำหนดสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ");
+    error.code = 'APP_ACCESS_DENIED';
+    throw error;
+  }
   const requested = ROUTE_ROLES[access.role] ? access.role : "monitor";
   state.role = requested;
   state.access = {
@@ -8243,8 +8255,18 @@ async function enterProductionApp() {
   try {
     await applyAuthenticatedRole();
   } catch (error) {
-    Sb.signOut();
-    showLoginGate(error.message || "ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้ได้");
+    if (error.code === 'APP_ACCESS_DENIED') {
+      Sb.signOut();
+      showLoginGate(error.message);
+    } else {
+      showLoginGate('ยังตรวจสอบสิทธิ์ไม่ได้ — ไม่ได้ออกจากระบบ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'));
+      const retry = document.createElement('button');
+      retry.id = 'accessCheckRetry';
+      retry.type = 'button';
+      retry.textContent = 'ลองตรวจสิทธิ์และกลับหน้างานเดิม';
+      retry.onclick = async () => { retry.disabled = true; try { await enterProductionApp(); } finally { retry.disabled = false; } };
+      $('#loginError').after(retry);
+    }
     return false;
   }
   $("#loginGate").hidden = true;
