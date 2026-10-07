@@ -1689,15 +1689,11 @@ const Engine = (() => {
     };
     const rescueCandidates = new Map();
     const rescuePeers = new Map();
-    const rescueGroupKey = (r) => [
-      String(r.company || r.subco || "").trim().toUpperCase(),
-      r.date || "", r.account || "", Number(r.amount || 0).toFixed(2), r.direction || "",
-    ].join("|");
-    const rescueStmGroupCount = new Map();
-    const rescueBoGroupCount = new Map();
-    stmLeft2.forEach((s) => rescueStmGroupCount.set(rescueGroupKey(s), (rescueStmGroupCount.get(rescueGroupKey(s)) || 0) + 1));
-    boRecords.forEach((b, ci) => {
-      if (!boUsed[ci]) rescueBoGroupCount.set(rescueGroupKey(b), (rescueBoGroupCount.get(rescueGroupKey(b)) || 0) + 1);
+    const rescueGroupKey = (r) => [auditCompanyOf(r),r.date,r.account,r.amount,r.direction].join('|');
+    const rescueStmGroupCount = new Map(), rescueBoGroupCount = new Map();
+    stmLeft2.forEach(s => rescueStmGroupCount.set(rescueGroupKey(s),(rescueStmGroupCount.get(rescueGroupKey(s))||0)+1));
+    boRecords.forEach((b,ci) => {
+      if (!boUsed[ci]) rescueBoGroupCount.set(rescueGroupKey(b),(rescueBoGroupCount.get(rescueGroupKey(b))||0)+1);
     });
     const rescueEligible = (s, b) => sameCompany(s, b)
       && !!String(s.company || s.subco || "").trim()
@@ -1711,7 +1707,8 @@ const Engine = (() => {
       && !s.noTime && !b.noTime
       && Number.isFinite(s.sec) && Number.isFinite(b.sec)
       && (timeVarianceAutoPassCompanies.has(auditCompanyOf(s)) || timeDistance(s, b) < 3600)
-      && rescueStmGroupCount.get(rescueGroupKey(s)) === rescueBoGroupCount.get(rescueGroupKey(b))
+      && (isSys123NormalBankPair(s,b)
+        || rescueStmGroupCount.get(rescueGroupKey(s)) === rescueBoGroupCount.get(rescueGroupKey(b)))
       && !rescueCustomerConflict(s, b);
     stmLeft2.forEach((s) => {
       const list = (exactIdx.get(key2(s.account, s.amount)) || [])
@@ -1723,6 +1720,29 @@ const Engine = (() => {
         if (!peers) rescuePeers.set(ci, (peers = []));
         peers.push({ s, dt });
       });
+    });
+    // Balance the connected identity/time candidate group, not every equal
+    // amount on this account/day. An unrelated customer's missing BO must not
+    // block two independently identifiable receipts. Surplus compatible rows
+    // still block the entire component; equal-distance ties remain blocked.
+    const rescueBalanced = new Set();
+    const rescueVisited = new Set();
+    stmLeft2.forEach((start) => {
+      if (rescueVisited.has(start)) return;
+      const statements = new Set(), backoffice = new Set(), pending = [start];
+      while (pending.length) {
+        const s = pending.pop();
+        if (statements.has(s)) continue;
+        statements.add(s);
+        rescueVisited.add(s);
+        for (const { ci } of rescueCandidates.get(s) || []) {
+          if (backoffice.has(ci)) continue;
+          backoffice.add(ci);
+          for (const peer of rescuePeers.get(ci) || []) pending.push(peer.s);
+        }
+      }
+      if (backoffice.size > 0 && statements.size === backoffice.size)
+        statements.forEach((s) => rescueBalanced.add(s));
     });
     const uniqueNearest = (rows, valueOf) => {
       if (!rows.length) return null;
@@ -1737,7 +1757,7 @@ const Engine = (() => {
     };
     const rescuedStm = new Set();
     stmLeft2.forEach((s) => {
-      if (rescuedStm.has(s)) return;
+      if (rescuedStm.has(s) || !rescueBalanced.has(s)) return;
       const ci = uniqueNearest(rescueCandidates.get(s) || [], (row) => row.ci);
       if (ci == null || boUsed[ci]) return;
       const reciprocal = uniqueNearest(rescuePeers.get(ci) || [], (row) => row.s);
