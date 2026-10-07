@@ -550,10 +550,21 @@
       });
       container.querySelectorAll('[data-live-file]').forEach(b=>b.onclick=()=>opts.onFile?.(files.find(f=>f.id===b.dataset.liveFile),date,company));
     }
-    async function load(){
-      const g=++generation;data=null;files=[];error='';fileError='';loading=true;page=0;draw();
+    async function load({preserveView=false}={}){
+      const g=++generation;if(!preserveView){data=null;files=[];page=0;}error='';fileError='';loading=true;draw();
       try{if(!opts.signedIn())throw new Error('กรุณาเข้าสู่ระบบจริงก่อนอ่านข้อมูล Audit');const next=await opts.load(company,date);if(!alive()||g!==generation)return;if(!Array.isArray(next?.cases))throw new Error('รูปแบบผลกระทบยอดไม่ถูกต้อง');data=next;if(next.run?.id&&opts.loadFiles){try{files=await opts.loadFiles(next.run.id);if(!alive()||g!==generation)return;const operatorErrors=await hydrateBoOperators(next,files,opts.readBoRecords);if(operatorErrors?.length)fileError='อ่านชื่อผู้ดำเนินการไม่ครบ: '+operatorErrors.join(' · ');}catch(e){fileError=`โหลดทะเบียนไฟล์ไม่ได้: ${e.message}`;}}}catch(e){error=e.message;}finally{if(alive()&&g===generation){loading=false;draw();}}
     }
+    container.auditRefreshInPlace=async()=>{
+      if(!alive())return false;
+      const table=container.querySelector('.mc8-scroll'),top=table?.scrollTop||0,left=table?.scrollLeft||0;
+      const x=window.scrollX,y=window.scrollY;
+      await load({preserveView:true});
+      if(!alive())return false;
+      const next=container.querySelector('.mc8-scroll');if(next){next.scrollTop=top;next.scrollLeft=left;}
+      window.scrollTo(x,y);
+      if(error)throw Error(error);
+      return true;
+    };
     load();
   }
   root.MC8LiveSheets={mount,hydrateBoOperators,rowsOf,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
