@@ -92,9 +92,9 @@ const ReviewOverview = (() => {
     const withinHour=!p&&e?.ex_type==='time_diff'&&/^\d{4}-\d{2}-\d{2}$/.test(e.bo_date||'')&&e.bo_date===e.stm_date
       &&typeof seconds==='number'&&Number.isFinite(seconds)&&Math.abs(seconds)<=3600;
     const reason=e?.status==='closed'?'Audit ยืนยันปิดแล้ว — ดูเหตุผลและหลักฐานการปิดเคส':withinHour?'เวลาอยู่ใน 60 นาที แต่ระบบยังไม่ยืนยันคู่ — ตรวจข้อมูลลูกค้า เลขอ้างอิง และคู่ซ้ำ':(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'');
-    return [p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('bo'),...side('stm'),seconds==null?'ไม่มีเวลา':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
+    return [p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('stm'),...side('bo'),seconds==null?'ไม่มีเวลา':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
   }
-  const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'BO · '+h),...detailHeaders.map(h=>'STM/PM · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
+  const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'STM/PM · '+h),...detailHeaders.map(h=>'BO · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
   const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
   function columnValue(row,i) {
     if(i===26)return row.case?'เปิดหลักฐาน / เมล':'คู่สำเร็จ ยังไม่ยืนยัน Audit';
@@ -105,7 +105,7 @@ const ReviewOverview = (() => {
     }
     return sheetRow(row)[i];
   }
-  function filterColumns(rows,rules={},sort={column:5,direction:'asc'}) {
+  function filterColumns(rows,rules={},sort={column:14,direction:'asc'}) {
     const cell=(r,i)=>columnValue(r,Number(i));
     const filtered=rows.filter(r=>Object.entries(rules).every(([i,f])=>{
       const raw=cell(r,i),s=String(raw??'').toLowerCase(),v=String(f.value??'').trim().toLowerCase();
@@ -124,7 +124,7 @@ const ReviewOverview = (() => {
       const i=Number(sort.column),v=cell(r,i);
       if(i===5||i===14){
         const valid=x=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(x));
-        return valid(v)?v:(i===5&&valid(cell(r,14))?cell(r,14):null);
+        return valid(v)?v:(i===14&&valid(cell(r,5))?cell(r,5):null);
       }
       return v;
     };
@@ -135,7 +135,9 @@ const ReviewOverview = (() => {
       return sort.direction==='desc'?-n:n;
     });
   }
-  const columnKey='audit-sheet-columns-v1';
+  const columnKey='audit-sheet-columns-v2-stm-first';
+  // Carry hidden-column preferences by meaning, not the old physical index.
+  const migrateHidden=value=>normalizeHidden(value).map(i=>i>=5&&i<=13?i+9:i>=14&&i<=22?i-9:i);
   const compactHidden=[2,9,11,12,13,18,20,21,22,25];
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
@@ -145,7 +147,7 @@ const ReviewOverview = (() => {
     date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
-    let columnRules={},columnSort={column:5,direction:'asc'};
+    let columnRules={},columnSort={column:14,direction:'asc'};
     let preliminaryOnly=false;
     const selected=new Set();
     let pendingActions=new Map(), statusSelected=new Set();
@@ -153,7 +155,10 @@ const ReviewOverview = (() => {
     try { const saved=sessionStorage.getItem(dateKey); if(/^\d{4}-\d{2}-\d{2}$/.test(saved||'')) date=scopedDate(saved); } catch(_) {}
     onDateChange?.(date);
     let hidden=[];
-    try { hidden=normalizeHidden(JSON.parse(localStorage.getItem(columnKey))); } catch (_) {}
+    try {
+      const saved=localStorage.getItem(columnKey);
+      hidden=saved===null?migrateHidden(JSON.parse(localStorage.getItem('audit-sheet-columns-v1'))):normalizeHidden(JSON.parse(saved));
+    } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
     const savedView=workspaces.get(company+'|'+date);
     if(savedView){Object.assign(values,savedView.values);columnRules=savedView.columnRules;columnSort=savedView.columnSort;page=savedView.page;preliminaryOnly=savedView.preliminaryOnly;pendingActions=savedView.pendingActions;statusSelected=savedView.statusSelected;}
@@ -195,7 +200,7 @@ const ReviewOverview = (() => {
       const table=root.querySelector('.review-overview-table');
       table.classList.add('audit-sheet');
       if(typeof EvidenceRecommendations!=='undefined' && onRecommendation) EvidenceRecommendations.decorateRows(table,rows.slice(page*50,page*50+50),data?.recommendationLinks,data?.run?.id,onRecommendation);
-      table.querySelector('thead').innerHTML=`<tr><th colspan="5">ผลตรวจระบบ / Audit</th><th colspan="9" class="bo-group">BO / ระบบ</th><th colspan="9" class="stm-group">STM / PM</th><th colspan="4">ผลเทียบ / หลักฐาน</th></tr><tr>${[...sheetHeaders,'เอกสารอ้างอิง'].map(x=>`<th>${escape(x)}</th>`).join('')}</tr>`;
+      table.querySelector('thead').innerHTML=`<tr><th colspan="5">ผลตรวจระบบ / Audit</th><th colspan="9" class="stm-group">STM / PM</th><th colspan="9" class="bo-group">BO / ระบบ</th><th colspan="4">ผลเทียบ / หลักฐาน</th></tr><tr>${[...sheetHeaders,'เอกสารอ้างอิง'].map(x=>`<th>${escape(x)}</th>`).join('')}</tr>`;
       const toolbar=document.createElement('div'); toolbar.className='audit-sheet-tools';
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
@@ -302,7 +307,7 @@ const ReviewOverview = (() => {
         };
       });
       const active=document.createElement('div');active.className='sheet-active-filters';
-      active.innerHTML=`<span>เรียง: ${escape(allHeaders[columnSort.column])} ${columnSort.direction==='asc'?'↑':'↓'}${columnSort.column===5?' (ไม่มี BO ใช้เวลา STM/PM · ไม่มีเวลาอยู่ท้าย)':''}</span>${Object.entries(columnRules).map(([i,f])=>`<button type="button" data-clear-column="${i}">${escape(allHeaders[i])}: ${escape(({contains:'มี',equals:'=',gte:'≥',lte:'≤',blank:'ว่าง',filled:'ไม่ว่าง'})[f.op])} ${escape(f.value||'')} ×</button>`).join('')}<button type="button" data-clear-all>ล้างตัวกรองทุกช่อง</button>`;
+      active.innerHTML=`<span>เรียง: ${escape(allHeaders[columnSort.column])} ${columnSort.direction==='asc'?'↑':'↓'}${columnSort.column===14?' (ไม่มี BO ใช้เวลา STM/PM · ไม่มีเวลาอยู่ท้าย)':''}</span>${Object.entries(columnRules).map(([i,f])=>`<button type="button" data-clear-column="${i}">${escape(allHeaders[i])}: ${escape(({contains:'มี',equals:'=',gte:'≥',lte:'≤',blank:'ว่าง',filled:'ไม่ว่าง'})[f.op])} ${escape(f.value||'')} ×</button>`).join('')}<button type="button" data-clear-all>ล้างตัวกรองทุกช่อง</button>`;
       toolbar.after(active);
       active.querySelectorAll('[data-clear-column]').forEach(b=>b.onclick=()=>{delete columnRules[b.dataset.clearColumn];page=0;draw();});
       active.querySelector('[data-clear-all]').onclick=()=>{columnRules={};page=0;draw();};
