@@ -1048,7 +1048,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   },
 });
 function showLoginGate(message) {
-  $('#accessCheckRetry')?.remove();
+  $('#connectionGate').hidden = true;
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
   $("#loginForm").hidden = false;
@@ -1062,7 +1062,23 @@ function showLoginGate(message) {
   }
 }
 
+function showConnectingGate(message, retryAction) {
+  $('#loginGate').hidden = true;
+  $('#appShell').hidden = true;
+  $('#connectionGate').hidden = false;
+  $('#connectionMessage').textContent = message || 'กำลังคืนสถานะเข้าสู่ระบบและตรวจสิทธิ์ กรุณารอสักครู่ ไม่ต้องเข้าสู่ระบบซ้ำ';
+  const retry = $('#accessCheckRetry');
+  retry.hidden = !retryAction;
+  retry.disabled = false;
+  retry.onclick = retryAction ? async () => {
+    if (retry.disabled) return;
+    retry.disabled = true;
+    try { await retryAction(); } finally { retry.disabled = false; }
+  } : null;
+}
+
 function showPasswordResetGate() {
+  $('#connectionGate').hidden = true;
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
   $("#loginForm").hidden = true;
@@ -8246,6 +8262,7 @@ async function applyAuthenticatedRole() {
 }
 
 async function enterProductionApp() {
+  showConnectingGate('กำลังตรวจสิทธิ์และกลับหน้าทำงานเดิม กรุณารอสักครู่');
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
   if (!email) {
@@ -8261,16 +8278,11 @@ async function enterProductionApp() {
       Sb.signOut();
       showLoginGate(error.message);
     } else {
-      showLoginGate('ยังตรวจสอบสิทธิ์ไม่ได้ — ไม่ได้ออกจากระบบ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'));
-      const retry = document.createElement('button');
-      retry.id = 'accessCheckRetry';
-      retry.type = 'button';
-      retry.textContent = 'ลองตรวจสิทธิ์และกลับหน้างานเดิม';
-      retry.onclick = async () => { retry.disabled = true; try { await enterProductionApp(); } finally { retry.disabled = false; } };
-      $('#loginError').after(retry);
+      showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp());
     }
     return false;
   }
+  $('#connectionGate').hidden = true;
   $("#loginGate").hidden = true;
   $("#appShell").hidden = false;
   state.route = parseHash();
