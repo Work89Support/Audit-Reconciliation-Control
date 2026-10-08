@@ -2804,7 +2804,7 @@ async function loadLiveIntake(force = false) {
   liveIntakeState.key = key;
   render();
   try {
-    liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company });
+    liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, force });
     liveIntakeState.updatedAt = new Date();
   } catch (e) {
     liveIntakeState.error = e.message || "โหลดทะเบียนไฟล์จริงไม่สำเร็จ";
@@ -6005,7 +6005,7 @@ async function cloudLoad(force = false) {
   const to = state.filters.to || DB.BUSINESS_DATE;
   const from = state.filters.from || to;
   const result = await Promise.allSettled([
-    Sb.batches({ from, to, company: state.filters.company }),
+    Sb.batches({ from, to, company: state.filters.company, force }),
     Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
     Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
   ]);
@@ -6130,7 +6130,7 @@ VIEWS.cloud = (root) => {
   }
 
   if ((cloudState.batches === null || cloudState.key !== cloudQueryKey()) && !cloudState.loading) {
-    cloudLoad(cloudState.key !== cloudQueryKey());
+    cloudLoad();
   }
 
   const batches = cloudState.batches || [];
@@ -6159,6 +6159,11 @@ VIEWS.cloud = (root) => {
   const visibleBatches = batches.map((batch) => ({ ...batch, source_files: (batch.source_files || []).filter(visibleFile) })).filter((batch) => batch.source_files.length);
   const daily = cloudState.daily || [];
   const operations = cloudState.operations || [];
+  const fileSnapshot = Sb.fileSnapshotInfo({
+    from: state.filters.from || state.filters.to || DB.BUSINESS_DATE,
+    to: state.filters.to || DB.BUSINESS_DATE,
+    company: state.filters.company,
+  });
   const jobLabel = { waiting_files: "รอไฟล์", ready: "พร้อม", queued: "เข้าคิว", running: "กำลังรัน", completed: "สำเร็จ", needs_review: "ต้องตรวจสอบ", error: "ล้มเหลว" };
   const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
 
@@ -6229,6 +6234,7 @@ VIEWS.cloud = (root) => {
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>อ่านไฟล์ที่เลือก ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
       </div>
+      <p class="hint" role="status">สแนปช็อตทะเบียนไฟล์ในแท็บนี้${fileSnapshot ? ' · บันทึกเมื่อ ' + h(new Date(fileSnapshot.updatedAt).toLocaleString('th-TH')) : ''} · เปลี่ยนหน้าใช้ข้อมูลเดิม · ตัวอย่างต้นฉบับพักในหน่วยความจำไม่เกิน 5 นาที · กดรีเฟรชเพื่ออ่านทะเบียนล่าสุด · ไม่ใช่การยืนยันสถานะปิดเคส</p>
       <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
         ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["review", "อ่านแล้ว · รอเทียบ BO", reviewFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>
