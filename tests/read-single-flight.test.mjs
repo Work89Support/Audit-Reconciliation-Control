@@ -49,6 +49,8 @@ releases.splice(0).forEach(release=>release());
 await rejected;
 assert.equal(api.signedIn(),false);
 const review=fs.readFileSync(new URL('../review-overview.js',import.meta.url),'utf8');
+assert.match(review,/toolbar\.querySelector\('#overviewExport'\)\.onclick/,'export handler targets only export, not the prepended cross-day button');
+assert.doesNotMatch(review,/toolbar\.querySelector\('button'\)\.onclick/);
 assert.match(review,/async function refreshInPlace\(\{afterSave=false\}=\{\}\)/);
 assert.match(review,/afterSave\?'บันทึกแล้ว แต่':''/);
 assert.match(review,/ยังไม่สรุปว่าไม่มีเคส/);
