@@ -44,7 +44,7 @@ const ManualPairing=(()=>{
   async function refresh(ids) {
     for(const id of ids){const row=await Sb.exceptionDetail(id);const index=DB.exceptions.findIndex(e=>e.dbId===id);if(row&&index>=0)Object.assign(DB.exceptions[index],mapLiveException(row));}
     await loadPending(true);
-    render();
+    await refreshCaseView();
   }
   async function open(e,mode) {
     if(!canSubmit())return toast('เฉพาะเจ้าหน้าที่ Audit ในระบบจริงส่งคำขอได้','warn');
