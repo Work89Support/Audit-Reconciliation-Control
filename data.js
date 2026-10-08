@@ -81,7 +81,7 @@ const DB = (() => {
     lead: {
       name: "Audit Lead",
       desc: "ตรวจทาน อนุมัติ ปิดเคส ปิดรอบความเสียหาย",
-      can: ["view", "note", "status", "request_clarify", "respond", "approve", "close_case", "close_cycle", "export", "rules"],
+      can: ["view", "note", "status", "request_clarify", "respond", "attach", "approve", "close_case", "close_cycle", "export", "rules"],
     },
     shift_lead: {
       name: "ผู้ชี้แจงบริษัท",

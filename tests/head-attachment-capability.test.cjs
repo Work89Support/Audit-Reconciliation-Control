@@ -1,0 +1,12 @@
+const fs=require('node:fs');
+const vm=require('node:vm');
+const assert=require('node:assert/strict');
+const data=fs.readFileSync(require.resolve('../data.js'),'utf8');
+const ctx={};vm.createContext(ctx);
+vm.runInContext(data+'\nthis.testRoles=DB.roles;',ctx);
+assert.ok(ctx.testRoles.lead.can.includes('attach'));
+assert.ok(!ctx.testRoles.exec.can.includes('attach'));
+const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
+assert.match(app,/accept="image\/\*,\.pdf,\.docx,\.csv,\.xlsx,\.txt"/);
+assert.match(app,/การแนบไม่ใช่การอนุมัติหรือปิดเคส/);
+console.log('Head explicit attachment capability; Word picker; read-only role unchanged');
