@@ -6,6 +6,15 @@ const ReviewOverview = (() => {
   const workspaces = new Map();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
+  function closureReviewAction(row) {
+    if (row.status === 'open') return {action:'close',label:'ยืนยันปิดเคส',enabled:true};
+    if (['answered','clarifying','pair_pending'].includes(row.status)) return {
+      action:'review', enabled:true,
+      label:row.manual_pair_id||row.case_closure_request_id||row.status==='pair_pending'
+        ? 'ตรวจคำขอรออนุมัติ' : row.status==='answered'?'ตรวจคำชี้แจง / ปิดเคส':'ตรวจหลักฐานก่อนปิด',
+    };
+    return {action:'review',label:'ปิดเคสแล้ว / ดูประวัติ',enabled:false};
+  }
   const splitHeaders=['อ้างอิง PM','Provider','บัญชีจ่ายยอดซอย','ยอดขอถอน','PM จ่ายจริง','BO ยอดซอย','ธนาคารจ่ายจริง','PM + ธนาคาร','ต่างจากคำขอ','สถานะ / สิ่งที่ต้องตรวจ'];
   function splitRows(data,values={}) {
     const summary=data?.run?.summary||{},pairs=summary.match_evidence||[];
@@ -323,12 +332,17 @@ const ReviewOverview = (() => {
         const clarify=el.querySelector('option[value="clarify"]');
         clarify.textContent='ส่งขอชี้แจง…';
         clarify.disabled=!['open','answered'].includes(row.status);
-        el.querySelector('option[value="close"]').disabled=row.status!=='open';
+        const closure = closureReviewAction(row);
+        const closeOption=el.querySelector('option[value="close"]');
+        closeOption.disabled=!closure.enabled;
+        closeOption.textContent=closure.label+'…';
+        if(closure.action==='review')closeOption.value='review';
         const actions=document.createElement('div');actions.className='case-actions';
         for(const [action,label] of [['close','ยืนยันปิดเคส'],['clarify','ส่งขอชี้แจง']]){
           const button=document.createElement('button');button.type='button';button.className='ghost-button xs';button.textContent=label;
-          button.disabled=el.querySelector(`option[value="${action}"]`).disabled;
-          button.onclick=event=>{event.stopPropagation();act(row,action);};
+          button.disabled=action==='close'?!closure.enabled:clarify.disabled;
+          if(action==='close')button.textContent=closure.label;
+          button.onclick=event=>{event.stopPropagation();act(row,action==='close'?closure.action:action);};
           actions.append(button);
         }
         el.after(actions);
@@ -363,6 +377,6 @@ const ReviewOverview = (() => {
     await refresh();
     return ()=>{generation++;};
   }
-  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue,splitRows,splitHtml,splitHeaders};
+  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue,splitRows,splitHtml,splitHeaders,closureReviewAction};
 })();
 if (typeof module !== 'undefined') module.exports = ReviewOverview;

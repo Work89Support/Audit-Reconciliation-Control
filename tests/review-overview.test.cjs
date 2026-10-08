@@ -1,5 +1,14 @@
 const assert = require('node:assert/strict');
 const {model,filter,caseState}=require('../review-overview.js');
+const {closureReviewAction}=require('../review-overview.js');
+for(const status of ['answered','clarifying','pair_pending']) {
+  const action=closureReviewAction({status});
+  assert.equal(action.enabled,true);
+  assert.equal(action.action,'review','existing clarification must open review, never batch-close');
+}
+assert.equal(closureReviewAction({status:'open'}).action,'close');
+assert.equal(closureReviewAction({status:'closed'}).enabled,false);
+assert.match(closureReviewAction({status:'answered',case_closure_request_id:'request'}).label,/รออนุมัติ/);
 const evidence=[{direction:'deposit',account:'AUTOPEER',customer:{bo:{account:'0012345678'}}},{direction:'withdraw',account:'SCB',manualReview:true}];
 const data={run:{matched:10,summary:{match_evidence:evidence}},cases:[{id:'1',status:'open',direction:'ฝาก',account:'SCB'},{id:'2',status:'clarifying',direction:'ถอน',account:'SCB'},{id:'3',status:'closed',direction:'ฝาก',account:'AUTOPEER'}]};
 const m=model(data);
