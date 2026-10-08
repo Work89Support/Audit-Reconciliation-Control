@@ -18,6 +18,55 @@ const Sb = (() => {
   let refreshInFlight = null;
   let refreshRetryAt = 0;
   const REFRESH_RETRY_KEY = "audit-sb-refresh-retry-at";
+  // Read-only, tab-local snapshots. Never persist financial data or cache
+  // approval RPCs. Scope to the authenticated user and project, not tokens.
+  const fileSnapshots = new Map();
+  const fileDownloads = new Map();
+  const fileReads = new Map();
+  let fileSnapshotGeneration = 0;
+  const fileScope = () => signedIn() ? `${cfg().url}|${cfg().bucket}|${session.user.id || currentEmail()}` : null;
+  function clearFileSnapshots() {
+    fileSnapshotGeneration++;
+    fileSnapshots.clear(); fileDownloads.clear(); fileReads.clear();
+  }
+  function batchSnapshotKey({from, to, company} = {}) {
+    return JSON.stringify([fileScope(), from || '', to || '', company || 'ALL']);
+  }
+  function fileSnapshotInfo(input) {
+    if (!fileScope()) return null;
+    const entry = fileSnapshots.get(batchSnapshotKey(input));
+    return entry ? {updatedAt: entry.at, stale: Date.now() - entry.at >= 60000} : null;
+  }
+  async function fileSnapshotRead(kind, key, force, load) {
+    if (!fileScope()) throw new Error('กรุณาล็อกอินก่อนเปิดสแนปช็อตไฟล์');
+    const map = kind === 'batches' ? fileSnapshots : fileDownloads;
+    const ttl = kind === 'batches' ? 60000 : 300000;
+    const copy = value => kind === 'batches' ? JSON.parse(JSON.stringify(value)) : value.slice(0);
+    const entry = map.get(key);
+    if (!force && entry && Date.now() - entry.at < ttl) return copy(entry.value);
+    const pendingKey = `${kind}|${key}`;
+    // A forced refresh is also single-flight: do not multiply the same request.
+    if (fileReads.has(pendingKey)) return copy(await fileReads.get(pendingKey));
+    const generation = fileSnapshotGeneration, scope = fileScope();
+    const pending = (async () => {
+      const value = await load();
+      if (generation !== fileSnapshotGeneration || scope !== fileScope()) {
+        throw new Error('ผู้ใช้หรือข้อมูลเปลี่ยนระหว่างโหลด กรุณาลองใหม่');
+      }
+      if (kind === 'batches' || value.byteLength <= 32 * 1024 * 1024) {
+        map.delete(key);
+        map.set(key, {value: copy(value), at: Date.now()});
+        while (map.size > (kind === 'batches' ? 8 : 12) ||
+          (kind === 'download' && [...map.values()].reduce((n, x) => n + x.value.byteLength, 0) > 32 * 1024 * 1024)) {
+          map.delete(map.keys().next().value);
+        }
+      }
+      return value;
+    })();
+    fileReads.set(pendingKey, pending);
+    try { return copy(await pending); }
+    finally { if (fileReads.get(pendingKey) === pending) fileReads.delete(pendingKey); }
+  }
 
   /* ---------------- config ---------------- */
   const cfg = () => {
@@ -72,6 +121,7 @@ const Sb = (() => {
     return signedIn();
   }
   function keep(s) {
+    if (session?.user?.id !== s?.user?.id) clearFileSnapshots();
     session = s;
     try {
       localStorage.setItem(SB_SESSION_KEY, JSON.stringify(s));
@@ -196,6 +246,8 @@ const Sb = (() => {
     );
 
   async function req(path, opts = {}) {
+    // Invalidate before writes, including uncertain/timeout outcomes.
+    if (opts.method && opts.method.toUpperCase() !== 'GET' && !path.startsWith('/storage/v1/object/sign/')) clearFileSnapshots();
     await ensureFreshSession();
     const controller = opts.signal ? null : new AbortController();
     const timeout = controller ? setTimeout(() => controller.abort(), Number(opts.timeoutMs || 30000)) : null;
@@ -327,6 +379,7 @@ const Sb = (() => {
   }
 
   function signOut() {
+    clearFileSnapshots();
     session = null;
     try {
       localStorage.removeItem(SB_SESSION_KEY);
@@ -839,16 +892,21 @@ const Sb = (() => {
   const approvePdfRecovery = (payload, note) => rpc('approve_reviewed_pdf_recovery', {p_payload:payload,p_note:note});
 
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
-  async function batches({ from, to, company } = {}) {
+  async function batches({ from, to, company, force = false } = {}) {
     const filters = ["select=*,source_files(*)", "order=received_at.desc"];
     if (from) filters.push(`business_date=gte.${from}`);
     if (to) filters.push(`business_date=lte.${to}`);
     if (company && company !== "ALL") filters.push(`company=eq.${company}`);
-    return json(`/rest/v1/mail_batches?${filters.join("&")}`);
+    return fileSnapshotRead('batches', batchSnapshotKey({from, to, company}), force,
+      () => json(`/rest/v1/mail_batches?${filters.join("&")}`));
   }
 
   /* ---------------- Storage ---------------- */
-  async function download(storagePath) {
+  async function download(storagePath, {force = false} = {}) {
+    const key = JSON.stringify([fileScope(), storagePath]);
+    return fileSnapshotRead('download', key, force, () => downloadOriginal(storagePath));
+  }
+  async function downloadOriginal(storagePath) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120000);
     try {
@@ -1231,6 +1289,8 @@ const Sb = (() => {
     requestPasswordReset,
     updatePassword,
     signOut,
+    fileSnapshotInfo,
+    clearFileSnapshots,
     dailyStatus,
     operations,
     quality,
