@@ -245,9 +245,17 @@ const Sb = (() => {
       extra || {},
     );
 
+  // Share only in-flight JSON reads. Never retain completed financial results,
+  // share across identities, or coalesce a write/approval/upload.
+  const pendingJsonReads = new Map();
+  let readGeneration = 0;
   async function req(path, opts = {}) {
     // Invalidate before writes, including uncertain/timeout outcomes.
-    if (opts.method && opts.method.toUpperCase() !== 'GET' && !path.startsWith('/storage/v1/object/sign/')) clearFileSnapshots();
+    if (opts.method && opts.method.toUpperCase() !== 'GET' && !path.startsWith('/storage/v1/object/sign/')) {
+      clearFileSnapshots();
+      readGeneration++;
+      pendingJsonReads.clear();
+    }
     await ensureFreshSession();
     const controller = opts.signal ? null : new AbortController();
     const timeout = controller ? setTimeout(() => controller.abort(), Number(opts.timeoutMs || 30000)) : null;
@@ -281,10 +289,20 @@ const Sb = (() => {
       if (timeout) clearTimeout(timeout);
     }
   }
-  const json = async (path, opts) => {
-    const res = await req(path, opts);
-    const body = await res.text();
-    return body ? JSON.parse(body) : null;
+  const json = async (path, opts = {}) => {
+    const actor = session?.user?.id || '';
+    const read = (!opts.method || opts.method.toUpperCase() === 'GET') && !opts.signal;
+    const key = read ? JSON.stringify([base(), session?.access_token || '', actor, readGeneration, path, opts.headers || {}, opts.timeoutMs || 30000]) : null;
+    if (key && pendingJsonReads.has(key)) return pendingJsonReads.get(key);
+    const pending = (async () => {
+      const res = await req(path, opts);
+      const body = await res.text();
+      if (actor !== (session?.user?.id || '')) throw new Error('ผู้ใช้งานเปลี่ยนระหว่างโหลดข้อมูล กรุณาเปิดหน้าทำงานใหม่');
+      return body ? JSON.parse(body) : null;
+    })();
+    if (key) pendingJsonReads.set(key, pending);
+    try { return await pending; }
+    finally { if (key && pendingJsonReads.get(key) === pending) pendingJsonReads.delete(key); }
   };
 
   /* ---------------- Auth ---------------- */
@@ -380,6 +398,8 @@ const Sb = (() => {
 
   function signOut() {
     clearFileSnapshots();
+    readGeneration++;
+    pendingJsonReads.clear();
     session = null;
     try {
       localStorage.removeItem(SB_SESSION_KEY);

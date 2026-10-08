@@ -364,7 +364,7 @@ const ReviewOverview = (() => {
       root.querySelector('#overviewNext').onclick=()=>{page++;draw();};
       root.querySelectorAll('[data-overview-case]').forEach(b=>b.onclick=()=>onCase(data.cases.find(e=>e.id===b.dataset.overviewCase)));
     }
-    async function refreshInPlace(){
+    async function refreshInPlace({afterSave=false}={}){
       const g=++generation, x=window.scrollX, y=window.scrollY;
       try {
         const next=await load(company,date);
@@ -372,12 +372,12 @@ const ReviewOverview = (() => {
         if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}}
         if(g!==generation||!isActive()||instances.get(root)!==instance)return;
         data=next;view=model(data);selected.clear();draw();window.scrollTo(x,y);
-      } catch(e){if(g===generation&&isActive())draw('บันทึกแล้ว แต่โหลดผลล่าสุดไม่ได้ กรุณารีเฟรช: '+e.message);}
+      } catch(e){if(g===generation&&isActive())draw((afterSave?'บันทึกแล้ว แต่':'')+'โหลดผลล่าสุดไม่ได้ — ยังไม่สรุปว่าไม่มีเคส กรุณาลองโหลดใหม่: '+e.message);}
     }
     async function refresh(){const g=++generation;selected.clear();data=null;view=null;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
     root.auditRefreshInPlace=async()=>{
       if(!isActive()||instances.get(root)!==instance)return false;
-      await refreshInPlace();return true;
+      await refreshInPlace({afterSave:true});return true;
     };
     await refresh();
     return ()=>{generation++;};

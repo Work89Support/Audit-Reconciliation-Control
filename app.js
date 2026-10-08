@@ -8385,7 +8385,10 @@ async function enterProductionApp() {
   // Start the reconciliation worker for every authenticated app entry so
   // queued jobs continue after a refresh, browser restart, or OAuth return.
   startCloudWorker();
-  loadLiveOverview().catch(() => {});
+  // The company worksheet loads its own committed run. Do not also start
+  // thirty days of all-company aggregates/evidence while opening that sheet.
+  // Other routes retain their normal overview loaders; unknown badges stay —.
+  if (state.route !== 'exceptions') loadLiveOverview().catch(() => {});
   return true;
 }
 
