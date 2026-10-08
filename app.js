@@ -4136,8 +4136,14 @@ async function openApprovalReview(exceptionId, kind, requestId) {
 
 async function refreshCaseView() {
   const root = $('#viewRoot');
-  const refresh = root?.auditRefreshInPlace;
-  if (typeof refresh === 'function' && await refresh() !== false) return;
+  // The company review / Excel table is mounted inside auditViewBody.
+  // Refresh its existing instance rather than remounting the parent shell.
+  const workspace = typeof root?.auditRefreshInPlace === 'function'
+    ? root : root?.querySelector?.('#auditViewBody');
+  if (typeof workspace?.auditRefreshInPlace === 'function') {
+    await workspace.auditRefreshInPlace();
+    return; // Inactive/stale instance is not permission to redraw a new page.
+  }
   const x = window.scrollX, y = window.scrollY;
   render();
   window.scrollTo(x, y);
