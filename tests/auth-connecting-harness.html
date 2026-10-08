@@ -1,0 +1,23 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>Connecting gate — simulated outage</title>
+<link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../styles.css">
+<section class="login-gate" id="connectionGate" aria-live="polite"><div class="login-card">
+<p class="eyebrow">ทดสอบจำลอง · ไม่เชื่อมฐานข้อมูลจริง</p><h1>กำลังเชื่อมต่อระบบ</h1>
+<p id="connectionMessage">กำลังคืนสถานะเข้าสู่ระบบ</p>
+<button id="accessCheckRetry" class="primary-button" hidden>ลองเชื่อมต่ออีกครั้ง</button>
+<small>ยังไม่เปิดข้อมูลจนกว่าจะตรวจสิทธิ์สำเร็จ · ไม่ล้างเซสชัน</small></div></section>
+<section id="loginGate" hidden><form id="loginForm"><p id="loginError"></p></form><form id="resetForm"><input id="newPassword"></form></section>
+<main id="appShell" hidden style="padding:40px"><h1>กลับหน้างานเดิมแล้ว · ผลทดสอบจำลอง</h1>
+<label>ข้อความที่ยังไม่บันทึก<textarea id="responseText">ข้อความตรวจสอบเดิม — ต้องไม่สูญหาย</textarea></label><p id="testResult"></p></main>
+<script>
+(async()=>{
+ const source=await(await fetch('../app.js')).text();
+ const $=selector=>document.querySelector(selector);
+ const helpers=new Function('$',source.slice(source.indexOf('function showLoginGate('),source.indexOf('function render()'))+';return {showConnectingGate};')($);
+ const draft=$('#responseText');const value=draft.value;
+ helpers.showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ: ฐานข้อมูลตอบกลับช้า (จำลอง)',async()=>{
+   helpers.showConnectingGate('กำลังตรวจสิทธิ์อีกครั้ง (จำลอง)');
+   $('#connectionGate').hidden=true;$('#appShell').hidden=false;
+   $('#testResult').textContent=draft===$('#responseText')&&draft.value===value?'PASS: กลับหน้าทำงานเดิม ข้อความไม่หาย ไม่แสดงฟอร์มล็อกอิน':'FAIL';
+ });
+})();
+</script></html>

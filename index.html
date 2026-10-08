@@ -16,7 +16,16 @@
   <body>
     <a class="skip-link" href="#viewRoot">ข้ามไปเนื้อหาหลัก</a>
 
-    <section class="login-gate" id="loginGate" aria-labelledby="loginTitle">
+    <section class="login-gate" id="connectionGate" aria-labelledby="connectionTitle" aria-live="polite">
+      <div class="login-card">
+        <p class="eyebrow">Audit AI · เชื่อมต่ออย่างปลอดภัย</p>
+        <h1 id="connectionTitle">กำลังเชื่อมต่อระบบ</h1>
+        <p id="connectionMessage">กำลังคืนสถานะเข้าสู่ระบบและตรวจสิทธิ์ กรุณารอสักครู่ ไม่ต้องเข้าสู่ระบบซ้ำ</p>
+        <button class="primary-button" id="accessCheckRetry" type="button" hidden>ลองเชื่อมต่ออีกครั้ง</button>
+        <small>ยังไม่เปิดข้อมูลจนกว่าจะตรวจสิทธิ์สำเร็จ</small>
+      </div>
+    </section>
+    <section class="login-gate" id="loginGate" aria-labelledby="loginTitle" hidden>
       <div class="login-brand">
         <div class="brand-mark">A</div>
         <div>
@@ -166,6 +175,6 @@
     <script src="audit-company-overview.js?v=all-companies-20261004"></script>
     <link rel="stylesheet" href="audit-review.css?v=audit-review-20261006">
     <script src="audit-review.js?v=audit-review-20261006"></script>
-    <script src="app.js?v=closure-queue-freshness-20261007"></script>
+    <script src="app.js?v=auth-connecting-20261008"></script>
   </body>
 </html>
