@@ -1,0 +1,8 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><base href="../"><title>Statement canvas · test only</title><link rel="stylesheet" href="cross-day-workbench.css"><body><h1>ทดสอบภาพ PDF — ข้อมูลจำลอง ไม่เขียนฐานข้อมูล</h1><div id="preview" style="max-width:650px"></div><script>
+function testPdf(){
+ const stream='BT /F1 20 Tf 40 720 Td (TEST STATEMENT - NOT CUSTOMER DATA) Tj 0 -50 Td (06/10/2026 23:01 Deposit 65.00) Tj 0 -40 Td (06/10/2026 23:02 Deposit 37.00) Tj ET';
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 3 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
+ let text='%PDF-1.4\n',offsets=[0];objects.forEach((o,i)=>{offsets.push(text.length);text+=`${i+1} 0 obj\n${o}\nendobj\n`;});const start=text.length;text+='xref\n0 6\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;return new TextEncoder().encode(text).buffer;
+}
+const Sb={authUser:()=>({id:'test-only'}),download:async()=>testPdf()};
+</script><script src="statement-preview.js"></script><script>StatementPreview.mount(document.querySelector('#preview'),{id:'test-pdf',storage_path:'mock-only'});</script></body></html>
