@@ -993,7 +993,7 @@ const Sb = (() => {
   async function uploadCaseEvidence(exceptionId, file) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
     if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
-    if (!/\.(pdf|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ");
+    if (!/\.(pdf|docx|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ — ใช้ PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT");
     const id = crypto.randomUUID();
     const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
     const buffer = await file.arrayBuffer();

@@ -3785,9 +3785,10 @@ async function openException(id, options = {}) {
             : `<p class="muted small-note">${e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
-          <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.csv,.xlsx,.txt" />
-          แนบสลิป / ไฟล์ชี้แจง
+          <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.docx,.csv,.xlsx,.txt" ${can("attach") || can("note") ? "" : "disabled"} />
+          แนบเอกสาร / สลิป / ไฟล์ชี้แจง
         </label>
+        <p class="muted small-note">แนบได้หลายไฟล์: PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT · ไฟล์ละไม่เกิน 20 MB · การแนบไม่ใช่การอนุมัติหรือปิดเคส</p>
       </div>
 
       <h3 class="drawer-h3">ผลตรวจ / Note ของ Audit</h3>
