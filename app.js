@@ -774,14 +774,14 @@ function scopedWorkflowMetrics() {
   return {
     openAvailable: qualityReady || liveOverviewState.exceptionsReady,
     open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
-    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null)),
-    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && row.status === 'damage').length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
+    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null && CrossDayWorkbench.queueState.rows !== null)),
+    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && row.status === 'damage').length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) + (CrossDayWorkbench.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
     followUps: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
   };
 }
 
 function renderNav() {
-  if(state.dataset==='production'&&Sb.signedIn()){ManualPairing.loadPending();CaseClosure.loadPending();}
+  if(state.dataset==='production'&&Sb.signedIn()){ManualPairing.loadPending();CaseClosure.loadPending();CrossDayWorkbench.loadPending();}
   const allowed = ROUTE_ROLES[state.role];
   const workflow = scopedWorkflowMetrics();
   $("#navList").innerHTML = ROUTES.map((g) => {
@@ -1275,6 +1275,7 @@ function mapLiveException(e) {
     dbId: e.id,
     runId: e.run_id,
     manualPairId: e.manual_pair_id || null,
+    crossDayRequestId: e.cross_day_request_id || null,
     date: e.business_date,
     time: String(e.occurred_at || "").slice(0, 8),
     boTime: String(e.bo_time || "").slice(0, 8),
@@ -3133,6 +3134,7 @@ VIEWS.exceptions = (root) => {
       onConfirm: Sb.confirmAuditPairs,
       onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
       onBatchStatus: confirmAuditStatusBatch,
+      onCrossDay: row => row && CrossDayWorkbench.open(mapLiveException(row)),
       onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
       isActive: () => state.route === "exceptions" && state.filters.company === company && auditView === 'review',
       onCompany: () => { state.filters.company = "ALL"; render(); },
@@ -3775,6 +3777,7 @@ async function openException(id, options = {}) {
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
       <p id="caseUploadProgress" role="status" aria-live="polite">${h(e._uploadResult || '')}</p>
+      ${state.dataset==='production'?(Sb.pendingCaseEvidence(e.dbId)||[]).map(p=>`<div class="alert warn"><p>${h(p.name)} · ${p.uploaded?'ไฟล์อยู่ในคลังแล้ว ยังรอยืนยันทะเบียน':'ยังรอตรวจผลส่งไฟล์'} · รหัส ${h(p.id)}</p><button class="ghost-button" data-resume-evidence="${h(p.id)}" ${p.busy?'disabled':''}>ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button><small>คำขอเดิมเก็บในหน้าต่างนี้ อย่ารีเฟรชหรือปิดหน้าต่างจนยืนยันผลได้</small></div>`).join(''):''}
       <div class="evidence-box">
         ${
           (e.evidence || []).length
@@ -3847,7 +3850,11 @@ async function openException(id, options = {}) {
     if (picker) picker.click();
     else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
   });
-  $('#btnManualPair').addEventListener('click',()=>ManualPairing.open(e,'same'));
+  if(e.type==='cross_day'&&e.status==='open'){
+    $('#btnManualPair').disabled=false;
+    $('#btnManualPair').textContent='จับคู่ข้ามวัน / เตรียมหลายคู่';
+  }
+  $('#btnManualPair').addEventListener('click',()=>e.type==='cross_day'?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
   $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
   ManualPairing.mountReview(e,$('#manualPairReview'));
   CaseClosure.mountReview(e,$('#caseClosureReview'));
@@ -3869,6 +3876,17 @@ async function openException(id, options = {}) {
     finally { button.disabled = false; }
   }));
 
+  const acceptStoredEvidence = file => {
+    e.evidence=e.evidence||[];
+    if(!e.evidence.some(item=>item.id===file.id))e.evidence.push({id:file.id,name:file.file_name,size:file.size_bytes,at:file.created_at||nowStamp(),storagePath:file.storage_path});
+    e.hasEvidence=true;
+  };
+  document.querySelectorAll('[data-resume-evidence]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{acceptStoredEvidence(await Sb.resumeCaseEvidence(button.dataset.resumeEvidence));e._uploadResult='ยืนยันหลักฐานเดิมและผูกเคสสำเร็จแล้ว — ไม่อัปไฟล์ซ้ำ';toast(e._uploadResult);}
+    catch(error){e._uploadResult=error.message;toast(error.message,'warn');}
+    finally{if(state.selected===e.id)await openException(e.id);else button.disabled=false;}
+  });
   $("#evInput").addEventListener("change", async (evt) => {
     if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");
     const files = [...evt.target.files];
@@ -3881,11 +3899,11 @@ async function openException(id, options = {}) {
       let uploadComplete = false;
       try {
         for (const file of files) {
-          await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
+          acceptStoredEvidence(await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
             e._uploadResult = `ไฟล์ ${saved + 1}/${files.length}: ${file.name} · ${stage}`;
             const progress = $('#caseUploadProgress');
             if (progress && state.selected === e.id) progress.textContent = e._uploadResult;
-          });
+          }));
           saved++;
         }
         uploadComplete = true;
@@ -4337,6 +4355,7 @@ VIEWS.approvals = (root) => {
   root.innerHTML = `
     <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
+    <section class="panel" id="pendingCrossDayQueue"></section>
     <section class="panel" id="pendingDocumentClosureQueue"></section>
     <section class="status-strip four">
       <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
@@ -4381,6 +4400,7 @@ VIEWS.approvals = (root) => {
   root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
   root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
   ManualPairing.mountQueue($('#pendingManualPairQueue'));
+  CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'));
   CaseClosure.mountQueue($('#pendingDocumentClosureQueue'));
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
