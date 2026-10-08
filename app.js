@@ -8354,7 +8354,12 @@ async function boot() {
   } catch (e) {
     showLoginGate(e.message);
   }
-  const restored = authCallback ? false : await Sb.restore();
+  let restored = false;
+  let restoreError = null;
+  if (!authCallback) {
+    try { restored = await Sb.restore(); }
+    catch (error) { restoreError = error; }
+  }
   $("#loginEmail").value = Sb.cfg().email || "";
   $("#loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -8452,6 +8457,14 @@ async function boot() {
   if (authCallback === "recovery") showPasswordResetGate();
   else if (authCallback) await enterProductionApp();
   else if (restored) await enterProductionApp();
+  else if (restoreError) showConnectingGate('คืนสถานะเข้าสู่ระบบยังไม่สำเร็จ — ไม่ได้ล้างล็อกอิน: ' + (restoreError.message || 'การเชื่อมต่อขัดข้อง'), async () => {
+    try {
+      if (await Sb.restore()) await enterProductionApp();
+      else showLoginGate('ไม่พบสถานะเข้าสู่ระบบที่ใช้ต่อได้ กรุณาเข้าสู่ระบบ');
+    } catch (error) {
+      $('#connectionMessage').textContent = 'ยังเชื่อมต่อไม่ได้ — เก็บสถานะเดิมไว้แล้ว: ' + (error.message || 'การเชื่อมต่อขัดข้อง');
+    }
+  });
   else showLoginGate();
   /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
   const savedSys = Store.data.companySystems || {};

@@ -62,11 +62,30 @@ assert.equal(refreshes,2);
 // Same-origin tabs wait for each other and adopt the rotated session.
 refreshes=0;
 let queue=Promise.resolve();
-const locks={request(_name,callback){const result=queue.then(callback);queue=result.catch(()=>{});return result;}};
+const locks={request(_name,_options,callback){const result=queue.then(callback);queue=result.catch(()=>{});return result;}};
 const shared=storage();
 const fetchShared=async()=>{refreshes++;await new Promise(r=>setTimeout(r,5));return response(200,fresh);};
 await Promise.all([app(fetchShared,shared,locks).restore(),app(fetchShared,shared,locks).restore()]);
 assert.equal(refreshes,1);
+
+// A lock held by a suspended tab must not trap boot indefinitely. Abort our
+// waiter, preserve the session, and do not bypass the other tab's lock.
+const blockedStorage=storage();
+let blockedFetches=0;
+const blockedContext={window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test.invalid',anonKey:'public-test-key'}},persist(){}},
+  localStorage:blockedStorage,fetch:async()=>{blockedFetches++;throw Error('Must not bypass lock');},
+  AbortController,Date:TestDate,console,clearTimeout,
+  setTimeout:(callback,ms)=>setTimeout(callback,ms===10000?5:ms),
+  navigator:{locks:{request(_name,options){return new Promise((_resolve,reject)=>{
+    options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true});
+  });}}}};
+vm.runInNewContext(source,blockedContext);
+const blocked=blockedContext.window.Sb;
+assert.equal(await blocked.restore(),true,'Recoverable expired session is retained');
+await assert.rejects(()=>blocked.myAccess(),/แท็บอื่นเกิน 10 วินาที/);
+assert.equal(blockedFetches,0);
+assert.ok(blockedStorage.getItem('audit-sb-session'));
+assert.doesNotMatch(source,/steal\s*:\s*true/);
 
 // RLS denial is not a token-refresh signal; permissions stay enforced.
 refreshes=0;

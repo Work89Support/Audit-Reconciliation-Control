@@ -148,8 +148,26 @@ const Sb = (() => {
     // Web Locks coordinates same-origin tabs without exposing tokens. The
     // in-flight promise and shared cooldown still protect unsupported browsers.
     const locks = typeof navigator !== "undefined" ? navigator.locks : null;
-    const pending = Promise.resolve().then(() => locks?.request ?
-      locks.request("audit-sb-refresh-session", renew) : renew());
+    const pending = Promise.resolve().then(async () => {
+      if (!locks?.request) return renew();
+      // A suspended tab can hold this lock indefinitely. Cancel ONLY our
+      // waiting request; never steal the lock or rotate tokens concurrently.
+      const waiting = new AbortController();
+      const waitTimer = setTimeout(() => waiting.abort(), 10000);
+      try {
+        return await locks.request("audit-sb-refresh-session", { signal: waiting.signal }, async () => {
+          clearTimeout(waitTimer);
+          return renew();
+        });
+      } catch (error) {
+        if (waiting.signal.aborted && error?.name === "AbortError") {
+          throw new Error("รอต่ออายุล็อกอินจากแท็บอื่นเกิน 10 วินาที — ไม่ได้ออกจากระบบ กรุณาลองเชื่อมต่อใหม่");
+        }
+        throw error;
+      } finally {
+        clearTimeout(waitTimer);
+      }
+    });
     refreshInFlight = pending;
     try { return await pending; }
     finally { if (refreshInFlight === pending) refreshInFlight = null; }
