@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Audit AI Reconciliation</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="description" content="ศูนย์ควบคุมงานออดิทตรวจบัญชีฝาก-ถอน จับคู่ STM กับ BO อัตโนมัติ" />
     <link rel="stylesheet" href="fonts/kanit.css" />
-    <link rel="stylesheet" href="styles.css?v=damage-monthly-details-20261003" />
+    <link rel="stylesheet" href="styles.css?v=ui-qa-20261008" />
     <link rel="stylesheet" href="evidence-recommendations.css?v=proposal-clarity-20260926" />
     <link rel="stylesheet" href="mc8-sheets.css?v=audit-row-identity-20260930" />
     <link rel="stylesheet" href="manual-pairing.css?v=document-closure-20261005" />
@@ -36,13 +37,13 @@
       <form class="login-card" id="loginForm">
         <p class="eyebrow">ระบบตรวจสอบและกระทบยอด</p>
         <h1 id="loginTitle">เข้าสู่ระบบ</h1>
-        <p class="login-lead">เข้าสู่ระบบด้วยชื่อผู้ใช้หรืออีเมลและรหัสผ่าน หรือใช้บัญชี Google</p>
+        <p class="login-lead">สำหรับทีม Audit ตรวจยอด BO เทียบ STM/PM และติดตามเคสจนอนุมัติปิด</p>
         <div class="login-context-note">
           <b>หน้านี้ใช้ข้อมูลจริงจาก Supabase</b>
           <span>กรุณาเข้าสู่ระบบก่อน จึงจะดูคลังไฟล์ ผลกระทบยอด และหลักฐานของบริษัทได้</span>
         </div>
         <label>ชื่อผู้ใช้ / อีเมล
-          <input type="text" id="loginEmail" autocomplete="username" required placeholder="clarifier_test หรือ name@company.com" />
+          <input type="text" id="loginEmail" autocomplete="username" required placeholder="ชื่อผู้ใช้ หรือ name@company.com" />
         </label>
         <label>รหัสผ่าน
           <input type="password" id="loginPassword" autocomplete="current-password" required placeholder="กรอกรหัสผ่าน" />
@@ -80,7 +81,7 @@
             <p>Audit AI</p>
             <span>Reconciliation Control</span>
           </div>
-          <button class="nav-toggle" id="navToggle" aria-label="ซ่อนแถบเมนู" aria-expanded="true" title="ซ่อนแถบเมนู">‹</button>
+          <button class="nav-toggle" id="navToggle" aria-label="แสดงแถบเมนู" aria-controls="navList" aria-expanded="false" title="แสดงแถบเมนู">‹</button>
         </div>
 
         <nav class="nav-list" id="navList" aria-label="เมนูหลัก"></nav>
@@ -175,6 +176,7 @@
     <script src="audit-company-overview.js?v=all-companies-20261004"></script>
     <link rel="stylesheet" href="audit-review.css?v=audit-review-20261006">
     <script src="audit-review.js?v=audit-review-20261006"></script>
-    <script src="app.js?v=file-snapshot-20261008"></script>
+    <script src="ui-accessibility.js?v=qa-20261008"></script>
+    <script src="app.js?v=ui-qa-20261008"></script>
   </body>
 </html>
