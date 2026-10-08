@@ -1096,6 +1096,7 @@ function render() {
   Charts.reset();
   $("#crumb").textContent = ROUTES.find((g) => g.items.some((i) => i.id === route.id)).group;
   $("#pageTitle").textContent = route.title;
+  document.title = `${route.title} · Audit AI Reconciliation`;
   $("#pageDesc").innerHTML =
     h(route.desc) +
     (Sb.signedIn() ? ' <span class="badge green">ระบบข้อมูลจริง</span>' : "");
@@ -1120,6 +1121,7 @@ function render() {
     (document.getElementById("problemFileSummary") || document.getElementById("cloudInbox"))?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   $("#sidebar").classList.remove("open");
+  AuditUi.syncNav();
 }
 
 /* =============================================================
@@ -3819,6 +3821,7 @@ async function openException(id, options = {}) {
   drawer.hidden = false;
   overlay.hidden = false;
   requestAnimationFrame(() => drawer.classList.add("on"));
+  AuditUi.open(drawer);
 
   $("#drawerClose").addEventListener("click", closeDrawer);
   $('#btnGoMissing')?.addEventListener('click',()=>{
@@ -4165,12 +4168,14 @@ function closeDrawer() {
   if (!d || d.hidden) return;
   d.classList.remove("on");
   $("#drawerOverlay").hidden = true;
-  setTimeout(() => (d.hidden = true), 220);
+  AuditUi.close(d);
+  clearTimeout(d._hideTimer);
+  d._hideTimer = setTimeout(() => { d.hidden = true; d._hideTimer = null; }, 220);
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    closeDrawer();
-    closeModal();
+    if (AuditUi.top()?.id === 'modal') closeModal();
+    else closeDrawer();
   }
 });
 
@@ -5361,6 +5366,7 @@ VIEWS.users = async (root) => {
       <div class="panel-heading"><div><p class="eyebrow">User access</p><h2 id="accessFormTitle">เพิ่มผู้ใช้ใหม่</h2><small class="head-sub">กรอกข้อมูลครั้งเดียว ระบบจะส่งอีเมลเชิญเข้าใช้งานและกำหนดสิทธิ์ให้ทันที ไม่ต้องเปิดหน้า Supabase</small></div>
       <button class="primary-button" type="button" id="newAccessUser">+ เพิ่มผู้ใช้</button></div>
       <form id="accessUserForm" class="access-user-form">
+        <p id="accessFormError" class="form-error" role="alert" tabindex="-1" hidden></p>
         <label>วิธีสร้างบัญชี<select id="accessLoginMode"><option value="email">อีเมล / ส่งคำเชิญ</option><option value="username">ชื่อผู้ใช้ / ไม่ใช้อีเมล</option></select></label>
         <label><span id="accessIdentityLabel">อีเมล</span><input id="accessEmail" type="email" required placeholder="name@company.com" autocomplete="off"></label>
         <label id="accessPasswordLabel" hidden>รหัสผ่านบัญชีใหม่<input id="accessPassword" type="password" autocomplete="new-password" minlength="9" maxlength="128"><small>อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเดียวกับบัญชีอื่น</small></label>
@@ -5418,7 +5424,7 @@ VIEWS.users = async (root) => {
     const username = $('#accessLoginMode').value === 'username';
     $('#accessEmail').type = username ? 'text' : 'email';
     $('#accessIdentityLabel').textContent = username ? 'ชื่อผู้ใช้' : 'อีเมล';
-    $('#accessEmail').placeholder = username ? 'clarifier_test' : 'name@company.com';
+    $('#accessEmail').placeholder = username ? 'ชื่อผู้ใช้' : 'name@company.com';
     $('#accessPasswordLabel').hidden = !username || editing;
     $('#accessPassword').required = username && !editing;
     $('#accessPassword').disabled = !username || editing;
@@ -5465,6 +5471,7 @@ VIEWS.users = async (root) => {
     const button = event.submitter;
     button.disabled = true;
     button.textContent = "กำลังบันทึก...";
+    $('#accessFormError').hidden = true;
     try {
       const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
       const usernameMode = $('#accessLoginMode').value === 'username';
@@ -5483,6 +5490,10 @@ VIEWS.users = async (root) => {
       logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
       VIEWS.users(root);
     } catch (error) {
+      const feedback = $('#accessFormError');
+      feedback.textContent = 'บันทึกสิทธิ์ไม่สำเร็จ: ' + error.message + ' — ข้อมูลในฟอร์มยังอยู่ กรุณาตรวจสอบก่อนลองอีกครั้ง';
+      feedback.hidden = false;
+      feedback.focus({preventScroll:true});
       toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
     } finally {
       button.disabled = false;
@@ -6339,6 +6350,7 @@ VIEWS.cloud = (root) => {
     button.click();
   });
   root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  AuditUi.tabs(root);
   root.querySelectorAll("[data-cloud-view]").forEach((item) => item.addEventListener("click", () => {
     cloudState.fileView = item.dataset.cloudView;
     render();
@@ -7843,6 +7855,8 @@ VIEWS.clarify = (root) => {
 
 function openModal(title, bodyHtml, footHtml) {
   const m = $("#modal");
+  clearTimeout(m._hideTimer);
+  m._hideTimer = null;
   if (typeof m._contentCleanup === "function") m._contentCleanup();
   m._contentCleanup = null;
   m.classList.remove("file-preview-modal");
@@ -7856,6 +7870,7 @@ function openModal(title, bodyHtml, footHtml) {
   m.hidden = false;
   $("#modalOverlay").hidden = false;
   requestAnimationFrame(() => m.classList.add("on"));
+  AuditUi.open(m);
   $("#modalClose").addEventListener("click", closeModal);
   $("#modalOverlay").addEventListener("click", closeModal, { once: true });
 }
@@ -7866,7 +7881,9 @@ function closeModal() {
   m._contentCleanup = null;
   m.classList.remove("on");
   $("#modalOverlay").hidden = true;
-  setTimeout(() => (m.hidden = true), 200);
+  AuditUi.close(m);
+  clearTimeout(m._hideTimer);
+  m._hideTimer = setTimeout(() => { m.hidden = true; m._hideTimer = null; }, 200);
 }
 
 // Reuse the exact visible/filter-scoped rows. Do not expand access or date scope on export.
@@ -8448,10 +8465,11 @@ async function boot() {
     const sb = $("#sidebar");
     if (window.matchMedia("(max-width: 1080px)").matches) {
       sb.classList.toggle("open");
-      $("#navToggle").setAttribute("aria-expanded", String(sb.classList.contains("open")));
+      AuditUi.syncNav();
       return;
     }
     setSidebarCollapsed(!$("#appShell").classList.contains("sidebar-collapsed"));
+    AuditUi.syncNav();
   });
 
   if (!window.matchMedia("(max-width: 1080px)").matches) {
@@ -8460,6 +8478,8 @@ async function boot() {
     setSidebarCollapsed(collapsed);
   }
 
+  AuditUi.syncNav();
+  window.matchMedia('(max-width: 1080px)').addEventListener('change', () => { $('#sidebar').classList.remove('open'); AuditUi.syncNav(); });
   if (authCallback === "recovery") showPasswordResetGate();
   else if (authCallback) await enterProductionApp();
   else if (restored) await enterProductionApp();

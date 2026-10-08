@@ -1,0 +1,21 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audit UI QA · ข้อมูลจำลอง</title><link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../styles.css"><link rel="icon" href="../favicon.svg"><script src="../ui-accessibility.js"></script></head><body>
+<div id="appShell" class="app-shell"><aside id="sidebar" class="sidebar"><div class="brand"><b>Audit QA</b><button id="navToggle" class="nav-toggle" aria-controls="navList">เมนู</button></div><nav id="navList" class="nav-list"><a href="#review">ตรวจเคสจำลอง</a></nav></aside><main class="main"><h1>ทดสอบ UI — ไม่มีข้อมูลจริง</h1><p>หน้านี้ไม่โหลด config, ไม่ล็อกอิน และไม่ติดต่อบริการภายนอก</p><button id="openDrawer" class="primary-button">เปิดเคสจำลอง</button><button id="race" class="ghost-button">ทดสอบเปิด modal ซ้ำทันที</button><section class="panel"><div role="tablist" aria-label="สถานะเคสจำลอง"><button role="tab" aria-selected="true" id="tab1">รอตรวจ</button><button role="tab" aria-selected="false" id="tab2">ส่งหัวหน้า</button></div><p id="tabResult">รอตรวจ</p></section><form id="accessUserForm" class="panel"><label>อีเมลจำลอง<input id="fixtureEmail" type="email" required></label><button type="submit">ทดสอบตรวจฟอร์ม</button></form><section class="review-group-list"><article class="review-group"><p>เอกสารจำลองชื่อยาวสำหรับตรวจข้อความขยายและหน้าจอแคบ</p><button class="sm">ดู</button></article></section><p id="result" role="status"></p></main></div>
+<div id="drawerOverlay" class="drawer-overlay" hidden></div><aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="เคสจำลอง" hidden><button id="drawerClose">ปิดเคสจำลอง</button><button id="nested">เปิดหลักฐานจำลอง</button></aside><div id="modalOverlay" class="modal-overlay" hidden></div><div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden></div>
+<script>
+// Exercise the actual app modal functions, without running the production app.
+const $ = selector => document.querySelector(selector);
+fetch('../app.js').then(r=>r.text()).then(source=>{
+  const extract = name => source.match(new RegExp('function '+name+'\\([^]*?\\n}'))[0];
+  const api = new Function('$','AuditUi',extract('openModal')+'\n'+extract('closeModal')+'\n'+extract('closeDrawer')+'\nreturn {openModal,closeModal,closeDrawer};')($,AuditUi);
+  $('#openDrawer').onclick=()=>{ $('#drawer').hidden=false;$('#drawerOverlay').hidden=false;$('#drawer').classList.add('on');AuditUi.open($('#drawer')); };
+  $('#drawerClose').onclick=api.closeDrawer;
+  $('#nested').onclick=()=>api.openModal('หลักฐานจำลอง','<p>เทียบเอกสารจำลองเท่านั้น</p><button id="fixtureSend">ส่งคู่จำลอง</button>');
+  $('#race').onclick=()=>{api.openModal('เก่า','<p>เก่า</p>');api.closeModal();api.openModal('ใหม่','<p>ต้องยังแสดงอยู่</p>');setTimeout(()=>{$('#result').textContent=!$('#modal').hidden&&!$('#modalOverlay').hidden?'PASS: modal ใหม่ยังแสดง':'FAIL';},250);};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(AuditUi.top()?.id==='modal')api.closeModal();else api.closeDrawer();}});
+  $('#result').textContent='พร้อมทดสอบ';
+});
+$('#navToggle').onclick=()=>{$('#sidebar').classList.toggle('open');AuditUi.syncNav();};AuditUi.syncNav();
+window.matchMedia('(max-width: 1080px)').addEventListener('change',AuditUi.syncNav);
+document.querySelectorAll('[role="tab"]').forEach(t=>t.onclick=()=>{document.querySelectorAll('[role="tab"]').forEach(x=>{x.setAttribute('aria-selected',String(x===t));x.tabIndex=x===t?0:-1;});$('#tabResult').textContent=t.textContent;});AuditUi.tabs(document);
+$('#accessUserForm').onsubmit=e=>{e.preventDefault();$('#result').textContent='PASS: ฟอร์มจำลอง ไม่มีการส่งข้อมูล';};
+</script></body></html>
