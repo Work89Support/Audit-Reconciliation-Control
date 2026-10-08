@@ -205,7 +205,7 @@ const Sb = (() => {
       }
       return res;
     } catch (error) {
-      if (error?.name === "AbortError") throw new Error("Supabase ใช้เวลาตอบกลับนานเกิน 30 วินาที — กรุณาลองใหม่");
+      if (error?.name === "AbortError") throw new Error(`Supabase ใช้เวลาตอบกลับนานเกิน ${Math.ceil(Number(opts.timeoutMs || 30000) / 1000)} วินาที`);
       throw error;
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -851,6 +851,7 @@ const Sb = (() => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expiresIn: seconds }),
     });
+    if (!j || typeof j.signedURL !== 'string' || !j.signedURL.startsWith('/object/sign/')) throw new Error('ยังยืนยันไฟล์ในคลังไม่ได้');
     return base() + "/storage/v1" + j.signedURL;
   }
 
@@ -990,19 +991,36 @@ const Sb = (() => {
     return { id: saved[0].id, by: saved[0].actor, at: saved[0].at, text: saved[0].detail };
   }
 
-  async function uploadCaseEvidence(exceptionId, file) {
+  async function uploadCaseEvidence(exceptionId, file, onProgress = () => {}) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
     if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
     if (!/\.(pdf|docx|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ — ใช้ PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT");
+    onProgress('ตรวจการเชื่อมต่อและสิทธิ์อ่านเคส');
+    try {
+      await ensureFreshSession();
+      const cases = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=id,status&limit=1`);
+      if (!Array.isArray(cases) || cases.length !== 1) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
+    } catch (error) { throw new Error(`ยังไม่ได้ส่งไฟล์: ตรวจการเชื่อมต่อ/สิทธิ์เคสไม่ผ่าน — ${error.message}`); }
+    const uploader = authUser()?.id;
+    if (!uploader) throw new Error('ยังไม่ได้ส่งไฟล์: กรุณาเชื่อมต่อบัญชีผู้ใช้');
     const id = crypto.randomUUID();
-    const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
-    const buffer = await file.arrayBuffer();
-    await req(`/storage/v1/object/${cfg().bucket}/${storagePath}`, {
-      method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
-      body: buffer, timeoutMs: 120000,
-    });
+    const storagePath = `case-evidence/${exceptionId}/${uploader}/${id}`;
+    onProgress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
+    try {
+      const buffer = await file.arrayBuffer();
+      await req(`/storage/v1/object/${cfg().bucket}/${storagePath}`, {
+        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
+        body: buffer, timeoutMs: 120000,
+      });
+    } catch (error) {
+      onProgress('ตรวจไฟล์ในคลังหลังการส่งขัดข้อง — ยังไม่ส่งซ้ำ');
+      try { await signedUrl(storagePath, 60); }
+      catch (_) { throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บรหัสนี้ให้ผู้ดูแลตรวจสอบก่อนอัปซ้ำ — ${error.message}`); }
+    }
+    if (authUser()?.id !== uploader) throw new Error(`บัญชีผู้ใช้เปลี่ยนระหว่างส่งไฟล์ (รหัส ${id}) ยังไม่ได้ผูกเคส กรุณาให้ผู้ดูแลตรวจสอบ`);
+    onProgress('ไฟล์เข้าคลังแล้ว กำลังบันทึกทะเบียนผูกเคส');
     const metadata = { id, exception_id: exceptionId, storage_path: storagePath, file_name: file.name,
-      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: authUser().id };
+      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: uploader };
     try {
       const rows = await post("case_evidence", [metadata]);
       if (!Array.isArray(rows) || rows.length !== 1 || rows[0].id !== id) throw new Error("ไม่พบผลยืนยันทะเบียนหลักฐาน");

@@ -3772,7 +3772,7 @@ async function openException(id, options = {}) {
       ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
-      ${e._uploadResult ? `<p role="status">${h(e._uploadResult)}</p>` : ''}
+      <p id="caseUploadProgress" role="status" aria-live="polite">${h(e._uploadResult || '')}</p>
       <div class="evidence-box">
         ${
           (e.evidence || []).length
@@ -3877,7 +3877,14 @@ async function openException(id, options = {}) {
       e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
       let uploadComplete = false;
       try {
-        for (const file of files) { await Sb.uploadCaseEvidence(e.dbId, file); saved++; }
+        for (const file of files) {
+          await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
+            e._uploadResult = `ไฟล์ ${saved + 1}/${files.length}: ${file.name} · ${stage}`;
+            const progress = $('#caseUploadProgress');
+            if (progress && state.selected === e.id) progress.textContent = e._uploadResult;
+          });
+          saved++;
+        }
         uploadComplete = true;
         e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
         recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
