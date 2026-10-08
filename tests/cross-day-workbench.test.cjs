@@ -1,0 +1,33 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('cross-day-workbench.js','utf8');
+let counter=0,loseResponse=false,readFails=false;const writes=[];
+const context={crypto:{randomUUID:()=>`request-${++counter}`},state:{dataset:'production',role:'audit_assistant'},Sb:{signedIn:()=>true,authUser:()=>({id:'audit-test'}),submitCrossDayPair:async p=>{writes.push(p);if(loseResponse)throw Error('timeout');return receipt(p);},crossDayPair:async id=>{if(readFails)throw Error('timeout read');return receipt(writes.find(p=>p.p_id===id));}}};
+function receipt(p){return {id:p.p_id,exception_id:p.p_case,stm_file_id:p.p_file,stm_row:p.p_row,submitted_by:'audit-test',status:'pending'};}
+vm.createContext(context);vm.runInContext(source+'\nthis.workbench=CrossDayWorkbench;',context);const w=context.workbench;
+const bo=id=>({id,company:'FR8',account:'SCB-account',direction:'ฝาก',system_amount:60});
+const file={id:'statement',company:'FR8'},row={rowNo:85,verified:true,account:'SCB-account',direction:'deposit',amount:60};
+(async()=>{
+ assert.equal(w.eligible({type:'cross_day',status:'open'}),true);assert.equal(w.eligible({type:'cross_day',status:'closed'}),false);
+ assert.throws(()=>w.stage(bo('a'),file,{...row,verified:false},'ตรวจรายการและต้นทางครบแล้ว'),/ยังไม่มีรายการต้นทาง/);
+ assert.throws(()=>w.stage(bo('a'),file,{...row,amount:65.01},'ตรวจรายการและต้นทางครบแล้ว'),/เกิน 5/);
+ assert.throws(()=>w.stage(bo('a'),{...file,company:'3XB'},row,'ตรวจรายการและต้นทางครบแล้ว'),/บริษัท/);
+ assert.throws(()=>w.stage(bo('a'),file,{...row,amount:0},'ตรวจรายการและต้นทางครบแล้ว'),/มากกว่า 0/);
+ assert.throws(()=>w.stage({...bo('a'),business_date:'2026-10-06'},file,{...row,date:'2026-10-07'},'ตรวจรายการและต้นทางครบแล้ว'),/วันที่ธุรกรรม/);
+ const a=w.stage(bo('a'),file,row,'ตรวจรายการและต้นทางครบแล้ว');
+ assert.throws(()=>w.stage(bo('b'),file,row,'ตรวจรายการและต้นทางครบแล้ว'),/อีกเคส/);
+ const b=w.stage(bo('b'),file,{...row,rowNo:86},'ตรวจรายการและต้นทางครบแล้ว');
+ await w.send(a);assert.equal(w.drafts.has('a'),false);assert.equal(w.drafts.get('b'),b);assert.equal(writes[0].p_id,a.requestId);
+ loseResponse=true;await w.send(b);assert.equal(w.drafts.size,0);
+ readFails=true;const c=w.stage(bo('c'),file,{...row,rowNo:87},'ตรวจรายการและต้นทางครบแล้ว');
+ await assert.rejects(w.send(c),/timeout/);assert.equal(w.drafts.get('c'),c);assert.equal(c.uncertain,true);
+ assert.throws(()=>w.stage(bo('c'),file,{...row,rowNo:88},'ตรวจรายการและต้นทางครบแล้ว'),/ยังไม่ทราบผล/);
+ loseResponse=false;await w.send(c);assert.equal(writes.at(-1).p_id,writes.at(-2).p_id);assert.equal(w.drafts.size,0);
+ const ownerDraft=w.stage(bo('owner'),file,{...row,rowNo:89},'ตรวจรายการและต้นทางครบแล้ว');
+ context.Sb.authUser=()=>({id:'another-user'});
+ await assert.rejects(w.send(ownerDraft),/บัญชีปัจจุบัน/);assert.equal(w.drafts.size,0);
+ const sql=fs.readFileSync('supabase/20261008_cross_day_workbench.sql','utf8');
+ for(const guard of ['enable row level security','has_company_access','for update','for share','native-pdf-cross-day-review-v1','file_md5',"q.submitted_by=auth.uid()",'cross_day_pair_logical_reserved','ต้นทางหรือ','cross_day_closure_evidence'])if(guard!=='ต้นทางหรือ')assert.ok(sql.includes(guard),guard);
+ assert.ok(!/set\s+(system_amount|bank_amount)\s*=/i.test(sql));assert.ok(!/insert into public.exceptions/i.test(sql));
+ assert.ok(source.includes('sent.add(d.caseRow.id)'));assert.ok(!/\brender\(\);\s*closeModal/.test(source));assert.ok(!source.includes('location.reload'));
+ console.log('Cross-day workbench: selection, duplicate reservation, 5-baht limit, sequential drafts, lost-response recovery and static SQL guards passed; no live database writes.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -977,6 +977,11 @@ const Sb = (() => {
     }
   }
   const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const crossDayWorkbench=body=>rpc('cross_day_workbench',body);
+  const submitCrossDayPair=body=>rpc('submit_cross_day_pair',body);
+  async function crossDayPair(id){const rows=await json(`/rest/v1/cross_day_pair_requests?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);return rows[0]||null;}
+  async function pendingCrossDayPairs(){const rows=[];for(let offset=0;;offset+=200){const page=await json(`/rest/v1/cross_day_pair_requests?status=eq.pending&select=*&order=submitted_at.asc,id.asc&limit=200&offset=${offset}`);if(!Array.isArray(page))throw Error('อ่านคิวข้ามวันไม่สำเร็จ');rows.push(...page);if(page.length<200)return rows;}}
+  const decideCrossDayPair=body=>verifyDecision('/rest/v1/rpc/decide_cross_day_pair',body,crossDayPair);
   async function verifyDecision(path, body, readBack, action=body.p_action) {
     let requestError;
     try { await json(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
@@ -1067,48 +1072,90 @@ const Sb = (() => {
     return { id: saved[0].id, by: saved[0].actor, at: saved[0].at, text: saved[0].detail };
   }
 
-  async function uploadCaseEvidence(exceptionId, file, onProgress = () => {}) {
+  // Keep uncertain receipts in this tab only. Never discard an uploaded object,
+  // recreate its UUID, or persist customer files/tokens in localStorage.
+  const pendingEvidenceUploads = new Map();
+  async function readEvidenceReceipt(metadata) {
+    const rows=await json(`/rest/v1/case_evidence?id=eq.${encodeURIComponent(metadata.id)}&exception_id=eq.${encodeURIComponent(metadata.exception_id)}&select=*&limit=1`);
+    const saved=Array.isArray(rows)?rows[0]:null;
+    if(!saved)return null;
+    if(saved.id!==metadata.id||saved.exception_id!==metadata.exception_id||saved.storage_path!==metadata.storage_path||Number(saved.size_bytes)!==Number(metadata.size_bytes)||saved.uploaded_by!==metadata.uploaded_by){
+      const error=new Error('ทะเบียนหลักฐานไม่ตรงกับคำขอเดิม ต้องให้ผู้ดูแลตรวจ ไม่สร้างไฟล์ใหม่');error.code='evidence_receipt_mismatch';throw error;
+    }
+    return saved;
+  }
+  function pendingCaseEvidence(exceptionId) {
+    return [...pendingEvidenceUploads.values()].filter(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id)
+      .map(p=>({id:p.metadata.id,name:p.metadata.file_name,uploaded:p.uploaded,busy:!!p.inFlight}));
+  }
+  async function resumeCaseEvidence(id) {
+    const pending=pendingEvidenceUploads.get(id);
+    if(!pending||!signedIn()||pending.metadata.uploaded_by!==authUser()?.id)throw new Error('ไม่พบคำขอเดิมของบัญชีนี้ในหน้าต่างนี้');
+    if(pending.inFlight)return pending.inFlight;
+    const work=async()=>{
+      const metadata=pending.metadata;
+      const checkActor=()=>{if(!signedIn()||authUser()?.id!==metadata.uploaded_by)throw new Error('บัญชีผู้ใช้เปลี่ยนระหว่างส่งไฟล์ เก็บคำขอเดิมให้ผู้ดูแลตรวจ ไม่ผูกเคสข้ามบัญชี');};
+      const progress=stage=>pending.onProgress?.(stage);
+      checkActor();progress('ตรวจสถานะคำขอเดิม');
+      // Exact primary-key lookup avoids rereading every evidence row under RLS.
+      let saved;
+      if(pending.attempted)try{saved=await readEvidenceReceipt(metadata);}catch(error){if(error.code==='evidence_receipt_mismatch')throw error;pending.readError=error;}
+      checkActor();
+      if(saved){pendingEvidenceUploads.delete(id);return saved;}
+      if(!pending.uploaded){
+        progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
+        pending.attempted=true;
+        try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;}
+        catch(error){
+          // POST may have committed before the response was lost; the same path
+          // is retried without upsert. Verify the uploader's existing object.
+          try{await signedUrl(metadata.storage_path,60);pending.uploaded=true;}catch{throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองต่อได้โดยไม่เลือกไฟล์ใหม่: ${error.message}`);}
+        }
+      }
+      checkActor();progress('ไฟล์เข้าคลังแล้ว กำลังยืนยันทะเบียนผูกเคส');
+      // Metadata recovery no longer needs the bytes once Storage is confirmed.
+      if(pending.uploaded){pending.buffer=null;if(pending.digest)pending.file=null;}
+      try {
+        // Ignore only an identical primary-key conflict, never overwrite history.
+        const rows=await post('case_evidence?on_conflict=id',[metadata],'resolution=ignore-duplicates,return=representation');
+        checkActor();
+        const returned=Array.isArray(rows)?rows.find(row=>row.id===id):null;
+        if(returned&&returned.exception_id===metadata.exception_id&&returned.storage_path===metadata.storage_path&&returned.uploaded_by===metadata.uploaded_by&&Number(returned.size_bytes)===Number(metadata.size_bytes)){
+          pendingEvidenceUploads.delete(id);return returned;
+        }
+        saved=await readEvidenceReceipt(metadata);
+        checkActor();if(saved){pendingEvidenceUploads.delete(id);return saved;}
+        throw new Error('ยังไม่พบทะเบียนหลักฐานที่ตรงกับคำขอ');
+      } catch(error) {
+        try{saved=await readEvidenceReceipt(metadata);}catch{ /* uncertainty is not absence */ }
+        if(saved){pendingEvidenceUploads.delete(id);return saved;}
+        throw new Error(`ไฟล์ส่งถึงคลังแล้ว แต่ยังยืนยันการผูกเคสไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองบันทึกต่อโดยไม่อัปไฟล์ซ้ำ: ${error.message}`);
+      }
+    };
+    pending.inFlight=work();try{return await pending.inFlight;}finally{pending.inFlight=null;}
+  }
+  async function uploadCaseEvidence(exceptionId, file, onProgress=()=>{}) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
     if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
     if (!/\.(pdf|docx|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ — ใช้ PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT");
+    const uploader=authUser().id;
+    const buffer = await file.arrayBuffer();
+    const digest=crypto.subtle?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),b=>b.toString(16).padStart(2,'0')).join(''):null;
+    const previous=[...pendingEvidenceUploads.values()].find(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id&&p.metadata.file_name===file.name&&p.metadata.size_bytes===file.size&&(digest?p.digest===digest:p.file===file));
+    if(authUser()?.id!==uploader)throw new Error('บัญชีผู้ใช้เปลี่ยนก่อนส่งไฟล์ กรุณาลองใหม่ด้วยบัญชีเดิม');
+    if(previous){previous.onProgress=onProgress;return resumeCaseEvidence(previous.metadata.id);}
     onProgress('ตรวจการเชื่อมต่อและสิทธิ์อ่านเคส');
-    try {
-      await ensureFreshSession();
-      const cases = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=id,status&limit=1`);
-      if (!Array.isArray(cases) || cases.length !== 1) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
-    } catch (error) { throw new Error(`ยังไม่ได้ส่งไฟล์: ตรวจการเชื่อมต่อ/สิทธิ์เคสไม่ผ่าน — ${error.message}`); }
-    const uploader = authUser()?.id;
-    if (!uploader) throw new Error('ยังไม่ได้ส่งไฟล์: กรุณาเชื่อมต่อบัญชีผู้ใช้');
+    const accessible=await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=id,status&limit=1`);
+    if(!Array.isArray(accessible)||accessible.length!==1||accessible[0].id!==exceptionId)throw new Error('ยังไม่ได้ส่งไฟล์: ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
+    if(authUser()?.id!==uploader)throw new Error('บัญชีผู้ใช้เปลี่ยนก่อนส่งไฟล์ กรุณาลองใหม่ด้วยบัญชีเดิม');
     const id = crypto.randomUUID();
-    const storagePath = `case-evidence/${exceptionId}/${uploader}/${id}`;
-    onProgress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
-    try {
-      const buffer = await file.arrayBuffer();
-      await req(`/storage/v1/object/${cfg().bucket}/${storagePath}`, {
-        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
-        body: buffer, timeoutMs: 120000,
-      });
-    } catch (error) {
-      onProgress('ตรวจไฟล์ในคลังหลังการส่งขัดข้อง — ยังไม่ส่งซ้ำ');
-      try { await signedUrl(storagePath, 60); }
-      catch (_) { throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บรหัสนี้ให้ผู้ดูแลตรวจสอบก่อนอัปซ้ำ — ${error.message}`); }
-    }
-    if (authUser()?.id !== uploader) throw new Error(`บัญชีผู้ใช้เปลี่ยนระหว่างส่งไฟล์ (รหัส ${id}) ยังไม่ได้ผูกเคส กรุณาให้ผู้ดูแลตรวจสอบ`);
-    onProgress('ไฟล์เข้าคลังแล้ว กำลังบันทึกทะเบียนผูกเคส');
+    const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
     const metadata = { id, exception_id: exceptionId, storage_path: storagePath, file_name: file.name,
-      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: uploader };
-    try {
-      const rows = await post("case_evidence", [metadata]);
-      if (!Array.isArray(rows) || rows.length !== 1 || rows[0].id !== id) throw new Error("ไม่พบผลยืนยันทะเบียนหลักฐาน");
-      return rows[0];
-    } catch (error) {
-      // A timeout may happen after commit. Read back before reporting failure; never delete an uncertain upload.
-      const rows = await caseEvidence(exceptionId).catch(() => []);
-      const saved = rows.find(row => row.id === id);
-      if (saved) return saved;
-      throw new Error(`ไฟล์ส่งถึงคลังแล้ว แต่ยังยืนยันการผูกเคสไม่ได้ (รหัส ${id}) กรุณาแจ้งผู้ดูแลก่อนอัปซ้ำ: ${error.message}`);
-    }
+      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: authUser().id };
+    pendingEvidenceUploads.set(id,{metadata,file,digest,buffer,uploaded:false,inFlight:null,onProgress});
+    return resumeCaseEvidence(id);
   }
+
 
   async function submitClarification(id, body) {
     if (!String(body.response_text || "").trim()) throw new Error("กรุณากรอกคำชี้แจง");
@@ -1273,6 +1320,7 @@ const Sb = (() => {
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
+    crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,decideCrossDayPair,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
@@ -1351,6 +1399,7 @@ const Sb = (() => {
     caseNotes,
     appendCaseNote,
     uploadCaseEvidence,
+    pendingCaseEvidence,resumeCaseEvidence,
     linkRecommendedEvidence,
     closeException,
     confirmDamage,

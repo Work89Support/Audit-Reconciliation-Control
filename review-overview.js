@@ -151,7 +151,7 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,isActive=()=>true}) {
+  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,onCrossDay,isActive=()=>true}) {
     const scopedDate = value => minDate && (!value || value < minDate) ? minDate : value;
     date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
@@ -213,6 +213,11 @@ const ReviewOverview = (() => {
       const toolbar=document.createElement('div'); toolbar.className='audit-sheet-tools';
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
+      if(onCrossDay){
+        const crossDayCases=(view?.rows||[]).filter(r=>r.case?.ex_type==='cross_day'&&r.case.status==='open');
+        const button=document.createElement('button');button.className='primary-button';button.textContent=`จับคู่ข้ามวัน / เตรียมหลายคู่ (${crossDayCases.length})`;button.disabled=!crossDayCases.length;
+        button.onclick=()=>onCrossDay(crossDayCases[0]?.case);toolbar.prepend(button);
+      }
       if(onBatchStatus){
         const batch=document.createElement('section');batch.className='audit-sheet-tools';
         batch.innerHTML=`<label>ทำกับรายการที่ติ๊ก <select id="auditBatchAction"><option value="clarify">ส่งขอชี้แจง</option><option value="close">ยืนยันปิดเคสที่ผ่านเกณฑ์</option></select></label><button id="auditStageSelected" class="ghost-button">เตรียมสถานะที่เลือก (${statusSelected.size})</button><button id="auditSaveStatuses" class="primary-button" ${pendingActions.size?'':'disabled'}>บันทึกสถานะ (${pendingActions.size})</button><button id="auditDiscardStatuses" class="ghost-button">ล้างที่เตรียมไว้</button><span role="status">ยังไม่บันทึกจนกดบันทึกสถานะและยืนยัน</span>`;
