@@ -233,7 +233,7 @@ const ReviewOverview = (() => {
       toolbar.before(runStatus);
       if(loadRecommendations){const hint=document.createElement('p');hint.className='sheet-active-filters';hint.textContent=data?.recommendationError?'โหลดคู่แนะนำไม่ได้: '+data.recommendationError:'🟡 พื้นเหลือง = มีหลักฐานแนะนำที่เชื่อมกับเคสนี้ · ยังไม่ยืนยันและไม่ปิดเคส';toolbar.before(hint);}
       const splitPanel=document.createElement('div');splitPanel.innerHTML=splitHtml(data,values);root.append(splitPanel);
-      toolbar.querySelector('button').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:values.direction==='all'?'ทั้งหมด':'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)})),{name:'ยอดซอย-หลักฐาน',headers:splitHeaders,rows:splitRows(data,values)}],{date,company});
+      toolbar.querySelector('#overviewExport').onclick=()=>onExport?.(`ผลตรวจ_${company}_${date}`,[{name:values.direction==='all'?'ทั้งหมด':'ตามตัวกรอง',headers:sheetHeaders,rows:rows.map(sheetRow)},...['deposit','withdraw'].map(d=>({name:d==='deposit'?'ฝาก':'ถอน',headers:sheetHeaders,rows:rows.filter(r=>r.direction===d).map(sheetRow)})),{name:'ยอดซอย-หลักฐาน',headers:splitHeaders,rows:splitRows(data,values)}],{date,company});
       if(typeof PreliminaryReview!=='undefined') {
         const eligible=(view?.rows||[]).filter(r=>r.preliminary);
         const picked=PreliminaryReview.selectedRows(rows,selected);
