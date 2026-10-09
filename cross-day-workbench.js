@@ -13,6 +13,17 @@ const CrossDayWorkbench = (() => {
   const writable = () => state.dataset === 'production' && Sb.signedIn() && ['monitor','audit_assistant','lead','admin'].includes(state.role);
   const eligible = e => e.type === 'cross_day' && e.status === 'open';
   const key = (file, row) => `${file.id}:${row.rowNo}`;
+  const lateNight = value => {
+    const match=String(value||'').match(/(?:^|[T\s])(\d{2}):(\d{2})(?::(\d{2}))?/);
+    return !!match&&Number(match[1])===23&&Number(match[2])<60;
+  };
+  function scopedData(data,e) {
+    const anchor=(data.cases||[]).find(c=>c.id===e.dbId)||(drafts.get(e.dbId)?.uncertain?drafts.get(e.dbId).caseRow:null);
+    if(!anchor?.account||anchor.business_date!==e.date)throw Error('ไม่พบเคสต้นทางในคิวล่าสุด กรุณาตรวจสถานะเคสก่อน ไม่แสดงบัญชีอื่นแทน');
+    const cases=(data.cases||[]).filter(c=>c.company===anchor.company&&c.account===anchor.account&&c.business_date===anchor.business_date&&lateNight(c.occurred_at));
+    const files=(data.files||[]).filter(f=>f.company===anchor.company&&(f.rows||[]).some(r=>r.account===anchor.account)).map(f=>({...f,rows:(f.rows||[]).filter(r=>r.account===anchor.account&&r.date===anchor.business_date&&Number(r.sec)>=82800&&Number(r.sec)<=86399)}));
+    return {anchor,cases,files};
+  }
   function stage(caseRow, file, row, reason) {
     scopeDrafts();
     if (!caseRow || !file || !row || !reason || reason.trim().length < 10) throw Error('เลือกรายการ BO, STM และระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
@@ -54,10 +65,13 @@ const CrossDayWorkbench = (() => {
     try { data=await Sb.crossDayWorkbench({p_company:e.company,p_from:addDay(e.date,-3),p_to:addDay(e.date,3)}); }
     catch(error) { if(host.isConnected)host.innerHTML=`<p role="alert">เปิดหน้าจับคู่ข้ามวันไม่ได้: ${h(error.message)} · ต้องติดตั้งเวิร์กโฟลว์ฐานข้อมูลก่อน ไม่ใช้วิธีข้ามกฎปิดเคส</p>`;return; }
     if(!host.isConnected)return;
-    const cases=data.cases||[],files=data.files||[];
+    let scoped;
+    try{scoped=scopedData(data,e);}catch(error){host.textContent=error.message;return;}
+    const {anchor,cases,files}=scoped;
+    const picked=new Set([...drafts.keys()].filter(id=>cases.some(c=>c.id===id)));
     // A committed-but-unconfirmed request may no longer appear among open cases.
     // Keep its local draft accessible so the same ID can be read/retried safely.
-    for(const d of drafts.values())if(d.uncertain&&d.caseRow.company===e.company&&!cases.some(c=>c.id===d.caseRow.id))cases.push(d.caseRow);
+    for(const d of drafts.values())if(d.uncertain&&d.caseRow.company===anchor.company&&d.caseRow.account===anchor.account&&d.caseRow.business_date===anchor.business_date&&lateNight(d.caseRow.occurred_at)&&!cases.some(c=>c.id===d.caseRow.id)){cases.push(d.caseRow);picked.add(d.caseRow.id);}
     const sent=new Set(),reservedRows=new Set(), visibleCases=()=>cases.filter(c=>!sent.has(c.id));
     const current=()=>cases.find(c=>c.id===active);
     function render() {
@@ -66,9 +80,11 @@ const CrossDayWorkbench = (() => {
       else {retainedPreview=null;retainedFile=null;}
       host.innerHTML=`<p>BO ซ้าย · STM ขวา · เตรียมหลายคู่แล้วทยอยส่งทีละคู่ · ไม่ปิดทันทีและไม่รีหน้า</p><p role="status" id="crossDayStatus">เหลือ ${visibleCases().length} เคส · เตรียม ${[...drafts.keys()].filter(id=>cases.some(c=>c.id===id)).length} คู่ · ส่งแล้ว ${sent.size} คู่</p><div class="cross-day-grid"><section><h3>BO · เคสที่ยังไม่ส่ง</h3><div class="cross-day-cases">${visibleCases().map(c=>`<article class="cross-day-case ${active===c.id?'active':''}"><label><input type="checkbox" data-cross-pick="${h(c.id)}" ${drafts.has(c.id)?'checked':''} aria-label="เตรียม ${h(c.code)}"><button class="link-btn" data-cross-case="${h(c.id)}">${h(c.code)} · ${money(c.system_amount)} บาท</button></label><p>${h(c.business_date)} ${h(c.occurred_at||'')} · ${h(c.direction)} · ${h(c.account)}</p><small>${drafts.get(c.id)?.uncertain?'ยังไม่ทราบผลบันทึก — ตรวจคำขอเดิม':drafts.has(c.id)?'เตรียมคู่แล้ว':'ยังไม่เลือก STM'}</small></article>`).join('')||'<p>ส่งครบในรายการที่โหลดแล้ว ไม่ใช่ยอดครบทั้งระบบ</p>'}</div><div id="crossDayDrafts"></div></section><section><h3>STM · เอกสารต้นฉบับจริง</h3><label>เลือกเอกสาร<select id="crossDayFile"><option value="">เลือกไฟล์ STM</option>${files.map(f=>`<option value="${h(f.id)}" ${file?.id===f.id?'selected':''}>${h(f.file_name)} · ${h(f.business_date)}</option>`).join('')}</select></label><div id="crossDayPreview"><p>เลือกเอกสารเพื่อดูสเตทเมนต์จริง</p></div><div id="crossDayRows"></div><label>เหตุผลที่จับคู่<textarea id="crossDayReason" maxlength="2000" rows="3">${h(drafts.get(active)?.reason||'ตรวจรายการข้ามวันจาก BO และเอกสาร STM ต้นฉบับแล้ว')}</textarea></label><label><input id="crossDayChecked" type="checkbox"> ตรวจบริษัท บัญชี วันที่ ยอด และรายการจริงแล้ว</label><button class="primary-button" id="crossDayStage">เตรียมคู่ของเคสที่เปิดดู</button><p id="crossDayError" role="alert"></p></section></div>`;
       host.querySelectorAll('[data-cross-case]').forEach(b=>b.onclick=()=>{if(busy)return;active=b.dataset.crossCase;const d=drafts.get(active);file=d?.file||file;row=d?.row||null;render();});
-      host.querySelectorAll('[data-cross-pick]').forEach(c=>c.onchange=()=>{if(busy){c.checked=drafts.has(c.dataset.crossPick);return;}if(!c.checked){const d=drafts.get(c.dataset.crossPick);if(d?.uncertain){c.checked=true;return toast('ยังไม่ทราบผลบันทึก ห้ามล้างคำขอเดิม','warn');}drafts.delete(c.dataset.crossPick);render();}else{active=c.dataset.crossPick;render();}});
+      host.querySelectorAll('[data-cross-pick]').forEach(c=>{c.checked=picked.has(c.dataset.crossPick);c.onchange=()=>{if(busy){c.checked=picked.has(c.dataset.crossPick);return;}if(!c.checked){const d=drafts.get(c.dataset.crossPick);if(d?.uncertain){c.checked=true;return toast('ยังไม่ทราบผลบันทึก ห้ามล้างคำขอเดิม','warn');}picked.delete(c.dataset.crossPick);drafts.delete(c.dataset.crossPick);render();}else{picked.add(c.dataset.crossPick);active=c.dataset.crossPick;const d=drafts.get(active);file=d?.file||file;row=d?.row||null;render();}};});
+      const scopeHint=document.createElement('p');scopeHint.className='alert info';scopeHint.textContent=`เฉพาะ ${anchor.company} · บัญชี ${anchor.account} · วันที่ ${anchor.business_date} เวลา 23:00–23:59 · เลือก BO ได้หลายรายการ จากนั้นเลือก STM และเตรียมทีละคู่`;
+      host.prepend(scopeHint);
       $('#crossDayFile').onchange=()=>{file=files.find(f=>f.id===$('#crossDayFile').value)||null;row=null;$('#crossDayChecked').checked=false;renderDocument();};
-      $('#crossDayStage').onclick=()=>{try{if(!$('#crossDayChecked').checked)throw Error('ต้องยืนยันตรวจรายการก่อนเตรียมคู่');if(file&&row&&reservedRows.has(key(file,row)))throw Error('STM รายการนี้ส่งแล้ว ห้ามเลือกซ้ำ');stage(current(),file,row,$('#crossDayReason').value);render();}catch(error){$('#crossDayError').textContent=error.message;}};
+      $('#crossDayStage').onclick=()=>{try{if(!$('#crossDayChecked').checked)throw Error('ต้องยืนยันตรวจรายการก่อนเตรียมคู่');if(file&&row&&reservedRows.has(key(file,row)))throw Error('STM รายการนี้ส่งแล้ว ห้ามเลือกซ้ำ');stage(current(),file,row,$('#crossDayReason').value);picked.add(active);render();}catch(error){$('#crossDayError').textContent=error.message;}};
       renderDrafts(); renderDocument();
     }
     function renderDrafts() {
@@ -100,5 +116,5 @@ const CrossDayWorkbench = (() => {
     const preview=$('#crossDayApprovalPreview');try{await StatementPreview.mount(preview,q.snapshot.file);}catch(error){if(preview.isConnected)preview.textContent='เปิดหลักฐานไม่ได้: '+error.message;return;}
     for(const [selector,action] of [['#crossDayApprove','approve'],['#crossDayReject','reject']])$(selector).onclick=async()=>{const note=$('#crossDayDecision').value.trim();if(!$('#crossDayDecisionChecked').checked||action==='reject'&&note.length<10)return toast('ตรวจหลักฐานและยืนยันก่อน — ส่งกลับต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');$('#crossDayApprove').disabled=$('#crossDayReject').disabled=true;try{await Sb.decideCrossDayPair({p_id:q.id,p_action:action,p_note:note});closeModal();const host=$('#pendingCrossDayQueue');await mountQueue(host);toast(action==='approve'?'อนุมัติปิดแล้ว โดยไม่แก้ยอดต้นทาง':'ส่งกลับ Audit แล้ว','success');}catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจสถานะคำขอก่อนลองใหม่','warn');}};
   }
-  return {eligible,open,mountQueue,stage,send,drafts,queueState,loadPending};
+  return {eligible,open,mountQueue,stage,send,drafts,queueState,loadPending,scopedData,lateNight};
 })();

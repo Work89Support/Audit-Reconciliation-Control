@@ -8,6 +8,11 @@ const bo=id=>({id,company:'FR8',account:'SCB-account',direction:'ฝาก',syst
 const file={id:'statement',company:'FR8'},row={rowNo:85,verified:true,account:'SCB-account',direction:'deposit',amount:60};
 (async()=>{
  assert.equal(w.eligible({type:'cross_day',status:'open'}),true);assert.equal(w.eligible({type:'cross_day',status:'closed'}),false);
+ const anchor={...bo('scope'),business_date:'2026-10-07',occurred_at:'23:00:00'};
+ const scopeRows=[{...row,date:'2026-10-07',sec:82800},{...row,rowNo:2,date:'2026-10-07',sec:86399},{...row,rowNo:3,date:'2026-10-07',sec:82799},{...row,rowNo:4,date:'2026-10-06',sec:82800},{...row,rowNo:5,account:'other',date:'2026-10-07',sec:82800}];
+ const scoped=w.scopedData({cases:[anchor,{...anchor,id:'other',account:'other'},{...anchor,id:'other-day',business_date:'2026-10-06'},{...anchor,id:'early',occurred_at:'22:59:59'}],files:[{...file,rows:scopeRows}]},{dbId:'scope',date:'2026-10-07'});
+ assert.equal(scoped.cases.length,1);assert.equal(scoped.files[0].rows.length,2);
+ assert.throws(()=>w.scopedData({cases:[],files:[]},{dbId:'missing',date:'2026-10-07'}),/ไม่พบเคสต้นทาง/);
  assert.throws(()=>w.stage(bo('a'),file,{...row,verified:false},'ตรวจรายการและต้นทางครบแล้ว'),/ยังไม่มีรายการต้นทาง/);
  assert.throws(()=>w.stage(bo('a'),file,{...row,amount:65.01},'ตรวจรายการและต้นทางครบแล้ว'),/เกิน 5/);
  assert.throws(()=>w.stage(bo('a'),{...file,company:'3XB'},row,'ตรวจรายการและต้นทางครบแล้ว'),/บริษัท/);
