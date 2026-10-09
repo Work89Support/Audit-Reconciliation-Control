@@ -3,6 +3,15 @@ let actor='head',calls=[];
 const ctx={state:{dataset:'production',role:'lead'},DB:{exceptions:[]},Sb:{signedIn:()=>true,authUser:()=>({id:actor}),decideCrossDayImageReview:async p=>{calls.push(p.p_id);if(p.p_id==='bad')throw Error('source changed');return {id:p.p_id,status:'approved',decided_by:actor};},decideCrossDayPair:async p=>({id:p.p_id,status:'approved',decided_by:actor})},Map,Set,crypto:require('crypto').webcrypto};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync('cross-day-workbench.js','utf8')+';globalApi=CrossDayWorkbench;',ctx);
 const row=id=>({id,source_mode:'image',exception_id:id,snapshot:{bo:{code:id}}});
+const bo=(id,amount)=>({id,company:'TEST',account:'SCB',business_date:'2026-10-08',direction:'ฝาก',system_amount:amount});
+const stm=(rowNo,amount)=>({rowNo,verified:true,account:'SCB',date:'2026-10-08',direction:'deposit',amount});
+let plan=ctx.globalApi.planSelected([bo('a',65),bo('b',37)],{company:'TEST'},[stm(2,37),stm(1,65)]);
+assert.equal(plan.pairs.length,2);assert.equal(plan.pairs[0].row.amount,65,'not zipped by row order');
+plan=ctx.globalApi.planSelected([bo('a',100),bo('b',100)],{company:'TEST'},[stm(1,100),stm(2,100)]);
+assert.equal(plan.pairs.length,0,'duplicate amounts require explicit pairing');
+assert.equal(ctx.globalApi.planSelected([bo('a',65)],{company:'OTHER'},[stm(1,65)]).pairs.length,0);
+assert.equal(ctx.globalApi.planSelected([bo('a',65)],{company:'TEST'},[{...stm(1,65),verified:false}]).pairs.length,0);
+assert.equal(ctx.globalApi.planSelected([bo('a',65)],{company:'TEST'},[{...stm(1,65),date:'2026-10-07'}]).pairs.length,0);
 (async()=>{
 let r=await ctx.globalApi.approveMany([row('a'),row('bad'),row('b')],'checked');assert.equal(r.ok,2);assert.equal(r.errors.length,1);assert.deepEqual(calls,['a','bad','b']);
 ctx.Sb.decideCrossDayImageReview=async()=>{throw Error('database timed out');};r=await ctx.globalApi.approveMany([row('c'),row('d')],'checked');assert.equal(r.ok,0);assert.equal(r.errors.length,1,'stop transient outage without hammering rest');
