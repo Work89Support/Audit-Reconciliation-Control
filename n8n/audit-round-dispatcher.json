@@ -64,7 +64,8 @@
         "options": {
           "response": {
             "response": {}
-          }
+          },
+          "timeout": 30000
         }
       },
       "id": "queue",
@@ -82,8 +83,8 @@
         }
       },
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 3000,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
       "alwaysOutputData": true
     },
     {
@@ -109,6 +110,9 @@
         0
       ],
       "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
       "credentials": {
         "supabaseApi": {
           "id": "dGndiinLb7AKnjIu",
@@ -119,7 +123,9 @@
         "url": "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?select=id&status=eq.queued&is_archived=eq.false&attempt_count=lt.3&order=business_date,company,updated_at&limit=1",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
-        "options": {}
+        "options": {
+          "timeout": 30000
+        }
       }
     },
     {
@@ -231,6 +237,21 @@
           "combinator": "and"
         },
         "options": {}
+      }
+    },
+    {
+      "id": "round-pause",
+      "name": "พักก่อนงานถัดไป",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        900,
+        100
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
       }
     },
     {
@@ -347,7 +368,7 @@
       "main": [
         [
           {
-            "node": "ดูคิวที่ทำได้จริง",
+            "node": "พักก่อนงานถัดไป",
             "type": "main",
             "index": 0
           }
@@ -355,6 +376,17 @@
         [
           {
             "node": "หยุดเมื่อคิวหมดหรือมี Worker อื่นทำอยู่",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "พักก่อนงานถัดไป": {
+      "main": [
+        [
+          {
+            "node": "ดูคิวที่ทำได้จริง",
             "type": "main",
             "index": 0
           }

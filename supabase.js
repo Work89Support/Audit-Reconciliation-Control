@@ -610,14 +610,22 @@ const Sb = (() => {
     if (!runIds.length) return [];
     const pageSize = 1000;
     const fetchPage = async (offset) => {
-      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
+      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
     const offsets = [];
     for (let offset = pageSize; offset < limit; offset += pageSize) offsets.push(offset);
-    const rest = await Promise.all(offsets.map(fetchPage));
+    const rest = [];
+    for (const offset of offsets) {
+      const page = await fetchPage(offset);
+      rest.push(page);
+      if (page.length < pageSize) break;
+    }
     return first.concat(...rest);
   }
 
@@ -653,13 +661,21 @@ const Sb = (() => {
          but are not exceptions computed by the latest run and must not inflate
          the current queue or its totals. */
       const filters = [`select=${columns}`, runFilter, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
+      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
+      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
+      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
       return json(`/rest/v1/exceptions?${filters.join("&")}`);
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
     const offsets = [];
     for (let offset = pageSize; offset < limit; offset += pageSize) offsets.push(offset);
-    const rest = await Promise.all(offsets.map(fetchPage));
+    const rest = [];
+    for (const offset of offsets) {
+      const page = await fetchPage(offset);
+      rest.push(page);
+      if (page.length < pageSize) break;
+    }
     return first.concat(...rest);
   }
 
@@ -707,9 +723,10 @@ const Sb = (() => {
     const jobs = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`);
     const ids = [...new Set((jobs || []).map(row => row.last_run_id).filter(Boolean))];
     const evidence = [];
-    for (let index = 0; index < ids.length; index += 100) {
-      const page = await json(`/rest/v1/recon_runs?id=in.(${ids.slice(index,index+100).join(",")})&select=id,summary&limit=100`);
-      for (const run of page || []) if (Array.isArray(run?.summary?.match_evidence)) evidence.push(...run.summary.match_evidence);
+    for (let index = 0; index < ids.length; index += 10) {
+      // Fetch only the matching evidence, not the complete large run summary.
+      const page = await json(`/rest/v1/recon_runs?id=in.(${ids.slice(index,index+10).join(",")})&select=id,match_evidence:summary->match_evidence&limit=10`);
+      for (const run of page || []) if (Array.isArray(run?.match_evidence)) evidence.push(...run.match_evidence);
     }
     return evidence;
   }

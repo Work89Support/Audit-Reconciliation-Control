@@ -238,9 +238,9 @@ const ROUTE_ROLES = {
 
 /* ---------------- state ---------------- */
 const PROD_TODAY = (() => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const value = type => parts.find(part => part.type === type).value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
 })();
 const OPERATING_START_DATE = "2026-08-30";
 // Display scope only: retain older sources for cross-day matching and evidence.
@@ -250,14 +250,13 @@ const VISIBLE_DATE_TO = "9999-12-31";
 function visibleDate(value) {
   return !value || value < VISIBLE_DATE_FROM ? VISIBLE_DATE_FROM : value > VISIBLE_DATE_TO ? VISIBLE_DATE_TO : value;
 }
-const DEFAULT_WORK_DATE = visibleDate(PROD_TODAY);
-/* เปิดมาครั้งแรกให้เห็นย้อนหลังไม่เกิน 30 วัน แต่ไม่ย้อนก่อนวันเริ่มใช้งานจริง */
-const DEFAULT_RANGE_FROM = (() => {
-  const [y, m, d] = DEFAULT_WORK_DATE.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d - 30));
-  const candidate = date.toISOString().slice(0, 10);
-  return visibleDate(candidate);
+const DEFAULT_WORK_DATE = (() => {
+  const [year, month, day] = PROD_TODAY.split('-').map(Number);
+  return visibleDate(new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10));
 })();
+// Start with one day. Historical ranges remain explicitly selectable; source
+// ingestion and adjacent-day matching are not restricted by this UI default.
+const DEFAULT_RANGE_FROM = DEFAULT_WORK_DATE;
 const state = {
   route: "cloud",
   role: "lead",
@@ -1489,40 +1488,7 @@ async function loadLiveOverview(force = false) {
     let boFirstRows = coreValue(4, liveOverviewState.boFirst);
     const settings = coreValue(5, liveOverviewState.settings ? [liveOverviewState.settings] : null);
     liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
-    const qualityReady = core[2].status === "fulfilled";
-    const defaultEmptyRange = state.filters.date === DEFAULT_WORK_DATE
-      && state.filters.from === DEFAULT_RANGE_FROM
-      && state.filters.to === DEFAULT_WORK_DATE
-      && qualityReady
-      && !(quality || []).some((row) => !row.is_archived && row.business_date >= state.filters.from && row.business_date <= state.filters.to);
-    if (defaultEmptyRange) {
-      const latestLookup = await Promise.allSettled([Sb.quality({ from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company: state.filters.company, limit: 1 })]);
-      const latestQuality = latestLookup[0].status === "fulfilled" ? latestLookup[0].value : [];
-      if (latestLookup[0].status === "rejected") liveOverviewState.coreErrors.push("ค้นหาวันล่าสุด");
-      const latestOperationalDate = (latestQuality || [])
-        .filter((row) => isLiveCompanyRow(row) && !row.is_archived && row.business_date)
-        .map((row) => row.business_date)
-        .sort()
-        .pop();
-      if (latestOperationalDate) {
-        state.filters = { ...state.filters, date: latestOperationalDate, from: latestOperationalDate, to: latestOperationalDate, preset: "day" };
-        state.dailySummary.date = latestOperationalDate;
-        const latest = await Promise.allSettled([
-          Sb.dailyStatus({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
-          Sb.operations({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
-          Sb.quality({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company, limit: 1000 }),
-          Sb.dailyChecklist({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
-          Sb.boFirstCoverage({ from: latestOperationalDate, to: latestOperationalDate, company: state.filters.company }),
-        ]);
-        daily = latest[0].status === "fulfilled" ? latest[0].value : daily;
-        operations = latest[1].status === "fulfilled" ? (latest[1].value || []).filter(isLiveCompanyRow) : operations;
-        quality = latest[2].status === "fulfilled" ? (latest[2].value || []).filter(isLiveCompanyRow) : quality;
-        checklistRows = latest[3].status === "fulfilled" ? latest[3].value : checklistRows;
-        boFirstRows = latest[4].status === "fulfilled" ? latest[4].value : boFirstRows;
-        liveOverviewState.coreErrors.push(...latest.flatMap((item, index) => item.status === "rejected" ? [coreNames[index]] : []));
-        liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-      }
-    }
+    // Keep the requested day even when empty; never silently widen or change Day-1.
     if (requestId !== liveOverviewState.requestId) return;
     if (daily !== null) liveOverviewState.daily = daily || [];
     if (operations !== null) liveOverviewState.operations = (operations || []).filter(isLiveCompanyRow);
@@ -8399,7 +8365,7 @@ async function performProductionEntry() {
   // The company worksheet loads its own committed run. Do not also start
   // thirty days of all-company aggregates/evidence while opening that sheet.
   // Other routes retain their normal overview loaders; unknown badges stay —.
-  if (state.route !== 'exceptions') loadLiveOverview().catch(() => {});
+  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'].includes(state.route)) loadLiveOverview().catch(() => {});
   return true;
 }
 
