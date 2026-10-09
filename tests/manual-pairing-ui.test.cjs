@@ -11,6 +11,7 @@ function setup(mode='same',amountDifference=false) {
   let html='';
   const context={state:{dataset:'production',role:'monitor'},DB:{companies:['FR8','3XB'],exceptions:[]},crypto:{randomUUID:()=> 'request-id'},h:s=>String(s??''),money:n=>Number(n).toFixed(2),$:s=>node(s.slice(1)),caseLabel:e=>e.id,canAccessCompany:()=>true,toast:m=>notices.push(m),openModal:(_title,body)=>{html=body;node('pairCompany').value=other.company;node('pairDate').value=item.date;},closeModal:()=>{},render:()=>{},openException:async()=>{},Sb:{signedIn:()=>true,exceptionDetail:async()=>source,manualPairCandidates:async()=>[other],submitManualPair:async p=>{requests.push(p);return {id:p.p_id};}}};
   context.companyMaster=()=>context.DB.companies.map(c=>({code:(typeof c==='string'?c:c.code)==='7M'?'UFABET7M':(typeof c==='string'?c:c.code)}));
+  context.Sb.exceptionDetail=async id=>id===other.id?other:source;
   vm.createContext(context);vm.runInContext(code+';this.pairing=ManualPairing;',context);
   return {context,source,other,item,node,notices,requests,open:()=>context.pairing.open(item,mode),html:()=>html};
 }
@@ -43,6 +44,15 @@ function setup(mode='same',amountDifference=false) {
   const cents=setup('same',true);await cents.open();assert.match(cents.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(cents.node('.pair-search-grid').hidden,true);cents.node('pairReasonType').value='small_difference';cents.node('pairChecked').checked=true;await cents.node('pairSubmit').onclick({target:cents.node('pairSubmit')});assert.equal(cents.requests.length,1);assert.equal(cents.requests[0].p_bo,'stm');assert.equal(cents.requests[0].p_stm,'stm');
   const alias=setup('same',true);alias.context.DB.companies=[{code:'7M'},{code:'FR8'}];alias.source.company=alias.item.company='UFABET7M';await alias.open();assert.match(alias.html(),/<option>UFABET7M<\/option>/);assert.match(alias.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(alias.notices.length,0);
   const wrongMode=setup('cross',true);await wrongMode.open();assert.match(wrongMode.notices.at(-1),/ไม่ใช่จับคู่ข้ามบริษัท/);assert.equal(wrongMode.html(),'');
+  const upload=setup('cross'),elements=[];let uploads=0,failUpload=true;
+  upload.context.document={createElement:()=>{const element={setAttribute(){}};elements.push(element);return element;},getElementById:()=>null};
+  upload.node('pairFile').parentElement={after(){}};upload.node('pairSubmit').parentElement={prepend(){}};
+  upload.context.Sb.uploadCaseEvidence=async(id,file,onProgress)=>{uploads++;assert.equal(id,'stm');assert.equal(file.name,'test.docx');onProgress('กำลังบันทึก');if(failUpload)throw new Error('database timed out');return {id:'saved-evidence'};};
+  await upload.open();const uploadButton=elements.find(e=>e.id==='pairUploadEvidence'),uploadStatus=elements.find(e=>e.id==='pairUploadStatus');
+  upload.node('pairFile').files=[{name:'test.docx'}];upload.node('pairFile').onchange();
+  await uploadButton.onclick();assert.match(uploadStatus.textContent,/database timed out/);assert.equal(upload.node('pairFile').disabled,false);
+  failUpload=false;await uploadButton.onclick();assert.match(uploadStatus.textContent,/บันทึกเอกสารแล้ว/);assert.equal(upload.requests.length,0);
+  await uploadButton.onclick();assert.equal(uploads,2);assert.match(uploadStatus.textContent,/ไม่อัปโหลดซ้ำ/);
   const centsHigh=setup('same',true);centsHigh.source.bank_amount=29.01;await centsHigh.open();centsHigh.node('pairReasonType').value='small_difference';centsHigh.node('pairChecked').checked=true;await centsHigh.node('pairSubmit').onclick({target:centsHigh.node('pairSubmit')});assert.equal(centsHigh.requests.length,0);assert.match(centsHigh.notices.at(-1),/เกิน 5 บาท/);
   console.log('Pairing UI: three steps, collapsed source, amount comparison, reset, 5-baht cap and cross-company evidence guards passed');
 })().catch(err=>{console.error(err);process.exitCode=1;});
