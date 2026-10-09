@@ -1142,7 +1142,7 @@ const Sb = (() => {
     const rows=await json(`/rest/v1/case_evidence?id=eq.${encodeURIComponent(metadata.id)}&exception_id=eq.${encodeURIComponent(metadata.exception_id)}&select=*&limit=1`);
     const saved=Array.isArray(rows)?rows[0]:null;
     if(!saved)return null;
-    if(saved.id!==metadata.id||saved.exception_id!==metadata.exception_id||saved.storage_path!==metadata.storage_path||Number(saved.size_bytes)!==Number(metadata.size_bytes)||saved.uploaded_by!==metadata.uploaded_by){
+    if(saved.id!==metadata.id||saved.exception_id!==metadata.exception_id||saved.storage_path!==metadata.storage_path||Number(saved.size_bytes)!==Number(metadata.size_bytes)||saved.uploaded_by!==metadata.uploaded_by||saved.file_name!==metadata.file_name||saved.mime_type!==metadata.mime_type){
       const error=new Error('ทะเบียนหลักฐานไม่ตรงกับคำขอเดิม ต้องให้ผู้ดูแลตรวจ ไม่สร้างไฟล์ใหม่');error.code='evidence_receipt_mismatch';throw error;
     }
     return saved;
@@ -1198,10 +1198,19 @@ const Sb = (() => {
       if(pending.uploaded){pending.buffer=null;if(pending.digest)pending.file=null;}
       for(let attempt=0;attempt<3;attempt++)try {
         // Ignore only an identical primary-key conflict, never overwrite history.
-        const rows=await post('case_evidence?on_conflict=id',[metadata],'resolution=ignore-duplicates,return=representation');
+        // Verify the exact owned object without traversing general Storage RLS.
+        // Legacy fallback is only for a missing migration, never a timeout/denial.
+        let rows;
+        try {
+          const receipt=await rpc('register_case_evidence',{p_metadata:metadata});
+          rows=Array.isArray(receipt)?receipt:[receipt];
+        } catch(error) {
+          if(!/PGRST202|Could not find the function public\.register_case_evidence/i.test(error.message||''))throw error;
+          rows=await post('case_evidence?on_conflict=id',[metadata],'resolution=ignore-duplicates,return=representation');
+        }
         checkActor();
         const returned=Array.isArray(rows)?rows.find(row=>row.id===id):null;
-        if(returned&&returned.exception_id===metadata.exception_id&&returned.storage_path===metadata.storage_path&&returned.uploaded_by===metadata.uploaded_by&&Number(returned.size_bytes)===Number(metadata.size_bytes)){
+        if(returned&&returned.exception_id===metadata.exception_id&&returned.storage_path===metadata.storage_path&&returned.uploaded_by===metadata.uploaded_by&&Number(returned.size_bytes)===Number(metadata.size_bytes)&&returned.file_name===metadata.file_name&&returned.mime_type===metadata.mime_type){
           pendingEvidenceUploads.delete(id);return returned;
         }
         saved=await readEvidenceReceipt(metadata);
