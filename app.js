@@ -3759,7 +3759,7 @@ async function openException(id, options = {}) {
                     `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
-            : `<p class="muted small-note">${e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
+            : `<p class="muted small-note">${state.dataset==='production' && Sb.pendingCaseEvidence(e.dbId).length ? "มีคำขอแนบไฟล์ค้างยืนยันทะเบียน — กดตรวจ / ลองบันทึกต่อด้านบน ไม่ต้องแนบซ้ำ และยังไม่นับเป็นหลักฐานที่ผูกเคสสำเร็จ" : e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
         }
         <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
           <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.docx,.csv,.xlsx,.txt" ${can("attach") || can("note") ? "" : "disabled"} />
@@ -3867,7 +3867,7 @@ async function openException(id, options = {}) {
   };
   document.querySelectorAll('[data-resume-evidence]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
-    try{acceptStoredEvidence(await Sb.resumeCaseEvidence(button.dataset.resumeEvidence));e._uploadResult='ยืนยันหลักฐานเดิมและผูกเคสสำเร็จแล้ว — ไม่อัปไฟล์ซ้ำ';toast(e._uploadResult);}
+    try{acceptStoredEvidence(await Sb.resumeCaseEvidence(button.dataset.resumeEvidence));e._caseEvidenceLoaded=false;e._uploadResult='ยืนยันหลักฐานเดิมและผูกเคสสำเร็จแล้ว — ไม่อัปไฟล์ซ้ำ';toast(e._uploadResult);}
     catch(error){e._uploadResult=error.message;toast(error.message,'warn');}
     finally{if(state.selected===e.id)await openException(e.id);else button.disabled=false;}
   });

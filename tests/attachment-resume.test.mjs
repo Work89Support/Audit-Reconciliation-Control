@@ -11,6 +11,7 @@ const ctx={Map,Uint8Array,crypto:{subtle:webcrypto.subtle,randomUUID:()=>`upload
  req:async(path,options)=>{uploads++;paths.push(path);assert.equal(options.headers['x-upsert'],'false');},
  json:async path=>{if(path.startsWith('/rest/v1/exceptions?')){if(preflightBroken)throw Error('database timed out');return [{id:decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1]),status:caseStatus}];}assert.ok(path.includes('id=eq.upload-'));assert.ok(path.includes('&limit=1'));if(readBroken)throw Error('database timed out');const id=decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1]);const row=rows.get(id);return row?[wrongReceipt?{...row,exception_id:'wrong-case'}:row]:[];},
  post:async(table,body,prefer)=>{posts++;assert.equal(table,'case_evidence?on_conflict=id');assert.match(prefer,/resolution=ignore-duplicates/);const meta=body[0];if(!postBroken||commitBeforeTimeout)rows.set(meta.id,meta);if(postBroken)throw Error('database timed out');return [meta];},
+ rpc:async(name,body)=>{assert.equal(name,'register_case_evidence');return (await ctx.post('case_evidence?on_conflict=id',[body.p_metadata],'resolution=ignore-duplicates'))[0];},
  signedUrl:async()=>{throw Error('not used in this fixture');}
 };
 ctx.setTimeout=resolve=>resolve();
@@ -68,4 +69,16 @@ assert.equal(uploads,beforePreflight+1);
 caseStatus='closed';
 await assert.rejects(ctx.uploadCaseEvidence('case-closed',file('closed')),/สถานะเคสเปลี่ยน/);
 assert.equal(uploads,beforePreflight+1,'never upload bytes to a closed case');
+caseStatus='open';
+const fallbackPost=ctx.post;let legacyCalls=0;
+ctx.post=async(...args)=>{legacyCalls++;return fallbackPost(...args);};
+ctx.rpc=async()=>{throw Error('PGRST202 Could not find the function public.register_case_evidence');};
+assert.equal((await ctx.uploadCaseEvidence('case-legacy',file('legacy'))).exception_id,'case-legacy');
+assert.equal(legacyCalls,1,'missing migration alone uses legacy fallback');
+ctx.rpc=async()=>{throw Error('permission denied');};
+await assert.rejects(ctx.uploadCaseEvidence('case-rpc-denied',file('denied')),/permission denied/);
+assert.equal(legacyCalls,1,'RPC denial must not fall back to another write path');
+ctx.rpc=async()=>{throw Error('database timed out');};
+await assert.rejects(ctx.uploadCaseEvidence('case-rpc-timeout',file('rpc-timeout')),/ยังยืนยัน/);
+assert.equal(legacyCalls,1,'RPC timeout must not fall back to expensive legacy writes');
 console.log('Attachment resume: same UUID/path after timeout, content identity, actor isolation, exact read-back, committed-response recovery, no overwrite/delete passed (mock transport).');
