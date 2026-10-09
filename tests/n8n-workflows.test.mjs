@@ -485,7 +485,7 @@ assert.match(supabaseSource, /replaceSourceFile/, "the browser client must expos
 assert.match(supabaseSource, /method:\s*"DELETE"/, "a failed replacement RPC must remove its orphaned Storage upload");
 assert.match(supabaseSource, /ระบบแทนที่ไฟล์ยังตั้งค่าไม่ครบ/, "missing replacement RPC must show a short Thai recovery message");
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
-assert.match(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must load concurrently after the first page");
+assert.doesNotMatch(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must not fan out under database load");
 assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");
 assert.match(supabaseSource, /rest\/v1\/exceptions\?\$\{filters\.join\("&"\)\}/, "exception summary must read current-run rows directly from the indexed table");
 assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "daily summary must load the selected day for every company in the audit sheet");

@@ -21,6 +21,9 @@ assert.equal(child.connections['รับงานจากรอบตรวจ
 assert.equal(parent.settings.timezone,'Asia/Bangkok');
 assert.equal(parent.settings.executionTimeout,2400,'respect live Cloud maximum of 40 minutes');
 assert.equal(parent.nodes.find(n=>n.id==='call-worker').parameters.options.waitForSubWorkflow,true);
+assert.equal(parent.nodes.find(n=>n.id==='round-pause').parameters.amount,5);
+assert.equal(parent.connections['ทำงานแล้วจึงดูคิวถัดไป'].main[0][0].node,'พักก่อนงานถัดไป');
+assert.equal(parent.connections['พักก่อนงานถัดไป'].main[0][0].node,'ดูคิวที่ทำได้จริง');
 assert.match(parent.nodes.find(n=>n.id==='peek-queue').parameters.url,/status=eq.queued.*is_archived=eq.false.*attempt_count=lt.3/);
 assert.equal(parent.connections['มีงานจึงเรียก Worker'].main[1][0].node,'หยุดเมื่อคิวหมดหรือมี Worker อื่นทำอยู่');
 assert.equal(parent.connections['ทำงานแล้วจึงดูคิวถัดไป'].main[1][0].node,'หยุดเมื่อคิวหมดหรือมี Worker อื่นทำอยู่');

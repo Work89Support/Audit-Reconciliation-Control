@@ -55,5 +55,5 @@ assert.match(review,/async function refreshInPlace\(\{afterSave=false\}=\{\}\)/)
 assert.match(review,/afterSave\?'บันทึกแล้ว แต่':''/);
 assert.match(review,/ยังไม่สรุปว่าไม่มีเคส/);
 const app=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
-assert.match(app,/if \(state.route !== 'exceptions'\) loadLiveOverview\(\)/);
+assert.match(app,/\['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'\]\.includes\(state.route\)/);
 console.log('JSON reads: single-flight, fresh retry, write invalidation and sign-out isolation passed (mock transport)');

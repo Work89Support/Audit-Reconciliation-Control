@@ -238,9 +238,9 @@ const ROUTE_ROLES = {
 
 /* ---------------- state ---------------- */
 const PROD_TODAY = (() => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const value = type => parts.find(part => part.type === type).value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
 })();
 const OPERATING_START_DATE = "2026-08-30";
 // Display scope only: retain older sources for cross-day matching and evidence.
@@ -250,14 +250,13 @@ const VISIBLE_DATE_TO = "9999-12-31";
 function visibleDate(value) {
   return !value || value < VISIBLE_DATE_FROM ? VISIBLE_DATE_FROM : value > VISIBLE_DATE_TO ? VISIBLE_DATE_TO : value;
 }
-const DEFAULT_WORK_DATE = visibleDate(PROD_TODAY);
-/* เปิดมาครั้งแรกให้เห็นย้อนหลังไม่เกิน 30 วัน แต่ไม่ย้อนก่อนวันเริ่มใช้งานจริง */
-const DEFAULT_RANGE_FROM = (() => {
-  const [y, m, d] = DEFAULT_WORK_DATE.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d - 30));
-  const candidate = date.toISOString().slice(0, 10);
-  return visibleDate(candidate);
+const DEFAULT_WORK_DATE = (() => {
+  const [year, month, day] = PROD_TODAY.split('-').map(Number);
+  return visibleDate(new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10));
 })();
+// Start with one day. Historical ranges remain explicitly selectable; source
+// ingestion and adjacent-day matching are not restricted by this UI default.
+const DEFAULT_RANGE_FROM = DEFAULT_WORK_DATE;
 const state = {
   route: "cloud",
   role: "lead",
@@ -8399,7 +8398,7 @@ async function performProductionEntry() {
   // The company worksheet loads its own committed run. Do not also start
   // thirty days of all-company aggregates/evidence while opening that sheet.
   // Other routes retain their normal overview loaders; unknown badges stay —.
-  if (state.route !== 'exceptions') loadLiveOverview().catch(() => {});
+  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'].includes(state.route)) loadLiveOverview().catch(() => {});
   return true;
 }
 
