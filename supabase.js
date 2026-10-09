@@ -546,10 +546,10 @@ const Sb = (() => {
   }
   const voidDamageReceipt=(id,reason)=>rpc('void_damage_receipt',{p_id:id,p_reason:reason});
 
-  async function evidenceFiles({ from, to, company, limit = 2000 } = {}) {
+  async function evidenceFiles({ from, to, company, limit = 2000, includeSourceFiles = false } = {}) {
     const filters = [
       "select=*,mail_batches!inner(business_date,company,subject,sender,received_at)",
-      "kind=eq.doc_clarify",
+      ...(includeSourceFiles ? [] : ["kind=eq.doc_clarify"]),
       "order=created_at.desc",
       `limit=${limit}`,
     ];
@@ -566,6 +566,10 @@ const Sb = (() => {
       received_at: row.created_at || row.mail_batches?.received_at || null,
     }));
   }
+
+  const linkSelectedCaseFile = (caseId, fileId, note) => rpc('link_selected_case_file', {
+    p_exception_id: caseId, p_file_id: fileId, p_note: note,
+  });
 
   async function auditLogs({ from, to, limit = 2000 } = {}) {
     const filters = ["select=*", "order=at.desc", `limit=${limit}`];
@@ -1028,6 +1032,7 @@ const Sb = (() => {
   const submitCrossDayPair=body=>rpc('submit_cross_day_pair',body);
   async function crossDayPair(id){const rows=await json(`/rest/v1/cross_day_pair_requests?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);return rows[0]||null;}
   async function pendingCrossDayPairs(){const rows=[];for(let offset=0;;offset+=200){const page=await json(`/rest/v1/cross_day_pair_requests?status=eq.pending&select=*&order=submitted_at.asc,id.asc&limit=200&offset=${offset}`);if(!Array.isArray(page))throw Error('อ่านคิวข้ามวันไม่สำเร็จ');rows.push(...page);if(page.length<200)return rows;}}
+  const crossDayPairHistory=(company,date)=>json(`/rest/v1/cross_day_pair_requests?status=eq.approved&company=eq.${encodeURIComponent(company)}&snapshot->bo->>business_date=eq.${encodeURIComponent(date)}&select=*&order=submitted_at.desc,id.desc&limit=200`);
   const decideCrossDayPair=body=>verifyDecision('/rest/v1/rpc/decide_cross_day_pair',body,crossDayPair);
   async function verifyDecision(path, body, readBack, action=body.p_action) {
     let requestError;
@@ -1382,7 +1387,7 @@ const Sb = (() => {
   return {
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
-    crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,decideCrossDayPair,
+    crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     cfg,
@@ -1413,6 +1418,7 @@ const Sb = (() => {
     confirmDamageReceipt,
     voidDamageReceipt,
     evidenceFiles,
+    linkSelectedCaseFile,
     auditLogs,
     notifications,
     clarificationMatches,

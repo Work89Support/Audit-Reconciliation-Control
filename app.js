@@ -3512,18 +3512,22 @@ async function loadExceptionSupport(e, options = {}) {
     mailButton.id='caseMailEvidenceButton';mailButton.className='primary-button case-mail-open'; mailButton.textContent='เลือกเอกสารชี้แจงให้เคสนี้';
     const evidenceRange=document.createElement('div');
     evidenceRange.className='case-evidence-range';
-    evidenceRange.innerHTML=`<label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
+    const headFilePicker=['lead','admin'].includes(state.role);
+    const fileCompanies=headFilePicker?companyMaster():companyMaster().filter(c=>c.code===e.company);
+    evidenceRange.innerHTML=`<label>บริษัทเจ้าของไฟล์ <select aria-label="บริษัทเจ้าของไฟล์">${fileCompanies.map(c=>`<option value="${h(c.code)}" ${c.code===e.company?'selected':''}>${h(c.code)}</option>`).join('')}</select></label><label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
     host.append(evidenceRange,mailButton);
     mailButton.onclick=async()=>{
       mailButton.disabled=true;
       try {
         const [from,to]=[...evidenceRange.querySelectorAll('input')].map(input=>input.value);
+        const fileCompany=evidenceRange.querySelector('select').value;
+        if(!canAccessCompany(fileCompany)||(!headFilePicker&&fileCompany!==e.company))throw new Error('ไม่มีสิทธิ์เลือกบริษัทเจ้าของไฟล์นี้');
         if(!from||!to||from>to)throw new Error('กรุณาเลือกช่วงวันที่เอกสารให้ถูกต้อง');
         const [candidateFiles,amountRecommendations]=await Promise.all([
-          Sb.evidenceFiles({from,to,company:e.company}),
-          Sb.evidenceRecommendations({from,to,company:e.company,limit:2000}),
+          Sb.evidenceFiles({from,to,company:fileCompany,includeSourceFiles:headFilePicker}),
+          Sb.evidenceRecommendations({from,to,company:fileCompany,limit:2000}),
         ]);
-        const candidates=candidateFiles.filter(f=>(f.company||f.batch_company)===e.company);
+        const candidates=candidateFiles.filter(f=>(f.company||f.batch_company)===fileCompany);
         const amountsByFile=new Map();
         const rememberAmount=(fileId,value)=>{
           const amount=Number(value);if(!fileId||!Number.isFinite(amount)||amount<=0)return;
@@ -3553,7 +3557,7 @@ async function loadExceptionSupport(e, options = {}) {
         list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
-        list.querySelector('h4').textContent=`เอกสารชี้แจง · ${e.company} · ${from} ถึง ${to} (${candidates.length} ไฟล์)`;
+        list.querySelector('h4').textContent=`ไฟล์ของ ${fileCompany} · ${from} ถึง ${to} (${candidates.length} ไฟล์) → เคส ${e.company} ${e.code||e.id}`;
         list.querySelector('p').textContent='แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
         if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
         const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
@@ -3594,11 +3598,13 @@ async function loadExceptionSupport(e, options = {}) {
             if(state.selected!==e.id||!document.body.contains(form))return;
             const note=input.value.trim();
             if(!note){status.textContent='กรุณาระบุเหตุผลก่อนผูกหลักฐาน';input.focus();return;}
+            if(headFilePicker&&(note.length<10||note.length>2000)){status.textContent='ระบุเหตุผลที่ไฟล์นี้ยืนยันรายการของเคส 10–2,000 ตัวอักษร';input.focus();return;}
             saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
             status.textContent='กำลังผูกหลักฐาน…';
             try{
               const recommendationId=recommended.get(b.dataset.linkMail);
-              if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
+              if(headFilePicker)await Sb.linkSelectedCaseFile(e.dbId,b.dataset.linkMail,note);
+              else if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
               else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
               const saved=await Sb.exceptionDetail(e.dbId);
               if(!saved||saved.clarification_file_id!==b.dataset.linkMail)throw new Error('ยังยืนยันไฟล์ที่ผูกกับเคสไม่ได้ กรุณาตรวจสถานะล่าสุดก่อนเลือกซ้ำ');
@@ -3822,6 +3828,18 @@ async function openException(id, options = {}) {
   }
   $('#btnManualPair').addEventListener('click',()=>e.type==='cross_day'?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
   $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
+  if(['lead','admin'].includes(state.role)&&can('approve')&&!closed){
+    const headClose=document.createElement('button');
+    headClose.id='btnHeadClose';headClose.type='button';headClose.className='primary-button';
+    headClose.textContent='ปิดเคส (หัวหน้า / ผู้ดูแลระบบ)';
+    headClose.addEventListener('click',()=>{
+      if(!['lead','admin'].includes(state.role)||!can('approve'))return deny('ปิดเคส');
+      if(quickCloseEligible)return confirmQuickClose(e);
+      if(state.dataset==='production')return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+      $('#btnApprove')?.click();
+    });
+    $('#btnCrossCompanyPair').after(headClose);
+  }
   ManualPairing.mountReview(e,$('#manualPairReview'));
   CaseClosure.mountReview(e,$('#caseClosureReview'));
   $('#btnSendClosure')?.addEventListener('click',()=>CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn')));
