@@ -1125,17 +1125,24 @@ const Sb = (() => {
       if(!pending.uploaded){
         progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
         pending.attempted=true;
-        try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;}
+        for(let storageAttempt=0;storageAttempt<2;storageAttempt++)try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;break;}
         catch(error){
           // POST may have committed before the response was lost; the same path
           // is retried without upsert. Verify the uploader's existing object.
-          try{await signedUrl(metadata.storage_path,60);pending.uploaded=true;}catch{throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองต่อได้โดยไม่เลือกไฟล์ใหม่: ${error.message}`);}
+          checkActor();
+          try{await signedUrl(metadata.storage_path,60);pending.uploaded=true;break;}catch{
+            if(storageAttempt===0&&/connection.*timed out|database timed out/i.test(error.message||'')){
+              progress('คลังไฟล์เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังลองด้วยรหัสและเส้นทางเดิม (2/2)');
+              await new Promise(resolve=>setTimeout(resolve,1000));checkActor();continue;
+            }
+            throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองต่อได้โดยไม่เลือกไฟล์ใหม่: ${error.message}`);
+          }
         }
       }
       checkActor();progress('ไฟล์เข้าคลังแล้ว กำลังยืนยันทะเบียนผูกเคส');
       // Metadata recovery no longer needs the bytes once Storage is confirmed.
       if(pending.uploaded){pending.buffer=null;if(pending.digest)pending.file=null;}
-      try {
+      for(let attempt=0;attempt<3;attempt++)try {
         // Ignore only an identical primary-key conflict, never overwrite history.
         const rows=await post('case_evidence?on_conflict=id',[metadata],'resolution=ignore-duplicates,return=representation');
         checkActor();
@@ -1147,8 +1154,16 @@ const Sb = (() => {
         checkActor();if(saved){pendingEvidenceUploads.delete(id);return saved;}
         throw new Error('ยังไม่พบทะเบียนหลักฐานที่ตรงกับคำขอ');
       } catch(error) {
-        try{saved=await readEvidenceReceipt(metadata);}catch{ /* uncertainty is not absence */ }
+        try{saved=await readEvidenceReceipt(metadata);}catch(receiptError){if(receiptError.code==='evidence_receipt_mismatch')throw receiptError; /* uncertainty is not absence */ }
+        checkActor();
         if(saved){pendingEvidenceUploads.delete(id);return saved;}
+        // Retry only transient connection failures, with the same metadata ID.
+        // Storage is already confirmed and is never uploaded again here.
+        if(attempt<2&&/connection.*timed out|database timed out|failed to fetch|networkerror|network request failed/i.test(error.message||'')){
+          progress(`ไฟล์เข้าคลังแล้ว กำลังลองยืนยันทะเบียนอีกครั้ง (${attempt+2}/3)`);
+          await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+          checkActor();continue;
+        }
         throw new Error(`ไฟล์ส่งถึงคลังแล้ว แต่ยังยืนยันการผูกเคสไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองบันทึกต่อโดยไม่อัปไฟล์ซ้ำ: ${error.message}`);
       }
     };
