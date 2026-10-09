@@ -41,6 +41,19 @@ const CrossDayWorkbench = (() => {
     const draft = {caseRow,file,row,reason:reason.trim(),requestId:crypto.randomUUID(),uncertain:false};
     drafts.set(caseRow.id,draft); return draft;
   }
+  // Never zip by display order: duplicate amounts must be paired explicitly.
+  function planSelected(cases,file,rows) {
+    const remaining=new Set(rows),pairs=[];
+    const compatible=(c,r)=>r.verified&&c.company===file.company&&c.account===r.account&&c.business_date===r.date&&c.direction===(r.direction==='deposit'?'ฝาก':'ถอน')&&Number(c.system_amount)>0&&Number(r.amount)>0&&Math.abs(Math.round(Number(c.system_amount)*100)-Math.round(Number(r.amount)*100))<=500;
+    let pending=[...cases],changed=true;
+    while(changed){changed=false;for(const c of [...pending]){
+      const choices=[...remaining].filter(r=>compatible(c,r));
+      if(choices.length!==1)continue;
+      const r=choices[0];if(pending.filter(other=>compatible(other,r)).length!==1)continue;
+      pairs.push({caseRow:c,row:r});remaining.delete(r);pending=pending.filter(other=>other!==c);changed=true;
+    }}
+    return {pairs,unmatched:pending,unused:[...remaining]};
+  }
   async function send(draft,closeDirect=false) {
     scopeDrafts();
     if(!writable()||drafts.get(draft.caseRow.id)!==draft)throw Error('คำขอนี้ไม่ใช่ร่างของบัญชีปัจจุบัน');
@@ -76,7 +89,7 @@ const CrossDayWorkbench = (() => {
     const {anchor}=scoped;
     let cases=scoped.cases,files=scoped.files;
     let selection={account:anchor.account,date:anchor.business_date,bank:''};
-    const picked=new Set([...drafts.keys()].filter(id=>cases.some(c=>c.id===id)));
+    const picked=new Set([...drafts.keys()].filter(id=>cases.some(c=>c.id===id))),pickedStm=new Set();
     // A committed-but-unconfirmed request may no longer appear among open cases.
     // Keep its local draft accessible so the same ID can be read/retried safely.
     for(const d of drafts.values())if(d.uncertain&&d.caseRow.company===anchor.company&&d.caseRow.account===anchor.account&&d.caseRow.business_date===anchor.business_date&&lateNight(d.caseRow.occurred_at)&&!cases.some(c=>c.id===d.caseRow.id)){cases.push(d.caseRow);picked.add(d.caseRow.id);}
@@ -95,6 +108,8 @@ const CrossDayWorkbench = (() => {
         if(button)label.after(button);
       });
       host.querySelectorAll('[data-cross-pick]').forEach(c=>{c.checked=picked.has(c.dataset.crossPick);c.onchange=()=>{if(busy){c.checked=picked.has(c.dataset.crossPick);return;}if(!c.checked){const d=drafts.get(c.dataset.crossPick);if(d?.uncertain){c.checked=true;return toast('ยังไม่ทราบผลบันทึก ห้ามล้างคำขอเดิม','warn');}picked.delete(c.dataset.crossPick);drafts.delete(c.dataset.crossPick);render();}else{picked.add(c.dataset.crossPick);active=c.dataset.crossPick;const d=drafts.get(active);file=d?.file||file;row=d?.row||null;render();}};});
+      const boAll=document.createElement('button');boAll.id='crossDayBoSelectAll';boAll.textContent='เลือก BO ทั้งหมดในบัญชีและวันที่นี้';boAll.disabled=busy;host.querySelector('.cross-day-cases').before(boAll);
+      boAll.onclick=()=>{if(busy)return;visibleCases().forEach(c=>picked.add(c.id));render();};
       const scopeHint=document.createElement('p');scopeHint.className='alert info';scopeHint.textContent=`เฉพาะ ${anchor.company} · บัญชี ${selection.account} · วันที่ ${selection.date} เวลา 23:00–23:59 · ติ๊ก BO คือเลือกไว้ ยังไม่ใช่เตรียมคู่หรือบันทึก · คู่ที่เตรียมในบัญชีอื่นยังเก็บอยู่`;
       host.prepend(scopeHint);
       const filters=document.createElement('div');filters.className='cross-day-filters';
@@ -130,7 +145,7 @@ const CrossDayWorkbench = (() => {
         active=visibleCases()[0]?.id;file=null;row=null;render();
       };
       for(const id of ['#crossDayBank','#crossDayAccount','#crossDayDate']){$(id).disabled=busy;$(id).onchange=changeScope;}
-      $('#crossDayFile').onchange=()=>{file=files.find(f=>f.id===$('#crossDayFile').value)||null;row=null;$('#crossDayChecked').checked=false;renderDocument();};
+      $('#crossDayFile').onchange=()=>{if(busy)return;file=files.find(f=>f.id===$('#crossDayFile').value)||null;row=null;pickedStm.clear();$('#crossDayChecked').checked=false;renderDocument();};
       $('#crossDayStage').onclick=()=>{try{if(!$('#crossDayChecked').checked)throw Error('ต้องยืนยันตรวจรายการก่อนเตรียมคู่');if(file&&row&&reservedRows.has(key(file,row)))throw Error('STM รายการนี้ส่งแล้ว ห้ามเลือกซ้ำ');stage(current(),file,row,$('#crossDayReason').value);picked.add(active);render();}catch(error){$('#crossDayError').textContent=error.message;}};
       renderDrafts(); renderDocument();showTab();
     }
@@ -161,7 +176,20 @@ const CrossDayWorkbench = (() => {
     }
     async function renderDocument() {
       const version=++previewVersion;
-      $('#crossDayRows').innerHTML=file?`<h4>รายการในเอกสาร</h4>${(file.rows||[]).map(r=>`<label class="cross-day-row"><input type="radio" name="crossDayRow" value="${h(r.rowNo)}" ${row?.rowNo===r.rowNo?'checked':''} ${!r.verified||reservedRows.has(key(file,r))||[...drafts.values()].some(d=>d.caseRow.id!==active&&key(d.file,d.row)===key(file,r))?'disabled':''}> ${h(r.date)} · ${h(r.direction)} · ${money(r.amount)} บาท · ${h(r.desc||'')} · แถว ${h(r.rowNo)}</label>`).join('')||'<p>ยังไม่มีรายการที่ยืนยันได้จากไฟล์นี้ ห้ามสรุปว่าไม่มีธุรกรรม — ตรวจภาพและส่งผู้ดูแลตรวจการอ่านไฟล์</p>'}`:'';
+      const selectable=r=>r.verified&&!reservedRows.has(key(file,r))&&![...drafts.values()].some(d=>key(d.file,d.row)===key(file,r));
+      $('#crossDayRows').innerHTML=file?`<h4>รายการในเอกสาร</h4><button id="crossDayStmSelectAll" ${busy?'disabled':''}>เลือก STM ทั้งหมดที่ยังใช้ได้ในขอบเขตนี้</button><button id="crossDayStageSelected" ${busy?'disabled':''}>เตรียมคู่จาก BO และ STM ที่ติ๊ก</button><p>จับเฉพาะคู่ที่ระบุได้ 1:1 · ยอดซ้ำหรือคลุมเครือให้เลือกเทียบทีละคู่ ไม่จับตามลำดับแถว</p>${(file.rows||[]).map(r=>`<label class="cross-day-row"><input type="checkbox" name="crossDayRow" value="${h(r.rowNo)}" ${pickedStm.has(key(file,r))?'checked':''} ${!selectable(r)?'disabled':''}> ${h(r.date)} · ${h(r.direction)} · ${money(r.amount)} บาท · ${h(r.desc||'')} · แถว ${h(r.rowNo)}</label>`).join('')||'<p>ยังไม่มีรายการที่ยืนยันได้จากไฟล์นี้ ห้ามสรุปว่าไม่มีธุรกรรม — ตรวจภาพและส่งผู้ดูแลตรวจการอ่านไฟล์</p>'}`:'';
+      if(file){
+        $('#crossDayStmSelectAll').onclick=()=>{if(busy)return;file.rows.filter(selectable).forEach(r=>pickedStm.add(key(file,r)));host.querySelectorAll('input[name="crossDayRow"]').forEach(c=>{if(!c.disabled)c.checked=true;});};
+        $('#crossDayStageSelected').onclick=()=>{if(busy)return;try{
+          if(!$('#crossDayChecked').checked)throw Error('ยืนยันตรวจรายการที่ติ๊กก่อนเตรียมชุด');
+          const bos=visibleCases().filter(c=>picked.has(c.id)&&!drafts.has(c.id)),rows=file.rows.filter(r=>pickedStm.has(key(file,r))&&selectable(r));
+          if(!bos.length||!rows.length)throw Error('ติ๊ก BO และ STM ที่ยังไม่เตรียมคู่ทั้งสองฝั่งก่อน');
+          const plan=planSelected(bos,file,rows),reason=$('#crossDayReason').value;
+          if(reason.trim().length<10)throw Error('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
+          for(const pair of plan.pairs){stage(pair.caseRow,file,pair.row,reason);pickedStm.delete(key(file,pair.row));}
+          render();$('#crossDayError').textContent=`เตรียม ${plan.pairs.length} คู่ · BO ที่ยังไม่มีคู่ชัดเจน ${plan.unmatched.length} รายการ · ยังไม่บันทึกหรือปิดเคส`;
+        }catch(error){$('#crossDayError').textContent=error.message;}};
+      }
       let comparison=$('#crossDayComparison');if(!comparison){comparison=document.createElement('section');comparison.id='crossDayComparison';$('#crossDayRows').after(comparison);}
       if(file){
         const imageForm=document.createElement('section');imageForm.className='cross-day-image-review';
@@ -189,7 +217,7 @@ const CrossDayWorkbench = (() => {
       if(file)$('#crossDayImagePage').value=row?.source_mode==='image'?row.rowNo:(retainedPreview?.dataset.page||1);
       const compare=()=>{const bo=current();comparison.innerHTML=bo&&row?(row.source_mode==='image'?`<h4>ส่งตรวจจากภาพ</h4><p>BO ${h(bo.code)} · ${money(bo.system_amount)} บาท ↔ STM ภาพหน้า ${h(row.rowNo)}</p><p>ยังไม่มีจำนวนเงิน STM ที่อ่านยืนยันได้ — ไม่คำนวณผลต่างและไม่ปิดอัตโนมัติ</p>`:`<h4>เทียบคู่ที่กำลังตรวจ</h4><dl><dt>BO ${h(bo.code)}</dt><dd>${h(bo.business_date)} ${h(bo.occurred_at)} · ${money(bo.system_amount)} บาท</dd><dt>STM แถว ${h(row.rowNo)}</dt><dd>${h(row.date)} · ${money(row.amount)} บาท · ${h(row.account)}</dd></dl><p>ผลต่าง ${money(Math.abs(Number(bo.system_amount)-Number(row.amount)))} บาท · ยังไม่บันทึก</p>`):'<p>เลือก BO ทางซ้าย แล้วเลือกแถว STM หรือส่งตรวจจากภาพทางขวา</p>';};
       compare();
-      host.querySelectorAll('input[name="crossDayRow"]').forEach(c=>c.onchange=()=>{row=file.rows.find(r=>String(r.rowNo)===c.value);$('#crossDayChecked').checked=false;compare();});
+      host.querySelectorAll('input[name="crossDayRow"]').forEach(c=>c.onchange=()=>{const selected=file.rows.find(r=>String(r.rowNo)===c.value);if(busy){c.checked=pickedStm.has(key(file,selected));return;}if(c.checked){pickedStm.add(key(file,selected));row=selected;}else{pickedStm.delete(key(file,selected));if(row===selected)row=null;}$('#crossDayChecked').checked=false;compare();});
       if(!file){$('#crossDayPreview').textContent='เลือกเอกสารเพื่อดูสเตทเมนต์จริง';return;}
       if(retainedPreview&&retainedFile===file.id){$('#crossDayPreview').replaceWith(retainedPreview);return;}
       $('#crossDayPreview').textContent='กำลังเปิดสเตทเมนต์ต้นฉบับ…';
@@ -271,5 +299,5 @@ const CrossDayWorkbench = (() => {
       catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจคำขอเดิมก่อนลองซ้ำ','warn');}
     };
   }
-  return {eligible,open,mountQueue,stage,stageImage,send,approveMany,drafts,queueState,loadPending,scopedData,lateNight,bankOf};
+  return {eligible,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf};
 })();
