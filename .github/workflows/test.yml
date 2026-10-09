@@ -22,6 +22,7 @@ jobs:
       - name: Verify cross-day image review
         run: |
           node tests/cross-day-image-review.test.cjs
+          node tests/cross-day-bulk-head.test.cjs
           node tests/cross-day-workbench.test.cjs
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
           node tests/cross-day-image-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"

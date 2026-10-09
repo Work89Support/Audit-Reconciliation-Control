@@ -10,6 +10,11 @@ Sb.submitCrossDayImageReview=async p=>{const q={id:p.p_id,exception_id:p.p_case,
 Sb.crossDayImageReview=async id=>requests.get(id);
 Sb.pendingCrossDayPairs=async()=>[...requests.values()].filter(q=>q.status==='pending').map(q=>({...q,company:'TEST'}));
 Sb.crossDayPairHistory=async()=>[];
+if(new URLSearchParams(location.search).has('head'))state.role='lead';
+Sb.closeCrossDayImageReview=async p=>{const q=await Sb.submitCrossDayImageReview(p);q.status='approved';q.decided_by='test-assistant';return q;};
+Sb.closeCrossDayPair=async p=>{const q=await Sb.submitCrossDayPair(p);q.status='approved';q.decided_by='test-assistant';return q;};
+Sb.decideCrossDayImageReview=async p=>{const q=requests.get(p.p_id);q.status=p.p_action==='approve'?'approved':'rejected';q.decided_by='test-assistant';return q;};
+Sb.decideCrossDayPair=Sb.decideCrossDayImageReview;
 const StatementPreview={mount:async(host,file)=>{host.dataset.file=file.id;host.dataset.page='1';host.dataset.pageCount='2';host.dataset.ready='true';host.innerHTML='<p>เอกสารจำลองสำหรับทดสอบ UI — ไม่ใช่สเตทเมนต์ลูกค้า</p><canvas></canvas>';}};
 if(new URLSearchParams(location.search).has('image-only'))files[0].rows=[];
 </script><script src="../cross-day-workbench.js"></script><script>$('#start').onclick=()=>CrossDayWorkbench.open({type:'cross_day',status:'open',company:'TEST',date:'2026-10-06',dbId:'bo-1'});</script></body></html>
