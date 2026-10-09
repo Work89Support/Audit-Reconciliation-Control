@@ -1005,7 +1005,9 @@ const Sb = (() => {
   async function manualPairCandidates(company,date,type) {
     if(!company || !date || !['missing_stm','missing_bo'].includes(type)) throw new Error('เลือกบริษัท วันที่ และฝั่งรายการ');
     const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
-    if(!jobs[0]?.last_run_id || jobs[0].status!=='completed') throw new Error('บริษัท/วันที่นี้ยังไม่มีผลรันสำเร็จล่าสุด');
+    // Review results still contain cases to inspect. Submission/approval remains
+    // guarded by the RPC's current-run and source-completeness checks.
+    if(!jobs[0]?.last_run_id || !['completed','needs_review'].includes(jobs[0].status)) throw new Error('ยังไม่มีผลรันล่าสุดที่พร้อมให้ตรวจ หรือกำลังรันอยู่ — ลองค้นหาอีกครั้งเมื่อรันจบ');
     return json(`/rest/v1/exceptions?run_id=eq.${jobs[0].last_run_id}&status=eq.open&manual_pair_id=is.null&superseded_by_exception_id=is.null&ex_type=eq.${type}&select=*&order=occurred_at.asc,id.asc&limit=201`);
   }
   async function manualPair(id) {

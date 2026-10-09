@@ -4,6 +4,7 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
+    "test:pairing-upload": "node tests/manual-pair-candidates.test.mjs && node tests/manual-pairing-ui.test.cjs && node tests/manual-pairing-rpc-transport.test.mjs",
     "test:load-budget": "node tests/read-load-budget.test.mjs && node tests/read-single-flight.test.mjs && node tests/latest-run-queries.test.mjs && node tests/n8n-rounds.test.mjs",
     "test:ui-qa": "node tests/ui-qa-regression.test.mjs && node tests/app-shell.test.mjs && node tests/approval-persistence-navigation.test.mjs && node tests/case-submission-receipt.test.cjs && node tests/mail-evidence-form.test.mjs",
     "test:damage": "node tests/damage-summary.test.mjs && node tests/damage-save.test.mjs && node tests/damage-view.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-collections.test.mjs",

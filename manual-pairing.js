@@ -76,6 +76,29 @@ const ManualPairing=(()=>{
     // Refresh data, never the page/session or the user's draft. No automatic writes.
     const submitButton=$('#pairSubmit');
     let checking=false,blocked=false,saving=false,nextCheck=Date.now()+15000;
+    // Evidence can be saved before selecting a counterpart. A failed candidate
+    // search must not prevent users from attaching the original document.
+    if(typeof document!=='undefined'){
+      const input=$('#pairFile');
+      input.accept='.pdf,.docx,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.csv,.txt';
+      const upload=document.createElement('button');upload.type='button';upload.className='ghost-button';
+      upload.id='pairUploadEvidence';upload.textContent='บันทึกเอกสารแนบเข้าระบบ';
+      const progress=document.createElement('p');progress.id='pairUploadStatus';progress.setAttribute('role','status');
+      progress.textContent='บันทึกเอกสารได้โดยยังไม่ส่งคำขอจับคู่หรือปิดเคส';
+      input.parentElement.after(upload,progress);
+      input.onchange=()=>{evidenceId=null;progress.textContent='เลือกไฟล์แล้ว — กดบันทึกเอกสารแนบเข้าระบบ';};
+      upload.onclick=async()=>{
+        if(saving||checking||sent)return;
+        const file=input.files[0];if(!file)return toast('เลือกเอกสารจริงก่อนบันทึก','warn');
+        if(evidenceId){progress.textContent='เอกสารนี้บันทึกแล้ว ไม่อัปโหลดซ้ำ';return;}
+        saving=true;upload.disabled=input.disabled=submitButton.disabled=true;
+        try{
+          const receipt=await Sb.uploadCaseEvidence(e.dbId,file,message=>{progress.textContent=message;});
+          evidenceId=receipt.id;progress.textContent='บันทึกเอกสารแล้ว · '+file.name+' · ยังไม่ส่งคำขอและไม่ปิดเคส';
+        }catch(err){progress.textContent='ยังยืนยันเอกสารไม่ได้: '+err.message+' — ลองซ้ำไฟล์เดิมในหน้านี้';}
+        finally{saving=false;upload.disabled=input.disabled=false;submitButton.disabled=blocked;nextCheck=Date.now()+15000;}
+      };
+    }
     let statusNode=null;
     if(typeof document!=='undefined'){
       statusNode=document.createElement('p');statusNode.setAttribute('role','status');
