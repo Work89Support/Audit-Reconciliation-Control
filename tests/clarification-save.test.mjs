@@ -41,7 +41,7 @@ ctx.cfg=()=>({bucket:'audit-files'});
 ctx.req=async (...args)=>{uploadCalls.push(args);};
 ctx.post=async (_table,rows)=>rows;
 const file={name:'evidence.pdf',size:4,type:'application/pdf',arrayBuffer:async()=>new ArrayBuffer(4)};
-const originalJson=ctx.json;ctx.json=async(path,...args)=>path.startsWith('/rest/v1/exceptions?')&&path.includes('select=id,status')?[{id:'case-1'}]:originalJson(path,...args);
+const originalJson=ctx.json;ctx.json=async(path,...args)=>path.startsWith('/rest/v1/exceptions?')&&path.includes('select=id,status')?[{id:'case-1',status:'open'}]:originalJson(path,...args);
 const saved=await ctx.uploadCaseEvidence('case-1',file);
 assert.equal(saved.exception_id,'case-1');
 assert.equal(uploadCalls[0][1].headers['x-upsert'],'false');
