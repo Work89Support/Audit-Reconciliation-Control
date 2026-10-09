@@ -11,7 +11,7 @@ const $=selector=>{
 };
 let retry,message,entries=0,logins=0,fail=true;
 const context={$,Store:{data:{}},DB:{companies:[]},applyStoredState(){},retagTracks(){},openExportDialog(){},
-  window:{matchMedia:()=>({matches:true})},
+  window:{matchMedia:()=>({matches:true,addEventListener(){}})},AuditUi:{syncNav(){}},
   Sb:{consumeAuthHash:async()=>null,restore:async()=>{if(fail)throw Error('temporary outage');return true;},cfg:()=>({})},
   showConnectingGate:(text,action)=>{message=text;retry=action;},
   showLoginGate:()=>{logins++;},enterProductionApp:async()=>{entries++;}};
