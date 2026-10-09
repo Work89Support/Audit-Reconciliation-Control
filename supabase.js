@@ -1155,6 +1155,17 @@ const Sb = (() => {
       checkActor();
       if(saved){pendingEvidenceUploads.delete(id);return saved;}
       if(!pending.uploaded){
+        // Keep the request/bytes even when the preflight read times out. The
+        // retry button must work before Storage as well as after Storage.
+        progress('ตรวจการเชื่อมต่อและสิทธิ์อ่านเคส');
+        let accessible;
+        try { accessible=await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(metadata.exception_id)}&select=id,status&limit=1`); }
+        catch(error){throw new Error(`ยังไม่ได้ส่งไฟล์: ตรวจสิทธิ์เคสไม่สำเร็จ (รหัส ${id}) เก็บไฟล์ในหน้าต่างนี้ไว้แล้ว กดตรวจ/ลองต่อได้โดยไม่เลือกใหม่: ${error.message}`);}
+        checkActor();
+        if(!Array.isArray(accessible)||accessible.length!==1||accessible[0].id!==metadata.exception_id)
+          throw new Error('ยังไม่ได้ส่งไฟล์: ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
+        if(!['open','clarifying','answered','pair_pending'].includes(accessible[0].status))
+          throw new Error('ยังไม่ได้ส่งไฟล์: สถานะเคสเปลี่ยนหรือปิดแล้ว กรุณาตรวจล่าสุดก่อน');
         progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
         pending.attempted=true;
         for(let storageAttempt=0;storageAttempt<2;storageAttempt++)try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;break;}
@@ -1211,10 +1222,6 @@ const Sb = (() => {
     const previous=[...pendingEvidenceUploads.values()].find(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id&&p.metadata.file_name===file.name&&p.metadata.size_bytes===file.size&&(digest?p.digest===digest:p.file===file));
     if(authUser()?.id!==uploader)throw new Error('บัญชีผู้ใช้เปลี่ยนก่อนส่งไฟล์ กรุณาลองใหม่ด้วยบัญชีเดิม');
     if(previous){previous.onProgress=onProgress;return resumeCaseEvidence(previous.metadata.id);}
-    onProgress('ตรวจการเชื่อมต่อและสิทธิ์อ่านเคส');
-    const accessible=await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=id,status&limit=1`);
-    if(!Array.isArray(accessible)||accessible.length!==1||accessible[0].id!==exceptionId)throw new Error('ยังไม่ได้ส่งไฟล์: ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
-    if(authUser()?.id!==uploader)throw new Error('บัญชีผู้ใช้เปลี่ยนก่อนส่งไฟล์ กรุณาลองใหม่ด้วยบัญชีเดิม');
     const id = crypto.randomUUID();
     const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
     const metadata = { id, exception_id: exceptionId, storage_path: storagePath, file_name: file.name,
