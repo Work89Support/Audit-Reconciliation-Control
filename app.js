@@ -8319,6 +8319,14 @@ async function applyAuthenticatedRole() {
 }
 
 async function enterProductionApp() {
+  if (enterProductionApp.pending) return enterProductionApp.pending;
+  const pending = performProductionEntry();
+  enterProductionApp.pending = pending;
+  try { return await pending; }
+  finally { if (enterProductionApp.pending === pending) enterProductionApp.pending = null; }
+}
+
+async function performProductionEntry() {
   showConnectingGate('กำลังตรวจสิทธิ์และกลับหน้าทำงานเดิม กรุณารอสักครู่');
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
@@ -8328,6 +8336,9 @@ async function enterProductionApp() {
     return false;
   }
   prepareProductionData();
+  const accessWaitTimer = setTimeout(() => {
+    if (!$('#connectionGate').hidden) $('#connectionMessage').textContent = 'ฐานข้อมูลตรวจสิทธิ์ตอบกลับช้า กำลังรอแบบจำกัดเวลา — ยังไม่ได้ออกจากระบบ ไม่ต้องรีเฟรชหรือเข้าสู่ระบบซ้ำ';
+  }, 10000);
   try {
     await applyAuthenticatedRole();
   } catch (error) {
@@ -8338,7 +8349,7 @@ async function enterProductionApp() {
       showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp());
     }
     return false;
-  }
+  } finally { clearTimeout(accessWaitTimer); }
   $('#connectionGate').hidden = true;
   $("#loginGate").hidden = true;
   $("#appShell").hidden = false;

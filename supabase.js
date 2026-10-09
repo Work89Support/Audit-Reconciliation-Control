@@ -130,6 +130,14 @@ const Sb = (() => {
     }
   }
 
+  async function readResponseBody(res, kind = 'text', timeoutMs = 15000) {
+    let timer;
+    try {
+      return await Promise.race([res[kind](), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('ได้รับการตอบรับแล้ว แต่ข้อมูลตอบกลับค้างเกินเวลาที่กำหนด — เก็บสถานะเข้าสู่ระบบไว้ กรุณาลองเชื่อมต่อใหม่')), timeoutMs);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
   async function authFetch(url, opts = {}, timeoutMs = 15000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -174,11 +182,11 @@ const Sb = (() => {
           const retryMs = /^\d+$/.test(retry || "") ? Number(retry) * 1000 : Date.parse(retry || "") - Date.now();
           const delay = Math.max(30000, Math.min(300000, Number.isFinite(retryMs) && retryMs > 0 ? retryMs : 60000));
           refreshRetryAt = Date.now() + delay;
-          const j = await res.json().catch(() => ({}));
+          const j = await readResponseBody(res,'json').catch(() => ({}));
           throw new Error(res.status === 429 ? "คำขอต่ออายุล็อกอินมากเกินไป — ระบบพักการลองใหม่ชั่วคราว" :
             j.error_description || j.msg || j.message || "ต่ออายุการเข้าสู่ระบบไม่สำเร็จ");
         }
-        const j = await res.json();
+        const j = await readResponseBody(res,'json');
         if (!j.access_token || !j.refresh_token || !j.user?.id) {
           throw new Error("ข้อมูลต่ออายุล็อกอินไม่ครบ — กรุณาลองใหม่");
         }
@@ -276,7 +284,7 @@ const Sb = (() => {
       if (!res.ok) {
         let msg = `Supabase ตอบกลับ ${res.status}`;
         try {
-          const j = await res.json();
+          const j = await readResponseBody(res,'json');
           msg = j.message || j.error_description || j.error || msg;
         } catch (e) {}
         throw new Error(msg);
@@ -296,7 +304,7 @@ const Sb = (() => {
     if (key && pendingJsonReads.has(key)) return pendingJsonReads.get(key);
     const pending = (async () => {
       const res = await req(path, opts);
-      const body = await res.text();
+      const body = await readResponseBody(res,'text',Number(opts.timeoutMs || 15000));
       if (actor !== (session?.user?.id || '')) throw new Error('ผู้ใช้งานเปลี่ยนระหว่างโหลดข้อมูล กรุณาเปิดหน้าทำงานใหม่');
       return body ? JSON.parse(body) : null;
     })();
@@ -316,12 +324,12 @@ const Sb = (() => {
   const displayLogin = value => String(value || '').endsWith(usernameDomain) ? String(value).slice(0,-usernameDomain.length) : String(value || '');
   async function signIn(email, password) {
     email = loginIdentity(email);
-    const res = await fetch(base() + "/auth/v1/token?grant_type=password", {
+    const res = await authFetch(base() + "/auth/v1/token?grant_type=password", {
       method: "POST",
       headers: { apikey: cfg().anonKey, "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    const j = await res.json();
+    const j = await readResponseBody(res,'json');
     if (!res.ok) throw new Error(j.error_description || j.msg || j.message || "ล็อกอินไม่สำเร็จ");
     keep({ ...j, expires_at: Math.floor(Date.now() / 1000) + Number(j.expires_in || 3600) });
     saveConfig({ email: displayLogin(email) });
@@ -331,7 +339,7 @@ const Sb = (() => {
   async function loadAuthUser() {
     if (!session || !session.access_token) return null;
     const res = await authFetch(base() + "/auth/v1/user", { headers: headers() });
-    const user = await res.json();
+    const user = await readResponseBody(res,'json');
     if (!res.ok) throw new Error(user.message || "อ่านข้อมูลผู้ใช้ไม่สำเร็จ");
     session.user = user;
     keep(session);
