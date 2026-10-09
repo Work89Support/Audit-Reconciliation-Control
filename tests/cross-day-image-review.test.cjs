@@ -1,0 +1,24 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('cross-day-workbench.js','utf8');
+let counter=0,fail=false,readFail=false;const saved=new Map(),writes=[];
+const ctx={crypto:{randomUUID:()=>`image-${++counter}`},state:{dataset:'production',role:'audit_assistant'},Sb:{signedIn:()=>true,authUser:()=>({id:'assistant'}),submitCrossDayImageReview:async p=>{writes.push(p);const q={id:p.p_id,exception_id:p.p_case,stm_file_id:p.p_file,source_page:p.p_page,submitted_by:'assistant',status:'pending'};saved.set(q.id,q);if(fail)throw Error('lost response');return q;},crossDayImageReview:async id=>{if(readFail)throw Error('read timeout');return saved.get(id);}}};
+vm.createContext(ctx);vm.runInContext(source+'\nthis.w=CrossDayWorkbench;',ctx);
+const w=ctx.w,bo=id=>({id,company:'TEST',system_amount:50000}),file={id:'pdf',company:'TEST',rows:[]};
+(async()=>{
+ const a=w.stageImage(bo('a'),file,2,'');const b=w.stageImage(bo('b'),file,2,'x');
+ assert.equal(a.row.amount,null);assert.equal(a.row.source_mode,'image');assert.equal(b.reason,'x');
+ assert.throws(()=>w.stageImage(bo('c'),file,0),/เลขหน้า/);
+ assert.throws(()=>w.stageImage(bo('c'),file,1.2),/เลขหน้า/);
+ assert.throws(()=>w.stageImage(bo('c'),{...file,company:'OTHER'},1),/บริษัท/);
+ await w.send(a);assert.equal(w.drafts.get('b'),b);assert.equal(writes[0].p_page,2);assert.equal('p_row' in writes[0],false);
+ fail=true;await w.send(b);assert.equal(w.drafts.size,0);
+ readFail=true;const c=w.stageImage(bo('c'),file,1);await assert.rejects(w.send(c),/lost response/);
+ assert.throws(()=>w.stageImage(bo('c'),file,2),/ยังไม่ทราบผล/);
+ fail=false;await w.send(c);assert.equal(writes.at(-1).p_id,writes.at(-2).p_id);
+ const sql=fs.readFileSync('supabase/20261009_cross_day_image_review.sql','utf8');
+ for(const guard of ['enable row level security','has_company_access','for update','for share','q.submitted_by=auth.uid()','cross_day_image_case_reserved','guard_cross_day_image_request','eTag','system_amount'])assert.ok(sql.includes(guard),guard);
+ assert.ok(!sql.includes('cross_day_verified_rows'));assert.ok(!sql.includes('diff>5'));assert.ok(!sql.includes('cross_day_image_visual_reserved'));
+ assert.ok(!/set\s+(system_amount|bank_amount)\s*=/i.test(sql));
+ assert.ok(source.includes("preview.dataset.ready!=='true'"));assert.ok(!source.includes('location.reload'));
+ console.log('PASS: image-only preparation, optional reason, no STM amount fabricated, multiple drafts, exact receipt, stable retry ID, static SQL guards. No live DB tests.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

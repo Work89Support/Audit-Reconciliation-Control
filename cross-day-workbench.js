@@ -12,7 +12,7 @@ const CrossDayWorkbench = (() => {
   }
   const writable = () => state.dataset === 'production' && Sb.signedIn() && ['monitor','audit_assistant','lead','admin'].includes(state.role);
   const eligible = e => e.type === 'cross_day' && e.status === 'open';
-  const key = (file, row) => `${file.id}:${row.rowNo}`;
+  const key = (file, row) => `${file.id}:${row.source_mode==='image'?'page':'row'}:${row.rowNo}`;
   const lateNight = value => {
     const match=String(value||'').match(/(?:^|[T\s])(\d{2}):(\d{2})(?::(\d{2}))?/);
     return !!match&&Number(match[1])===23&&Number(match[2])<60;
@@ -47,13 +47,15 @@ const CrossDayWorkbench = (() => {
     const payload = {p_id:draft.requestId,p_case:draft.caseRow.id,p_file:draft.file.id,p_row:Number(draft.row.rowNo),p_reason:draft.reason};
     draft.uncertain = true;
     let request;
-    try { request = await Sb.submitCrossDayPair(payload); }
+    const image=draft.row.source_mode==='image';
+    const readBack=image?Sb.crossDayImageReview:Sb.crossDayPair;
+    try { request = image?await Sb.submitCrossDayImageReview({p_id:draft.requestId,p_case:draft.caseRow.id,p_file:draft.file.id,p_page:draft.row.rowNo,p_reason:draft.reason}):await Sb.submitCrossDayPair(payload); }
     catch (error) {
       // Lost responses are not failures and must not create a new request ID.
-      try { request = await Sb.crossDayPair(draft.requestId); } catch { /* keep uncertain draft */ }
+      try { request = await readBack(draft.requestId); } catch { /* keep uncertain draft */ }
       if (!request) throw error;
     }
-    if (request?.id !== draft.requestId || request.exception_id !== draft.caseRow.id || request.stm_file_id !== draft.file.id || Number(request.stm_row) !== Number(draft.row.rowNo) || request.submitted_by !== Sb.authUser()?.id || !['pending','approved'].includes(request.status)) throw Error('ยังยืนยันผลคำขอไม่ได้ กรุณาตรวจคำขอเดิมก่อนลองซ้ำ');
+    if (request?.id !== draft.requestId || request.exception_id !== draft.caseRow.id || request.stm_file_id !== draft.file.id || Number(image?request.source_page:request.stm_row) !== Number(draft.row.rowNo) || request.submitted_by !== Sb.authUser()?.id || !['pending','approved'].includes(request.status)) throw Error('ยังยืนยันผลคำขอไม่ได้ กรุณาตรวจคำขอเดิมก่อนลองซ้ำ');
     drafts.delete(draft.caseRow.id); return request;
   }
   async function open(e) {
@@ -112,7 +114,7 @@ const CrossDayWorkbench = (() => {
           queuePanel.textContent='กำลังโหลดประวัติที่อนุมัติแล้ว…';
           try{const rows=await Sb.crossDayPairHistory(anchor.company,selection.date);if(!queuePanel.isConnected||tab!=='closed')return;
             const own=rows.filter(q=>q.snapshot?.bo?.account===selection.account);
-            queuePanel.innerHTML='<h3>ปิดแล้ว · บัญชีและวันที่ที่เลือก</h3>'+(own.map(q=>`<article><b>${h(q.snapshot.bo.code)} · ${money(q.snapshot.bo.system_amount)} บาท</b><p>${h(q.reason)}</p><small>อนุมัติแล้ว · STM แถว ${h(q.stm_row)}</small></article>`).join('')||'<p>ไม่พบรายการอนุมัติแล้วในขอบเขตนี้</p>');
+            queuePanel.innerHTML='<h3>ปิดแล้ว · บัญชีและวันที่ที่เลือก</h3>'+(own.map(q=>`<article><b>${h(q.snapshot.bo.code)} · ${money(q.snapshot.bo.system_amount)} บาท</b><p>${h(q.reason)}</p><small>อนุมัติแล้ว · STM ${q.source_mode==='image'?'ภาพหน้า':'แถว'} ${h(q.source_page||q.stm_row)}</small></article>`).join('')||'<p>ไม่พบรายการอนุมัติแล้วในขอบเขตนี้</p>');
           }catch(error){if(queuePanel.isConnected)queuePanel.textContent='ยังโหลดประวัติไม่ได้: '+error.message;}
         }
       };
@@ -132,14 +134,28 @@ const CrossDayWorkbench = (() => {
     }
     function renderDrafts() {
       const own=[...drafts.values()].filter(d=>cases.some(c=>c.id===d.caseRow.id));
-      $('#crossDayDrafts').innerHTML='<h3>คู่ที่เตรียมไว้</h3>'+own.map(d=>`<article><b>${h(d.caseRow.code)} ↔ ${h(d.file.file_name)} แถว ${h(d.row.rowNo)}</b><p>${money(d.caseRow.system_amount)} ↔ ${money(d.row.amount)} บาท</p><button class="primary-button" data-cross-send="${h(d.caseRow.id)}" ${busy?'disabled':''}>${d.uncertain?'ตรวจและส่งคำขอเดิมซ้ำ':'ส่งคู่นี้ให้หัวหน้า'}</button></article>`).join('');
+      $('#crossDayDrafts').innerHTML='<h3>คู่ที่เตรียมไว้</h3>'+own.map(d=>`<article><b>${h(d.caseRow.code)} ↔ ${h(d.file.file_name)} ${d.row.source_mode==='image'?'ภาพหน้า':'แถว'} ${h(d.row.rowNo)}</b><p>BO ${money(d.caseRow.system_amount)} บาท · ${d.row.source_mode==='image'?'ยอด STM ยังไม่ได้อ่าน — ให้หัวหน้าตรวจภาพ':`STM ${money(d.row.amount)} บาท`}</p><button class="primary-button" data-cross-send="${h(d.caseRow.id)}" ${busy?'disabled':''}>${d.uncertain?'ตรวจและส่งคำขอเดิมซ้ำ':'ส่งคู่นี้ให้หัวหน้า'}</button></article>`).join('');
       host.querySelectorAll('[data-cross-send]').forEach(b=>b.onclick=async()=>{if(busy)return;busy=true;renderDrafts();const d=drafts.get(b.dataset.crossSend);try{await send(d);sent.add(d.caseRow.id);reservedRows.add(key(d.file,d.row));queueState.at=0;const local=DB.exceptions.find(c=>c.dbId===d.caseRow.id);if(local){local.crossDayRequestId=d.requestId;local.status='pair_pending';}if(active===d.caseRow.id){active=visibleCases()[0]?.id;row=null;}toast('ส่งคู่นี้แล้ว รอหัวหน้าอนุมัติ — คู่ที่เตรียมอื่นยังอยู่','success');}catch(error){toast('ยังยืนยันคำขอไม่ได้: '+error.message+' — เก็บคู่และรหัสคำขอเดิมไว้','warn');}finally{busy=false;if(host.isConnected)render();}});
     }
     async function renderDocument() {
       const version=++previewVersion;
       $('#crossDayRows').innerHTML=file?`<h4>รายการในเอกสาร</h4>${(file.rows||[]).map(r=>`<label class="cross-day-row"><input type="radio" name="crossDayRow" value="${h(r.rowNo)}" ${row?.rowNo===r.rowNo?'checked':''} ${!r.verified||reservedRows.has(key(file,r))||[...drafts.values()].some(d=>d.caseRow.id!==active&&key(d.file,d.row)===key(file,r))?'disabled':''}> ${h(r.date)} · ${h(r.direction)} · ${money(r.amount)} บาท · ${h(r.desc||'')} · แถว ${h(r.rowNo)}</label>`).join('')||'<p>ยังไม่มีรายการที่ยืนยันได้จากไฟล์นี้ ห้ามสรุปว่าไม่มีธุรกรรม — ตรวจภาพและส่งผู้ดูแลตรวจการอ่านไฟล์</p>'}`:'';
       let comparison=$('#crossDayComparison');if(!comparison){comparison=document.createElement('section');comparison.id='crossDayComparison';$('#crossDayRows').after(comparison);}
-      const compare=()=>{const bo=current();comparison.innerHTML=bo&&row?`<h4>เทียบคู่ที่กำลังตรวจ</h4><dl><dt>BO ${h(bo.code)}</dt><dd>${h(bo.business_date)} ${h(bo.occurred_at)} · ${money(bo.system_amount)} บาท</dd><dt>STM แถว ${h(row.rowNo)}</dt><dd>${h(row.date)} · ${money(row.amount)} บาท · ${h(row.account)}</dd></dl><p>ผลต่าง ${money(Math.abs(Number(bo.system_amount)-Number(row.amount)))} บาท · ยังไม่บันทึก</p>`:'<p>เลือก BO ทางซ้าย และแถว STM ทางขวาเพื่อเทียบคู่</p>';};
+      if(file){
+        const imageForm=document.createElement('section');imageForm.className='cross-day-image-review';
+        imageForm.innerHTML='<h4>ส่งให้หัวหน้าตรวจจากภาพ</h4><p>ไม่ต้องรอระบบอ่านแถว STM สำเร็จ · เลือก BO และหน้าเอกสารจริง · ยังไม่ปิดเคส</p><label>เลขหน้า STM ที่อ้างอิง<input id="crossDayImagePage" type="number" min="1" max="10000" value="1"></label><button id="crossDayImageStage" class="primary-button">เตรียม BO + ภาพหน้านี้ให้หัวหน้า</button>';
+        $('#crossDayRows').append(imageForm);
+        $('#crossDayImageStage').onclick=()=>{
+          try{
+            const page=Number($('#crossDayImagePage').value),preview=$('#crossDayPreview');
+            if(preview.dataset.ready!=='true'||page>Number(preview.dataset.pageCount))throw Error('เปิดภาพ STM และระบุหน้าที่มีอยู่จริงก่อน');
+            const d=stageImage(current(),file,page,$('#crossDayReason').value);
+            row=d.row;picked.add(d.caseRow.id);render();
+          }catch(error){$('#crossDayError').textContent=error.message;}
+        };
+      }
+      if(file)$('#crossDayImagePage').value=row?.source_mode==='image'?row.rowNo:(retainedPreview?.dataset.page||1);
+      const compare=()=>{const bo=current();comparison.innerHTML=bo&&row?(row.source_mode==='image'?`<h4>ส่งตรวจจากภาพ</h4><p>BO ${h(bo.code)} · ${money(bo.system_amount)} บาท ↔ STM ภาพหน้า ${h(row.rowNo)}</p><p>ยังไม่มีจำนวนเงิน STM ที่อ่านยืนยันได้ — ไม่คำนวณผลต่างและไม่ปิดอัตโนมัติ</p>`:`<h4>เทียบคู่ที่กำลังตรวจ</h4><dl><dt>BO ${h(bo.code)}</dt><dd>${h(bo.business_date)} ${h(bo.occurred_at)} · ${money(bo.system_amount)} บาท</dd><dt>STM แถว ${h(row.rowNo)}</dt><dd>${h(row.date)} · ${money(row.amount)} บาท · ${h(row.account)}</dd></dl><p>ผลต่าง ${money(Math.abs(Number(bo.system_amount)-Number(row.amount)))} บาท · ยังไม่บันทึก</p>`):'<p>เลือก BO ทางซ้าย แล้วเลือกแถว STM หรือส่งตรวจจากภาพทางขวา</p>';};
       compare();
       host.querySelectorAll('input[name="crossDayRow"]').forEach(c=>c.onchange=()=>{row=file.rows.find(r=>String(r.rowNo)===c.value);$('#crossDayChecked').checked=false;compare();});
       if(!file){$('#crossDayPreview').textContent='เลือกเอกสารเพื่อดูสเตทเมนต์จริง';return;}
@@ -153,14 +169,39 @@ const CrossDayWorkbench = (() => {
   async function mountQueue(host,scope) {
     if(!host||state.dataset!=='production')return;
     host.innerHTML='<h3>คู่ข้ามวัน · รอหัวหน้าอนุมัติ</h3><p>กำลังโหลดคำขอ…</p>';
-    try {let rows=await Sb.pendingCrossDayPairs();if(scope)rows=rows.filter(q=>q.company===scope.company&&q.snapshot?.bo?.account===scope.account&&q.snapshot?.bo?.business_date===scope.date);if(!host.isConnected)return;host.innerHTML='<h3>คู่ข้ามวัน · รอหัวหน้าอนุมัติ</h3>'+ (rows.map(q=>`<article><b>${h(q.company)} · ${h(q.snapshot.bo.code)} ↔ STM แถว ${h(q.stm_row)}</b><p>${h(q.reason)} · ผลต่าง ${money(q.difference)} บาท</p><button class="ghost-button" data-cross-review="${h(q.id)}">เปิดตรวจ BO / สเตทเมนต์ก่อนอนุมัติ</button></article>`).join('')||'<p>ไม่พบคำขอข้ามวันรออนุมัติในขอบเขตสิทธิ์</p>');host.querySelectorAll('[data-cross-review]').forEach(b=>b.onclick=()=>review(rows.find(q=>q.id===b.dataset.crossReview)));}
+    try {let rows=await Sb.pendingCrossDayPairs();if(scope)rows=rows.filter(q=>q.company===scope.company&&q.snapshot?.bo?.account===scope.account&&q.snapshot?.bo?.business_date===scope.date);if(!host.isConnected)return;host.innerHTML='<h3>คู่ข้ามวัน · รอหัวหน้าอนุมัติ</h3>'+ (rows.map(q=>`<article><b>${h(q.company)} · ${h(q.snapshot.bo.code)} ↔ STM ${q.source_mode==='image'?'ภาพหน้า':'แถว'} ${h(q.source_page||q.stm_row)}</b><p>${h(q.reason)} · ${q.source_mode==='image'?'หัวหน้าตรวจจากภาพ — ไม่มีผลต่างที่อ่านยืนยันได้':`ผลต่าง ${money(q.difference)} บาท`}</p><button class="ghost-button" data-cross-review="${h(q.id)}">เปิดตรวจ BO / สเตทเมนต์ก่อนอนุมัติ</button></article>`).join('')||'<p>ไม่พบคำขอข้ามวันรออนุมัติในขอบเขตสิทธิ์</p>');host.querySelectorAll('[data-cross-review]').forEach(b=>b.onclick=()=>review(rows.find(q=>q.id===b.dataset.crossReview)));}
     catch(error){if(host.isConnected)host.innerHTML=`<h3>คู่ข้ามวัน</h3><p role="alert">ยังโหลดคิวไม่ได้: ${h(error.message)} — ไม่ใช่ไม่มีคำขอ</p>`;}
   }
   async function review(q) {
+    if(q.source_mode==='image')return reviewImage(q);
     const bo=q.snapshot.bo,stm=q.snapshot.stm,blocked=!['lead','admin'].includes(state.role)||q.submitted_by===Sb.authUser()?.id;
     openModal('ตรวจคู่ข้ามวันก่อนอนุมัติ',`<p>${h(q.company)} · ${h(bo.code)} · ${h(bo.business_date)} ${h(bo.occurred_at)} · BO ${money(bo.system_amount)} บาท</p><p>STM ${h(stm.date)} · แถว ${h(q.stm_row)} · ${money(stm.amount)} บาท · ${h(stm.desc)}</p><p>${h(q.reason)}</p><div id="crossDayApprovalPreview">กำลังโหลดสเตทเมนต์จริง…</div><label>ผลตรวจ / เหตุผลส่งกลับ<textarea id="crossDayDecision" maxlength="2000"></textarea></label><label><input id="crossDayDecisionChecked" type="checkbox"> ตรวจ BO กับเอกสารจริงของคู่นี้แล้ว</label>${blocked?'<p>เฉพาะหัวหน้าอีกบัญชีอนุมัติ ผู้ส่งห้ามอนุมัติคำขอตัวเอง</p>':''}`,`<button class="ghost-button" id="crossDayReject" ${blocked?'disabled':''}>ส่งกลับ Audit</button><button class="primary-button" id="crossDayApprove" ${blocked?'disabled':''}>อนุมัติปิดเคสข้ามวัน</button>`);
     const preview=$('#crossDayApprovalPreview');try{await StatementPreview.mount(preview,q.snapshot.file);}catch(error){if(preview.isConnected)preview.textContent='เปิดหลักฐานไม่ได้: '+error.message;return;}
     for(const [selector,action] of [['#crossDayApprove','approve'],['#crossDayReject','reject']])$(selector).onclick=async()=>{const note=$('#crossDayDecision').value.trim();if(!$('#crossDayDecisionChecked').checked||action==='reject'&&note.length<10)return toast('ตรวจหลักฐานและยืนยันก่อน — ส่งกลับต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');$('#crossDayApprove').disabled=$('#crossDayReject').disabled=true;try{await Sb.decideCrossDayPair({p_id:q.id,p_action:action,p_note:note});closeModal();const host=$('#pendingCrossDayQueue');await mountQueue(host);toast(action==='approve'?'อนุมัติปิดแล้ว โดยไม่แก้ยอดต้นทาง':'ส่งกลับ Audit แล้ว','success');}catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจสถานะคำขอก่อนลองใหม่','warn');}};
   }
-  return {eligible,open,mountQueue,stage,send,drafts,queueState,loadPending,scopedData,lateNight,bankOf};
+  function stageImage(caseRow,file,page,reason){
+    scopeDrafts();
+    if(!caseRow||!file||!Number.isInteger(page)||page<1||page>10000)throw Error('เลือก BO ไฟล์ STM และเลขหน้าที่อ้างอิงก่อน');
+    if(caseRow.company!==file.company)throw Error('บริษัทของ BO และไฟล์ต้องตรงกัน');
+    if(drafts.get(caseRow.id)?.uncertain)throw Error('คำขอเดิมยังไม่ทราบผล ต้องตรวจสถานะก่อนเปลี่ยนหลักฐาน');
+    const draft={caseRow,file,row:{source_mode:'image',rowNo:page,amount:null},reason:String(reason||'').trim()||'ตรวจจากภาพ STM ต้นฉบับ ส่งหัวหน้าตรวจเทียบ BO ก่อนอนุมัติ',requestId:crypto.randomUUID(),uncertain:false};
+    if(draft.reason.length>2000)throw Error('ข้อความอ้างอิงยาวเกิน 2000 ตัวอักษร');
+    drafts.set(caseRow.id,draft);return draft;
+  }
+  async function reviewImage(q){
+    const bo=q.snapshot.bo,blocked=!['lead','admin'].includes(state.role)||q.submitted_by===Sb.authUser()?.id;
+    openModal('หัวหน้าตรวจ BO + ภาพ STM',`<p>${h(q.company)} · ${h(bo.code)} · BO ${money(bo.system_amount)} บาท</p><p>${h(q.snapshot.file.file_name)} · หน้า ${q.source_page} · ยังไม่มีผลจับคู่อัตโนมัติ</p><p>${h(q.reason)}</p><div id="crossDayImageHeadPreview"></div><label>ผลตรวจจากภาพ<textarea id="crossDayImageHeadNote" maxlength="2000"></textarea></label><label><input id="crossDayImageHeadChecked" type="checkbox">ตรวจรายการนี้ในภาพต้นฉบับแล้ว และยืนยันว่าไม่ใช้ซ้ำกับคู่ที่สำเร็จหรือเคสอื่น</label>${blocked?'<p>ต้องให้หัวหน้าอีกบัญชีตรวจอนุมัติ</p>':''}`,`<button id="crossDayImageReject" ${blocked?'disabled':''}>ส่งกลับ</button><button id="crossDayImageApprove" class="primary-button" ${blocked?'disabled':''}>อนุมัติปิดเคสจากหลักฐานภาพ</button>`);
+    const preview=$('#crossDayImageHeadPreview');
+    await StatementPreview.mount(preview,{...q.snapshot.file,preview_page:q.source_page});
+    if(!preview.isConnected)return;
+    if(preview.dataset.ready!=='true')$('#crossDayImageApprove').disabled=true;
+    for(const [id,action] of [['crossDayImageApprove','approve'],['crossDayImageReject','reject']])$('#'+id).onclick=async()=>{
+      const note=$('#crossDayImageHeadNote').value.trim();
+      if(blocked||!note||action==='approve'&&(!$('#crossDayImageHeadChecked').checked||preview.dataset.ready!=='true'))return toast('หัวหน้าตรวจภาพและระบุผลตรวจก่อน','warn');
+      $('#crossDayImageApprove').disabled=$('#crossDayImageReject').disabled=true;
+      try{await Sb.decideCrossDayImageReview({p_id:q.id,p_action:action,p_note:note});queueState.at=0;closeModal();await mountQueue($('#pendingCrossDayQueue'));toast(action==='approve'?'หัวหน้าอนุมัติปิดเคสจากภาพแล้ว':'ส่งกลับตรวจหลักฐานแล้ว');}
+      catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจคำขอเดิมก่อนลองซ้ำ','warn');}
+    };
+  }
+  return {eligible,open,mountQueue,stage,stageImage,send,drafts,queueState,loadPending,scopedData,lateNight,bankOf};
 })();
