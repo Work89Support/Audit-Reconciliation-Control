@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+let actor='head',calls=[];
+const ctx={state:{dataset:'production',role:'lead'},DB:{exceptions:[]},Sb:{signedIn:()=>true,authUser:()=>({id:actor}),decideCrossDayImageReview:async p=>{calls.push(p.p_id);if(p.p_id==='bad')throw Error('source changed');return {id:p.p_id,status:'approved',decided_by:actor};},decideCrossDayPair:async p=>({id:p.p_id,status:'approved',decided_by:actor})},Map,Set,crypto:require('crypto').webcrypto};
+vm.createContext(ctx);vm.runInContext(fs.readFileSync('cross-day-workbench.js','utf8')+';globalApi=CrossDayWorkbench;',ctx);
+const row=id=>({id,source_mode:'image',exception_id:id,snapshot:{bo:{code:id}}});
+(async()=>{
+let r=await ctx.globalApi.approveMany([row('a'),row('bad'),row('b')],'checked');assert.equal(r.ok,2);assert.equal(r.errors.length,1);assert.deepEqual(calls,['a','bad','b']);
+ctx.Sb.decideCrossDayImageReview=async()=>{throw Error('database timed out');};r=await ctx.globalApi.approveMany([row('c'),row('d')],'checked');assert.equal(r.ok,0);assert.equal(r.errors.length,1,'stop transient outage without hammering rest');
+ctx.state.role='audit_assistant';await assert.rejects(ctx.globalApi.approveMany([row('a')],'checked'),/เฉพาะหัวหน้า/);
+ctx.state.role='lead';ctx.Sb.decideCrossDayImageReview=async p=>({id:p.p_id,status:'pending',decided_by:actor});r=await ctx.globalApi.approveMany([row('e')],'checked');assert.equal(r.ok,0,'pending is never reported closed');
+console.log('PASS: bulk decision partial success, timeout stop, head roles and exact approved receipts (mock).');
+})().catch(e=>{console.error(e);process.exitCode=1;});

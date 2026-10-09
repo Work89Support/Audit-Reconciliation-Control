@@ -54,4 +54,45 @@ await exec('reset role');await seed(45,32,99,'bo-3',4);await actor(1,'audit_assi
 await exec('reset role');await exec(`update storage.objects set metadata='{"eTag":"another-file"}';`);await actor(2,'lead');
 await assert.rejects(decide(54),/ไฟล์ต้นฉบับเปลี่ยน/);await decide(54,'reject');
 await exec('reset role');assert.equal((await q("select has_function_privilege('anon','public.submit_cross_day_image_review(uuid,uuid,uuid,integer,text)','EXECUTE') allowed")).rows[0].allowed,false);
-await db.close();console.log('PASS: ephemeral PostgreSQL migration, native guard compatibility, roles/RLS, original amounts, idempotence, reserved sources, reject recovery, unchanged-rerun preservation and changed-file/BO denials. Synthetic schema; not a complete Supabase stack or multi-session concurrency test.');
+// New workflow preserves all guards, but permits lead/admin direct review.
+await exec('reset role');
+await exec(`alter table cross_day_pair_requests add primary key(id), alter status set default 'pending',
+ add column company text,add column stm_file_id uuid,add column stm_row integer,add column reason text,
+ add column snapshot jsonb,add column bo_key text,add column stm_key text,add column logical_key text,
+ add column difference numeric,add column decided_at timestamptz,add column decision_note text,
+ add check(decided_by is null or decided_by<>submitted_by);
+create table source_file_ocr(source_file_id uuid);
+create table cross_day_closure_evidence(exception_id uuid,evidence_run_id uuid,evidence_key text,stm_key text,bo_key text,evidence jsonb);
+-- Stub only the pre-existing native parser validator; exercise actual submit,
+-- decision, reservation trigger and direct-close transaction below.
+create function validate_cross_day_row(c uuid,f uuid,r integer) returns jsonb language plpgsql as $$
+declare proof jsonb; n integer;
+begin
+ n:=coalesce(nullif(current_setting('test.validation_calls',true),''),'0')::integer+1;
+ perform set_config('test.validation_calls',n::text,true);
+ if current_setting('test.fail_decision',true)='true' and n=2 then raise exception 'source rejected at decision';end if;
+ select jsonb_build_object('bo',to_jsonb(e),'stm',jsonb_build_object('row',r),'bo_key',e.id::text,'stm_key',f::text||':'||r,'logical_key',f::text||':'||r,'difference',0) into proof from exceptions e where id=c;
+ return proof;
+end$$;`);
+await exec(native.slice(native.indexOf('create function public.submit_cross_day_pair('),native.indexOf('create function public.decide_cross_day_pair(')));
+await exec(native.slice(native.indexOf('create function public.decide_cross_day_pair('),native.indexOf('create function public.guard_cross_day_request()')));
+await exec(fs.readFileSync('supabase/20261009_cross_day_bulk_head.sql','utf8'));
+await seed(46,32,88,'head-direct-bo',6);await actor(1,'audit_assistant');
+await assert.rejects(q('select public.close_cross_day_image_review($1,$2,$3,1,\'checked\')',[uid(56),uid(46),uid(10)]),/เฉพาะหัวหน้า/);
+await actor(1,'lead');
+const direct=()=>q('select (public.close_cross_day_image_review($1,$2,$3,1,\'checked\')).*',[uid(56),uid(46),uid(10)]);
+assert.equal((await direct()).rows[0].status,'approved','lead closes own prepared pair atomically');
+assert.equal((await direct()).rows[0].id,uid(56),'direct retry is same receipt');
+await seedAsOwner();
+async function seedAsOwner(){await exec('reset role');await seed(47,32,77,'helper-bo',7);await actor(1,'audit_assistant');await submit(57,47);await assert.rejects(decide(57),/เฉพาะหัวหน้า/);await actor(2,'lead');assert.equal((await decide(57)).rows[0].status,'approved','helper still requires head');}
+await exec('reset role');assert.equal((await q("select has_function_privilege('anon','public.close_cross_day_image_review(uuid,uuid,uuid,integer,text)','EXECUTE') allowed")).rows[0].allowed,false);
+await seed(48,32,66,'native-head-bo',8);await actor(1,'lead');
+const nativeDirect=(request,caseId,row)=>q('select (public.close_cross_day_pair($1,$2,$3,$4,\'checked source rows\')).*',[uid(request),uid(caseId),uid(10),row]);
+assert.equal((await nativeDirect(58,48,1)).rows[0].status,'approved');
+assert.equal((await nativeDirect(58,48,1)).rows[0].id,uid(58),'native direct retry idempotent');
+await exec('reset role');await seed(49,32,55,'native-rollback-bo',9);await actor(1,'lead');
+await q("select set_config('test.validation_calls','0',false),set_config('test.fail_decision','true',false)");
+await assert.rejects(nativeDirect(59,49,2),/source rejected/);
+await exec('reset role');assert.equal((await q('select status from exceptions where id=$1',[uid(49)])).rows[0].status,'open','failed approval rolls back submission');
+assert.equal((await q('select count(*)::int n from cross_day_pair_requests where id=$1',[uid(59)])).rows[0].n,0);
+await db.close();console.log('PASS: ephemeral PostgreSQL migrations, roles/RLS, immutable amounts/sources, idempotence, head direct closure, helper separation and rerun guards. Synthetic schema; not a complete Supabase stack or multi-session concurrency test.');
