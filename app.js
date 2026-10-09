@@ -3879,18 +3879,23 @@ async function openException(id, options = {}) {
       const input = evt.target;
       input.disabled = true;
       let saved = 0;
+      const uploadActor = Sb.authUser()?.id;
       e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
       let uploadComplete = false;
+      const uploadErrors = [];
       try {
-        for (const file of files) {
-          acceptStoredEvidence(await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
-            e._uploadResult = `ไฟล์ ${saved + 1}/${files.length}: ${file.name} · ${stage}`;
+        for (const [fileIndex,file] of files.entries()) {
+          if(Sb.authUser()?.id!==uploadActor)throw new Error('บัญชีผู้ใช้เปลี่ยนระหว่างแนบไฟล์ หยุดไฟล์ที่เหลือ ไม่ผูกเคสข้ามบัญชี');
+          try { acceptStoredEvidence(await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
+            e._uploadResult = `ไฟล์ ${fileIndex + 1}/${files.length}: ${file.name} · ${stage}`;
             const progress = $('#caseUploadProgress');
             if (progress && state.selected === e.id) progress.textContent = e._uploadResult;
           }));
           saved++;
+          } catch(error) { uploadErrors.push(`${file.name}: ${error.message}`); }
         }
-        uploadComplete = true;
+        if(uploadErrors.length)throw new Error(uploadErrors.join('\n'));
+        uploadComplete = saved === files.length;
         e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
         recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
         toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
