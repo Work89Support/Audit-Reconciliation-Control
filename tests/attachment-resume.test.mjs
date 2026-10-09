@@ -5,11 +5,11 @@ import {webcrypto} from 'node:crypto';
 const code=fs.readFileSync(new URL('../supabase.js',import.meta.url),'utf8');
 const start=code.indexOf('const pendingEvidenceUploads = new Map()');
 const end=code.indexOf('async function submitClarification(',start);
-let uuid=0,posts=0,uploads=0,readBroken=false,postBroken=false,commitBeforeTimeout=false,wrongReceipt=false,user='test-user';
+let uuid=0,posts=0,uploads=0,readBroken=false,postBroken=false,commitBeforeTimeout=false,wrongReceipt=false,user='test-user',preflightBroken=false,caseStatus='open';
 const rows=new Map(),paths=[];
 const ctx={Map,Uint8Array,crypto:{subtle:webcrypto.subtle,randomUUID:()=>`upload-${++uuid}`},signedIn:()=>true,authUser:()=>({id:user}),cfg:()=>({bucket:'audit-files'}),
  req:async(path,options)=>{uploads++;paths.push(path);assert.equal(options.headers['x-upsert'],'false');},
- json:async path=>{if(path.startsWith('/rest/v1/exceptions?'))return [{id:decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1])}];assert.ok(path.includes('id=eq.upload-'));assert.ok(path.includes('&limit=1'));if(readBroken)throw Error('database timed out');const id=decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1]);const row=rows.get(id);return row?[wrongReceipt?{...row,exception_id:'wrong-case'}:row]:[];},
+ json:async path=>{if(path.startsWith('/rest/v1/exceptions?')){if(preflightBroken)throw Error('database timed out');return [{id:decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1]),status:caseStatus}];}assert.ok(path.includes('id=eq.upload-'));assert.ok(path.includes('&limit=1'));if(readBroken)throw Error('database timed out');const id=decodeURIComponent(path.match(/\?id=eq\.([^&]+)/)[1]);const row=rows.get(id);return row?[wrongReceipt?{...row,exception_id:'wrong-case'}:row]:[];},
  post:async(table,body,prefer)=>{posts++;assert.equal(table,'case_evidence?on_conflict=id');assert.match(prefer,/resolution=ignore-duplicates/);const meta=body[0];if(!postBroken||commitBeforeTimeout)rows.set(meta.id,meta);if(postBroken)throw Error('database timed out');return [meta];},
  signedUrl:async()=>{throw Error('not used in this fixture');}
 };
@@ -56,4 +56,16 @@ let storageAttempts=0;
 ctx.req=async(...args)=>{if(++storageAttempts===1)throw Error('The connection to the database timed out');return originalReq(...args);};
 assert.equal((await ctx.uploadCaseEvidence('case-storage-retry',file('storage'))).exception_id,'case-storage-retry');
 assert.equal(storageAttempts,2);
+ctx.req=originalReq;
+const beforePreflight=uploads;
+preflightBroken=true;
+await assert.rejects(ctx.uploadCaseEvidence('case-preflight',file('preflight')),/ตรวจสิทธิ์เคสไม่สำเร็จ/);
+const retained=ctx.pendingCaseEvidence('case-preflight')[0];
+assert.equal(retained.uploaded,false);assert.equal(uploads,beforePreflight);
+preflightBroken=false;
+assert.equal((await ctx.resumeCaseEvidence(retained.id)).id,retained.id);
+assert.equal(uploads,beforePreflight+1);
+caseStatus='closed';
+await assert.rejects(ctx.uploadCaseEvidence('case-closed',file('closed')),/สถานะเคสเปลี่ยน/);
+assert.equal(uploads,beforePreflight+1,'never upload bytes to a closed case');
 console.log('Attachment resume: same UUID/path after timeout, content identity, actor isolation, exact read-back, committed-response recovery, no overwrite/delete passed (mock transport).');
