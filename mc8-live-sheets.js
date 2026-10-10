@@ -100,11 +100,11 @@
         if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
         for(const r of result){
           const account=r.boIdentityRaw||r.account||'';
-          if(r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind!=='bookkeeping'&&isBorrowAccount(account)&&['deposit','withdraw'].includes(directionOf(r.direction))&&numeric(r.amount)!==null&&Number.isInteger(r.rowNo)&&r.rowNo>0){
+          if(r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind!=='bookkeeping'&&(!r.originalType||/^(ฝาก|ถอน|deposit|withdraw)$/i.test(r.originalType.trim()))&&isBorrowAccount(account)&&['deposit','withdraw'].includes(directionOf(r.direction))&&numeric(r.amount)!==null&&Number.isInteger(r.rowNo)&&r.rowNo>0){
             data.borrowBo.push({company,account,direction:r.direction,systemAmount:r.amount,boDate:r.boDate||r.date,
               boTime:stamp({date:r.boDate||r.date,sec:r.boSec??r.sec}).slice(11),boRaw:r.raw||'',
               boSource:{fileId:file.id,row:r.rowNo,fileName:file.file_name},
-              customerDetails:{bo:{reference:r.ref,user:r.memberCode,account:r.custAccount,bank:account,note:r.note,performedBy:r.performedBy||r.username,origin:r.originalType||''}},
+              customerDetails:{bo:{reference:r.ref,user:r.memberCode,account:r.custAccount,bank:account,note:r.note,performedBy:r.performedBy||r.username,origin:r.origin||''}},
               detail:'BO ต้นทาง · ยืม PM บริษัทอื่น · ยังไม่กระทบยอด'});
           }
           const name=String(r.performedBy||r.username||'').trim();
@@ -386,7 +386,7 @@
     BO_HEADERS.forEach((header,index)=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=boValues[index];});
     const compact={เวลา:row.boTime||'',ประเภท:thaiDirection(row),'ยูสเซอร์':bo.user||'','บัญชี':bo.account||bo.name||'','บัญชีบริษัท':row.account||'','ยอดเงิน':numeric(row.boAmount)??'',โบนัส:0,'โน้ต':boNote,'ผู้ดำเนินการ':bo.performedBy||'','แก้ไข':''};
     BO_COMPACT_HEADERS.forEach(header=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=compact[header];});
-    if(template.name===BORROW_SHEET){values[headers.indexOf('BO ฝาก')]=row.direction==='deposit'?numeric(row.boAmount):'';values[headers.indexOf('BO ถอน')]=row.direction==='withdraw'?numeric(row.boAmount):'';values[headers.indexOf('ไฟล์ BO ต้นทาง')]=row.boSource?.fileName||row.boSource?.fileId||'';values[headers.indexOf('แถวต้นทาง')]=row.boSource?.row??'';}
+    if(template.name===BORROW_SHEET){values[headers.indexOf('ประเภทดำเนินการ')]=bo.origin||'';values[headers.indexOf('BO ฝาก')]=row.direction==='deposit'?numeric(row.boAmount):'';values[headers.indexOf('BO ถอน')]=row.direction==='withdraw'?numeric(row.boAmount):'';values[headers.indexOf('ไฟล์ BO ต้นทาง')]=row.boSource?.fileName||row.boSource?.fileId||'';values[headers.indexOf('แถวต้นทาง')]=row.boSource?.row??'';}
     return [...values,sourceCondition(row),secondsBetween(row),amountDiff(row),auditStatus(row,complete)];
   }
   function statementExportRow(row,index,company,date,complete){return [index+1,company,date,row.account,thaiDirection(row),row.pmTime||'',numeric(row.pmAmount)??'',detail(row,'pm','account'),detail(row,'pm','tail'),detail(row,'pm','bank'),detail(row,'pm','name')||detail(row,'pm','user'),detail(row,'pm','reference'),row.boTime||'',numeric(row.boAmount)??'',detail(row,'bo','user'),detail(row,'bo','name')||detail(row,'bo','user'),detail(row,'bo','reference'),secondsBetween(row),sourceCondition(row),amountDiff(row),auditStatus(row,complete)];}

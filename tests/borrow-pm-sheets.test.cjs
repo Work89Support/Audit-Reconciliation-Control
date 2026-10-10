@@ -4,7 +4,7 @@ const schema=require('../mc8-sheet-schema.js');
 (async()=>{
  const data={run:{company:'3XB',business_date:'2026-10-09',summary:{}},cases:[]};
  const source=[['withdraw',80000],['deposit',8000],['withdraw',8000],['deposit',20000]].map(([direction,amount],i)=>({company:'3XB',date:'2026-10-09',sec:3600+i,account:'ยืม PM บ้านอื่น 123456789',direction,amount,rowNo:i+2,ref:`test-${i}`,memberCode:'test',raw:`test row ${i}`}));
- await sheets.hydrateBoOperators(data,[{id:'test-file',company:'3XB',kind:'bo_main',parsed:true,file_name:'test.xlsx'}],async()=>[...source,{...source[0],company:'FR8'},{...source[0],date:'2026-10-08'},{...source[0],kind:'bookkeeping'}]);
+ await sheets.hydrateBoOperators(data,[{id:'test-file',company:'3XB',kind:'bo_main',parsed:true,file_name:'test.xlsx'}],async()=>[...source,{...source[0],company:'FR8'},{...source[0],date:'2026-10-08'},{...source[0],kind:'bookkeeping'},{...source[0],originalType:'โบนัส'}]);
  const rows=sheets.rowsOf(data,'3XB');
  assert.equal(rows.length,4);
  assert.ok(rows.every(r=>sheets.sheetOf(r)==='ยืม PM บริษัทอื่น'&&r.pmAmount===null&&!r.case));
