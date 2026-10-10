@@ -272,11 +272,25 @@
     const direction=manual?'':directionOf(row.direction);
     return {key:`bo-account:${base}${direction?':'+direction:''}`,account:base,label:direction?`${base} ${thaiDirection({...row,direction})}`:base,direction,rows:[]};
   }
+  function sevenMTmnGroup(row,rows){
+    if(!isSevenM(row.company)||sourceSheetOf(row))return null;
+    const label=String(row.boAccountLabel||row.account||'').trim();
+    const account=String(row.account||'').replace(/\D/g,'');
+    const meta=registryCatalog?.ACCOUNTS?.find(a=>a.subco==='7M'&&a.bank==='TMN'&&String(a.account)===account);
+    if(!meta&&!/\bTMN\b/i.test(label))return null;
+    const identity=meta?.account||label.match(/\d{10}/)?.[0]||account;
+    if(!identity)return null;
+    const named=rows.find(r=>r.company===row.company&&String(r.account).replace(/\D/g,'')===identity&&/\bTMN\b/i.test(String(r.boAccountLabel||'')));
+    const original=String(named?.boAccountLabel||(/\bTMN\b/i.test(label)?label:`TMN ${shortHolder(meta?.name)} ${identity}`));
+    const base=original.replace(/ฝาก|ถอน/g,'').replace(/[·]+/g,' ').replace(/\s+/g,' ').trim();
+    const direction=directionOf(row.direction);
+    return {key:`bo-account:bank:${identity}:${direction}`,account:base,label:`${base} · ${thaiDirection({...row,direction})}`,direction,rows:[]};
+  }
   function boAccountGroups(rows){
     const groups=new Map();
     for(const row of rows){
       if(!hasSide(row,'bo'))continue;
-      const systemGroup=sys123AccountGroup(row);
+      const systemGroup=sys123AccountGroup(row)||sevenMTmnGroup(row,rows);
       if(systemGroup){if(!groups.has(systemGroup.key))groups.set(systemGroup.key,systemGroup);groups.get(systemGroup.key).rows.push(row);continue;}
       const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
       const provider=providerOfRow(row),source=sourceSheetOf(row);
@@ -298,7 +312,7 @@
     const groups=boAccountGroups(rows),assigned=new Set(groups.flatMap(group=>group.rows));
     for(const row of rows){
       if(assigned.has(row))continue;
-      const systemGroup=sys123AccountGroup(row);
+      const systemGroup=sys123AccountGroup(row)||sevenMTmnGroup(row,rows);
       if(systemGroup){let group=groups.find(g=>g.key===systemGroup.key);if(!group){group=systemGroup;groups.push(group);}group.rows.push(row);assigned.add(row);continue;}
       let candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&bo.account===row.account));
       if(!candidates.length&&!isStatement(row)&&providerOfRow(row)!=='OTHER')candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&!isStatement(bo)&&providerOfRow(bo)===providerOfRow(row)));

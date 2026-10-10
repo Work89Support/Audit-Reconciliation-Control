@@ -30,3 +30,28 @@ const longLabel='บัญชีPM บ้านอื่น(ยืม) '.repeat(
 const longSheets=api.buildAuditExportSheets(['deposit','withdraw'].map((d,i)=>row('UFABET7M',longLabel,longLabel,d,i)),'UFABET7M','2026-10-09',true,schema).slice(2);
 assert.ok(longSheets.some(s=>s.name.endsWith('ฝาก'))&&longSheets.some(s=>s.name.endsWith('ถอน')),'Excel 31-character limit preserves the direction suffix');
 console.log('All nine companies: PM direction split, bank policy, unchanged totals and unique web/export groups passed');
+for(const account of ['0812792075','0639274201']){
+  const named=`ฝาก TMN ชื่อจาก BO ${account}`;
+  const rows=['deposit','withdraw'].flatMap((direction,i)=>{
+    const bo=row('UFABET7M',account,named,direction,10+i);
+    const numeric=row('UFABET7M',account,account,direction,20+i);
+    const stm={...row('UFABET7M',account,'',direction,30+i),isPair:false,boAmount:null,boDate:'',bo:{},kind:'review'};
+    return [bo,numeric,stm];
+  });
+  const before=JSON.stringify(rows),totals=api.summarize(rows),groups=api.accountReviewGroups(rows);
+  assert.equal(groups.length,2,'TMN numeric/BO/STM-only aliases share one group per direction');
+  for(const group of groups){
+    assert.equal(group.rows.length,3);
+    assert.match(group.label,/TMN ชื่อจาก BO/);
+    assert.equal((group.label.match(/ฝาก|ถอน/g)||[]).length,1,'label contains only the actual direction');
+    assert.ok(group.rows.every(r=>r.direction===group.direction));
+  }
+  assert.deepEqual(api.summarize(groups.flatMap(g=>g.rows)),totals);
+  assert.equal(JSON.stringify(rows),before,'no amounts, matches or cases mutated');
+  const sheets=api.buildAuditExportSheets(rows,'UFABET7M','2026-10-09',true,schema).slice(2);
+  assert.equal(sheets.length,2);assert.ok(sheets.some(s=>s.name.endsWith('ฝาก'))&&sheets.some(s=>s.name.endsWith('ถอน')));
+  const orphan={...rows[2],boAccountLabel:''};
+  const orphanGroup=api.accountReviewGroups([orphan])[0];
+  assert.match(orphanGroup.label,/TMN/);assert.ok(!orphanGroup.label.includes('ไม่มี BO'),'STM-only TMN uses named account without hiding its waiting record');
+}
+console.log('7M TMN direction labels and numeric/STM-only aliases passed with unchanged financial rows');
