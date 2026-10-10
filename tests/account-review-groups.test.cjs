@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 const api=require('../mc8-live-sheets.js');
 const schema=require('../mc8-sheet-schema.js');
+assert.ok(require('node:fs').readFileSync(require.resolve('../mc8-live-sheets.js'),'utf8').includes("sheet='summary';pm='all';load();"),'company switch must also open the summary first');
 const pair=(account,label,dir='withdraw')=>({key:label,isPair:true,kind:'matched',account,boAccountLabel:label,direction:dir,boAmount:20,pmAmount:20,boDate:'2026-10-09',pmDate:'2026-10-09',bo:{reference:label},pm:{reference:label+'-pm'},company:'UFABET7M'});
 const orphan=(account,key,dir='withdraw')=>({key,isPair:false,kind:'review',account,direction:dir,boAmount:null,pmAmount:7,pmDate:'2026-10-09',pm:{reference:key},company:'UFABET7M'});
 for(const company of api.COMPANIES){
