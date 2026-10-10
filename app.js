@@ -1030,6 +1030,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   load: Sb.reconciliationOverview,
   loadFiles: runId => Sb.exceptionFiles(runId),
   readBoRecords: readAuditBoOperatorRecords,
+  registerBoSourceCases: Sb.registerBoWaitingCases,
   isActive: () => state.route === 'mc8-sheets',
   onLocal: () => MC8Sheets.render(root),
   onCompany: company => { state.dailySummary.company = company; },
@@ -3073,6 +3074,7 @@ VIEWS.exceptions = (root) => {
         load: Sb.reconciliationOverview,
         loadFiles: runId => Sb.exceptionFiles(runId),
         readBoRecords: readAuditBoOperatorRecords,
+        registerBoSourceCases: Sb.registerBoWaitingCases,
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
         onCase: async row => {

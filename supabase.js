@@ -1463,6 +1463,7 @@ const Sb = (() => {
     reconciliationEvidence,
     reconciliationOverview,
     confirmAuditPairs,
+    registerBoWaitingCases: (runId, rows) => rpc('register_bo_waiting_cases', {p_run_id: runId, p_rows: rows}),
     exceptionFiles,
     queueDueJobs,
     dailyJob,
