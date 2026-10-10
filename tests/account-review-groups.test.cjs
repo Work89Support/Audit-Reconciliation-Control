@@ -33,5 +33,6 @@ setImmediate(()=>{
   assert.ok(!container.innerHTML.includes('โหลดผลหรือหลักฐานคู่ไม่ครบ'));
   assert.ok(!container.innerHTML.includes('data-live-sheet="CP ถ"'));
   assert.ok(container.innerHTML.includes('data-live-sheet="bo-account:CP PAYMENT ถอน 0000000001"'));
+  assert.ok(container.innerHTML.includes('aria-selected="true" data-live-sheet="summary"'),'large company days open summary first, not thousands of rows');
   console.log('Account review groups: all nine companies, preserved amounts, PM-only visibility and separate load/waiting status passed');
 });

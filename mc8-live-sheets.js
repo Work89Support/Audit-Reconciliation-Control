@@ -591,7 +591,7 @@
     const token={};slots.set(container,token);const alive=()=>slots.get(container)===token&&(opts.isActive?.()??true);
     const companies=(opts.companies||COMPANIES).filter(c=>COMPANIES.includes(c));
     let company=companies.includes(opts.company)?opts.company:(companies.includes(remembered.company)?remembered.company:companies[0]||'MC8');
-    let date=opts.date||remembered.date||'2026-09-16',pm='all',direction='all',status='all',sheet=root.MC8SheetSchema?.sheets?.length?'AT ถ':'all',page=0,data=null,files=[],loading=false,error='',fileError='',generation=0,fullscreen=false,wrapText=false,caseReceipt='';
+    let date=opts.date||remembered.date||'2026-09-16',pm='all',direction='all',status='all',sheet='summary',page=0,data=null,files=[],loading=false,error='',fileError='',generation=0,fullscreen=false,wrapText=false,caseReceipt='';
     const columnFilters={},sortBySheet={};
     let hiddenBySheet={};
     try{hiddenBySheet=JSON.parse(root.localStorage?.getItem('audit-live-hidden-columns-v1')||'{}')||{};}catch(_){hiddenBySheet={};}
@@ -607,7 +607,7 @@
       if(!alive())return;
       // Keep source identity, displayed values, tone and action in one order.
       const all=data?rowsOf(data,company):[],accountGroups=accountReviewGroups(all);
-      if(sheet!=='all'&&sheet!=='summary'&&!accountGroups.some(group=>group.key===sheet))sheet='all';
+      if(sheet!=='all'&&sheet!=='summary'&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
       const baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
       // A placeholder is not an account awaiting bank evidence (e.g. affiliate credit).
@@ -615,8 +615,8 @@
       const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all;
       const waiting=waitingStatements(data?.run?.summary?.bo_first,company);
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
-      const rawView=tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};
-      const entries=filterAndSortEntries(baseShown.map((source,index)=>({source,values:rawView.rows[index]})),rules,sort),shown=entries.map(entry=>entry.source);
+      const rawView=sheet==='summary'?{headers:[],rows:[]}:tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};
+      const entries=filterAndSortEntries(baseShown.map((source,index)=>({source,values:rawView.rows[index]||[]})),rules,sort),shown=entries.map(entry=>entry.source);
       page=0;
       const pageEntries=entries,pageRows=shown,view={headers:rawView.headers,rows:entries.map(entry=>entry.values)},fullView=view;
       const hidden=hiddenSet(),visible=view.headers.map((_,index)=>index).filter(index=>!hidden.has(index));
