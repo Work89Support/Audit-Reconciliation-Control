@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict');
+const sheets=require('../mc8-live-sheets.js');
+const schema=require('../mc8-sheet-schema.js');
+(async()=>{
+ const data={run:{company:'3XB',business_date:'2026-10-09',summary:{}},cases:[]};
+ const source=[['withdraw',80000],['deposit',8000],['withdraw',8000],['deposit',20000]].map(([direction,amount],i)=>({company:'3XB',date:'2026-10-09',sec:3600+i,account:'ยืม PM บ้านอื่น 123456789',direction,amount,rowNo:i+2,ref:`test-${i}`,memberCode:'test',raw:`test row ${i}`}));
+ await sheets.hydrateBoOperators(data,[{id:'test-file',company:'3XB',kind:'bo_main',parsed:true,file_name:'test.xlsx'}],async()=>[...source,{...source[0],company:'FR8'},{...source[0],date:'2026-10-08'},{...source[0],kind:'bookkeeping'}]);
+ const rows=sheets.rowsOf(data,'3XB');
+ assert.equal(rows.length,4);
+ assert.ok(rows.every(r=>sheets.sheetOf(r)==='ยืม PM บริษัทอื่น'&&r.pmAmount===null&&!r.case));
+ assert.equal(sheets.summarize(rows).matchedCount,0);
+ assert.equal(sheets.summarize(rows).diffAfterCents,0);
+ const workbook=sheets.buildAuditExportSheets(rows,'3XB','2026-10-09',false,schema);
+ const sheet=workbook.find(s=>s.name==='ยืม PM บริษัทอื่น');
+ assert.equal(sheet.rows.length,4);
+ assert.equal(sheet.footerRows[0][sheet.headers.indexOf('BO ฝาก')],28000);
+ assert.equal(sheet.footerRows[0][sheet.headers.indexOf('BO ถอน')],88000);
+ assert.ok(sheet.rows.every(row=>row[sheet.headers.indexOf('ไฟล์ BO ต้นทาง')]==='test.xlsx'));
+ assert.equal(workbook.filter(s=>s.name.startsWith('STM')).length,0);
+ data.run.summary.waiting_bo=[data.borrowBo[0]];
+ assert.equal(sheets.rowsOf(data,'3XB').length,4,'deduplicate worker snapshot and direct BO by source');
+ console.log('Borrow PM: source-only BO, company/day isolation, deposit/withdraw totals and deduplication passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});
