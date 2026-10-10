@@ -7,7 +7,7 @@ if(!source||!destination) throw new Error('Supply backup and output paths');
 let code=fs.readFileSync(source,'utf8');
 for(const file of ['engine.js','pdf-stm.js']) {
  if(file==='pdf-stm.js'&&!code.includes('const PdfStm')) continue;
- const patch=execFileSync('git',['diff','--unified=0','--',file],{encoding:'utf8'});
+ const patch=execFileSync('git',['diff','--unified=0','ff7986ad13a3d339a6a1002b0f7a2e6e03b4558f','b9de42c','--',file],{encoding:'utf8'});
  for(const hunk of patch.split(/^@@[^\n]*\n/m).slice(1)) {
    const lines=hunk.split('\n');
    const before=lines.filter(l=>l.startsWith('-')).map(l=>l.slice(1)).join('\n');
