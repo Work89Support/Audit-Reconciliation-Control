@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict');
+const {buildAuditExportSheets,rowsOf}=require('../mc8-live-sheets.js');
+const schema=require('../mc8-sheet-schema.js');
+const coverage={missing:[{kind:'STM',company:'AT4',identity:'6517248040',label:'BBL',direction:'deposit',rows:11,amount:1039},{kind:'STM',company:'AT4',identity:'6517248040',label:'BBL',direction:'withdraw',rows:8,amount:421},{kind:'STM',company:'SK8',identity:'6517249394',label:'BBL',direction:'deposit',rows:8,amount:1283},{kind:'PM',company:'AT4',identity:'AUTOPEER',direction:'deposit',rows:1,amount:100}]};
+const data={run:{summary:{match_evidence:[],bo_first:coverage}},cases:[]};
+const before=JSON.stringify(data),rows=rowsOf(data,'AT4');
+assert.equal(rows.length,0,'coverage must never fabricate transaction or matched rows');
+const sheets=buildAuditExportSheets(rows,'AT4','2026-10-02',true,schema,coverage);
+const waiting=sheets.find(x=>x.name==='รอ STM');
+assert.equal(waiting.rows.length,2,'scope to company and STM only');
+assert.deepEqual(waiting.rows.map(x=>[x[2],x[3]]),[[11,1039],[8,421]]);
+assert.ok(waiting.rows.every(x=>x[4]==='ยังไม่มีข้อมูล'));
+assert.match(sheets.find(x=>x.name==='สรุป').footerRows[0][8],/ห้ามยืนยันปิดงาน/);
+assert.equal(sheets.find(x=>x.name==='ข้อมูลทั้งหมด').rows.length,0);
+assert.equal(JSON.stringify(data),before);
+assert.equal(buildAuditExportSheets(rows,'AT4','2026-10-02',true,schema).some(x=>x.name==='รอ STM'),false);
+console.log('Waiting STM coverage export tests passed');

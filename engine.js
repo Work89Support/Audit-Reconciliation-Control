@@ -2099,6 +2099,10 @@ const Engine = (() => {
       hourlyMatched,
       crossDayWindow,
       noStmSide: summarizeNoStm(noStmSide),
+      waitingBo: noStmSide.map(b => ({
+        ...mkException("missing_stm", null, b, 0), status: "waiting_source", riskAmount: 0,
+        detail: "อ่าน BO แล้ว · รอ STM/PM ของบัญชีนี้ก่อนกระทบยอด ยังไม่ยืนยันความเสียหาย"
+      })),
       noStmCount: noStmSide.length,
       /* ใช้เฉพาะใน Worker เพื่อไม่ให้ Rules เปิด cross_day ซ้ำกับคู่ที่ Engine จับสำเร็จ */
       matchedBoKeys: matched.map((m) => recordKey(m.b)),

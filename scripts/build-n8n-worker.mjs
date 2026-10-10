@@ -378,6 +378,7 @@ return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
+  .replace('summary:{match_evidence:', 'summary:{waiting_bo:result.waitingBo||[],waiting_bo_version:1,match_evidence:')
   .replace('source_parser_completion:true,','source_parser_completion:true,scb_printed_dates_preserved:true,bbl_balance_continuity:true,bbl_overlap_evidence:bblControl.removed,')
   .replace(
     "worker_version:'1.9.29-seven-m-source-parity'",
