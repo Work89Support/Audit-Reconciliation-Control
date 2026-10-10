@@ -18,7 +18,7 @@ for(const company of api.COMPANIES){
   }
 }
 for(const [company,account] of [['FR8','999999999999 : Manual'],['AT4','0000000009 : Manual'],['SK8','1111111111 : Manual'],['UFABET7M','บัญชีPM บ้านอื่น(ยืม)'],['3XB','ยืม PM บริษัทอื่น']]){
-  assert.equal(api.accountReviewGroups(['deposit','withdraw'].map((d,i)=>row(company,account,account,d,i))).length,2);
+  assert.equal(api.accountReviewGroups(['deposit','withdraw'].map((d,i)=>row(company,account,account,d,i))).length,company==='3XB'?1:2);
 }
 for(const company of api.COMPANIES){
   const rows=['deposit','withdraw'].map((d,i)=>row(company,'5034633029',`${d==='deposit'?'ฝาก':'ถอน'} SCB ภานุพงษ์ 5034633029`,d,i));

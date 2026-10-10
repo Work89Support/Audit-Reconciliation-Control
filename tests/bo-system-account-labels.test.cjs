@@ -8,8 +8,8 @@ for(const [company,account,name] of mapping){
  const rows=sheets.rowsOf(data,company);
  assert.equal(rows.length,2);assert.ok(rows.every(r=>sheets.sheetOf(r)===name));
  const workbook=sheets.buildAuditExportSheets(rows,company,'2026-10-09',false,schema),fullLabel=sheets.accountReviewGroups(rows)[0].label,exportName=workbook.find(s=>s.name==='สรุป').rows.find(r=>r[1]===fullLabel)[0],target=workbook.find(s=>s.name===exportName);
- assert.equal(workbook.slice(2).length,2);
- assert.equal(target.rows.length,1);
+ assert.equal(workbook.slice(2).length,company==='3XB'?1:2);
+ assert.equal(target.rows.length,company==='3XB'?2:1);
  const deposit=workbook.slice(2).find(s=>s.rows.some(r=>r[s.headers.indexOf('BO ฝาก')]===5)),withdraw=workbook.slice(2).find(s=>s.rows.some(r=>r[s.headers.indexOf('BO ถอน')]===7));
  assert.equal(deposit.footerRows[0][deposit.headers.indexOf('BO ฝาก')],5);
  assert.equal(withdraw.footerRows[0][withdraw.headers.indexOf('BO ถอน')],7);
