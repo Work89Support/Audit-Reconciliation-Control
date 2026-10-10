@@ -687,7 +687,9 @@ const PdfStm = (() => {
       // A BBL balance error must not silently flip a printed FR/TO direction.
       // Preserve the explicit direction so the continuity gate can reject it.
       if (bank === 'BBL') {
-        if (/TRF FR|deposit/i.test(scbCode)) dir='deposit';
+        if (/^(?:COM\s*\/\s*(?:ANNUAL\s+)?FEE|ANNUAL\s+FEE|BANK\s+FEE)(?:\b|\s|$)/i.test(scbCode)) dir='withdraw';
+        else if (/^INTEREST(?:\s+(?:PAID|CREDIT))?(?:\s*$)/i.test(scbCode)) dir='deposit';
+        else if (/TRF FR|deposit/i.test(scbCode)) dir='deposit';
         else if (/TRF TO|withdraw/i.test(scbCode)) dir='withdraw';
       }
       if (!dir && prevBal !== null && r.balance !== null && Math.abs(Math.abs(r.balance - prevBal) - r.amount) < 0.01) {

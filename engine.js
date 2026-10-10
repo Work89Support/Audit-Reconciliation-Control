@@ -336,6 +336,7 @@ const Engine = (() => {
 
   /* ---------------- reconciliation ---------------- */
   const TYPE_NAME = {
+    bank_charge: "ค่าธรรมเนียม / ดอกเบี้ยธนาคาร (แยกจาก BO)",
     manual_review: "เติมมือ — รอ Audit ตรวจเอกสารชี้แจง",
     time_diff: "เวลาเกิน tolerance",
     missing_bo: "STM มากกว่า BO",
@@ -347,6 +348,7 @@ const Engine = (() => {
     wrong_account: "ลูกค้าฝากผิดบัญชี",
   };
   const BASE_SEVERITY = {
+    bank_charge: "low",
     manual_review: "medium",
     time_diff: "low",
     missing_bo: "high",
@@ -520,6 +522,18 @@ const Engine = (() => {
        อีกชั้นตรงขอบเขตนี้ เพื่อให้ -1,020 ฝั่ง STM จับกับ 1,020 ฝั่ง BO ได้จริง */
     const absoluteAmount = (row) => ({ ...row, amount: Math.abs(Number(row && row.amount) || 0) });
     stmRecords = stmRecords.map(absoluteAmount).map(statementCustomer);
+    // Keep charges in BBL balance validation above, but never use them as
+    // customer payment candidates, even when the amount happens to match.
+    // Classification requires an explicit bank description, not a small amount.
+    const bankChargeKind = (r) => {
+      if (String(r.bank || r.channel || '').toUpperCase() !== 'BBL') return null;
+      const description = String(r.code || r.desc || r.raw || '').replace(/^\s*\d{2}\/\d{2}\/\d{2,4}\s+/, '').trim();
+      if (/^(?:COM\s*\/\s*(?:ANNUAL\s+)?FEE|ANNUAL\s+FEE|BANK\s+FEE|ค่าธรรมเนียม)(?:\b|\s|$)/i.test(description)) return 'fee';
+      if (/^(?:INTEREST(?:\s+(?:PAID|CREDIT))?|ดอกเบี้ยรับ)(?:\s+\d|\s*$)/i.test(description)) return 'interest';
+      return null;
+    };
+    const bankCharges = stmRecords.filter(r => bankChargeKind(r));
+    stmRecords = stmRecords.filter(r => !bankChargeKind(r));
     boRecords = boRecords.map(absoluteAmount);
     const auditCompanyOf = (r) => {
       /* PM เก็บ company เป็นชื่อ provider และเก็บบริษัทจริงไว้ที่ subco */
@@ -605,7 +619,7 @@ const Engine = (() => {
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
 
     /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
-    const statementCoverageRecords = stmRecords.concat(tmnDateCandidates, ktbNextDayCandidates);
+    const statementCoverageRecords = stmRecords.concat(bankCharges, tmnDateCandidates, ktbNextDayCandidates);
     const stmAccounts = new Set(statementCoverageRecords.map((r) => r.account));
     const stmChannels = new Set(statementCoverageRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
     const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
@@ -633,6 +647,7 @@ const Engine = (() => {
 
     const matched = [];
     const exceptions = [];
+    bankCharges.forEach(r => exceptions.push(mkException('bank_charge', r, null, 0)));
     const stmLeft = [];
     const tmnDateCandidateMatched = new Set();
     const ktbNextDayCandidateMatched = new Set();
@@ -1648,6 +1663,9 @@ const Engine = (() => {
           for (const ci of cands) {
             if (boUsed[ci]) continue;
             const b = boRecords[ci];
+            // Missing time does not prove a different-amount pair. Exact
+            // amount matching remains available in the preceding passes.
+            if (s.noTime || b.noTime) continue;
             if (!dirOK(s, b)) continue;
             const dt = timeDistance(b, s);
             if (dt < bestDt) {
@@ -2069,7 +2087,7 @@ const Engine = (() => {
     const hourlyStm = new Array(24).fill(0);
     const hourlyMatched = new Array(24).fill(0);
     let crossDayWindow = 0;
-    stmRecords.concat([...tmnDateCandidateMatched], [...ktbNextDayCandidateMatched]).forEach((r) => {
+    stmRecords.concat(bankCharges, [...tmnDateCandidateMatched], [...ktbNextDayCandidateMatched]).forEach((r) => {
       hourlyStm[Math.floor(r.sec / 3600)]++;
       if (r.crossDay) crossDayWindow++;
     });
@@ -2080,7 +2098,7 @@ const Engine = (() => {
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
     const elapsed = Math.round(Date.now() - t0);
-    const reconciledStmCount = stmRecords.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size;
+    const reconciledStmCount = stmRecords.length + bankCharges.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size;
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
@@ -2091,6 +2109,7 @@ const Engine = (() => {
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
       stmCount: reconciledStmCount,
+      bankChargeCount: bankCharges.length,
       boCount: boRecords.length,
       elapsedMs: elapsed,
       matchRate: reconciledStmCount ? (matched.length / reconciledStmCount) * 100 : 0,
@@ -2180,7 +2199,7 @@ const Engine = (() => {
       const severityBase = BASE_SEVERITY[type];
       const sysAmount = b ? b.amount : null;
       const bankAmount = s ? s.amount : null;
-      const riskAmount = type === "time_diff" || type === "cross_day" ? 0 : type === "amount_diff" ? Math.abs(sysAmount - bankAmount) : src.amount;
+      const riskAmount = type === "bank_charge" || type === "time_diff" || type === "cross_day" ? 0 : type === "amount_diff" ? Math.abs(sysAmount - bankAmount) : src.amount;
       let severity = severityBase;
       if (severity !== "critical" && riskAmount > 10000) severity = "critical";
       const slaHours = SLA_OF[severity];
@@ -2235,6 +2254,7 @@ const Engine = (() => {
   function causeOf(type) {
     return (
       {
+        bank_charge: "รายการค่าธรรมเนียม / ดอกเบี้ยตามเอกสารธนาคาร ไม่ใช่คู่ธุรกรรม BO",
         amount_diff: "คีย์ยอดผิดจากต้นฉบับ",
         missing_bo: "รายการฝั่งระบบหลังบ้านหายไป",
         missing_stm: "ยังไม่พบรายการ STM/PM คู่กัน ต้องตรวจความครบของไฟล์และหลักฐานก่อนระบุสาเหตุ",

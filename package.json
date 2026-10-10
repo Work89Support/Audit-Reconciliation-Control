@@ -4,6 +4,7 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
+    "test:bbl-bank-charge": "node tests/bbl-bank-charge.test.mjs",
     "test:attachments": "node tests/attachment-resume.test.mjs && node tests/attachment-batch.test.mjs && node tests/clarification-save.test.mjs",
     "test:head-files": "node tests/head-file-selection.test.mjs && node tests/mail-evidence-form.test.mjs",
     "test:pairing-upload": "node tests/manual-pair-candidates.test.mjs && node tests/manual-pairing-ui.test.cjs && node tests/manual-pairing-rpc-transport.test.mjs",

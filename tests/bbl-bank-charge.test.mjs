@@ -1,0 +1,38 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const box={console,performance};
+vm.createContext(box);
+const runtime=process.env.BBL_WORKER_BACKUP
+  ? fs.readFileSync(process.env.BBL_WORKER_BACKUP,'utf8').split('\nconst files=$input.all()')[0]
+  : fs.readFileSync(new URL('../engine.js',import.meta.url),'utf8');
+vm.runInContext(runtime+';globalThis.engine=Engine;',box);
+const base={date:'2026-10-09',bank:'BBL',account:'1234567890',company:'AT4',direction:'withdraw',sec:0,noTime:true,raw:'09/10/26 COM/ANNUAL FEE 15.00 1,000.00 Auto',code:'COM/ANNUAL FEE',desc:'COM/ANNUAL FEE Auto',amount:15};
+const bo={...base,code:'',desc:'',raw:'BO source',amount:10,sec:86100,noTime:false,lateNight:true};
+const run=(s,b)=>box.engine.reconcile(s,b,{toleranceDeposit:120,toleranceWithdraw:120},[]);
+const actual=await run([base],[bo]);
+assert.equal(actual.matched,0);
+assert.equal(actual.stmCount,1);
+assert.equal(actual.bankChargeCount,1);
+assert.equal(actual.exceptions.length,2);
+const charge=actual.exceptions.find(e=>e.type==='bank_charge');
+const pending=actual.exceptions.find(e=>e.type==='cross_day');
+assert.equal(charge.bankAmount,15);assert.equal(charge.systemAmount,null);assert.equal(charge.riskAmount,0);
+assert.equal(charge.stmRaw,base.raw);assert.equal(pending.systemAmount,10);assert.equal(pending.bankAmount,null);
+assert.equal(pending.boTime,'23:55:00');assert.equal(pending.riskAmount,0);
+const sameFee=await run([{...base,amount:10}],[bo]);
+assert.equal(sameFee.matched,0,'Equal fees are not customer transfers');
+const transfer={...base,code:'TRF TO',desc:'TRF TO customer',raw:'09/10/26 TRF TO 15.00'};
+const uncertain=await run([transfer],[bo]);
+assert(!uncertain.exceptions.some(e=>e.type==='amount_diff'),'No time cannot prove a different-amount pair');
+assert(uncertain.exceptions.some(e=>e.type==='missing_bo'));
+assert(uncertain.exceptions.some(e=>e.type==='cross_day'));
+assert.equal((await run([{...transfer,amount:10}],[bo])).matched,1,'Exact no-time transfers still match');
+const timed=await run([{...transfer,sec:86100,noTime:false}],[bo]);
+assert(timed.exceptions.some(e=>e.type==='amount_diff'),'Timed mismatch remains reviewable');
+assert.equal((await run([{...transfer,desc:'TRF TO FEE customer'}],[bo])).bankChargeCount,0);
+vm.runInContext(fs.readFileSync(new URL('../pdf-stm.js',import.meta.url),'utf8')+';globalThis.parser=PdfStm;',box);
+const feeRows=box.parser.applyDirection([{code:'COM/ANNUAL FEE',desc:'COM/ANNUAL FEE Auto',amount:15,balance:1000}],'BBL');
+assert.equal(feeRows[0].direction,'withdraw');
+assert.equal(box.parser.applyDirection([{code:'INTEREST CREDIT',amount:15,balance:1000}],'BBL')[0].direction,'deposit');
+console.log('BBL bank charges: regression assertions passed');
