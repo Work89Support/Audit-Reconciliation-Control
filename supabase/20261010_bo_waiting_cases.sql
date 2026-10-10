@@ -60,6 +60,8 @@ begin
  from public.recon_runs rr cross join lateral jsonb_array_elements(coalesce(new.bo_waiting_snapshot->'waiting_bo','[]'::jsonb)) w
  where rr.id=new.last_run_id and rr.company=new.company and rr.business_date=new.business_date
    and w->>'company'=new.company and w->>'boDate'=new.business_date::text
+   and nullif(trim(w->>'account'),'') is not null
+   and trim(w->>'account') not in('-','—','–','ไม่ระบุ','ไม่ระบุบัญชี','ไม่มีข้อมูล')
    and exists(select 1 from unnest(rr.file_ids) fid where fid::text=w->'boSource'->>'fileId');
  if jsonb_array_length(rows_to_create)>0 then perform public.register_bo_waiting_cases(new.last_run_id,rows_to_create);end if;
  return new;
