@@ -17,7 +17,8 @@ begin
   if r->>'company' is distinct from v_run.company or r->>'boDate' is distinct from v_run.business_date::text
     or coalesce(r->>'direction','') not in('deposit','withdraw','ฝาก','ถอน') or v_row is null or v_row<1
     or v_amount is null or v_amount<=0 or v_amount::text in('NaN','Infinity','-Infinity')
-    or nullif(trim(r->>'account'),'') is null or nullif(trim(r->>'boRaw'),'') is null then raise exception 'BO source scope or data invalid';end if;
+    or nullif(trim(r->>'account'),'') is null or trim(r->>'account') in('-','—','–','ไม่ระบุ','ไม่ระบุบัญชี','ไม่มีข้อมูล')
+    or nullif(trim(r->>'boRaw'),'') is null then raise exception 'BO source scope or data invalid';end if;
   if not exists(select 1 from public.source_files f join public.mail_batches b on b.id=f.batch_id
      where f.id=v_file and f.id=any(v_run.file_ids) and f.kind='bo_main' and f.parsed and f.parse_error is null
      and coalesce(f.company,b.company)=v_run.company and b.business_date=v_run.business_date) then raise exception 'BO file not verified for this run';end if;

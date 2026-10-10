@@ -576,7 +576,8 @@
       // Keep source identity, displayed values, tone and action in one order.
       const all=data?rowsOf(data,company):[],baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
-      const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`));
+      // A placeholder is not an account awaiting bank evidence (e.g. affiliate credit).
+      const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`)&&numeric(row.systemAmount)>0&&!/^(?:\s*[-—–]\s*|\s*ไม่ระบุ(?:บัญชี)?\s*|\s*ไม่มีข้อมูล\s*)$/.test(String(row.account||'')));
       const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all.filter(r=>providerNames.includes(sheetOf(r))||isStatement(r));
       const waiting=waitingStatements(data?.run?.summary?.bo_first,company);
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
