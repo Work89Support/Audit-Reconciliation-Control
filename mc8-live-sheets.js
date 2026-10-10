@@ -267,9 +267,11 @@
     const providerName={AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider];
     const number=original.match(/^(\d{6,})\s*(?::.*)?$/)?.[1]||String(row.account||'').match(/^\d{6,}$/)?.[0];
     if(!providerName&&!number&&!hasSide(row,'bo'))return null;
-    const manual=row.company==='FR8'&&number==='999999999999';
-    const base=providerName|| (number?`${number} : Manual`:original);
-    const direction=manual?'':directionOf(row.direction);
+    // FR8 retains its agreed Manual account label. Normal AT4/SK8 banks
+    // use their own account number, not an inferred Manual channel.
+    const manual=number&&(row.company==='FR8'||MANUAL_ACCOUNTS[row.company]?.includes(number));
+    const base=providerName|| (number?`${number}${manual?' : Manual':''}`:original);
+    const direction=directionOf(row.direction);
     return {key:`bo-account:${base}${direction?':'+direction:''}`,account:base,label:direction?`${base} ${thaiDirection({...row,direction})}`:base,direction,rows:[]};
   }
   function sevenMTmnGroup(row,rows){
