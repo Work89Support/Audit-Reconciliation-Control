@@ -209,6 +209,14 @@
       foldedAlerts.add(alert);
     });
     const visibleRows=financialRows.filter(row=>!foldedAlerts.has(row));
+    const borrowSources=new Map((data.borrowBo||[]).map(e=>[`${e.boSource.fileId}|${e.boSource.row}`,e]));
+    for(const row of visibleRows){
+      const source=row.boSource||row.case?.customer_details?.source_rows?.bo;
+      const original=borrowSources.get(`${source?.fileId}|${source?.row}`);
+      if(original&&row.company===original.company&&directionOf(row.direction)===directionOf(original.direction)&&cents(row.boAmount)===cents(original.systemAmount)){
+        row.account=original.account;row.boSource={...source,fileName:original.boSource.fileName};
+      }
+    }
     const representedBo=new Set(visibleRows.map(row=>sideKey(row,'bo')).filter(Boolean));
     const sourceIdentity=row=>{
       const source=row.boSource||row.case?.customer_details?.source_rows?.bo;
