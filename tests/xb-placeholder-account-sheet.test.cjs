@@ -21,5 +21,17 @@ assert.equal(exported.slice(2).length,1);
 assert.equal(exported[0].rows.length,4,'master source trace remains available');
 assert.equal(JSON.stringify(rows),snapshot);
 assert.deepEqual(sheets.summarize(rows),totals,'saved financial totals unchanged');
-assert.equal(sheets.accountReviewGroups(rows.map(r=>({...r,company:'MC8'}))).length,3,'exclusion limited to requested 3XB');
-console.log('3XB placeholder sheet excluded; equal-amount distinct transactions and saved totals preserved');
+for(const company of sheets.COMPANIES){
+  const placeholder={...rows[0],company};
+  const real={...rows[1],company,account:'AUTOPEER',boAccountLabel:'AUTOPEER'};
+  const review=[placeholder,real],before=JSON.stringify(review),saved=sheets.summarize(review);
+  assert.equal(sheets.accountReviewGroups(review).length,1,`${company}: exclude placeholder deposit only`);
+  const output=sheets.buildAuditExportSheets(review,company,'2026-10-09',false,schema);
+  assert.equal(output[0].rows.length,2,`${company}: retain master source rows`);
+  assert.equal(output[1].footerRows[0][5],80005,`${company}: retain source total`);
+  assert.deepEqual(sheets.summarize(review),saved);
+  assert.equal(JSON.stringify(review),before);
+  assert.equal(sheets.accountReviewGroups([{...placeholder,direction:'withdraw'}]).length,1,'do not exclude unspecified withdrawals');
+  assert.equal(sheets.accountReviewGroups([{...placeholder,isPair:true,pmAmount:5,pmDate:'2026-10-09'}]).length,1,'do not hide a pair or statement evidence');
+}
+console.log('All companies: placeholder deposit sheet excluded; source rows, equal-amount transactions and saved totals preserved');

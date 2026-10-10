@@ -55,3 +55,26 @@ for(const account of ['0812792075','0639274201']){
   assert.match(orphanGroup.label,/TMN/);assert.ok(!orphanGroup.label.includes('ไม่มี BO'),'STM-only TMN uses named account without hiding its waiting record');
 }
 console.log('7M TMN direction labels and numeric/STM-only aliases passed with unchanged financial rows');
+{
+  const transfer=[4000,4000,1999].map((amount,i)=>({...row('UFABET7M','0639274201','ฝาก TMN สรวิศา 0639274201','deposit',100+i),boAmount:amount,pmAmount:amount,reason:'seven-m-internal-transfer-reciprocal',boSource:{fileId:'bo',row:2077+i*2},pmSource:{fileId:'stm',row:i+1}}));
+  const ordinary=row('UFABET7M','0639274201','ฝาก TMN สรวิศา 0639274201','deposit',200);
+  const rows=[...transfer,ordinary],before=JSON.stringify(rows),saved=api.summarize(rows);
+  const groups=api.accountReviewGroups(rows),withdraw=groups.find(g=>g.direction==='withdraw');
+  assert.equal(groups.length,2);
+  assert.equal(withdraw.rows.length,3,'keep both equal-amount source rows');
+  assert.equal(api.summarize(withdraw.rows).boCents,999900);
+  assert.match(withdraw.label,/สรวิศา.*ถอน/);
+  assert.deepEqual(api.filter(rows,'all','all','all',withdraw.key),withdraw.rows);
+  assert.deepEqual(api.filter(rows,'all','withdraw','all',withdraw.key),withdraw.rows,'withdrawal filter includes verified transfer withdrawals');
+  const exportSheets=api.buildAuditExportSheets(rows,'UFABET7M','2026-10-09',true,schema);
+  const output=exportSheets.find(s=>s.name.endsWith('ถอน'));
+  assert.equal(output.rows.length,3);
+  assert.ok(output.rows.every(r=>r[output.headers.indexOf('ประเภท')]==='ถอน'));
+  assert.equal(output.footerRows[0][output.headers.indexOf('BO ถอน')],9999);
+  assert.equal(output.footerRows[0][output.headers.indexOf('BO ฝาก')],0);
+  assert.deepEqual(api.summarize(rows),saved);
+  assert.equal(JSON.stringify(rows),before,'presentation must not mutate saved directions/matches/cases');
+  for(const company of ['FR8','3XB'])assert.ok(api.accountReviewGroups(transfer.map(r=>({...r,company}))).every(g=>g.direction!=='withdraw'),'only 7M verified TMN transfers');
+  assert.ok(api.accountReviewGroups(transfer.map(r=>({...r,reason:'legacy-rule'}))).every(g=>g.direction==='deposit'),'never infer by amount or transfer text');
+}
+console.log('7M verified TMN transfer withdrawals: 3 rows / 9999 with unchanged saved reconciliation');
