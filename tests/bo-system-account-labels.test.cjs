@@ -8,10 +8,12 @@ for(const [company,account,name] of mapping){
  const rows=sheets.rowsOf(data,company);
  assert.equal(rows.length,2);assert.ok(rows.every(r=>sheets.sheetOf(r)===name));
  const workbook=sheets.buildAuditExportSheets(rows,company,'2026-10-09',false,schema),fullLabel=sheets.accountReviewGroups(rows)[0].label,exportName=workbook.find(s=>s.name==='สรุป').rows.find(r=>r[1]===fullLabel)[0],target=workbook.find(s=>s.name===exportName);
- assert.equal(target.rows.length,2);
- assert.equal(target.footerRows[0][target.headers.indexOf('BO ฝาก')],5);
- assert.equal(target.footerRows[0][target.headers.indexOf('BO ถอน')],7);
- assert.ok(target.rows.every(r=>r[target.headers.indexOf('บัญชีบริษัท / Provider')]===rows[0].account));
+ assert.equal(workbook.slice(2).length,company==='FR8'?1:2);
+ assert.equal(target.rows.length,company==='FR8'?2:1);
+ const deposit=workbook.slice(2).find(s=>s.rows.some(r=>r[s.headers.indexOf('BO ฝาก')]===5)),withdraw=workbook.slice(2).find(s=>s.rows.some(r=>r[s.headers.indexOf('BO ถอน')]===7));
+ assert.equal(deposit.footerRows[0][deposit.headers.indexOf('BO ฝาก')],5);
+ assert.equal(withdraw.footerRows[0][withdraw.headers.indexOf('BO ถอน')],7);
+ assert.ok(workbook.slice(2).every(s=>s.rows.every(r=>r[s.headers.indexOf('บัญชีบริษัท / Provider')]===rows[0].account)));
  if(company!=='3XB')assert.ok(!workbook.some(s=>s.name==='ยืม PM บริษัทอื่น'));
  const normalized=workbook.map(s=>s.name.replace(/[:\\/?*\[\]]/g,' ').trim().slice(0,31).toLowerCase());
  assert.equal(new Set(normalized).size,normalized.length,'Excel names must remain unique after colon sanitization');

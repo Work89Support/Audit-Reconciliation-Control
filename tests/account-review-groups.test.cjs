@@ -9,7 +9,7 @@ for(const company of api.COMPANIES){
   const before=JSON.stringify(rows),groups=api.accountReviewGroups(rows);
   assert.equal(groups.flatMap(g=>g.rows).length,rows.length);
   assert.equal(new Set(groups.flatMap(g=>g.rows)).size,rows.length);
-  assert.equal(groups.find(g=>g.account==='ATP PAYMENT ถอน 00000ATP').rows.length,2);
+  assert.equal(groups.find(g=>g.account===(['AT4','FR8','SK8'].includes(company)?'AUTOPEER':'ATP PAYMENT ถอน 00000ATP')).rows.length,2);
   assert.equal(groups.filter(g=>g.key.startsWith('unassigned-pm:')).length,1);
   for(const group of groups){
     const scoped=api.filter(rows,'all','all','all',group.key);
@@ -33,7 +33,7 @@ setImmediate(()=>{
   assert.match(container.innerHTML,/BO รอ STM\/PM 1 รายการ/);
   assert.ok(!container.innerHTML.includes('โหลดผลหรือหลักฐานคู่ไม่ครบ'));
   assert.ok(!container.innerHTML.includes('data-live-sheet="CP ถ"'));
-  assert.ok(container.innerHTML.includes('data-live-sheet="bo-account:CP PAYMENT ถอน 0000000001"'));
+  assert.ok(container.innerHTML.includes('data-live-sheet="bo-account:CP PAYMENT ถอน 0000000001:withdraw"'));
   assert.ok(container.innerHTML.includes('aria-selected="true" data-live-sheet="summary"'),'large company days open summary first, not thousands of rows');
   console.log('Account review groups: all nine companies, preserved amounts, PM-only visibility and separate load/waiting status passed');
 });

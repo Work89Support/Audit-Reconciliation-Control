@@ -260,9 +260,37 @@
     }
     return visibleRows;
   }
+  function sys123AccountGroup(row){
+    if(!isSys123(row.company))return null;
+    const original=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
+    const provider=providerOf(original)!=='OTHER'?providerOf(original):providerOfRow(row);
+    const providerName={AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider];
+    const number=original.match(/^(\d{6,})\s*(?::.*)?$/)?.[1]||String(row.account||'').match(/^\d{6,}$/)?.[0];
+    if(!providerName&&!number&&!hasSide(row,'bo'))return null;
+    const manual=row.company==='FR8'&&number==='999999999999';
+    const base=providerName|| (number?`${number} : Manual`:original);
+    const direction=manual?'':directionOf(row.direction);
+    return {key:`bo-account:${base}${direction?':'+direction:''}`,account:base,label:direction?`${base} ${thaiDirection({...row,direction})}`:base,direction,rows:[]};
+  }
   function boAccountGroups(rows){
     const groups=new Map();
-    for(const row of rows){if(!hasSide(row,'bo'))continue;const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim(),key=`bo-account:${account}`;if(!groups.has(key))groups.set(key,{key,account,label:account,rows:[]});groups.get(key).rows.push(row);}
+    for(const row of rows){
+      if(!hasSide(row,'bo'))continue;
+      const systemGroup=sys123AccountGroup(row);
+      if(systemGroup){if(!groups.has(systemGroup.key))groups.set(systemGroup.key,systemGroup);groups.get(systemGroup.key).rows.push(row);continue;}
+      const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
+      const provider=providerOfRow(row),source=sourceSheetOf(row);
+      const bank=!source&&provider==='OTHER'&&(isStatement(row)||/\b(?:SCB|BBL|KBANK|KTB|TTB|BAY|TMN)\b/i.test(account));
+      const tmn=/\bTMN\b/i.test(account)||String(registryCatalog?.byAccount?.(String(row.account).replace(/\D/g,''))?.bank||row.bank||row.pm?.bank||'').toUpperCase()==='TMN';
+      const split=!bank||isSys123(row.company)||(isSevenM(row.company)&&tmn);
+      const direction=split?directionOf(row.direction):'';
+      const identity=bank?(String(row.account).replace(/\D/g,'')||account.replace(/ฝาก|ถอน/g,'').trim()):account;
+      const key=`bo-account:${bank?'bank:'+identity:account}${split?':'+direction:''}`;
+      const base=bank&&!split?account.replace(/ฝาก|ถอน/g,'').replace(/\s+/g,' ').trim():account;
+      const label=split&&!new RegExp(direction==='deposit'?'ฝาก':'ถอน').test(base)?`${base} · ${thaiDirection({...row,direction})}`:base;
+      if(!groups.has(key))groups.set(key,{key,account,label,direction,rows:[]});
+      groups.get(key).rows.push(row);
+    }
     return [...groups.values()].sort((a,b)=>a.account.localeCompare(b.account,'th'));
   }
   // Presentation only: partition saved rows, never create or change a match.
@@ -270,6 +298,8 @@
     const groups=boAccountGroups(rows),assigned=new Set(groups.flatMap(group=>group.rows));
     for(const row of rows){
       if(assigned.has(row))continue;
+      const systemGroup=sys123AccountGroup(row);
+      if(systemGroup){let group=groups.find(g=>g.key===systemGroup.key);if(!group){group=systemGroup;groups.push(group);}group.rows.push(row);assigned.add(row);continue;}
       let candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&bo.account===row.account));
       if(!candidates.length&&!isStatement(row)&&providerOfRow(row)!=='OTHER')candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&!isStatement(bo)&&providerOfRow(bo)===providerOfRow(row)));
       if(candidates.length===1){candidates[0].rows.push(row);assigned.add(row);}
@@ -281,7 +311,8 @@
       if(!remaining.has(key))remaining.set(key,{key,account:row.account,label:`STM/PM ไม่มี BO · ${row.account} · ${thaiDirection(row)}`,rows:[]});
       remaining.get(key).rows.push(row);
     }
-    return [...groups,...remaining.values()];
+    const result=[...groups,...remaining.values()];
+    return rows.length&&isSys123(rows[0].company)?result.sort((a,b)=>a.account.localeCompare(b.account,'th')||((a.direction==='withdraw'?0:1)-(b.direction==='withdraw'?0:1))):result;
   }
   const ACCOUNT_HEADERS=Object.freeze(['STM/PM · วัน / เวลา','STM/PM · ยอด','STM/PM · User','STM/PM · บัญชีลูกค้า','STM/PM · อ้างอิง','BO · วัน / เวลา','BO · ยอด','BO · User','BO · บัญชีลูกค้า','BO · อ้างอิง','บัญชีบริษัท / Provider','เหตุผลระบบ','หมายเหตุ Audit','สถานะ Audit']);
   function boOnlyTemplate(name){return {name,boOnly:true,headers:['รหัส','เวลา','ประเภท','BO ฝาก','BO ถอน','ธนาคาร','ยูสเซอร์','ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','แถวต้นทาง','หมายเหตุ'],boStart:0};}
@@ -502,7 +533,9 @@
     // provider/statement copy of these rows, or invent a match for PM-only rows.
     const usedNames=new Set(['ข้อมูลทั้งหมด','สรุป','รอ STM'].map(name=>name.toLowerCase()));
     const groups=accountReviewGroups(rows).map(group=>{
-      const base=group.label.replace(/[\\/?*\[\]:]/g,' ').replace(/^'+|'+$/g,'').trim()||'ไม่ระบุบัญชี';
+      const full=group.label.replace(/[\\/?*\[\]:]/g,' ').replace(/^'+|'+$/g,'').trim()||'ไม่ระบุบัญชี';
+      const tail=group.direction?` ${thaiDirection({direction:group.direction})}`:'';
+      const base=full.length>31&&tail?full.slice(0,31-tail.length)+tail:full;
       let name=base.slice(0,31),suffix=1;
       while(usedNames.has(name.toLowerCase())){const tail=` (${suffix++})`;name=base.slice(0,31-tail.length)+tail;}
       usedNames.add(name.toLowerCase());

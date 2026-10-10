@@ -5,8 +5,8 @@ assert.ok(fs.readFileSync(require.resolve('../app.js'),'utf8').includes('audit_r
 const row=(overrides={})=>({key:'row',isPair:true,kind:'matched',company:'MC8',account:'AUTOPEER',direction:'deposit',code:'PAIR-1',bo:{user:'bo-user',reference:'BO-1',account:'1111',bank:'KBANK'},pm:{user:'pm-user',reference:'PM-1',account:'1111',bank:'KBANK'},boAmount:100,pmAmount:100,boTime:'2026-09-15 10:00:00',pmTime:'2026-09-15 10:00:10',reason:'same amount and identity',boSource:{row:2},pmSource:{row:2,timeColumn:'paymentTime',amountColumn:'realAmount'},...overrides});
 const rows=[row(),row({key:'info',code:'PAIR-INFO',kind:'advisory',reason:'แสดงข้อมูลเพิ่มเติมโดยไม่ต้องยืนยัน'}),row({key:'review',code:'EX-1',isPair:false,kind:'review',boAmount:200,pmAmount:200,reason:'รอ Audit ยืนยัน'}),row({key:'error',code:'EX-2',isPair:false,kind:'review',account:'AZPAY',direction:'withdraw',boAmount:300,pmAmount:null,pm:{},reason:'ไม่พบ STM/PM'}),row({key:'crossday',code:'EX-XDAY',isPair:false,kind:'pending_next_day',account:'COREPAY',exType:'cross_day',reason:'รอข้อมูลของวันถัดไป'}),row({key:'closed',code:'EX-3',isPair:false,kind:'closed',account:'1998545397',boAmount:50,pmAmount:50,reason:'Audit ปิดเคสแล้ว'})];
 const before=JSON.stringify(rows),sheets=live.buildAuditExportSheets(rows,'MC8','2026-09-15',true,schema);
-assert.deepEqual(sheets.map(s=>s.name),['ข้อมูลทั้งหมด','สรุป','1998545397','AUTOPEER','AZPAY','COREPAY']);
-const all=sheets[0],summary=sheets[1],at=sheets.find(s=>s.name==='AUTOPEER');
+assert.deepEqual(sheets.map(s=>s.name),['ข้อมูลทั้งหมด','สรุป','1998545397','AUTOPEER · ฝาก','AZPAY · ถอน','COREPAY · ฝาก']);
+const all=sheets[0],summary=sheets[1],at=sheets.find(s=>s.name==='AUTOPEER · ฝาก');
 assert.equal(all.title,undefined,'first header starts at row 1');
 assert.equal(all.headers.at(-1),'สถานะสำหรับเทียบทีมกระทบมือ');
 assert.ok(all.headers.indexOf('STM/PM · วัน / เวลา')<all.headers.indexOf('BO · วัน / เวลา'));
@@ -18,10 +18,10 @@ assert.equal(at.rows.length,3);
 assert.deepEqual(at.rows.map(r=>r[all.headers.length-1]),['ปิดได้ทันที','แจ้งข้อมูล · ไม่ต้องยืนยัน','ปิดไม่ได้/ต้องตรวจ']);
 assert.match(at.rows[0][at.headers.indexOf('เหตุผลระบบ')],/เวลา PM: paymentTime/);
 assert.match(at.rows[0][at.headers.indexOf('เหตุผลระบบ')],/ยอด PM: realAmount/);
-assert.equal(summary.rows.find(r=>r[1]==='AUTOPEER')[7],1,'advisory is not an Audit action');
+assert.equal(summary.rows.find(r=>r[1]==='AUTOPEER · ฝาก')[7],1,'advisory is not an Audit action');
 assert.equal(sheets.find(s=>s.name==='1998545397').rows[0][all.headers.length-1],'ปิดเคสแล้ว');
-assert.match(sheets.find(s=>s.name==='COREPAY').rows[0][all.headers.length-1],/ค้างรอข้อมูลข้ามวัน/);
-assert.equal(sheets.find(s=>s.name==='AZPAY').rowTones[0],'error');
+assert.match(sheets.find(s=>s.name==='COREPAY · ฝาก').rows[0][all.headers.length-1],/ค้างรอข้อมูลข้ามวัน/);
+assert.equal(sheets.find(s=>s.name==='AZPAY · ถอน').rowTones[0],'error');
 // The provider-source column rules remain unchanged in the table adapter.
 const legacyAt=live.tableView(rows.filter(r=>r.account==='AUTOPEER'),'MC8','2026-09-15',true,'AT ฝ',schema);
 assert.deepEqual(legacyAt.headers.slice(0,schema.sheets.find(s=>s.name==='AT ฝ').headers.length),schema.sheets.find(s=>s.name==='AT ฝ').headers);
@@ -35,7 +35,7 @@ for(const company of live.COMPANIES){
  const output=live.buildAuditExportSheets(input,company,'2026-09-27',true,schema),detail=output.slice(2);
  assert.equal(detail.length,2);assert.equal(detail.reduce((n,s)=>n+s.rows.length,0),input.length);
  assert.deepEqual(output[1].rows.map(r=>r[1]),live.accountReviewGroups(input).map(g=>g.label));
- const bank=detail.find(s=>s.name==='ฝาก SCB ตาม BO 0123456789');
+ const bank=detail.find(s=>s.name===output[1].rows.find(r=>r[1].includes('SCB'))[0]);
  assert.deepEqual(bank.rows.map(r=>r[bank.headers.indexOf('STM/PM · วัน / เวลา')]),['2026-09-27 00:25:00','2026-09-27 23:40:00']);
  assert.equal(bank.rows[0][bank.headers.indexOf('BO · วัน / เวลา')],'2026-09-27 00:26:00');
  assert.equal(output[1].footerRows[0][4],live.summarize(input).pmCents/100);
