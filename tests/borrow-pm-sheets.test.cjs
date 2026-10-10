@@ -11,7 +11,7 @@ const schema=require('../mc8-sheet-schema.js');
  assert.equal(sheets.summarize(rows).matchedCount,0);
  assert.equal(sheets.summarize(rows).diffAfterCents,0);
  const workbook=sheets.buildAuditExportSheets(rows,'3XB','2026-10-09',false,schema);
- const sheet=workbook.find(s=>s.name==='ยืม PM บริษัทอื่น');
+ const sheet=workbook.find(s=>s.name===source[0].account);
  assert.equal(sheet.rows.length,4);
  assert.equal(sheet.footerRows[0][sheet.headers.indexOf('BO ฝาก')],28000);
  assert.equal(sheet.footerRows[0][sheet.headers.indexOf('BO ถอน')],88000);

@@ -12,8 +12,8 @@ const schema=require('../mc8-sheet-schema.js');
   const rows=rowsOf(data,company);assert.equal(rows[0].bo.performedBy,'พนักงาน BO ก');assert.equal(rows[1].bo.performedBy,'พนักงาน BO ข');
   const view=tableView(rows,company,'2026-10-04',true,'AT ถ',schema);
   assert.deepEqual(view.rows.map(r=>r[view.headers.indexOf('ผู้ดำเนินการ')]),['พนักงาน BO ก','พนักงาน BO ข']);
-  const exp=buildAuditExportSheets(rows,company,'2026-10-04',true,schema).find(s=>s.name==='AT ถ');
-  assert.deepEqual(exp.rows.map(r=>r[exp.headers.indexOf('ผู้ดำเนินการ')]),['พนักงาน BO ก','พนักงาน BO ข']);
+  const exp=buildAuditExportSheets(rows,company,'2026-10-04',true,schema).find(s=>s.name==='AUTOPEER');
+  assert.deepEqual(exp.rows.map(r=>r[exp.headers.indexOf('BO · ผู้ดำเนินการ')]),['พนักงาน BO ก','พนักงาน BO ข']);
   delete data.boOperators[`${fileId}|4`];assert.equal(rowsOf(data,company)[1].bo.performedBy,'','never substitute Audit/head/customer names');
   const failed=await hydrateBoOperators(data,files,async()=>{throw new Error('source unavailable')});assert.equal(failed.length,1);assert.equal(rowsOf(data,company)[0].bo.performedBy,'');
  }

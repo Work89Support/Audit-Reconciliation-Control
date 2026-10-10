@@ -11,12 +11,11 @@ for (const company of ['3XB','MC8','MR9','PS8','UR9']) {
   assert.equal(sheetOf(antRows[0]), 'ANT ฝ');
   assert.equal(sheetOf(antRows[1]), 'ANT ถ');
   const sheets=buildAuditExportSheets(antRows,company,'2026-10-03',true,schema);
-  for (const name of ['ANT ฝ','ANT ถ']) {
-    const sheet=sheets.find(s=>s.name===name);
-    assert.ok(sheet, `${company} retains ${name}`);
-    assert.equal(sheet.rows.length,1);
-    assert.equal(sheet.rows[0][sheet.headers.indexOf('ยอดเงิน')],name.endsWith('ฝ')?200:300);
-  }
+  const sheet=sheets.find(s=>s.name==='พร้อมเพย์-ANT-AU(anypay)(QR)');
+  assert.ok(sheet,`${company} retains the original BO account`);
+  assert.equal(sheet.rows.length,2);
+  assert.deepEqual(sheet.rows.map(r=>r[sheet.headers.indexOf('BO · ยอด')]),[200,300]);
+  assert.deepEqual(sheet.rows.map(r=>r[sheet.headers.indexOf('ประเภท')]),['ฝาก','ถอน']);
 }
 assert.ok(!buildAuditExportSheets([],'FR8','2026-10-03',true,schema).some(s=>s.name.startsWith('ANT ')));
 const input={run:{id:'r1',matched:1,stm_count:999,bo_count:999,jobStatus:'needs_review',summary:{match_evidence:[{account:'AUTOPEER',direction:'withdraw',amount:355,stmAmount:355,boAmount:355,bo:{fileId:'bo',date:'2026-09-16',sec:3600,row:2},stm:{fileId:'pm',date:'2026-09-16',sec:3700,row:9},customer:{bo:{reference:'ref'},stm:{reference:'ref'}}}]}},complete:true,cases:[{id:'case1',code:'EX-1',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'cross_day'},{id:'case1-warning',code:'EX-2',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:150,bank_amount:null,company:'MC8',business_date:'2026-09-16',bo_date:'2026-09-17',bo_raw:'bo-cross-day-1',ex_type:'large_amount'}]};
@@ -72,23 +71,20 @@ assert.ok(realAmountFooter.includes('50.00'),'screen footer must show realAmount
 const allView=tableView(realAmountRows,'MC8','2026-09-16',true,'all',schema);
 const allFooter=providerFooter(allView.headers,allView.rows,'all');
 assert.ok(allFooter.includes('250.00')&&allFooter.includes('200.00')&&allFooter.includes('50.00'),'all-data screen must show STM/PM, BO and difference totals');
-const realAmountExport=buildAuditExportSheets(realAmountRows,'MC8','2026-09-16',true,schema).find(sheet=>sheet.name==='AT ฝ');
-assert.equal(realAmountExport.footerRows[0][realAmountExport.headers.indexOf('realAmount')],250,'Excel footer must total realAmount');
-assert.equal(realAmountExport.footerRows[0][realAmountExport.headers.indexOf('จำนวน')],200,'Excel footer must total BO');
+const realAmountExport=buildAuditExportSheets(realAmountRows,'MC8','2026-09-16',true,schema).find(sheet=>sheet.name==='AUTOPEER');
+assert.equal(realAmountExport.footerRows[0][realAmountExport.headers.indexOf('STM/PM · ยอด')],250,'Excel footer must total realAmount');
+assert.equal(realAmountExport.footerRows[0][realAmountExport.headers.indexOf('BO · ยอด')],200,'Excel footer must total BO');
 assert.equal(realAmountExport.footerRows[0][realAmountExport.headers.indexOf('ผลต่างยอด')],50,'Excel footer must compare realAmount with BO');
 const statementRow=(company,account,bank,direction)=>({key:`${company}-${account}-${direction}`,isPair:true,kind:'matched',company,account,direction,pm:{bank,name:'ผู้ถือบัญชี'},bo:{},pmAmount:100,boAmount:100,pmTime:'2026-09-28 01:00:00',boTime:'2026-09-28 01:00:00'});
 const sheetNames=(company,statementRows)=>buildAuditExportSheets(statementRows,company,'2026-09-28',true,schema).map(sheet=>sheet.name);
 const sys123Names=sheetNames('FR8',[statementRow('FR8','4311918665','SCB','deposit'),statementRow('FR8','4311918665','SCB','withdraw')]);
-assert.ok(sys123Names.some(name=>name.endsWith(' D'))&&sys123Names.some(name=>name.endsWith(' W')),'123 bank statements must always split deposit and withdrawal sheets');
-assert.ok(!sys123Names.some(name=>name.endsWith(' D-W')),'123 must not retain a combined bank D-W exception');
+assert.equal(sys123Names.filter(name=>name==='4311918665').length,1,'same BO identity has one sheet; direction remains on each row');
 const sevenMBankNames=sheetNames('UFABET7M',[statementRow('UFABET7M','5034633891','SCB','deposit'),statementRow('UFABET7M','5034633891','SCB','withdraw')]);
-assert.equal(sevenMBankNames.filter(name=>name.startsWith('STM SCB')).length,1,'7M normal banks must keep deposit and withdrawal in one D-W sheet');
-assert.ok(sevenMBankNames.some(name=>name.startsWith('STM SCB')&&name.endsWith(' D-W')));
+assert.equal(sevenMBankNames.filter(name=>name==='5034633891').length,1,'7M uses BO identity once');
 const sevenMTmnNames=sheetNames('UFABET7M',[statementRow('UFABET7M','0999999999','TMN','deposit'),statementRow('UFABET7M','0999999999','TMN','withdraw')]);
-assert.ok(sevenMTmnNames.some(name=>name.startsWith('STM TMN')&&name.endsWith(' D'))&&sevenMTmnNames.some(name=>name.startsWith('STM TMN')&&name.endsWith(' W')),'7M TMN must split deposit and withdrawal sheets');
+assert.equal(sevenMTmnNames.filter(name=>name==='0999999999').length,1,'7M TMN uses exact BO identity once');
 const xbNames=sheetNames('UR9',[statementRow('UR9','0123456789','SCB','deposit'),statementRow('UR9','0123456789','SCB','withdraw')]);
-assert.equal(xbNames.filter(name=>name.startsWith('STM SCB')).length,1,'XB banks must keep deposit and withdrawal in one D-W sheet');
-assert.ok(xbNames.some(name=>name.startsWith('STM SCB')&&name.endsWith(' D-W')));
+assert.equal(xbNames.filter(name=>name==='0123456789').length,1,'XB uses BO identity once');
 assert.equal(JSON.stringify(input),before);
 assert.equal(columnMatch('ปิดได้ทันที','ปิดได้'),true);
 assert.equal(columnMatch('MC8',{values:['MC8','PS8']}),true);
