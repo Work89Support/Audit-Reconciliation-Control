@@ -1,5 +1,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const sheets=require('../mc8-live-sheets.js'),schema=require('../mc8-sheet-schema.js');
+const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
+assert.equal((app.match(/exportBoWaitingCases: downloadBoWaitingCaseRequest/g)||[]).length,2);
+assert.ok(!app.includes('registerBoSourceCases: Sb.registerBoWaitingCases'),'Do not expose an invoker write action to read-only web RLS');
+const migration=fs.readFileSync(require.resolve('../supabase/20261010_bo_waiting_cases.sql'),'utf8');
+assert.ok(migration.includes('security invoker'));
+assert.ok(!/security definer|alter table.*row level security|create policy/i.test(migration));
 (async()=>{
  const data={run:{id:'test-run',company:'MC8',business_date:'2026-10-09',summary:{}},cases:[]};
  const source={company:'MC8',date:'2026-10-09',sec:3600,direction:'withdraw',amount:5,rowNo:2,account:'CUSTOM',boIdentityRaw:'บัญชีทดสอบตามชื่อ BO',ref:'test-ref',raw:'synthetic BO row'};

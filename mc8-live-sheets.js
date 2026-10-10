@@ -594,6 +594,7 @@
         <div class="mc8-filters"><label>บริษัท<select id="mc8-live-company" ${loading?'disabled':''}>${companies.map(c=>`<option value="${c}" ${company===c?'selected':''}>${c}</option>`).join('')}</select></label><label>วันที่ตรวจ<input type="date" id="mc8-live-date" value="${esc(date)}" ${loading?'disabled':''}></label><button id="mc8-live-load" ${loading?'disabled':''}>${loading?'กำลังโหลด…':'โหลดข้อมูลจริง'}</button>${data?.run?'<button id="mc8-live-export">ออก Excel ตามแบบ Audit</button>':''}${company==='MC8'?'<button id="mc8-local-view">เทียบไฟล์ Excel ต้นแบบ MC8</button>':''}</div>
         ${error?`<p role="alert">${esc(error)}</p>`:''}
         ${data?.run?.id&&opts.registerBoSourceCases&&caseRowsToCreate.length?`<button type="button" id="mc8-create-bo-cases">เปิดเคส BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>เปิดเฉพาะ BO ที่ยังไม่มีคู่หรือเคส · ไม่บันทึกเป็นความเสียหายและไม่เปลี่ยนสถานะกระทบยอด</p>`:''}
+        ${data?.run?.id&&opts.exportBoWaitingCases&&caseRowsToCreate.length?`<button type="button" id="mc8-export-bo-cases">ส่งออก BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>ส่งออกข้อมูลต้นทางเพื่อสร้างผ่าน Worker ที่มีสิทธิ์เดิม · ไม่สร้างเคสจากบัญชีเว็บและไม่เปลี่ยน RLS</p>`:''}
         ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
         ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · แสดง ${all.filter(row=>!row.isPair).length} เคสที่ต้องตรวจจริง</p>${!complete?'<p role="alert" class="mc8-warning">ผลหรือหลักฐานยังไม่ครบ หรือจำนวนที่สร้างใหม่ไม่ตรงกับรอบงาน ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':''}${other.length?`<p role="alert" class="mc8-warning">มี ${other.length} แถวที่จัดเข้า Provider หรือบัญชี STM ไม่ได้ จึงแสดงไว้เฉพาะหน้าข้อมูลทั้งหมด</p>`:''}
@@ -645,6 +646,8 @@
       });
       container.querySelectorAll('[data-live-file]').forEach(b=>b.onclick=()=>opts.onFile?.(files.find(f=>f.id===b.dataset.liveFile),date,company));
       const createButton=container.querySelector('#mc8-create-bo-cases');
+      const exportCasesButton=container.querySelector('#mc8-export-bo-cases');
+      if(exportCasesButton)exportCasesButton.onclick=()=>opts.exportBoWaitingCases(data.run.id,caseRowsToCreate);
       if(createButton)createButton.onclick=async()=>{createButton.disabled=true;try{const result=await opts.registerBoSourceCases(data.run.id,caseRowsToCreate);if(!Number.isInteger(result?.created))throw Error('ระบบยังไม่ยืนยันการสร้างเคส');caseReceipt=`${company} ${date} · สร้างเคส ${result.created} · มีเคสเดิม ${result.existing} · จับคู่แล้ว ${result.matched} · ไม่บันทึกความเสียหาย`;await load({preserveView:true});}catch(e){error=`เปิดเคส BO ไม่สำเร็จ: ${e.message}`;draw();}};
     }
     async function load({preserveView=false}={}){

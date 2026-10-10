@@ -1030,7 +1030,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   load: Sb.reconciliationOverview,
   loadFiles: runId => Sb.exceptionFiles(runId),
   readBoRecords: readAuditBoOperatorRecords,
-  registerBoSourceCases: Sb.registerBoWaitingCases,
+  exportBoWaitingCases: downloadBoWaitingCaseRequest,
   isActive: () => state.route === 'mc8-sheets',
   onLocal: () => MC8Sheets.render(root),
   onCompany: company => { state.dailySummary.company = company; },
@@ -3074,7 +3074,7 @@ VIEWS.exceptions = (root) => {
         load: Sb.reconciliationOverview,
         loadFiles: runId => Sb.exceptionFiles(runId),
         readBoRecords: readAuditBoOperatorRecords,
-        registerBoSourceCases: Sb.registerBoWaitingCases,
+        exportBoWaitingCases: downloadBoWaitingCaseRequest,
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
         onCase: async row => {
@@ -7483,6 +7483,12 @@ VIEWS.schedule = (root) => {
   });
 };
 
+function downloadBoWaitingCaseRequest(runId, rows) {
+  const blob = new Blob([JSON.stringify({run_id: runId, rows}, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = `bo-waiting-${rows[0]?.company || 'company'}-${rows[0]?.boDate || 'date'}.json`;
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 function downloadText(filename, text) {
   const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8;" });
   const a = document.createElement("a");
