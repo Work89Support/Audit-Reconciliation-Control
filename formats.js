@@ -530,6 +530,7 @@ const Formats = (() => {
         amount: Math.round(amount * 100) / 100,
         direction,
         account: pm || companyAccount || "UNKNOWN",
+        boIdentityRaw: companyAccount,
         channel: pm || companyAccount,
         isPmChannel: !!pm,
         bank: "",

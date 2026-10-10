@@ -87,6 +87,7 @@
   async function hydrateBoOperators(data,files,readRows){
     const names={};
     data.borrowBo=[];
+    data.sourceBo=[];
     if(typeof readRows!=='function')return;
     const company=data?.run?.company;
     const needed=new Set([
@@ -100,12 +101,13 @@
         if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
         for(const r of result){
           const account=r.boIdentityRaw||r.account||'';
-          if(r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind!=='bookkeeping'&&(!r.originalType||/^(ฝาก|ถอน|deposit|withdraw)$/i.test(r.originalType.trim()))&&isBorrowAccount(account)&&['deposit','withdraw'].includes(directionOf(r.direction))&&numeric(r.amount)!==null&&Number.isInteger(r.rowNo)&&r.rowNo>0){
-            data.borrowBo.push({company,account,direction:r.direction,systemAmount:r.amount,boDate:r.boDate||r.date,
+          if(r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind!=='bookkeeping'&&(!r.originalType||/^(ฝาก|ถอน|deposit|withdraw)$/i.test(r.originalType.trim()))&&account.trim()&&['deposit','withdraw'].includes(directionOf(r.direction))&&numeric(r.amount)!==null&&Number.isInteger(r.rowNo)&&r.rowNo>0){
+            const sourceRow={company,account,direction:r.direction,systemAmount:r.amount,boDate:r.boDate||r.date,
               boTime:stamp({date:r.boDate||r.date,sec:r.boSec??r.sec}).slice(11),boRaw:r.raw||'',
               boSource:{fileId:file.id,row:r.rowNo,fileName:file.file_name},
               customerDetails:{bo:{reference:r.ref,user:r.memberCode,account:r.custAccount,bank:account,note:r.note,performedBy:r.performedBy||r.username,origin:r.origin||''}},
-              detail:'BO ต้นทาง · ยืม PM บริษัทอื่น · ยังไม่กระทบยอด'});
+              detail:'BO ต้นทาง · ยังไม่มีหลักฐานคู่ STM/PM ที่บันทึกไว้ · รอตรวจหลักฐาน'};
+            data.sourceBo.push(sourceRow);if(isBorrowAccount(account))data.borrowBo.push(sourceRow);
           }
           const name=String(r.performedBy||r.username||'').trim();
           if(r.company===company&&Number.isInteger(r.rowNo)&&r.rowNo>0&&name&&!/^(—|–|-|ไม่ระบุ)$/.test(name))names[`${file.id}|${r.rowNo}`]=name;
@@ -150,6 +152,7 @@
     // not another BO row. Link only a unique, fully identified saved pair.
     const linkedPairs=new Set(),remainingCases=[];
     for(const row of caseRows){
+      if(row.case?.customer_details?.waiting_source&&row.kind!=='closed'){row.waiting=true;row.boAccountLabel=row.case.customer_details.bo_account_label||row.account;}
       const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
       const closedCrossDay=e.status==='closed'&&e.auto_closed===true&&e.ex_type==='cross_day'
         &&e.closure_rule==='reserved-unique-bo-identity-match'
@@ -209,25 +212,25 @@
       foldedAlerts.add(alert);
     });
     const visibleRows=financialRows.filter(row=>!foldedAlerts.has(row));
-    const borrowSources=new Map((data.borrowBo||[]).map(e=>[`${e.boSource.fileId}|${e.boSource.row}`,e]));
+    const borrowSources=new Map((data.sourceBo||data.borrowBo||[]).map(e=>[`${e.boSource.fileId}|${e.boSource.row}`,e]));
     for(const row of visibleRows){
       const source=row.boSource||row.case?.customer_details?.source_rows?.bo;
       const original=borrowSources.get(`${source?.fileId}|${source?.row}`);
       if(original&&row.company===original.company&&directionOf(row.direction)===directionOf(original.direction)&&cents(row.boAmount)===cents(original.systemAmount)){
-        row.account=original.account;row.boSource={...source,fileName:original.boSource.fileName};
+        row.boAccountLabel=original.account;if(isBorrowAccount(original.account))row.account=original.account;row.boSource={...source,fileName:original.boSource.fileName};
       }
     }
     const representedBo=new Set(visibleRows.map(row=>sideKey(row,'bo')).filter(Boolean));
     const sourceIdentity=row=>{
       const source=row.boSource||row.case?.customer_details?.source_rows?.bo;
       return source?.fileId&&source.row!==null&&source.row!==undefined
-        ?`${row.company}|${row.account}|${row.direction}|${source.fileId}|${source.row}`:'';
+        ?`${row.company}|${row.direction}|${source.fileId}|${source.row}`:'';
     };
     const representedSources=new Set(visibleRows.map(sourceIdentity).filter(Boolean));
     const snapshot=data?.run?.boWaitingSnapshot;
     const waitingBo=snapshot?.company===fallbackCompany&&snapshot?.business_date===data?.run?.business_date&&Array.isArray(snapshot.waiting_bo)
       ?snapshot.waiting_bo:Array.isArray(data?.run?.summary?.waiting_bo)?data.run.summary.waiting_bo:[];
-    for(const [index,e] of [...waitingBo,...(data.borrowBo||[])].entries()){
+    for(const [index,e] of [...waitingBo,...(data.sourceBo||data.borrowBo||[])].entries()){
       if(e.company&&fallbackCompany&&e.company!==fallbackCompany)continue;
       const boSource=e.boSource||e.customerDetails?.source_rows?.bo;
       const row={key:`waiting-bo-${index}`,isPair:false,kind:'waiting_source',waiting:true,
@@ -245,6 +248,12 @@
     }
     return visibleRows;
   }
+  function boAccountGroups(rows){
+    const groups=new Map();
+    for(const row of rows){if(!hasSide(row,'bo'))continue;const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim(),key=`bo-account:${account}`;if(!groups.has(key))groups.set(key,{key,account,label:account,rows:[]});groups.get(key).rows.push(row);}
+    return [...groups.values()].sort((a,b)=>a.account.localeCompare(b.account,'th'));
+  }
+  function boOnlyTemplate(name){return {name,boOnly:true,headers:['รหัส','เวลา','ประเภท','BO ฝาก','BO ถอน','ธนาคาร','ยูสเซอร์','ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','แถวต้นทาง','หมายเหตุ'],boStart:0};}
   function hasSide(row,side){return cents(row[`${side}Amount`])!==null&&(row.isPair||!!(realRaw(row[`${side}Raw`])||row[`${side}Date`]||Object.values(row[side]||{}).some(Boolean)));}
   function sideKey(row,side){
     if(!hasSide(row,side))return '';
@@ -318,7 +327,7 @@
     return rows.filter(r=>(pm==='all'||r.account===pm)
       &&(direction==='all'||r.direction===direction)
       &&(status==='all'||r.kind===status)
-      &&(sheet==='all'||sheet==='summary'||(statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
+      &&(sheet==='all'||sheet==='summary'||(sheet.startsWith('bo-account:')?hasSide(r,'bo')&&String(r.boAccountLabel||r.account||'ไม่ระบุบัญชี').trim()===sheet.slice(11):statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
   }
   function statusOf(s,complete){return s.waitingBoCount?'ยังไม่มี STM/PM · รอข้อมูล':!complete?'ข้อมูลยังไม่ครบ':s.diffAfterCents===0&&s.unmatchedPmCount===0&&s.unmatchedBoCount===0&&s.duplicateCount===0?'ยอดตรง':'ต้องตรวจ';}
   function summaryRow(name,s,complete,key=name){const warning=complete&&(s.diffAfterCents||s.unmatchedPmCount||s.unmatchedBoCount||s.duplicateCount);return `<tr class="${warning?'mc8-warning':''}"><th><button type="button" data-live-sheet="${esc(key)}">${esc(name)}</button></th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr>`;}
@@ -394,7 +403,7 @@
     BO_HEADERS.forEach((header,index)=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=boValues[index];});
     const compact={เวลา:row.boTime||'',ประเภท:thaiDirection(row),'ยูสเซอร์':bo.user||'','บัญชี':bo.account||bo.name||'','บัญชีบริษัท':row.account||'','ยอดเงิน':numeric(row.boAmount)??'',โบนัส:0,'โน้ต':boNote,'ผู้ดำเนินการ':bo.performedBy||'','แก้ไข':''};
     BO_COMPACT_HEADERS.forEach(header=>{const target=headers.indexOf(header,boStart);if(target>=0)values[target]=compact[header];});
-    if(template.name===BORROW_SHEET){values[headers.indexOf('BO ฝาก')]=row.direction==='deposit'?numeric(row.boAmount):'';values[headers.indexOf('BO ถอน')]=row.direction==='withdraw'?numeric(row.boAmount):'';values[headers.indexOf('ไฟล์ BO ต้นทาง')]=row.boSource?.fileName||row.boSource?.fileId||'';values[headers.indexOf('แถวต้นทาง')]=row.boSource?.row??'';}
+    if(template.name===BORROW_SHEET||template.boOnly){values[headers.indexOf('ธนาคาร')]=row.boAccountLabel||row.account||'';values[headers.indexOf('BO ฝาก')]=row.direction==='deposit'?numeric(row.boAmount):'';values[headers.indexOf('BO ถอน')]=row.direction==='withdraw'?numeric(row.boAmount):'';values[headers.indexOf('ไฟล์ BO ต้นทาง')]=row.boSource?.fileName||row.boSource?.fileId||'';values[headers.indexOf('แถวต้นทาง')]=row.boSource?.row??'';}
     return [...values,sourceCondition(row),secondsBetween(row),amountDiff(row),auditStatus(row,complete)];
   }
   function statementExportRow(row,index,company,date,complete){return [index+1,company,date,row.account,thaiDirection(row),row.pmTime||'',numeric(row.pmAmount)??'',detail(row,'pm','account'),detail(row,'pm','tail'),detail(row,'pm','bank'),detail(row,'pm','name')||detail(row,'pm','user'),detail(row,'pm','reference'),row.boTime||'',numeric(row.boAmount)??'',detail(row,'bo','user'),detail(row,'bo','name')||detail(row,'bo','user'),detail(row,'bo','reference'),secondsBetween(row),sourceCondition(row),amountDiff(row),auditStatus(row,complete)];}
@@ -469,6 +478,8 @@
     for(const group of statementSets){const headers=[...STATEMENT_HEADERS],scoped=chronologicalRows(group.rows),data=scoped.map((row,index)=>statementExportRow(row,index,company,date,complete));sheets.push({name:group.label,headers,rows:data,...exportTones(scoped,complete,headers.length-1),widths:[8,12,14,20,12,20,16,20,10,16,24,24,20,16,18,24,20,18,40,16,26],footerRows:[totalRow(headers,data,'ยอด Statement')]});}
     for(const template of templates){const scoped=chronologicalRows(rows.filter(row=>sheetOf(row)===template.name)),headers=[...template.headers,...AUDIT_HEADERS],data=scoped.map(row=>providerExportRow(template,row,complete)),amountHeader=pmAmountHeader(headers,template.name);sheets.push({name:template.name,headers,rows:data,...exportTones(scoped,complete,headers.length-1),widths:headers.map(header=>!header?3:/Time|เวลา/.test(header)?20:/id|Ref|reference|system|transaction|merchant|รหัส/i.test(header)?24:/หมายเหตุ|เงื่อนไข/.test(header)?32:/สถานะ Audit/.test(header)?26:14),footerRows:[totalRow(headers,data,amountHeader)]});}
     const waiting=waitingStatements(coverage,company);
+    const usedNames=new Set(sheets.map(s=>s.name.toLowerCase()));
+    for(const group of boAccountGroups(rows)){let base=group.account.replace(/[\\/?*\[\]:]/g,' ').replace(/^'+|'+$/g,'').trim()||'ไม่ระบุบัญชี',name=base.slice(0,31),suffix=1;while(usedNames.has(name.toLowerCase())){const tail=` (${suffix++})`;name=base.slice(0,31-tail.length)+tail;}usedNames.add(name.toLowerCase());const template=boOnlyTemplate(name),headers=[...template.headers,...AUDIT_HEADERS],scoped=chronologicalRows(group.rows),values=scoped.map(row=>providerExportRow(template,row,complete));sheets.push({name,headers,rows:values,...exportTones(scoped,complete,headers.length-1),footerRows:[totalRow(headers,values,'')],widths:headers.map(()=>22)});}
     if(waiting.length){
       sheets.push({name:'รอ STM',headers:['บัญชี','ประเภท','จำนวน BO','ยอด BO','STM','สถานะ'],rows:waiting.map(item=>[item.label,item.direction==='deposit'?'ฝาก':'ถอน',item.rows,item.amount,'ยังไม่มีข้อมูล','รอ STM · ยังไม่กระทบ']),rowTones:waiting.map(()=> 'warning'),widths:[40,12,16,20,24,32]});
       sheets.find(sheet=>sheet.name==='สรุป').footerRows[0][8]='ยังรอ STM · ห้ามยืนยันปิดงาน';
@@ -479,6 +490,7 @@
 
   function tableView(rows,company,date,complete,sheet,schema=root.MC8SheetSchema){
     const ordered=chronologicalRows(rows);
+    if(sheet.startsWith('bo-account:')){const template=boOnlyTemplate(sheet);return {headers:[...template.headers,...AUDIT_HEADERS],rows:ordered.map(row=>providerExportRow(template,row,complete))};}
     if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:ordered.map((row,index)=>statementExportRow(row,index,company,date,complete))};
     if(SHEETS.includes(sheet)){
       const template=providerTemplates(schema,company,rows).find(item=>item.name===sheet);
@@ -546,7 +558,7 @@
     const token={};slots.set(container,token);const alive=()=>slots.get(container)===token&&(opts.isActive?.()??true);
     const companies=(opts.companies||COMPANIES).filter(c=>COMPANIES.includes(c));
     let company=companies.includes(opts.company)?opts.company:(companies.includes(remembered.company)?remembered.company:companies[0]||'MC8');
-    let date=opts.date||remembered.date||'2026-09-16',pm='all',direction='all',status='all',sheet=root.MC8SheetSchema?.sheets?.length?'AT ถ':'all',page=0,data=null,files=[],loading=false,error='',fileError='',generation=0,fullscreen=false,wrapText=false;
+    let date=opts.date||remembered.date||'2026-09-16',pm='all',direction='all',status='all',sheet=root.MC8SheetSchema?.sheets?.length?'AT ถ':'all',page=0,data=null,files=[],loading=false,error='',fileError='',generation=0,fullscreen=false,wrapText=false,caseReceipt='';
     const columnFilters={},sortBySheet={};
     let hiddenBySheet={};
     try{hiddenBySheet=JSON.parse(root.localStorage?.getItem('audit-live-hidden-columns-v1')||'{}')||{};}catch(_){hiddenBySheet={};}
@@ -563,6 +575,8 @@
       if(!alive())return;
       // Keep source identity, displayed values, tone and action in one order.
       const all=data?rowsOf(data,company):[],baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
+      const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
+      const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`));
       const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all.filter(r=>providerNames.includes(sheetOf(r))||isStatement(r));
       const waiting=waitingStatements(data?.run?.summary?.bo_first,company);
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
@@ -573,16 +587,18 @@
       const hidden=hiddenSet(),visible=view.headers.map((_,index)=>index).filter(index=>!hidden.has(index));
       const filterOptions=Object.fromEntries(view.headers.map((_,index)=>[index,[...new Map(rawView.rows.map(row=>[String(row[index]??''),row[index]??''])).values()].sort(compareCells)]));
       const scope=summarize(shown);
-      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...statementSets.map(group=>[group.key,group.label]),...providerNames.map(name=>[name,name])];
+      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...boAccountGroups(all).map(group=>[group.key,group.label]),...statementSets.map(group=>[group.key,group.label]),...providerNames.map(name=>[name,name])];
       const columnTools=sheet==='summary'?'':`<div class="mc8-table-tools"><button type="button" id="mc8-live-fullscreen">${fullscreen?'ออกจากเต็มจอ':'ดูตารางเต็มจอ'}</button><button type="button" id="mc8-live-wrap-text" aria-pressed="${wrapText}">${wrapText?'ย่อข้อความ':'แสดงข้อความทั้งหมด'}</button><details class="mc8-column-picker"><summary>เลือกคอลัมน์ (${visible.length}/${view.headers.length})</summary><div><p>ติ๊กเพื่อแสดงคอลัมน์ เหมือน Hide / Unhide ใน Excel</p><button type="button" id="mc8-live-show-columns">แสดงทั้งหมด</button>${view.headers.map((header,index)=>`<label><input type="checkbox" data-live-column="${index}" ${hidden.has(index)?'':'checked'} ${!hidden.has(index)&&visible.length===1?'disabled':''}> ${letter(index)} · ${esc(header||'คอลัมน์ว่าง')}</label>`).join('')}</div></details>${Object.values(rules).filter(Boolean).length?`<button type="button" id="mc8-live-clear-columns">ล้างฟิลเตอร์ทั้งหมด (${Object.values(rules).filter(Boolean).length})</button>`:''}<span>กดข้อความยาวเพื่อขยายเฉพาะช่อง · กด ▼ ที่หัวคอลัมน์เพื่อกรองและเรียง</span></div>`;
       container.innerHTML=`<section class="mc8-workbook ${fullscreen?'mc8-fullscreen':''} ${wrapText?'mc8-wrap-text':''}" tabindex="-1"><header class="mc8-intro"><div><h2>เอกสารกระทบยอด · ${esc(company)}</h2><p>หน้าจอและไฟล์ Excel ใช้หัวตารางเดียวกัน แยก PM ตาม Provider และแยก STM ธนาคารทีละบัญชี</p></div><span class="mc8-pending">${esc(date)}</span></header>
         <p class="mc8-note">อ่านผลรอบงานที่บันทึกไว้เท่านั้น · ไม่รันกติกาใหม่ ไม่ปิดเคส และไม่นำไฟล์ตัวอย่างมาแทนข้อมูลจริง</p>
         <div class="mc8-filters"><label>บริษัท<select id="mc8-live-company" ${loading?'disabled':''}>${companies.map(c=>`<option value="${c}" ${company===c?'selected':''}>${c}</option>`).join('')}</select></label><label>วันที่ตรวจ<input type="date" id="mc8-live-date" value="${esc(date)}" ${loading?'disabled':''}></label><button id="mc8-live-load" ${loading?'disabled':''}>${loading?'กำลังโหลด…':'โหลดข้อมูลจริง'}</button>${data?.run?'<button id="mc8-live-export">ออก Excel ตามแบบ Audit</button>':''}${company==='MC8'?'<button id="mc8-local-view">เทียบไฟล์ Excel ต้นแบบ MC8</button>':''}</div>
         ${error?`<p role="alert">${esc(error)}</p>`:''}
+        ${data?.run?.id&&opts.registerBoSourceCases&&caseRowsToCreate.length?`<button type="button" id="mc8-create-bo-cases">เปิดเคส BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>เปิดเฉพาะ BO ที่ยังไม่มีคู่หรือเคส · ไม่บันทึกเป็นความเสียหายและไม่เปลี่ยนสถานะกระทบยอด</p>`:''}
+        ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
         ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · แสดง ${all.filter(row=>!row.isPair).length} เคสที่ต้องตรวจจริง</p>${!complete?'<p role="alert" class="mc8-warning">ผลหรือหลักฐานยังไม่ครบ หรือจำนวนที่สร้างใหม่ไม่ตรงกับรอบงาน ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':''}${other.length?`<p role="alert" class="mc8-warning">มี ${other.length} แถวที่จัดเข้า Provider หรือบัญชี STM ไม่ได้ จึงแสดงไว้เฉพาะหน้าข้อมูลทั้งหมด</p>`:''}
         <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกทุกหน้า</h3><div class="mc8-summary-scroll"><table><thead><tr><th>หน้า</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${providerNames.map(name=>summaryRow(name,bySheet[name],complete)).join('')}${statementSets.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,providerNames.length+statementSets.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · กดชื่อหน้าเพื่อเปิดรายละเอียด · แถวรวมอยู่ท้ายตารางเหมือน Excel</p></section>
-        <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('statement:')?'STM ธนาคาร ฝาก-ถอน':value===BORROW_SHEET?'BO ฝาก-ถอน':value.endsWith('ฝ')?'ฝาก':'ถอน'}</small></button>`).join('')}</div>
+        <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('statement:')?'STM ธนาคาร ฝาก-ถอน':value===BORROW_SHEET||value.startsWith('bo-account:')?'BO ฝาก-ถอน':value.endsWith('ฝ')?'ฝาก':'ถอน'}</small></button>`).join('')}</div>
         <div class="mc8-filters"><label>PM<select id="mc8-live-pm"><option value="all">ทุก PM</option>${[...new Set(all.map(r=>r.account))].sort().map(a=>`<option ${pm===a?'selected':''} value="${esc(a)}">${esc(a)}</option>`).join('')}</select></label><label>ประเภท<select id="mc8-live-direction">${[['all','ฝากและถอน'],['deposit','ฝาก'],['withdraw','ถอน']].map(([v,t])=>`<option value="${v}" ${direction===v?'selected':''}>${t}</option>`).join('')}</select></label><label>ผลตรวจ<select id="mc8-live-status">${[['all','ทั้งหมด'],...Object.entries(labels)].map(([v,t])=>`<option value="${v}" ${status===v?'selected':''}>${t}</option>`).join('')}</select></label></div>${rulePanel(company)}${columnTools}
         ${sheet==='summary'?`<p class="mc8-summary-focus">หน้าสรุปแสดงจำนวนและยอดของ ${providerNames.length+statementSets.length} หน้ารายละเอียด พร้อมแถวรวมท้ายตารางด้านบน</p>`:`${SHEETS.includes(sheet)?'<p class="mc8-source-note"><b>ที่มาของข้อความ:</b> ช่อง “หมายเหตุ/โน้ต” อ่านจากช่องหมายเหตุในไฟล์ BO ต้นทาง ไม่ใช่ Note ที่ Audit พิมพ์เพิ่ม หากเป็น Sapan/Spean ระบบจะแสดงเฉพาะรหัส 6aa… ที่ใช้จับคู่ ส่วน “เงื่อนไขที่จับคู่” และ “หมายเหตุ Audit” เป็นข้อมูลที่ระบบ/Audit แยกเก็บคนละคอลัมน์</p>':''}<p role="status">แสดงครบ ${shown.length} จาก ${baseShown.length} แถวในหน้าเดียว · เลื่อนในตารางได้ทั้งแนวตั้งและแนวนอน · ยอดรวมท้ายตารางคำนวณตามตัวกรองปัจจุบัน</p><div class="mc8-scroll" tabindex="0" aria-label="ตาราง ${esc(sheet==='all'?'ข้อมูลทั้งหมด':sheet)}"><table class="mc8-grid"><thead>${providerHeader(view.headers,sheet,visible,rules,sort,filterOptions)}</thead><tbody>${view.rows.map((values,rowIndex)=>{const source=pageRows[rowIndex],rowStatus=auditStatus(source,complete),tone=toneOf(rowStatus),rowNumber=rowIndex+2;return `<tr class="mc8-${tone}">${SHEETS.includes(sheet)?`<th scope="row" class="mc8-rownum">${rowNumber}</th>`:''}${visible.map(index=>{const displayed=renderCell(values[index],view.headers[index]),longText=displayed.length>28;return `<td class="${headerTone(view.headers[index],index,view.headers,sheet)} ${longText?'mc8-long-text':''}" title="${esc(displayed)}" ${longText?'data-live-text-cell tabindex="0" role="button" aria-expanded="false"':''}>${esc(displayed)||'—'}${index===visible[visible.length-1]&&source.case?` <button data-live-case="${esc(source.key)}">เปิดเคสจริง</button>`:''}</td>`;}).join('')}</tr>`;}).join('')||`<tr><td colspan="${visible.length+(SHEETS.includes(sheet)?1:0)}">ไม่พบรายการตามตัวกรองคอลัมน์</td></tr>`}</tbody>${providerFooter(fullView.headers,fullView.rows,sheet,visible)}</table></div>${totalsPanel(sheet==='all'?'ข้อมูลทั้งหมด':sheet,scope,complete,pmAmountHeader(fullView.headers,sheet))}`}
         <details><summary>ไฟล์ต้นทางของผลรอบนี้ (${files.length})</summary>${fileError?`<p role="alert">${esc(fileError)}</p>`:''}<ul>${files.map(f=>`<li>${esc(f.file_name)} · ${esc(f.kind)} ${opts.onFile?`<button data-live-file="${esc(f.id)}">ดูไฟล์ต้นทาง</button>`:''}</li>`).join('')}</ul></details>`:!loading&&!error?`<p>ยังไม่มีผลกระทบยอดที่อ่านได้ของ ${esc(company)} ในวันที่เลือก</p>`:''}</section>`;
@@ -628,8 +644,11 @@
         finally{if(document.body?.contains?.(b)){b.disabled=false;b.textContent=original;}}
       });
       container.querySelectorAll('[data-live-file]').forEach(b=>b.onclick=()=>opts.onFile?.(files.find(f=>f.id===b.dataset.liveFile),date,company));
+      const createButton=container.querySelector('#mc8-create-bo-cases');
+      if(createButton)createButton.onclick=async()=>{createButton.disabled=true;try{const result=await opts.registerBoSourceCases(data.run.id,caseRowsToCreate);if(!Number.isInteger(result?.created))throw Error('ระบบยังไม่ยืนยันการสร้างเคส');caseReceipt=`${company} ${date} · สร้างเคส ${result.created} · มีเคสเดิม ${result.existing} · จับคู่แล้ว ${result.matched} · ไม่บันทึกความเสียหาย`;await load({preserveView:true});}catch(e){error=`เปิดเคส BO ไม่สำเร็จ: ${e.message}`;draw();}};
     }
     async function load({preserveView=false}={}){
+      if(!preserveView)caseReceipt='';
       const g=++generation;if(!preserveView){data=null;files=[];page=0;}error='';fileError='';loading=true;draw();
       try{if(!opts.signedIn())throw new Error('กรุณาเข้าสู่ระบบจริงก่อนอ่านข้อมูล Audit');const next=await opts.load(company,date);if(!alive()||g!==generation)return;if(!Array.isArray(next?.cases))throw new Error('รูปแบบผลกระทบยอดไม่ถูกต้อง');data=next;if(next.run?.id&&opts.loadFiles){try{files=await opts.loadFiles(next.run.id);if(!alive()||g!==generation)return;const operatorErrors=await hydrateBoOperators(next,files,opts.readBoRecords);if(operatorErrors?.length)fileError='อ่านชื่อผู้ดำเนินการไม่ครบ: '+operatorErrors.join(' · ');}catch(e){fileError=`โหลดทะเบียนไฟล์ไม่ได้: ${e.message}`;}}}catch(e){error=e.message;}finally{if(alive()&&g===generation){loading=false;draw();}}
     }
