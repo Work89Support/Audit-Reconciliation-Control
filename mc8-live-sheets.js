@@ -349,8 +349,13 @@
   function sideKey(row,side){
     if(!hasSide(row,side))return '';
     const detail=row[side]||{},amount=cents(row[`${side}Amount`]);
-    if(detail.reference)return `ref:${providerOf(row.account)}:${row.direction}:${amount}:${String(detail.reference).trim().toLowerCase()}`;
     const source=row[`${side}Source`]||{};
+    // "โยกเงิน" is a description, not a transaction ID. Verified 7M TMN
+    // transfer pairs can repeat the same amount/reference on distinct BO rows.
+    if(side==='bo'&&accountDisplayDirection(row)!==directionOf(row.direction)
+      &&source.fileId&&source.row!==null&&source.row!==undefined)
+      return `src:${source.fileId}:${source.row}`;
+    if(detail.reference)return `ref:${providerOf(row.account)}:${row.direction}:${amount}:${String(detail.reference).trim().toLowerCase()}`;
     if(source.fileId&&source.row!==null&&source.row!==undefined)return `src:${source.fileId}:${source.row}`;
     const raw=realRaw(row[`${side}Raw`]);
     if(raw)return `raw:${raw.replace(/\s+/g,' ').toLowerCase()}`;

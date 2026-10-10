@@ -57,6 +57,9 @@ for(const account of ['0812792075','0639274201']){
 console.log('7M TMN direction labels and numeric/STM-only aliases passed with unchanged financial rows');
 {
   const transfer=[4000,4000,1999].map((amount,i)=>({...row('UFABET7M','0639274201','ฝาก TMN สรวิศา 0639274201','deposit',100+i),boAmount:amount,pmAmount:amount,reason:'seven-m-internal-transfer-reciprocal',boSource:{fileId:'bo',row:2077+i*2},pmSource:{fileId:'stm',row:i+1}}));
+  transfer.forEach(r=>{r.bo.reference='โยกเงิน';});
+  assert.equal(api.summarize(transfer).boCount,3,'same description/amount must not collapse distinct verified BO rows');
+  assert.equal(api.summarize([...transfer,transfer[0]]).boCount,3,'repeated evidence of the identical source row is still deduplicated');
   const ordinary=row('UFABET7M','0639274201','ฝาก TMN สรวิศา 0639274201','deposit',200);
   const rows=[...transfer,ordinary],before=JSON.stringify(rows),saved=api.summarize(rows);
   const groups=api.accountReviewGroups(rows),withdraw=groups.find(g=>g.direction==='withdraw');
