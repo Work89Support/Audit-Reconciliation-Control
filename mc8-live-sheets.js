@@ -265,6 +265,25 @@
     for(const row of rows){if(!hasSide(row,'bo'))continue;const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim(),key=`bo-account:${account}`;if(!groups.has(key))groups.set(key,{key,account,label:account,rows:[]});groups.get(key).rows.push(row);}
     return [...groups.values()].sort((a,b)=>a.account.localeCompare(b.account,'th'));
   }
+  // Presentation only: partition saved rows, never create or change a match.
+  function accountReviewGroups(rows){
+    const groups=boAccountGroups(rows),assigned=new Set(groups.flatMap(group=>group.rows));
+    for(const row of rows){
+      if(assigned.has(row))continue;
+      let candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&bo.account===row.account));
+      if(!candidates.length&&!isStatement(row)&&providerOfRow(row)!=='OTHER')candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&!isStatement(bo)&&providerOfRow(bo)===providerOfRow(row)));
+      if(candidates.length===1){candidates[0].rows.push(row);assigned.add(row);}
+    }
+    const remaining=new Map();
+    for(const row of rows){
+      if(assigned.has(row))continue;
+      const key=`unassigned-pm:${row.account}:${row.direction}`;
+      if(!remaining.has(key))remaining.set(key,{key,account:row.account,label:`STM/PM ไม่มี BO · ${row.account} · ${thaiDirection(row)}`,rows:[]});
+      remaining.get(key).rows.push(row);
+    }
+    return [...groups,...remaining.values()];
+  }
+  const ACCOUNT_HEADERS=Object.freeze(['STM/PM · วัน / เวลา','STM/PM · ยอด','STM/PM · User','STM/PM · บัญชีลูกค้า','STM/PM · อ้างอิง','BO · วัน / เวลา','BO · ยอด','BO · User','BO · บัญชีลูกค้า','BO · อ้างอิง','บัญชีบริษัท / Provider','เหตุผลระบบ','หมายเหตุ Audit','สถานะ Audit']);
   function boOnlyTemplate(name){return {name,boOnly:true,headers:['รหัส','เวลา','ประเภท','BO ฝาก','BO ถอน','ธนาคาร','ยูสเซอร์','ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','แถวต้นทาง','หมายเหตุ'],boStart:0};}
   function hasSide(row,side){return cents(row[`${side}Amount`])!==null&&(row.isPair||!!(realRaw(row[`${side}Raw`])||row[`${side}Date`]||Object.values(row[side]||{}).some(Boolean)));}
   function sideKey(row,side){
@@ -336,10 +355,11 @@
   }
   function filter(rows,pm,direction,status,sheet='all'){
     const statementParts=sheet.startsWith('statement:')?sheet.slice('statement:'.length).split(':'):[],statementAccount=statementParts[0]||'',statementDirection=statementParts[1]||'';
+    const accountRows=/^(bo-account:|unassigned-pm:)/.test(sheet)?new Set(accountReviewGroups(rows).find(group=>group.key===sheet)?.rows||[]):null;
     return rows.filter(r=>(pm==='all'||r.account===pm)
       &&(direction==='all'||r.direction===direction)
       &&(status==='all'||r.kind===status)
-      &&(sheet==='all'||sheet==='summary'||(sheet.startsWith('bo-account:')?hasSide(r,'bo')&&String(r.boAccountLabel||r.account||'ไม่ระบุบัญชี').trim()===sheet.slice(11):statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
+      &&(sheet==='all'||sheet==='summary'||(accountRows?accountRows.has(r):statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
   }
   function statusOf(s,complete){return s.waitingBoCount?'ยังไม่มี STM/PM · รอข้อมูล':!complete?'ข้อมูลยังไม่ครบ':s.diffAfterCents===0&&s.unmatchedPmCount===0&&s.unmatchedBoCount===0&&s.duplicateCount===0?'ยอดตรง':'ต้องตรวจ';}
   function summaryRow(name,s,complete,key=name){const warning=complete&&(s.diffAfterCents||s.unmatchedPmCount||s.unmatchedBoCount||s.duplicateCount);return `<tr class="${warning?'mc8-warning':''}"><th><button type="button" data-live-sheet="${esc(key)}">${esc(name)}</button></th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr>`;}
@@ -425,7 +445,7 @@
     if(pmIndex>=0)result[pmIndex]=rows.reduce((sum,row)=>sum+(numeric(row[pmIndex])||0),0);
     if(boIndex>=0)result[boIndex]=rows.reduce((sum,row)=>sum+(numeric(row[boIndex])||0),0);
     for(const header of ['BO ฝาก','BO ถอน']){const index=headers.indexOf(header);if(index>=0)result[index]=rows.reduce((sum,row)=>sum+(numeric(row[index])||0),0);}
-    const waiting=rows.some(row=>String(row[statusIndex]||'').startsWith('ยังไม่มี STM/PM'));
+    const waiting=rows.some(row=>/ยังไม่มี STM\/PM|รอ STM\/PM/.test(String(row[statusIndex]||'')));
     if(diffIndex>=0)result[diffIndex]=waiting?'':(pmIndex>=0?result[pmIndex]:0)-(boIndex>=0?result[boIndex]:0);
     if(statusIndex>=0)result[statusIndex]=`รวม ${rows.length.toLocaleString('th-TH')} รายการ`;
     if(waiting&&statusIndex>=0)result[statusIndex]+=' · ยังรอ STM/PM · ยังไม่กระทบยอด';
@@ -433,7 +453,7 @@
   }
   function pmAmountHeader(headers,sheet){
     if(sheet.startsWith('statement:'))return 'ยอด Statement';
-    if(sheet==='all')return 'STM/PM · ยอด';
+    if(sheet==='all'||/^(bo-account:|unassigned-pm:)/.test(sheet))return 'STM/PM · ยอด';
     const deposit=sheet.endsWith('ฝ');
     const candidates=deposit
       ? ['realAmount','โอนจริง','จำนวนที่ได้รับ','จำนวนเงินฝาก','จำนวนที่ฝาก','จำนวนเงิน','สร้างฝาก']
@@ -502,7 +522,7 @@
 
   function tableView(rows,company,date,complete,sheet,schema=root.MC8SheetSchema){
     const ordered=chronologicalRows(rows);
-    if(sheet.startsWith('bo-account:')){const template=boOnlyTemplate(sheet);return {headers:[...template.headers,...AUDIT_HEADERS],rows:ordered.map(row=>providerExportRow(template,row,complete))};}
+    if(/^(bo-account:|unassigned-pm:)/.test(sheet))return {headers:[...ACCOUNT_HEADERS],rows:ordered.map(row=>{const values=allExportRow(row,complete);return ACCOUNT_HEADERS.map(header=>values[ALL_HEADERS.indexOf(header)]);})};
     if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:ordered.map((row,index)=>statementExportRow(row,index,company,date,complete))};
     if(SHEETS.includes(sheet)){
       const template=providerTemplates(schema,company,rows).find(item=>item.name===sheet);
@@ -513,6 +533,7 @@
   }
   function headerTone(header,index,headers,sheet){
     if(header===null||header===undefined||header==='')return 'gap';
+    if(/^(bo-account:|unassigned-pm:)/.test(sheet))return header.startsWith('STM/PM')?'pm':header.startsWith('BO ·')?'bo':'';
     if(sheet.startsWith('statement:'))return /Statement/.test(header)?'pm':/\bBO\b/.test(header)?'bo':'';
     if(SHEETS.includes(sheet)){
       const boStart=headers.indexOf('รหัส')>=0?headers.indexOf('รหัส'):headers.indexOf('เวลา'),auditStart=headers.length-AUDIT_HEADERS.length;
@@ -578,7 +599,6 @@
     const saveHidden=()=>{try{root.localStorage?.setItem('audit-live-hidden-columns-v1',JSON.stringify(hiddenBySheet));}catch(_){/* private browsing or tests */}};
     const labels={matched:'ระบบจับคู่แล้ว',waiting_source:'อ่าน BO แล้ว · รอ STM/PM',advisory:'แจ้งข้อมูล · ไม่ต้องยืนยัน',pending_next_day:'ค้างรอข้อมูลข้ามวัน',review:'รอตรวจ / ชี้แจง',closed:'ปิดเคสแล้ว'};
     function isComplete(all){
-      if(all.some(row=>row.waiting))return false;
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0;
       if(!data?.complete||!['completed','needs_review'].includes(data?.run?.jobStatus)||evidence<Number(data?.run?.matched||0))return false;
       return true;
@@ -586,11 +606,13 @@
     function draw(){
       if(!alive())return;
       // Keep source identity, displayed values, tone and action in one order.
-      const all=data?rowsOf(data,company):[],baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
+      const all=data?rowsOf(data,company):[],accountGroups=accountReviewGroups(all);
+      if(sheet!=='all'&&sheet!=='summary'&&!accountGroups.some(group=>group.key===sheet))sheet='all';
+      const baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
       // A placeholder is not an account awaiting bank evidence (e.g. affiliate credit).
       const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`)&&numeric(row.systemAmount)>0&&!/^(?:\s*[-—–]\s*|\s*ไม่ระบุ(?:บัญชี)?\s*|\s*ไม่มีข้อมูล\s*)$/.test(String(row.account||'')));
-      const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all.filter(r=>providerNames.includes(sheetOf(r))||isStatement(r));
+      const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all;
       const waiting=waitingStatements(data?.run?.summary?.bo_first,company);
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
       const rawView=tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};
@@ -600,9 +622,9 @@
       const hidden=hiddenSet(),visible=view.headers.map((_,index)=>index).filter(index=>!hidden.has(index));
       const filterOptions=Object.fromEntries(view.headers.map((_,index)=>[index,[...new Map(rawView.rows.map(row=>[String(row[index]??''),row[index]??''])).values()].sort(compareCells)]));
       const scope=summarize(shown);
-      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...boAccountGroups(all).map(group=>[group.key,group.label]),...statementSets.map(group=>[group.key,group.label]),...providerNames.map(name=>[name,name])];
+      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...accountGroups.map(group=>[group.key,group.label])];
       const columnTools=sheet==='summary'?'':`<div class="mc8-table-tools"><button type="button" id="mc8-live-fullscreen">${fullscreen?'ออกจากเต็มจอ':'ดูตารางเต็มจอ'}</button><button type="button" id="mc8-live-wrap-text" aria-pressed="${wrapText}">${wrapText?'ย่อข้อความ':'แสดงข้อความทั้งหมด'}</button><details class="mc8-column-picker"><summary>เลือกคอลัมน์ (${visible.length}/${view.headers.length})</summary><div><p>ติ๊กเพื่อแสดงคอลัมน์ เหมือน Hide / Unhide ใน Excel</p><button type="button" id="mc8-live-show-columns">แสดงทั้งหมด</button>${view.headers.map((header,index)=>`<label><input type="checkbox" data-live-column="${index}" ${hidden.has(index)?'':'checked'} ${!hidden.has(index)&&visible.length===1?'disabled':''}> ${letter(index)} · ${esc(header||'คอลัมน์ว่าง')}</label>`).join('')}</div></details>${Object.values(rules).filter(Boolean).length?`<button type="button" id="mc8-live-clear-columns">ล้างฟิลเตอร์ทั้งหมด (${Object.values(rules).filter(Boolean).length})</button>`:''}<span>กดข้อความยาวเพื่อขยายเฉพาะช่อง · กด ▼ ที่หัวคอลัมน์เพื่อกรองและเรียง</span></div>`;
-      container.innerHTML=`<section class="mc8-workbook ${fullscreen?'mc8-fullscreen':''} ${wrapText?'mc8-wrap-text':''}" tabindex="-1"><header class="mc8-intro"><div><h2>เอกสารกระทบยอด · ${esc(company)}</h2><p>หน้าจอและไฟล์ Excel ใช้หัวตารางเดียวกัน แยก PM ตาม Provider และแยก STM ธนาคารทีละบัญชี</p></div><span class="mc8-pending">${esc(date)}</span></header>
+      container.innerHTML=`<section class="mc8-workbook ${fullscreen?'mc8-fullscreen':''} ${wrapText?'mc8-wrap-text':''}" tabindex="-1"><header class="mc8-intro"><div><h2>เอกสารกระทบยอด · ${esc(company)}</h2><p>เลือกชื่อบัญชีตาม BO · เทียบ STM/PM และ BO ในหน้าเดียว · ผลจับคู่เดิมไม่เปลี่ยน · Excel ยังใช้รูปแบบ Audit เดิม</p></div><span class="mc8-pending">${esc(date)}</span></header>
         <p class="mc8-note">อ่านผลรอบงานที่บันทึกไว้เท่านั้น · ไม่รันกติกาใหม่ ไม่ปิดเคส และไม่นำไฟล์ตัวอย่างมาแทนข้อมูลจริง</p>
         <div class="mc8-filters"><label>บริษัท<select id="mc8-live-company" ${loading?'disabled':''}>${companies.map(c=>`<option value="${c}" ${company===c?'selected':''}>${c}</option>`).join('')}</select></label><label>วันที่ตรวจ<input type="date" id="mc8-live-date" value="${esc(date)}" ${loading?'disabled':''}></label><button id="mc8-live-load" ${loading?'disabled':''}>${loading?'กำลังโหลด…':'โหลดข้อมูลจริง'}</button>${data?.run?'<button id="mc8-live-export">ออก Excel ตามแบบ Audit</button>':''}${company==='MC8'?'<button id="mc8-local-view">เทียบไฟล์ Excel ต้นแบบ MC8</button>':''}</div>
         ${error?`<p role="alert">${esc(error)}</p>`:''}
@@ -610,11 +632,11 @@
         ${data?.run?.id&&opts.exportBoWaitingCases&&caseRowsToCreate.length?`<button type="button" id="mc8-export-bo-cases">ส่งออก BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>ส่งออกข้อมูลต้นทางเพื่อสร้างผ่าน Worker ที่มีสิทธิ์เดิม · ไม่สร้างเคสจากบัญชีเว็บและไม่เปลี่ยน RLS</p>`:''}
         ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
-        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · แสดง ${all.filter(row=>!row.isPair).length} เคสที่ต้องตรวจจริง</p>${!complete?'<p role="alert" class="mc8-warning">ผลหรือหลักฐานยังไม่ครบ หรือจำนวนที่สร้างใหม่ไม่ตรงกับรอบงาน ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':''}${other.length?`<p role="alert" class="mc8-warning">มี ${other.length} แถวที่จัดเข้า Provider หรือบัญชี STM ไม่ได้ จึงแสดงไว้เฉพาะหน้าข้อมูลทั้งหมด</p>`:''}
-        <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกทุกหน้า</h3><div class="mc8-summary-scroll"><table><thead><tr><th>หน้า</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${providerNames.map(name=>summaryRow(name,bySheet[name],complete)).join('')}${statementSets.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,providerNames.length+statementSets.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · กดชื่อหน้าเพื่อเปิดรายละเอียด · แถวรวมอยู่ท้ายตารางเหมือน Excel</p></section>
-        <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('statement:')?'STM ธนาคาร ฝาก-ถอน':isSourceSheet(value)||value.startsWith('bo-account:')?'BO ฝาก-ถอน':value.endsWith('ฝ')?'ฝาก':'ถอน'}</small></button>`).join('')}</div>
+        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · แสดง ${all.filter(row=>!row.isPair).length} เคสที่ต้องตรวจจริง</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status" class="mc8-warning">BO รอ STM/PM ${summarize(all).waitingBoCount} รายการ · คงเคสรอหลักฐานไว้ ไม่ใช่การโหลดผลรอบงานไม่ครบ</p>`:''}
+        <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกตามบัญชี BO</h3><div class="mc8-summary-scroll"><table><thead><tr><th>บัญชี</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${accountGroups.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,accountGroups.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · รายการที่ระบุบัญชี BO ไม่ได้ยังแสดงแยกไว้ ไม่ซ่อนหลักฐาน · แถวรวมไม่นับซ้ำ</p></section>
+        <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('bo-account:')?'STM/PM ↔ BO':'STM/PM รอ BO'}</small></button>`).join('')}</div>
         <div class="mc8-filters"><label>PM<select id="mc8-live-pm"><option value="all">ทุก PM</option>${[...new Set(all.map(r=>r.account))].sort().map(a=>`<option ${pm===a?'selected':''} value="${esc(a)}">${esc(a)}</option>`).join('')}</select></label><label>ประเภท<select id="mc8-live-direction">${[['all','ฝากและถอน'],['deposit','ฝาก'],['withdraw','ถอน']].map(([v,t])=>`<option value="${v}" ${direction===v?'selected':''}>${t}</option>`).join('')}</select></label><label>ผลตรวจ<select id="mc8-live-status">${[['all','ทั้งหมด'],...Object.entries(labels)].map(([v,t])=>`<option value="${v}" ${status===v?'selected':''}>${t}</option>`).join('')}</select></label></div>${rulePanel(company)}${columnTools}
-        ${sheet==='summary'?`<p class="mc8-summary-focus">หน้าสรุปแสดงจำนวนและยอดของ ${providerNames.length+statementSets.length} หน้ารายละเอียด พร้อมแถวรวมท้ายตารางด้านบน</p>`:`${SHEETS.includes(sheet)?'<p class="mc8-source-note"><b>ที่มาของข้อความ:</b> ช่อง “หมายเหตุ/โน้ต” อ่านจากช่องหมายเหตุในไฟล์ BO ต้นทาง ไม่ใช่ Note ที่ Audit พิมพ์เพิ่ม หากเป็น Sapan/Spean ระบบจะแสดงเฉพาะรหัส 6aa… ที่ใช้จับคู่ ส่วน “เงื่อนไขที่จับคู่” และ “หมายเหตุ Audit” เป็นข้อมูลที่ระบบ/Audit แยกเก็บคนละคอลัมน์</p>':''}<p role="status">แสดงครบ ${shown.length} จาก ${baseShown.length} แถวในหน้าเดียว · เลื่อนในตารางได้ทั้งแนวตั้งและแนวนอน · ยอดรวมท้ายตารางคำนวณตามตัวกรองปัจจุบัน</p><div class="mc8-scroll" tabindex="0" aria-label="ตาราง ${esc(sheet==='all'?'ข้อมูลทั้งหมด':sheet)}"><table class="mc8-grid"><thead>${providerHeader(view.headers,sheet,visible,rules,sort,filterOptions)}</thead><tbody>${view.rows.map((values,rowIndex)=>{const source=pageRows[rowIndex],rowStatus=auditStatus(source,complete),tone=toneOf(rowStatus),rowNumber=rowIndex+2;return `<tr class="mc8-${tone}">${SHEETS.includes(sheet)?`<th scope="row" class="mc8-rownum">${rowNumber}</th>`:''}${visible.map(index=>{const displayed=renderCell(values[index],view.headers[index]),longText=displayed.length>28;return `<td class="${headerTone(view.headers[index],index,view.headers,sheet)} ${longText?'mc8-long-text':''}" title="${esc(displayed)}" ${longText?'data-live-text-cell tabindex="0" role="button" aria-expanded="false"':''}>${esc(displayed)||'—'}${index===visible[visible.length-1]&&source.case?` <button data-live-case="${esc(source.key)}">เปิดเคสจริง</button>`:''}</td>`;}).join('')}</tr>`;}).join('')||`<tr><td colspan="${visible.length+(SHEETS.includes(sheet)?1:0)}">ไม่พบรายการตามตัวกรองคอลัมน์</td></tr>`}</tbody>${providerFooter(fullView.headers,fullView.rows,sheet,visible)}</table></div>${totalsPanel(sheet==='all'?'ข้อมูลทั้งหมด':sheet,scope,complete,pmAmountHeader(fullView.headers,sheet))}`}
+        ${sheet==='summary'?`<p class="mc8-summary-focus">หน้าสรุปแสดงจำนวนและยอดของ ${accountGroups.length} หน้ารายละเอียด พร้อมแถวรวมท้ายตารางด้านบน</p>`:`${SHEETS.includes(sheet)?'<p class="mc8-source-note"><b>ที่มาของข้อความ:</b> ช่อง “หมายเหตุ/โน้ต” อ่านจากช่องหมายเหตุในไฟล์ BO ต้นทาง ไม่ใช่ Note ที่ Audit พิมพ์เพิ่ม หากเป็น Sapan/Spean ระบบจะแสดงเฉพาะรหัส 6aa… ที่ใช้จับคู่ ส่วน “เงื่อนไขที่จับคู่” และ “หมายเหตุ Audit” เป็นข้อมูลที่ระบบ/Audit แยกเก็บคนละคอลัมน์</p>':''}<p role="status">แสดงครบ ${shown.length} จาก ${baseShown.length} แถวในหน้าเดียว · เลื่อนในตารางได้ทั้งแนวตั้งและแนวนอน · ยอดรวมท้ายตารางคำนวณตามตัวกรองปัจจุบัน</p><div class="mc8-scroll" tabindex="0" aria-label="ตาราง ${esc(sheet==='all'?'ข้อมูลทั้งหมด':accountGroups.find(group=>group.key===sheet)?.label||sheet)}"><table class="mc8-grid"><thead>${providerHeader(view.headers,sheet,visible,rules,sort,filterOptions)}</thead><tbody>${view.rows.map((values,rowIndex)=>{const source=pageRows[rowIndex],rowStatus=auditStatus(source,complete),tone=toneOf(rowStatus),rowNumber=rowIndex+2;return `<tr class="mc8-${tone}">${SHEETS.includes(sheet)?`<th scope="row" class="mc8-rownum">${rowNumber}</th>`:''}${visible.map(index=>{const displayed=renderCell(values[index],view.headers[index]),longText=displayed.length>28;return `<td class="${headerTone(view.headers[index],index,view.headers,sheet)} ${longText?'mc8-long-text':''}" title="${esc(displayed)}" ${longText?'data-live-text-cell tabindex="0" role="button" aria-expanded="false"':''}>${esc(displayed)||'—'}${index===visible[visible.length-1]&&source.case?` <button data-live-case="${esc(source.key)}">เปิดเคสจริง</button>`:''}</td>`;}).join('')}</tr>`;}).join('')||`<tr><td colspan="${visible.length+(SHEETS.includes(sheet)?1:0)}">ไม่พบรายการตามตัวกรองคอลัมน์</td></tr>`}</tbody>${providerFooter(fullView.headers,fullView.rows,sheet,visible)}</table></div>${totalsPanel(sheet==='all'?'ข้อมูลทั้งหมด':accountGroups.find(group=>group.key===sheet)?.label||sheet,scope,complete,pmAmountHeader(fullView.headers,sheet))}`}
         <details><summary>ไฟล์ต้นทางของผลรอบนี้ (${files.length})</summary>${fileError?`<p role="alert">${esc(fileError)}</p>`:''}<ul>${files.map(f=>`<li>${esc(f.file_name)} · ${esc(f.kind)} ${opts.onFile?`<button data-live-file="${esc(f.id)}">ดูไฟล์ต้นทาง</button>`:''}</li>`).join('')}</ul></details>`:!loading&&!error?`<p>ยังไม่มีผลกระทบยอดที่อ่านได้ของ ${esc(company)} ในวันที่เลือก</p>`:''}</section>`;
       container.querySelector('#mc8-live-company').onchange=e=>{company=e.target.value;remembered.company=company;opts.onCompany?.(company);sheet='all';pm='all';load();};
       container.querySelector('#mc8-live-load').onclick=()=>{const v=container.querySelector('#mc8-live-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){error='กรุณาเลือกวันที่';draw();return;}date=v;remembered.date=v;opts.onDate?.(date);load();};
@@ -681,6 +703,6 @@
     };
     load();
   }
-  root.MC8LiveSheets={mount,hydrateBoOperators,rowsOf,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
+  root.MC8LiveSheets={mount,hydrateBoOperators,rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
   if(typeof module!=='undefined')module.exports=root.MC8LiveSheets;
 })(typeof window==='undefined'?globalThis:window);
