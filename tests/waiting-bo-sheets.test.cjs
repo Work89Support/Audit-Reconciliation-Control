@@ -41,3 +41,6 @@ const existing={id:'case-test',company:'UFABET7M',account:waiting.account,direct
   customer_details:{bo:waiting.customerDetails.bo,source_rows:{bo:waiting.boSource}}};
 assert.equal(sheets.rowsOf({...input,cases:[existing]},'UFABET7M').length,1,'do not count BO again when a case represents it');
 console.log('BO-only account sheet and export tests passed');
+const snapshotInput={run:{company:'UFABET7M',business_date:'2026-10-09',summary:{},boWaitingSnapshot:{company:'UFABET7M',business_date:'2026-10-09',waiting_bo:[waiting]}},cases:[]};
+assert.equal(sheets.rowsOf(snapshotInput,'UFABET7M')[0].boAmount,5,'parse-only reporting snapshot does not need an accepted reconciliation run');
+assert.equal(sheets.rowsOf({...snapshotInput,run:{...snapshotInput.run,business_date:'2026-10-08'}},'UFABET7M').length,0,'snapshot must match business date');

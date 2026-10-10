@@ -811,7 +811,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_results:x.files});})() }}",
+        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;const snapshot={company:x.job.company,business_date:x.job.business_date,waiting_bo:x.result.summary.waiting_bo||[],waiting_bo_version:1,worker_version:x.result.summary.worker_version};return JSON.stringify({p_job_id:x.job.id,p_results:x.files.map((f,i)=>i===0?{...f,bo_waiting_snapshot:snapshot}:f)});})() }}",
         "options": {
           "response": {
             "response": {}

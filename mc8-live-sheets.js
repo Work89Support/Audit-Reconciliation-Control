@@ -205,7 +205,9 @@
         ?`${row.company}|${row.account}|${row.direction}|${source.fileId}|${source.row}`:'';
     };
     const representedSources=new Set(visibleRows.map(sourceIdentity).filter(Boolean));
-    const waitingBo=Array.isArray(data?.run?.summary?.waiting_bo)?data.run.summary.waiting_bo:[];
+    const snapshot=data?.run?.boWaitingSnapshot;
+    const waitingBo=snapshot?.company===fallbackCompany&&snapshot?.business_date===data?.run?.business_date&&Array.isArray(snapshot.waiting_bo)
+      ?snapshot.waiting_bo:Array.isArray(data?.run?.summary?.waiting_bo)?data.run.summary.waiting_bo:[];
     for(const [index,e] of waitingBo.entries()){
       if(e.company&&fallbackCompany&&e.company!==fallbackCompany)continue;
       const boSource=e.boSource||e.customerDetails?.source_rows?.bo;

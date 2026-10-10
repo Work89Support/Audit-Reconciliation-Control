@@ -713,10 +713,11 @@ const Sb = (() => {
   // Follow the job's committed run, never select a possibly stale run by date alone.
   async function matchedEvidence(company, date) {
     if (!company || company === "ALL" || !date) throw new Error("เลือกบริษัทและวันที่ก่อน");
-    const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
-    if (!jobs[0]?.last_run_id) return null;
+    const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status,error_count,bo_waiting_snapshot&limit=1`);
+    const snapshot=jobs[0]?.error_count===0?jobs[0]?.bo_waiting_snapshot:null;
+    if (!jobs[0]?.last_run_id) return snapshot?{id:null,company,business_date:date,summary:{},jobStatus:jobs[0].status,boWaitingSnapshot:snapshot,isSnapshotOnly:true}:null;
     const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,company,business_date,stm_count,bo_count,exception_count,matched,summary&limit=1`);
-    return runs[0] ? { ...runs[0], jobStatus: jobs[0].status } : null;
+    return runs[0] ? { ...runs[0], jobStatus: jobs[0].status, boWaitingSnapshot:snapshot } : null;
   }
 
   async function reconciliationEvidence({ from, to, company } = {}) {
@@ -738,6 +739,7 @@ const Sb = (() => {
   async function reconciliationOverview(company, date) {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
+    if (!run.id) return {run,cases:[],complete:false};
     let confirmations=[],confirmationError='';
     try {
       for(let offset=0;;offset+=1000){
