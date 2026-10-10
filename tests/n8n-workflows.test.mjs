@@ -209,7 +209,7 @@ assert.equal(worker.connections["Supabase: คืนคิวที่สั่�
 const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่");
 assert.equal(restoreManualRerun.parameters.method, "PATCH");
 assert.match(restoreManualRerun.parameters.url, /rerun_requested_at=not\.is\.null/);
-assert.match(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "consumed rerun requests must not be restored on every worker tick");
+assert.doesNotMatch(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "preserve manual request priority until finish consumes it");
 assert.equal(restoreManualRerun.retryOnFail, true, "bulk historical reruns must retry a transient Supabase timeout");
 assert.ok(restoreManualRerun.maxTries >= 3, "manual rerun recovery needs enough retry attempts under queue load");
 assert.ok(restoreManualRerun.waitBetweenTries >= 3000, "manual rerun recovery must pause before retrying Supabase");

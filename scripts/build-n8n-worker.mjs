@@ -482,7 +482,7 @@ const nodes = [
     // changed to queued in this PATCH before the claim step, so clearing the
     // marker prevents a completed needs_review job from being queued again on
     // every subsequent worker tick.
-    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, rerun_requested_at: null, updated_at: DateTime.now().toISO() }) }}",
+    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, updated_at: DateTime.now().toISO() }) }}",
     options: { response: { response: {} } },
   }), alwaysOutputData: true, retryOnFail: true, maxTries: 3, waitBetweenTries: 3000 },
   { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-380, 160] },
