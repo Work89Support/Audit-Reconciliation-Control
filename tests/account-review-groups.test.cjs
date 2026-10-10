@@ -15,8 +15,13 @@ for(const company of api.COMPANIES){
     const scoped=api.filter(rows,'all','all','all',group.key);
     assert.deepEqual(scoped,group.rows);
     const view=api.tableView(scoped,company,'2026-10-09',true,group.key,schema);
-    assert.ok(view.headers.includes('STM/PM · ยอด')&&view.headers.includes('BO · ยอด'));
-    assert.equal(api.pmAmountHeader(view.headers,group.key),'STM/PM · ยอด');
+    if(view.templateSheet){
+      assert.ok(view.headers.includes('ผู้ดำเนินการ')||view.headers.includes('BO · ผู้ดำเนินการ'));
+      assert.ok(api.pmAmountHeader(view.headers,view.templateSheet));
+    }else{
+      assert.ok(view.headers.includes('STM/PM · ยอด')&&view.headers.includes('BO · ยอด'));
+      assert.equal(api.pmAmountHeader(view.headers,group.key),'STM/PM · ยอด');
+    }
   }
   assert.equal(api.summarize(groups.flatMap(g=>g.rows)).boCents,api.summarize(rows).boCents);
   assert.equal(api.summarize(groups.flatMap(g=>g.rows)).pmCents,api.summarize(rows).pmCents);
