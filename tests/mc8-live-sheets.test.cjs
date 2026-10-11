@@ -139,6 +139,19 @@ setImmediate(()=>{assert.ok(container.innerHTML.includes('COREPAY'));assert.ok(c
     assert.equal(lib.rowsOf({...d,run:{...d.run,summary:{match_evidence:[p,{...p,stm:{...p.stm,row:8}}]}},cases:[e]},company).length,3,'ambiguous evidence remains visible');
     const differentTime={...p,bo:{...p.bo,row:22,sec:80280},customer:{...p.customer,bo:{...p.customer.bo,reference:'second-real-ref'}}};
     assert.equal(lib.rowsOf({...d,run:{...d.run,summary:{match_evidence:[p,differentTime]}}},company).length,2,'same amount at another time is a distinct transaction');
+    const cross={...e,id:'cross-case',code:'EX-cross',status:'pending_next_day',ex_type:'cross_day',customer_details:{bo:p.customer.bo}};
+    const unresolved={run:{summary:{}},cases:[cross,e]},unresolvedBefore=JSON.stringify(unresolved);
+    const unresolvedRows=lib.rowsOf(unresolved,company);
+    assert.equal(unresolvedRows.length,1);assert.equal(unresolvedRows[0].case.id,'cross-case');
+    assert.equal(unresolvedRows[0].waiting,true);assert.equal(unresolvedRows[0].crossDay,true);
+    assert.equal(unresolvedRows[0].isPair,false);assert.equal(unresolvedRows[0].relatedWaitingCases[0].id,e.id);
+    assert.equal(lib.summarize(unresolvedRows).boCents,10000);
+    assert.equal(lib.summarize(unresolvedRows).waitingBoCents,10000);
+    assert.equal(lib.summarize(unresolvedRows).crossDayBoCents,10000);
+    assert.equal(lib.summarize(unresolvedRows).matchedCount,0);
+    assert.equal(JSON.stringify(unresolved),unresolvedBefore);
+    assert.equal(lib.rowsOf({...unresolved,cases:[cross,{...e,bo_time:'18:55:00'}]},company).length,2);
+    assert.equal(lib.rowsOf({...unresolved,cases:[cross,{...cross,id:'ambiguous'},e]},company).length,3);
   }
   const comm={id:'commission-fixture',company:'SK8',account:'igoal21431',direction:'-',status:'open',ex_type:'comm_cut_missing',system_amount:128,bo_date:'2026-10-10',bo_time:'19:28:13',bo_raw:'commission source fixture'};
   const d={run:{summary:{}},cases:[comm]},before=JSON.stringify(d);

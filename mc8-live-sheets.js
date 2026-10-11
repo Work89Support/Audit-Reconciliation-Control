@@ -230,7 +230,25 @@
       pair.reason=[pair.reason,'หลักฐานปิดเคสย้อนหลัง',e.resolution_note,`STM ไฟล์ ${pair.pmSource.fileId} · แถว ${pair.pmSource.row}`].filter(Boolean).join(' · ');
       if(pair.pmSource.noTime)pair.pmTime=`${pair.pmDate} (ไม่มีเวลา)`;
     }
-    const financialRows=[...pairRows,...remainingCases];
+    // Waiting history may also describe the same unresolved bank BO as a
+    // cross-day case. Keep one financial row and both case records, without
+    // inventing a match or changing the saved waiting/cross-day totals.
+    const foldedWaiting=new Set();
+    for(const row of remainingCases){
+      const ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      if(!isSys123(row.company)||!isStatement(row)||!row.waiting||!ref||!user||!row.boDate||!row.boTime)continue;
+      const hits=remainingCases.filter(p=>p!==row&&!p.case?.customer_details?.waiting_source
+        &&p.crossDay&&p.company===row.company&&p.account===row.account&&p.direction===row.direction
+        &&p.boDate===row.boDate&&p.boTime===row.boTime&&cents(p.boAmount)===cents(row.boAmount)
+        &&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user);
+      if(hits.length!==1)continue;
+      const target=hits[0];
+      (target.relatedWaitingCases ||= []).push(row.case);
+      target.waiting=true;
+      target.reason=[target.reason,`เคสประวัติ ${row.code}: ${row.case.status} · ${row.reason}`].filter(Boolean).join(' · ');
+      foldedWaiting.add(row);
+    }
+    const financialRows=[...pairRows,...remainingCases.filter(row=>!foldedWaiting.has(row))];
     const foldedAlerts=new Set();
     financialRows.filter(row=>row.exType==='duplicate'&&row.case?.status!=='closed').forEach(alert=>{
       // Legacy Rules alerts hold both BO UUIDs in raw text. Link only when
