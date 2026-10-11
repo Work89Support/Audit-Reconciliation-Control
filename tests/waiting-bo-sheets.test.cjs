@@ -43,3 +43,14 @@ console.log('BO-only account sheet and export tests passed');
 const snapshotInput={run:{company:'UFABET7M',business_date:'2026-10-09',summary:{},boWaitingSnapshot:{company:'UFABET7M',business_date:'2026-10-09',waiting_bo:[waiting]}},cases:[]};
 assert.equal(sheets.rowsOf(snapshotInput,'UFABET7M')[0].boAmount,5,'parse-only reporting snapshot does not need an accepted reconciliation run');
 assert.equal(sheets.rowsOf({...snapshotInput,run:{...snapshotInput.run,business_date:'2026-10-08'}},'UFABET7M').length,0,'snapshot must match business date');
+for(const company of ['3XB','MC8','MR9','PS8','UR9','FR8','AT4','SK8','UFABET7M']){
+  const w={...waiting,company};
+  const d={run:{company,business_date:w.boDate,summary:{waiting_bo:[w]}},cases:[]};
+  const baseline=sheets.summarize(sheets.rowsOf(d,company));
+  const h={...existing,company,id:'closed-history',code:'OLD-CASE',status:'closed',business_date:w.boDate,customer_details:{...existing.customer_details,waiting_source:true}};
+  const linked=sheets.rowsOf({...d,waitingHistory:[h]},company);
+  assert.equal(linked.length,1);assert.equal(linked[0].key,h.id);assert.equal(linked[0].code,h.code);
+  assert.equal(linked[0].case.status,'closed');assert.match(sheets.auditStatus(linked[0]),/ปิดเคสแล้ว/);
+  assert.deepEqual(sheets.summarize(linked),baseline,'history must not alter financial results');
+  assert.equal(sheets.rowsOf({...d,waitingHistory:[{...h,customer_details:{...h.customer_details,source_rows:{bo:{...w.boSource,row:99}}}}]},company)[0].case,undefined,'equal amount is not identity');
+}

@@ -747,13 +747,20 @@ const Sb = (() => {
         confirmations.push(...page);if(page.length<1000)break;
       }
     } catch(error) { confirmationError=error.message; }
+    // Read prior-run waiting cases for this company-day, including approved
+    // closures. They annotate exact BO source rows, never add transactions.
+    const waitingHistory=[];
+    for(let offset=0;;offset+=500){
+      const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&customer_details->>waiting_source=eq.true&superseded_by_exception_id=is.null&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`);
+      waitingHistory.push(...page);if(page.length<500)break;
+    }
     const cases = [];
     for (let offset = 0; offset < 20000; offset += 500) {
       const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
-      if (page.length < 500) return { run, cases, complete: true, confirmations, confirmationError };
+      if (page.length < 500) return { run, cases, waitingHistory, complete: true, confirmations, confirmationError };
     }
-    return { run, cases, complete: false, confirmations, confirmationError };
+    return { run, cases, waitingHistory, complete: false, confirmations, confirmationError };
   }
 
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */

@@ -313,6 +313,17 @@
       const key=sideKey(row,'bo');
       const source=sourceIdentity(row);
       if(key&&!representedBo.has(key)&&(!source||!representedSources.has(source))){
+        const history=(data.waitingHistory||[]).filter(h=>{
+          const s=h.customer_details?.source_rows?.bo;
+          return h.company===row.company&&h.business_date===row.boDate
+            &&directionOf(h.direction)===row.direction&&cents(h.system_amount)===cents(row.boAmount)
+            &&s?.fileId===boSource?.fileId&&s?.row===boSource?.row;
+        });
+        if(history.length===1){
+          row.case=history[0];row.key=history[0].id;row.code=history[0].code||history[0].id;
+          row.kind=history[0].status==='closed'?'closed':'review';
+          row.reason=[row.reason,`เคสประวัติ ${row.code}: ${history[0].status}`,history[0].resolution_note].filter(Boolean).join(' · ');
+        }
         visibleRows.push(row);representedBo.add(key);if(source)representedSources.add(source);
       }
     }
@@ -532,6 +543,7 @@
     return `${h?'ต่าง '+h+' ชั่วโมง ':''}${m?'ต่าง '+m+' นาที ':''}${!h&&!m||s?s+' วินาที':''}`.trim();
   }
   function auditStatus(row,complete=true){
+    if(row.waiting&&row.case?.status==='closed')return 'ปิดเคสแล้ว · ประวัติเคสเดิม · ไม่มี STM/PM คู่';
     if(row.waiting)return 'ยังไม่มี STM/PM · อ่าน BO แล้ว · ยังไม่กระทบยอด';
     const duplicateWarning=(row.relatedAlerts||[]).some(e=>e.status!=='closed')
       ||(row.kind!=='closed'&&(row.case?.customer_details?.reviewAlerts||[]).some(e=>e.type==='suspected_duplicate'));
@@ -567,7 +579,7 @@
   function sourceCondition(row){if(row.waiting)return row.reason;const s=sourceColumns(row);return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`,row.pmSource?.noTime&&row.pmSource?.fileId?`STM ไฟล์ ${row.pmSource.fileId} · แถว ${row.pmSource.row??'ไม่ระบุ'}`:''].filter(Boolean).join(' · ');}
   function allExportRow(row,complete){
     const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pm||{};
-    const state=row.waiting?'รอ STM/PM':row.kind==='closed'?'ปิดเคสแล้ว':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':row.kind==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
+    const state=row.kind==='closed'?'ปิดเคสแล้ว':row.waiting?'รอ STM/PM':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':row.kind==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
     const sources=sourceColumns(row);
     const boNote=bo.providerReference||sapanProviderId(bo.note)||sapanProviderId(row.boRaw)||row.boRaw||bo.note||'';
     return [row.waiting?'BO รอ STM/PM':row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`STM/PM ${row.pmSource?.row??''}`,`BO ${row.boSource?.row??''}`,row.waiting?'':`เวลา ${sources.time}`,row.waiting?'':`ยอด ${sources.amount}`].filter(v=>v&&!v.endsWith(' ')).join(' · '),amountDiff(row),status];
