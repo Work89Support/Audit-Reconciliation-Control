@@ -86,10 +86,10 @@
   function isSys123(value){return ['AT4','FR8','SK8'].includes(String(value||'').toUpperCase());}
   function sheetOf(row){const source=sourceSheetOf(row);if(source&&['deposit','withdraw'].includes(directionOf(row?.direction)))return source;let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
   function stamp(t){return t?.date?`${t.date} ${t.noTime?'(ไม่มีเวลา)':Number.isFinite(t.sec)&&t.sec>=0&&t.sec<86400?new Date(t.sec*1000).toISOString().slice(11,19):''}`.trim():'';}
-  function chronologicalRows(rows){
+  function chronologicalRows(rows,sourceTime=false){
     const key=value=>String(value||'').trim();
     return rows.map((row,index)=>({row,index})).sort((a,b)=>{
-      const aPm=key(a.row.pmTime),bPm=key(b.row.pmTime),aBo=key(a.row.boTime),bBo=key(b.row.boTime);
+      const aPm=key(a.row.pmTime),bPm=key(b.row.pmTime),aBo=key(sourceTime?a.row.boTransactionTime||a.row.boTime:a.row.boTime),bBo=key(sourceTime?b.row.boTransactionTime||b.row.boTime:b.row.boTime);
       const primary=(aPm||aBo).localeCompare(bPm||bBo,'en',{numeric:true});
       if(primary)return primary;
       const secondary=aBo.localeCompare(bBo,'en',{numeric:true});
@@ -736,13 +736,14 @@
     for(const group of groups){
       const borrowed=group.rows.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','BO ฝาก','BO ถอน',...(borrowed?['BO · เวลาทำรายการต้นทาง']:[])];
-      const scoped=chronologicalRows(group.rows),data=scoped.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',row.boSource?.fileName||row.boSource?.fileId||'',hasSide(row,'bo')&&accountDisplayDirection(row)==='deposit'?row.boAmount:'',hasSide(row,'bo')&&accountDisplayDirection(row)==='withdraw'?row.boAmount:'',...(borrowed?[row.boTransactionTime||'']:[])]);
+      const scoped=chronologicalRows(group.rows,company==='3XB'&&borrowed),data=scoped.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',row.boSource?.fileName||row.boSource?.fileId||'',hasSide(row,'bo')&&accountDisplayDirection(row)==='deposit'?row.boAmount:'',hasSide(row,'bo')&&accountDisplayDirection(row)==='withdraw'?row.boAmount:'',...(borrowed?[row.boTransactionTime||'']:[])]);
       const s=summarize(group.rows),footer=totalRow(headers,data,'STM/PM · ยอด');
       footer[headers.indexOf('BO · ยอด')]=s.boCents/100;footer[headers.indexOf('STM/PM · ยอด')]=s.pmCents/100;
       footer[headers.indexOf('ผลต่างยอด')]=s.waitingBoCount?'':s.diffAfterCents/100;
       footer[headers.indexOf('สถานะ Audit')]=`รวม ${group.rows.length.toLocaleString('th-TH')} รายการ`+(s.waitingBoCount?' · ยังรอ STM/PM · ยังไม่กระทบยอด':'');
       for(const direction of ['deposit','withdraw'])footer[headers.indexOf(direction==='deposit'?'BO ฝาก':'BO ถอน')]=summarize(group.rows.filter(row=>accountDisplayDirection(row)===direction)).boCents/100;
-      sheets.push({name:group.name,headers,rows:data,...exportTones(scoped,complete,ALL_HEADERS.length-1),footerRows:[footer],widths:headers.map(header=>/บัญชีบริษัท|เหตุผล|หมายเหตุ|ต้นฉบับ|สถานะ/.test(header)?38:/เวลา|อ้างอิง|ไฟล์/.test(header)?26:20)});
+      const view={name:group.name,headers,rows:data,...exportTones(scoped,complete,ALL_HEADERS.length-1),footerRows:[footer],widths:headers.map(header=>/บัญชีบริษัท|เหตุผล|หมายเหตุ|ต้นฉบับ|สถานะ/.test(header)?38:/เวลา|อ้างอิง|ไฟล์/.test(header)?26:20)};
+      sheets.push(company==='3XB'&&borrowed?borrowLayout(view):view);
     }
     const waiting=waitingStatements(coverage,company);
     if(waiting.length){
@@ -770,8 +771,15 @@
     const headers=[...view.headers];headers.splice(old,1);headers.splice(anchor+1,0,'BO · ผู้ดำเนินการ');
     return {...view,headers,rows:view.rows.map(values=>{const row=[...values],operator=row.splice(old,1)[0];row.splice(anchor+1,0,operator);return row;})};
   }
+  function borrowLayout(view){
+    const bo=h=>h.startsWith('BO ·')||['บัญชีบริษัท / Provider','ประเภท','BO ฝาก','BO ถอน','ไฟล์ BO ต้นทาง'].includes(h);
+    const headers=[...view.headers.filter(h=>h.startsWith('STM/PM')), ...['BO · เวลาทำรายการต้นทาง',...view.headers.filter(h=>bo(h)&&h!=='BO · เวลาทำรายการต้นทาง')].filter(h=>view.headers.includes(h)),...view.headers.filter(h=>!h.startsWith('STM/PM')&&!bo(h))];
+    const indexes=headers.map(h=>view.headers.indexOf(h)),reorder=values=>indexes.map(i=>values[i]);
+    return {...view,headers,rows:view.rows.map(reorder),...(view.footerRows?{footerRows:view.footerRows.map(reorder)}:{}),...(view.widths?{widths:reorder(view.widths)}:{}),...(view.cellTones?{cellTones:view.cellTones.map(reorder)}:{}),templateSheet:'borrow:3XB'};
+  }
   function tableView(rows,company,date,complete,sheet,schema=root.MC8SheetSchema){
-    const ordered=chronologicalRows(rows);
+    const sourceTime=company==='3XB'&&sheet.startsWith('bo-account:')&&rows.some(combinedBorrow);
+    const ordered=chronologicalRows(rows,sourceTime);
     if(/^(bo-account:|unassigned-pm:)/.test(sheet)){
       // Account names select the saved rows; they must not replace the rich
       // provider-specific STM/BO layout with the abbreviated account view.
@@ -785,7 +793,8 @@
       }
       const borrowed=ordered.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ',...(borrowed?['BO ฝาก','BO ถอน','BO · เวลาทำรายการต้นทาง']:[])];
-      return placeBoOperator({headers,rows:ordered.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',...(borrowed?[row.direction==='deposit'?numeric(row.boAmount):'',row.direction==='withdraw'?numeric(row.boAmount):'',row.boTransactionTime||'']:[])])});
+      const view=placeBoOperator({headers,rows:ordered.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',...(borrowed?[row.direction==='deposit'?numeric(row.boAmount):'',row.direction==='withdraw'?numeric(row.boAmount):'',row.boTransactionTime||'']:[])])});
+      return sourceTime?borrowLayout(view):view;
     }
     if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:ordered.map((row,index)=>statementExportRow(row,index,company,date,complete))};
     if(SHEETS.includes(sheet)){
@@ -797,6 +806,7 @@
   }
   function headerTone(header,index,headers,sheet){
     if(header===null||header===undefined||header==='')return 'gap';
+    if(sheet==='borrow:3XB')return header.startsWith('STM/PM')?'pm':header.startsWith('BO ·')||['บัญชีบริษัท / Provider','ประเภท','BO ฝาก','BO ถอน','ไฟล์ BO ต้นทาง'].includes(header)?'bo':'';
     if(/^(bo-account:|unassigned-pm:)/.test(sheet))return header.startsWith('STM/PM')?'pm':header.startsWith('BO ·')?'bo':'';
     if(sheet.startsWith('statement:'))return /BO/.test(header)?'bo':/ต่างเวลา|เงื่อนไขที่จับคู่|ผลต่างยอด|สถานะ Audit/.test(header)?'':'pm';
     if(SHEETS.includes(sheet)){
@@ -817,7 +827,7 @@
       const values=options.map(value=>{const key=String(value??''),label=key===''?'(ว่าง)':renderCell(value,header);return `<label data-excel-value-label><input type="checkbox" data-live-filter-value value="${esc(key)}" ${selected.has(key)?'checked':''}> <span title="${esc(label)}">${esc(label)}</span></label>`;}).join('');
       return `<details class="mc8-excel-filter ${active?'active':''}" data-live-filter-menu="${index}"><summary>${esc(header)||' '}<span>${sort.index===index?(sort.direction==='desc'?'↓':'↑'):active?'●':'▼'}</span></summary><div class="mc8-excel-menu"><b>${letter(index)} · ${esc(header||'คอลัมน์ว่าง')}</b><button type="button" data-live-sort-dir="asc" data-column-index="${index}">เรียงน้อย → มาก</button><button type="button" data-live-sort-dir="desc" data-column-index="${index}">เรียงมาก → น้อย</button><input type="search" data-live-value-search placeholder="ค้นหาในคอลัมน์นี้" aria-label="ค้นหาค่าใน ${esc(header||letter(index))}"><div class="mc8-excel-select-actions"><button type="button" data-live-values-all>เลือกทั้งหมด</button><button type="button" data-live-values-none>ไม่เลือกทั้งหมด</button></div><div class="mc8-excel-values">${values||'<span>ไม่มีค่าในคอลัมน์นี้</span>'}</div><div class="mc8-excel-actions"><button type="button" data-live-filter-clear="${index}">ล้างตัวกรอง</button><button type="button" class="primary" data-live-filter-apply="${index}">ตกลง</button></div></div></details>`;
     };
-    if(sheet.startsWith('statement:')){
+    if(sheet.startsWith('statement:')||sheet==='borrow:3XB'){
       const groups=[['pm','STM / ธนาคาร'],['bo','BO / ระบบ'],['','ผลเทียบ / Audit']];
       return `<tr>${groups.map(([tone,label])=>{const count=visible.filter(index=>headerTone(headers[index],index,headers,sheet)===tone).length;return count?`<th class="${tone}" colspan="${count}">${label}</th>`:'';}).join('')}</tr><tr>${visible.map(index=>`<th class="${headerTone(headers[index],index,headers,sheet)}">${heading(headers[index],index)}</th>`).join('')}</tr>`;
     }
@@ -878,7 +888,8 @@
       const excludedAccountRows=all.filter(isExcludedAccountSheetRow);
       const infoSheets=informationSheets(data?.xbInformation,company),infoSheet=infoSheets.find(s=>'xb-info:'+s.name===sheet);
       if(sheet!=='all'&&sheet!=='summary'&&!infoSheet&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
-      const baseShown=infoSheet?infoSheet.rows.map((values,index)=>({key:'info-'+index,kind:'information',values})):chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
+      const filtered=infoSheet?[]:filter(all,pm,direction,status,sheet);
+      const baseShown=infoSheet?infoSheet.rows.map((values,index)=>({key:'info-'+index,kind:'information',values})):chronologicalRows(filtered,company==='3XB'&&sheet.startsWith('bo-account:')&&filtered.some(combinedBorrow)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
       // A placeholder is not an account awaiting bank evidence (e.g. affiliate credit).
       const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`)&&numeric(row.systemAmount)>0&&!/^(?:\s*[-—–]\s*|\s*ไม่ระบุ(?:บัญชี)?\s*|\s*ไม่มีข้อมูล\s*)$/.test(String(row.account||'')));

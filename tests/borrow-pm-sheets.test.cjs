@@ -83,5 +83,20 @@ const schema=require('../mc8-sheet-schema.js');
  assert.equal(mrExport[0].footerRows[0][mrExport[0].headers.indexOf('BO ฝาก')],365305);
  assert.equal(mrExport[0].footerRows[0][mrExport[0].headers.indexOf('BO ถอน')],365305);
  assert.deepEqual(sheets.summarize(mrGroups[0].rows),mrTotals);assert.equal(JSON.stringify(mrRows),mrBefore);
+ const sourceTimes=['03:43','04:15','05:38','06:18','06:09','06:28','10:03','10:37','10:43','11:25'];
+ const timed=tenRows.map((r,i)=>({...r,boTime:`2026-10-10 ${String(i+1).padStart(2,'0')}:00:00`,boTransactionTime:`2026-10-10 ${sourceTimes[i]}:00`}));
+ const beforeTimed=JSON.stringify(timed),orderedView=sheets.tableView(timed,'3XB','2026-10-10',false,groups[0].key,schema);
+ const orderedExport=sheets.buildAuditExportSheets(timed,'3XB','2026-10-10',false,schema).find(s=>s.name===groups[0].label);
+ for(const v of [orderedView,orderedExport]){
+   const timeIndex=v.headers.indexOf('BO · เวลาทำรายการต้นทาง');
+   assert.ok(v.headers[0].startsWith('STM/PM'));
+   assert.ok(timeIndex>v.headers.indexOf('STM/PM · รายละเอียดต้นฉบับ'));
+   assert.ok(v.headers.indexOf('สถานะ Audit')>v.headers.indexOf('BO ถอน'));
+   assert.deepEqual(v.rows.map(r=>r[timeIndex]),sourceTimes.map(t=>`2026-10-10 ${t}:00`).sort());
+   assert.equal(v.rows.length,10);
+ }
+ assert.equal(JSON.stringify(timed),beforeTimed);
+ assert.deepEqual(sheets.summarize(timed),sheets.summarize(tenRows));
+ console.log('3XB borrowed PM: STM → BO → Audit layout, source-time ordering and immutable transactions passed');
  console.log('MR9 borrowed PM: combined BO-named group, both direction columns and unchanged distinct transactions passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
