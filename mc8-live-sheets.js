@@ -262,6 +262,17 @@
         boTime:[e.boDate||e.date,e.boTime||e.time].filter(Boolean).join(' '),pmTime:'',
         boSource,pmSource:null,boRaw:e.boRaw||'',pmRaw:'',crossDay:false,boTransactionTime:e.boTransactionTime||'',
         code:'ยังไม่สร้างเคส',exType:'waiting_source',reason:e.detail||'อ่าน BO แล้ว · ยังไม่มี STM/PM'};
+      // Waiting snapshots carry canonical account IDs. Restore a borrowed
+      // account's BO label only from the exact source row, never by amount.
+      const original=borrowSources.get(`${boSource?.fileId}|${boSource?.row}`);
+      if(original&&row.company===original.company
+        &&row.direction===directionOf(original.direction)
+        &&cents(row.boAmount)===cents(original.systemAmount)
+        &&isBorrowAccount(original.account,row.company)){
+        row.account=original.account;row.boAccountLabel=original.account;
+        row.boSource={...boSource,fileName:original.boSource.fileName};
+        row.boTransactionTime=original.boTransactionTime||row.boTransactionTime;
+      }
       const key=sideKey(row,'bo');
       const source=sourceIdentity(row);
       if(key&&!representedBo.has(key)&&(!source||!representedSources.has(source))){
