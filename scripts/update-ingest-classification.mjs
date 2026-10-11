@@ -32,6 +32,7 @@ function isBankStatementDocument(name) {
 function kindOf(name, subject) {
   const n = String(name || '');
   const s = String(subject || '');
+  if (/\[AUDIT-EVIDENCE\]/i.test(s)) return 'doc_clarify';
   if (/รายงานหน้า\s*BO/i.test(s) && /\.(xlsx|xlsm?|csv)$/i.test(n)) return 'bo_main';
   if (/\.pdf$/i.test(n)) return isBankStatementDocument(n) ? 'stm_pdf' : 'doc_clarify';
   // 7M receives TMN statements as screenshots embedded in Word late in the
@@ -43,7 +44,7 @@ function kindOf(name, subject) {
   if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';
   if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';
   if (/ถอนเครดิต/.test(n)) return 'credit_out';
-  if (/\.(xlsx|xlsm?|csv)$/i.test(n) && (/รายงาน\s*PM/i.test(s) || /AUTOPEER|CYBER|AZPAY|MYPAY|12PAY|CPXM/i.test(n))) return 'pm_statement';
+  if (/\.(xlsx|xlsm?|csv)$/i.test(n) && (/รายงาน\s*PM/i.test(s) || /AUTOPEER|CYBER|AZPAY|MYPAY|12PAY|CPXM|COREPAY|CPPAY|(?:^|[^a-z0-9])CP2(?:[^a-z0-9]|$)/i.test(n))) return 'pm_statement';
   return 'unknown';
 }
 function companyOf(name, current) {

@@ -621,6 +621,14 @@
   }
 
   function placeBoOperator(view){
+    if(view.templateSheet?.startsWith('statement:')){
+      const boNames=['วัน / เวลา BO','ยอด BO','User BO','ชื่อ / User BO','เลขอ้างอิง BO','BO · ผู้ดำเนินการ','BO · รายละเอียดต้นฉบับ','BO · เวลาทำรายการต้นทาง'];
+      const auditNames=['ต่างเวลา','เงื่อนไขที่จับคู่','ผลต่างยอด','สถานะ Audit'];
+      const pmNames=view.headers.filter(h=>!boNames.includes(h)&&!auditNames.includes(h));
+      const headers=[...pmNames,...boNames.filter(h=>view.headers.includes(h)),...auditNames.filter(h=>view.headers.includes(h))];
+      const indexes=headers.map(h=>view.headers.indexOf(h));
+      return {...view,headers,rows:view.rows.map(values=>indexes.map(i=>values[i]))};
+    }
     const old=view.headers.indexOf('BO · ผู้ดำเนินการ');
     const anchor=view.headers.indexOf('เลขอ้างอิง BO')>=0
       ?view.headers.indexOf('เลขอ้างอิง BO'):view.headers.indexOf('BO · รายละเอียดต้นฉบับ');
@@ -656,7 +664,7 @@
   function headerTone(header,index,headers,sheet){
     if(header===null||header===undefined||header==='')return 'gap';
     if(/^(bo-account:|unassigned-pm:)/.test(sheet))return header.startsWith('STM/PM')?'pm':header.startsWith('BO ·')?'bo':'';
-    if(sheet.startsWith('statement:'))return /Statement/.test(header)?'pm':/\bBO\b/.test(header)?'bo':'';
+    if(sheet.startsWith('statement:'))return /BO/.test(header)?'bo':/ต่างเวลา|เงื่อนไขที่จับคู่|ผลต่างยอด|สถานะ Audit/.test(header)?'':'pm';
     if(SHEETS.includes(sheet)){
       const boStart=headers.indexOf('รหัส')>=0?headers.indexOf('รหัส'):headers.indexOf('เวลา'),auditStart=headers.length-AUDIT_HEADERS.length;
       if(index<boStart)return 'pm';
@@ -675,6 +683,10 @@
       const values=options.map(value=>{const key=String(value??''),label=key===''?'(ว่าง)':renderCell(value,header);return `<label data-excel-value-label><input type="checkbox" data-live-filter-value value="${esc(key)}" ${selected.has(key)?'checked':''}> <span title="${esc(label)}">${esc(label)}</span></label>`;}).join('');
       return `<details class="mc8-excel-filter ${active?'active':''}" data-live-filter-menu="${index}"><summary>${esc(header)||' '}<span>${sort.index===index?(sort.direction==='desc'?'↓':'↑'):active?'●':'▼'}</span></summary><div class="mc8-excel-menu"><b>${letter(index)} · ${esc(header||'คอลัมน์ว่าง')}</b><button type="button" data-live-sort-dir="asc" data-column-index="${index}">เรียงน้อย → มาก</button><button type="button" data-live-sort-dir="desc" data-column-index="${index}">เรียงมาก → น้อย</button><input type="search" data-live-value-search placeholder="ค้นหาในคอลัมน์นี้" aria-label="ค้นหาค่าใน ${esc(header||letter(index))}"><div class="mc8-excel-select-actions"><button type="button" data-live-values-all>เลือกทั้งหมด</button><button type="button" data-live-values-none>ไม่เลือกทั้งหมด</button></div><div class="mc8-excel-values">${values||'<span>ไม่มีค่าในคอลัมน์นี้</span>'}</div><div class="mc8-excel-actions"><button type="button" data-live-filter-clear="${index}">ล้างตัวกรอง</button><button type="button" class="primary" data-live-filter-apply="${index}">ตกลง</button></div></div></details>`;
     };
+    if(sheet.startsWith('statement:')){
+      const groups=[['pm','STM / ธนาคาร'],['bo','BO / ระบบ'],['','ผลเทียบ / Audit']];
+      return `<tr>${groups.map(([tone,label])=>{const count=visible.filter(index=>headerTone(headers[index],index,headers,sheet)===tone).length;return count?`<th class="${tone}" colspan="${count}">${label}</th>`:'';}).join('')}</tr><tr>${visible.map(index=>`<th class="${headerTone(headers[index],index,headers,sheet)}">${heading(headers[index],index)}</th>`).join('')}</tr>`;
+    }
     if(!SHEETS.includes(sheet))return `<tr>${visible.map(index=>`<th class="${headerTone(headers[index],index,headers,sheet)}">${heading(headers[index],index)}</th>`).join('')}</tr>`;
     const boStart=headers.indexOf('รหัส')>=0?headers.indexOf('รหัส'):headers.indexOf('เวลา'),auditStart=headers.length-AUDIT_HEADERS.length;
     const pmEnd=headers.slice(0,boStart).findLastIndex(value=>!!value),gap=Math.max(0,boStart-pmEnd-1);

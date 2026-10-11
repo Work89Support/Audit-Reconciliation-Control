@@ -22,6 +22,8 @@ const schema=require('../mc8-sheet-schema.js');
   assert.ok(bankView.headers.includes('วัน / เวลา Statement')&&bankView.headers.includes('วัน / เวลา BO'));
   assert.deepEqual(bankView.rows.map(r=>r[bankView.headers.indexOf('BO · ผู้ดำเนินการ')]),['พนักงาน BO ก','พนักงาน BO ข']);
   assert.ok(bankView.headers.includes('เลขอ้างอิง Statement')&&bankView.headers.includes('เลขอ้างอิง BO'));
+  assert.ok(bankView.headers.indexOf('STM/PM · สถานะต้นทาง')<bankView.headers.indexOf('วัน / เวลา BO'));
+  assert.ok(bankView.headers.indexOf('BO · เวลาทำรายการต้นทาง')<bankView.headers.indexOf('ต่างเวลา'));
   assert.equal(bankView.headers.indexOf('BO · ผู้ดำเนินการ'),bankView.headers.indexOf('เลขอ้างอิง BO')+1,'operator stays with BO, before comparison fields');
   const unknownRows=rows.map(r=>({...r,account:'UNKNOWN',boAccountLabel:'UNKNOWN'}));
   const unknownView=tableView(unknownRows,company,'2026-10-04',true,'bo-account:UNKNOWN:withdraw',schema);

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const workflow=JSON.parse(fs.readFileSync(require.resolve('../n8n/audit-mail-ingest.json'),'utf8'));
+const code=workflow.nodes.find(n=>n.id==='classify').parameters.jsCode;
+const sandbox={};vm.createContext(sandbox);
+vm.runInContext(code.slice(0,code.indexOf('function companyOf'))+';globalThis.kindOf=kindOf;',sandbox);
+for(const name of ['UFABET7M_PM_CP2 _D_2026-10-10.xlsx','UFABET7M_PM_CP2_W_2026-10-10.xlsx','UFABET7M_PM_COREPAY_D_2026-10-10.xlsx'])assert.equal(sandbox.kindOf(name,''),'pm_statement');
+assert.equal(sandbox.kindOf('UFABET7M_EVIDENCE_CP2.docx',''),'doc_clarify');
+assert.equal(sandbox.kindOf('UFABET7M_PM_CP2_D.xlsx','[AUDIT-EVIDENCE] 7M'),'doc_clarify');
+assert.equal(sandbox.kindOf('CP200-unknown.xlsx',''),'unknown');
+console.log('CP2 ingest: deposit/withdraw with spaces accepted; evidence and unrelated names preserved');
