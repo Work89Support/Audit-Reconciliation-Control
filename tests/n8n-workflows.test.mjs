@@ -255,8 +255,11 @@ assert.match(workerText, /missing_groups/, "the reconciliation gate must require
 assert.equal(worker.connections["Supabase: บันทึก Exception"].main[0][0].node, "Supabase: ตรวจว่า Exception บันทึกครบ");
 assert.equal(worker.connections["Supabase: ตรวจว่า Exception บันทึกครบ"].main[0][0].node, "แบ่งอ่านเคส Sapan ตามประเภท");
 assert.match(workerText, /verify_recon_run_exception_count/, "the worker must verify native exception persistence before lifecycle carry-forward");
-assert.equal(worker.nodes.find(node => node.name === "Supabase: บันทึก Exception").alwaysOutputData, undefined,
-  "an exception insert failure must stop the run instead of being treated as an empty success");
+const exceptionInsert=worker.nodes.find(node => node.name === "Supabase: บันทึก Exception");
+assert.equal(exceptionInsert.alwaysOutputData, true,
+  "a successful return=minimal response must continue to the persistence guard");
+assert.ok(!exceptionInsert.continueOnFail && !["continueRegularOutput","continueErrorOutput"].includes(exceptionInsert.onError),
+  "an exception insert failure must still stop the run; empty successful output is not an error bypass");
 assert.equal(worker.connections["แบ่งอ่านเคส Sapan ตามประเภท"].main[0][0].node, "Supabase: อ่านเคส Sapan รอบก่อน");
 assert.equal(worker.connections["Supabase: อ่านเคส Sapan รอบก่อน"].main[0][0].node, "เตรียมปิดเคส Sapan รอบก่อน");
 assert.equal(worker.connections["เตรียมปิดเคส Sapan รอบก่อน"].main[0][0].node, "มีเคส Sapan ต้องปิด?");

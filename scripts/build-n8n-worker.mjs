@@ -550,7 +550,7 @@ const nodes = [
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json.exception_rows) }}", options: { response: { response: {} } },
-  }) },
+  }), alwaysOutputData: true },
   { ...http("verify-exception-count", "Supabase: ตรวจว่า Exception บันทึกครบ", [2190, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/verify_recon_run_exception_count", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
