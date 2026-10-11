@@ -1,0 +1,15 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบปิดหลายเคส — ข้อมูลจำลองเท่านั้น</title>
+<link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../case-closure.css">
+<style>body{font-family:Kanit,system-ui;background:#edf4ff;color:#17324d;margin:24px}button,select,input{font:inherit}button{padding:10px 16px;border:1px solid #bdd3e8;border-radius:8px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary-button{background:#126ac6;color:white}.ghost-button{background:white;color:#17324d}label{display:block;margin:12px 0}#root{background:white;border-radius:16px}#modal{position:fixed;inset:5vh 15vw;background:white;padding:24px;border:2px solid #126ac6;overflow:auto;box-shadow:0 0 0 100vmax #17324d66;z-index:5}#modal footer{display:flex;gap:12px}#proof{background:#fff8e6;padding:18px;margin:16px 0;border-radius:12px}</style>
+<h1>ทดสอบเลือกหลายเคสและปิดครั้งเดียว</h1><p>ข้อมูลจำลองเท่านั้น · ไม่เชื่อมต่อฐานข้อมูล · ไม่ปิดเคสจริง</p><section id="proof" hidden><h2>หลักฐานจำลอง</h2><p id="proofText"></p><button id="proofClose">อ่านแล้ว กลับไปเลือกเคส</button></section><main id="root"></main><div id="modal" hidden></div><p id="result" role="status"></p>
+<script>
+const $=s=>document.querySelector(s),h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const state={dataset:'production',role:'lead'},money=n=>Number(n).toFixed(2),can=()=>true,canAccessCompany=()=>true,companyMaster=()=>[{code:'UFABET7M'}];
+const rows=[110,300].map((n,i)=>({id:'mock-'+i,exception_id:'test-case-'+i,company:'UFABET7M',business_date:'2026-10-10',status:'pending',outcome:'no_loss',loss_amount:0,requested_by:'audit',review_origin:'audit_submission',audit_reason:'หลักฐานจำลองครบ ตรวจแล้วไม่มีความเสียหาย',snapshot:{code:'TEST-300'+(i+1),company:'UFABET7M',business_date:'2026-10-10',system_amount:n,bank_amount:null,currency:'THB',stored_document_at_submit:true}}));
+const cases=Object.fromEntries(rows.map(q=>[q.exception_id,{...q.snapshot,status:'answered',case_closure_request_id:q.id}]));
+const Sb={signedIn:()=>true,authUser:()=>({id:'test-head'}),pendingCaseClosures:async()=>rows.filter(q=>q.status==='pending'),caseClosureHistory:async()=>rows,caseClosureRequest:async id=>rows.find(q=>q.id===id),exceptionDetail:async id=>cases[id],decideCaseClosure:async body=>{const q=rows.find(q=>q.id===body.p_id);q.status='approved';Object.assign(cases[q.exception_id],{status:'closed',approved_by:'test-head'});return q;}};
+const toast=t=>$('#result').textContent=t,renderNav=()=>{},closeModal=()=>{$('#modal').hidden=true;},openModal=(title,body,foot)=>{$('#modal').innerHTML='<h2>'+title+'</h2>'+body+'<footer>'+foot+'</footer>';$('#modal').hidden=false;};
+const openEvidenceRelatedCase=async id=>{$('#proof').hidden=false;$('#proofText').textContent=id+' — เอกสารจำลองยืนยันไม่มีความเสียหาย';};
+const openApprovalReview=async()=>{},caseLabel=e=>e.id;
+$('#proofClose').onclick=()=>{$('#proof').hidden=true;};
+</script><script src="../case-closure.js"></script><script>CaseClosure.mountQueue($('#root'));</script></html>
