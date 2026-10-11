@@ -482,7 +482,8 @@
     // Display-only intersection: other cross-day cases must not inflate the
     // waiting-source status. Existing financial totals remain unchanged.
     const waitingCrossDay=new Map([...waitingBo].filter(([key])=>crossDay.has(key)));
-    return {pmCount:pm.size,pmCents,boCount:bo.size,boCents,waitingBoCount:waitingBo.size,waitingBoCents,waitingCrossDayCount:waitingCrossDay.size,waitingCrossDayCents:total(waitingCrossDay,'bo'),matchedCount:matched.length,matchedPmCents:matched.reduce((s,r)=>s+(cents(r.pmAmount)||0),0),matchedBoCents:matched.reduce((s,r)=>s+(cents(r.boAmount)||0),0),unmatchedPmCount:unmatchedPm.size,unmatchedPmCents:total(unmatchedPm,'pm'),unmatchedBoCount:unmatchedBo.size,unmatchedBoCents:total(unmatchedBo,'bo'),crossDayCount:crossDay.size,crossDayBoCents,duplicateCount:duplicate.size,duplicateCents:[...duplicate.values()].reduce((s,r)=>s+(cents(r.boAmount)??cents(r.pmAmount)??0),0),diffBeforeCents:pmCents-(boCents-crossDayBoCents-waitingBoCents),diffAfterCents:pmCents-(boCents-waitingBoCents)};
+    const closedWaitingBo=uniqueSides(rows.filter(r=>r.waiting&&r.case?.status==='closed'),'bo');
+    return {pmCount:pm.size,pmCents,boCount:bo.size,boCents,waitingBoCount:waitingBo.size,waitingBoCents,closedWaitingBoCount:closedWaitingBo.size,waitingCrossDayCount:waitingCrossDay.size,waitingCrossDayCents:total(waitingCrossDay,'bo'),matchedCount:matched.length,matchedPmCents:matched.reduce((s,r)=>s+(cents(r.pmAmount)||0),0),matchedBoCents:matched.reduce((s,r)=>s+(cents(r.boAmount)||0),0),unmatchedPmCount:unmatchedPm.size,unmatchedPmCents:total(unmatchedPm,'pm'),unmatchedBoCount:unmatchedBo.size,unmatchedBoCents:total(unmatchedBo,'bo'),crossDayCount:crossDay.size,crossDayBoCents,duplicateCount:duplicate.size,duplicateCents:[...duplicate.values()].reduce((s,r)=>s+(cents(r.boAmount)??cents(r.pmAmount)??0),0),diffBeforeCents:pmCents-(boCents-crossDayBoCents-waitingBoCents),diffAfterCents:pmCents-(boCents-waitingBoCents)};
   }
   function providerSheets(company,rows=[]){
     if(isSevenM(company))return [...SEVEN_M_SHEETS,...sourceSheets(company)];
@@ -534,6 +535,16 @@
       &&(sheet==='all'||sheet==='summary'||(accountRows?accountRows.has(r):statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
   }
   function statusOf(s,complete){
+    if(s.closedWaitingBoCount){
+      const parts=[`ปิดเคสแล้ว ${s.closedWaitingBoCount} รายการ`];
+      if(s.matchedCount)parts.push(`จับคู่แล้ว ${s.matchedCount} รายการ`);
+      const pending=s.waitingBoCount-s.closedWaitingBoCount;
+      if(pending)parts.push(`ยังรอตรวจ ${pending} รายการ`);
+      else parts.push('ปิดด้วยหลักฐาน · ไม่มี STM/PM คู่');
+      if(s.unmatchedPmCount||s.unmatchedBoCount>s.waitingBoCount||s.duplicateCount||s.diffAfterCents)parts.push('มีรายการอื่นต้องตรวจ');
+      if(!complete)parts.push('ข้อมูลรอบยังไม่ครบ');
+      return parts.join(' · ');
+    }
     if(s.waitingBoCount&&s.matchedCount){
       const parts=[complete?`จับคู่แล้ว ${s.matchedCount} รายการ`:'ข้อมูลยังไม่ครบ'];
       if(s.waitingCrossDayCount)parts.push(`รอตรวจข้ามวัน ${s.waitingCrossDayCount} รายการ / ${moneyCents(s.waitingCrossDayCents)} บาท`);
@@ -543,6 +554,11 @@
       return parts.join(' · ');
     }
     return s.waitingBoCount?'ยังไม่มี STM/PM · รอข้อมูล':!complete?'ข้อมูลยังไม่ครบ':s.diffAfterCents===0&&s.unmatchedPmCount===0&&s.unmatchedBoCount===0&&s.duplicateCount===0?'ยอดตรง':'ต้องตรวจ';
+  }
+  function waitingCaseNotice(rows){
+    const s=summarize(rows),pending=s.waitingBoCount-s.closedWaitingBoCount;
+    if(!s.closedWaitingBoCount)return `BO รอ STM/PM ${pending} รายการ · คงเคสรอหลักฐานไว้ ไม่ใช่การโหลดผลรอบงานไม่ครบ`;
+    return [s.closedWaitingBoCount?`ปิดเคสด้วยหลักฐานแล้ว ${s.closedWaitingBoCount} รายการ`:'',pending?`ยังรอตรวจ ${pending} รายการ`:'ไม่มีเคสรอตรวจในกลุ่ม BO รอ STM/PM','สถานะปิดเคสแยกจากผลจับคู่ STM/PM'].filter(Boolean).join(' · ');
   }
   function summaryRow(name,s,complete,key=name){const warning=complete&&(s.diffAfterCents||s.unmatchedPmCount||s.unmatchedBoCount||s.duplicateCount);return `<tr class="${warning?'mc8-warning':''}"><th><button type="button" data-live-sheet="${esc(key)}">${esc(name)}</button></th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr>`;}
   function summaryFooter(rows,complete,pageCount){const s=summarize(rows);return `<tfoot><tr><th>รวม ${pageCount} หน้า</th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr></tfoot>`;}
@@ -589,7 +605,7 @@
     // verified source-evidence gate used by production quick-close can allow it.
     return equalPair&&row.case?._quickSourceEvidence&&row.case.status==='open'?'ปิดได้ทันที':'ปิดไม่ได้/ต้องตรวจ';
   }
-  function toneOf(status){return status==='จับคู่แล้ว รอหัวหน้าทีมอนุมัติ'?'neutral':status==='ปิดได้ทันที'||status==='ปิดเคสแล้ว'||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ยังไม่มี STM/PM')||status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')||status.startsWith('ยอดจับคู่แล้ว')?'warning':'error';}
+  function toneOf(status){return status==='จับคู่แล้ว รอหัวหน้าทีมอนุมัติ'?'neutral':status==='ปิดได้ทันที'||status.startsWith('ปิดเคสแล้ว')||status.startsWith('แจ้งข้อมูล')?'success':status.startsWith('ยังไม่มี STM/PM')||status.startsWith('ต้องตรวจเพิ่ม')||status.startsWith('ค้างรอข้อมูลข้ามวัน')||status.startsWith('ยอดจับคู่แล้ว')?'warning':'error';}
   function exportTones(rows,complete,statusIndex){
     const tones=rows.map(row=>toneOf(auditStatus(row,complete)));
     return {
@@ -888,7 +904,7 @@
         ${data?.run?.id&&opts.exportBoWaitingCases&&caseRowsToCreate.length?`<button type="button" id="mc8-export-bo-cases">ส่งออก BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>ส่งออกข้อมูลต้นทางเพื่อสร้างผ่าน Worker ที่มีสิทธิ์เดิม · ไม่สร้างเคสจากบัญชีเว็บและไม่เปลี่ยน RLS</p>`:''}
         ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
-        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · แสดง ${all.filter(row=>!row.isPair).length} เคสที่ต้องตรวจจริง</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status" class="mc8-warning">BO รอ STM/PM ${summarize(all).waitingBoCount} รายการ · คงเคสรอหลักฐานไว้ ไม่ใช่การโหลดผลรอบงานไม่ครบ</p>`:''}
+        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · ยังรอตรวจ ${all.filter(row=>!row.isPair&&row.case?.status!=='closed').length} เคส</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status">${esc(waitingCaseNotice(all))}</p>`:''}
         <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกตามบัญชี BO</h3><div class="mc8-summary-scroll"><table><thead><tr><th>บัญชี</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${accountGroups.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,accountGroups.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · แถวรวมไม่นับซ้ำ${excludedAccountRows.length?` · ไม่สร้างชีตบัญชีว่าง - ฝาก (${excludedAccountRows.length} รายการ) · แถวรวมยังคงยอดต้นทางเดิม รวมรายการที่ไม่สร้างชีต · ตรวจย้อนหลังได้ในข้อมูลทั้งหมด`:' · รายการที่ระบุบัญชี BO ไม่ได้ยังแสดงแยกไว้ ไม่ซ่อนหลักฐาน'}</p></section>
         <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('xb-info:')?'ไม่เข้ากระทบยอด':value.startsWith('bo-account:')?'STM/PM ↔ BO':'STM/PM รอ BO'}</small></button>`).join('')}</div>
         <div class="mc8-filters"><label>PM<select id="mc8-live-pm"><option value="all">ทุก PM</option>${[...new Set(all.map(r=>r.account))].sort().map(a=>`<option ${pm===a?'selected':''} value="${esc(a)}">${esc(a)}</option>`).join('')}</select></label><label>ประเภท<select id="mc8-live-direction">${[['all','ฝากและถอน'],['deposit','ฝาก'],['withdraw','ถอน']].map(([v,t])=>`<option value="${v}" ${direction===v?'selected':''}>${t}</option>`).join('')}</select></label><label>ผลตรวจ<select id="mc8-live-status">${[['all','ทั้งหมด'],...Object.entries(labels)].map(([v,t])=>`<option value="${v}" ${status===v?'selected':''}>${t}</option>`).join('')}</select></label></div>${rulePanel(company)}${columnTools}

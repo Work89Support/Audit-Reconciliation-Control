@@ -51,6 +51,12 @@ for(const company of ['3XB','MC8','MR9','PS8','UR9','FR8','AT4','SK8','UFABET7M'
   const linked=sheets.rowsOf({...d,waitingHistory:[h]},company);
   assert.equal(linked.length,1);assert.equal(linked[0].key,h.id);assert.equal(linked[0].code,h.code);
   assert.equal(linked[0].case.status,'closed');assert.match(sheets.auditStatus(linked[0]),/ปิดเคสแล้ว/);
-  assert.deepEqual(sheets.summarize(linked),baseline,'history must not alter financial results');
+  const linkedSummary=sheets.summarize(linked);
+  assert.deepEqual({...linkedSummary,closedWaitingBoCount:0},baseline,'history must not alter financial results');
+  assert.equal(linkedSummary.closedWaitingBoCount,1);
+  const closedExport=sheets.buildAuditExportSheets(linked,company,w.boDate,true,schema);
+  assert.match(closedExport.find(s=>s.name==='สรุป').rows[0][8],/^ปิดเคสแล้ว 1 รายการ/);
+  const closedDetail=closedExport.find(s=>s.name!=='สรุป'&&s.name!=='ข้อมูลทั้งหมด');
+  assert.ok(closedDetail.rowTones.every(tone=>tone===''),'closed waiting rows are not painted red');
   assert.equal(sheets.rowsOf({...d,waitingHistory:[{...h,customer_details:{...h.customer_details,source_rows:{bo:{...w.boSource,row:99}}}}]},company)[0].case,undefined,'equal amount is not identity');
 }
