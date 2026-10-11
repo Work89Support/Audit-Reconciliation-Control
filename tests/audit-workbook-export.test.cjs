@@ -51,4 +51,37 @@ const orphanExport=live.buildAuditExportSheets([rows[0],orphan],'MC8','2026-09-1
 assert.equal(orphanExport.slice(2).reduce((n,s)=>n+s.rows.length,0),2,'PM-only rows must not be lost');
 assert.ok(orphanExport[1].rows.some(r=>r[1].startsWith('STM/PM ไม่มี BO')));
 assert.equal(JSON.stringify(rows),before,'export never changes amounts, identities or cases');
+// 7M BO notes are not transaction IDs. Keep equal amounts on distinct source
+// rows and, for older evidence without sources, at distinct times/users.
+const noteRows=(account,reference,amounts)=>amounts.map((amount,i)=>row({
+ company:'UFABET7M',account,key:`${account}-${i}`,boAmount:amount,pmAmount:amount,
+ bo:{reference,user:`member-${i}`},pm:{reference:`pm-${account}-${i}`},
+ boTime:`2026-10-10 22:${String(i).padStart(2,'0')}:00`,
+ boSource:{fileId:'7m-bo',row:`${account}-${i}`}
+}));
+const kb=noteRows('1953583301','ถอนมือ',[7,7,7,5,5,9,9]);
+const rung=noteRows('0812792075','ไม่จับ',[500,47,100,100,300,100,100,500,50,100]);
+for(const input of [kb,rung]){
+ const snapshot=JSON.stringify(input),sum=live.summarize(input);
+ assert.equal(sum.boCount,input.length);assert.equal(sum.diffAfterCents,0);
+ const old=input.map(r=>({...r,boSource:{}}));
+ assert.equal(live.summarize(old).boCount,input.length,'time/user distinguish old evidence');
+ assert.equal(live.summarize([...input,input[0]]).boCount,input.length,'same source identity is counted once');
+ const exported=live.buildAuditExportSheets(input,'UFABET7M','2026-10-10',true,schema);
+ assert.equal(exported[1].rows[0][5],sum.boCents/100);
+ assert.equal(exported[1].rows[0][6],0);
+ assert.equal(JSON.stringify(input),snapshot);
+}
+for(const note of ['ระบบไม่จับยอด','ไม่จับ','ไมจับ','ยอดไม่จับ','บอทไม่จับ']){
+ const input=noteRows('0639274201',note,[100,100]);
+ input.push(row({company:'UFABET7M',account:'0639274201',key:'20-unmatched',isPair:false,kind:'review',
+   bo:{reference:'ยอดไม่จับ',user:'member-20'},pm:{},boAmount:20,pmAmount:null,
+   boTime:'2026-10-10 06:54:00',boSource:{fileId:'7m-bo',row:999},case:{id:'original-case',status:'open'}}));
+ const snapshot=JSON.stringify(input),sum=live.summarize(input);
+ assert.equal(sum.boCount,3);assert.equal(sum.unmatchedBoCount,1);assert.equal(sum.diffAfterCents,-2000);
+ const exported=live.buildAuditExportSheets(input,'UFABET7M','2026-10-10',true,schema);
+ assert.equal(exported[1].rows[0][6],-20);
+ assert.equal(exported.slice(2).reduce((n,s)=>n+s.rows.length,0),3);
+ assert.equal(JSON.stringify(input),snapshot,'20-baht case and source amounts remain unchanged');
+}
 (async()=>{const blob=writer.build(sheets,'MC8 2026-09-15');assert.ok(blob.size>1000);const xml=new TextDecoder().decode(await blob.arrayBuffer());assert.ok(xml.includes('ข้อมูลทั้งหมด'));assert.ok(xml.includes('FFFCE4D6'));assert.ok(xml.includes('FFFFF2CC'));assert.ok(xml.includes('<row r="1" ht="26" customHeight="1">'));console.log('Account workbook export: all companies, unchanged amounts/matches, unique names, orphan retention, chronological rows and XLSX styles passed');})().catch(e=>{console.error(e);process.exitCode=1;});

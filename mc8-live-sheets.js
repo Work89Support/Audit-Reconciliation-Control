@@ -440,6 +440,19 @@
     if(!hasSide(row,side))return '';
     const detail=row[side]||{},amount=cents(row[`${side}Amount`]);
     const source=row[`${side}Source`]||{};
+    // 7M sometimes saves an operator note in the reference column. These
+    // descriptions are not transaction IDs: equal amounts at different
+    // times/users/source rows must remain separate in summaries and exports.
+    const noteReference=String(detail.reference||'').trim().replace(/\s+/g,'');
+    if(side==='bo'&&row.company==='UFABET7M'
+      &&/^(?:ถอนมือ|ฝากมือ|(?:ระบบ|บอท|ยอด)?(?:ไม่|ไม)จับ(?:ยอด)?|โยกเงิน(?:เข้า|ออก)?)$/.test(noteReference)){
+      const origin=source.fileId?source:row.case?.customer_details?.source_rows?.bo||source;
+      if(origin.fileId&&origin.row!==null&&origin.row!==undefined)
+        return `src:${origin.fileId}:${origin.row}`;
+      const identity=[row.company,row.account,row.direction,amount,row.boTime||row.boDate||'',detail.user||'',detail.account||''];
+      // Without time/user/source identity there is no evidence of a duplicate.
+      return `bo-note:${JSON.stringify(identity)}:${identity[4]||identity[5]?'':row.key||row.code||''}`;
+    }
     // "โยกเงิน" is a description, not a transaction ID. Verified 7M TMN
     // transfer pairs can repeat the same amount/reference on distinct BO rows.
     if(side==='bo'&&accountDisplayDirection(row)!==directionOf(row.direction)
