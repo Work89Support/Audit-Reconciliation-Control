@@ -1153,7 +1153,7 @@ const Sb = (() => {
     const rows=await json(`/rest/v1/case_evidence?id=eq.${encodeURIComponent(metadata.id)}&exception_id=eq.${encodeURIComponent(metadata.exception_id)}&select=*&limit=1`);
     const saved=Array.isArray(rows)?rows[0]:null;
     if(!saved)return null;
-    if(saved.id!==metadata.id||saved.exception_id!==metadata.exception_id||saved.storage_path!==metadata.storage_path||Number(saved.size_bytes)!==Number(metadata.size_bytes)||saved.uploaded_by!==metadata.uploaded_by||saved.file_name!==metadata.file_name||saved.mime_type!==metadata.mime_type){
+    if(saved.id!==metadata.id||saved.exception_id!==metadata.exception_id||saved.storage_path!==metadata.storage_path||Number(saved.size_bytes)!==Number(metadata.size_bytes)||saved.uploaded_by!==metadata.uploaded_by||saved.file_name!==metadata.file_name||saved.mime_type!==metadata.mime_type||metadata.correction_reason&&(saved.correction_reason!==metadata.correction_reason||(saved.replaces_evidence_id||null)!==(metadata.replaces_evidence_id||null)||(saved.replaces_source_file_id||null)!==(metadata.replaces_source_file_id||null))){
       const error=new Error('ทะเบียนหลักฐานไม่ตรงกับคำขอเดิม ต้องให้ผู้ดูแลตรวจ ไม่สร้างไฟล์ใหม่');error.code='evidence_receipt_mismatch';throw error;
     }
     return saved;
@@ -1186,7 +1186,7 @@ const Sb = (() => {
         checkActor();
         if(!Array.isArray(accessible)||accessible.length!==1||accessible[0].id!==metadata.exception_id)
           throw new Error('ยังไม่ได้ส่งไฟล์: ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
-        if(!['open','clarifying','answered','pair_pending'].includes(accessible[0].status))
+        if(!(metadata.correction_reason?['closed','approved']:['open','clarifying','answered','pair_pending']).includes(accessible[0].status))
           throw new Error('ยังไม่ได้ส่งไฟล์: สถานะเคสเปลี่ยนหรือปิดแล้ว กรุณาตรวจล่าสุดก่อน');
         progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
         pending.attempted=true;
@@ -1213,15 +1213,15 @@ const Sb = (() => {
         // Legacy fallback is only for a missing migration, never a timeout/denial.
         let rows;
         try {
-          const receipt=await rpc('register_case_evidence',{p_metadata:metadata});
+          const receipt=await rpc(metadata.correction_reason?'register_closed_case_evidence':'register_case_evidence',{p_metadata:metadata});
           rows=Array.isArray(receipt)?receipt:[receipt];
         } catch(error) {
-          if(!/PGRST202|Could not find the function public\.register_case_evidence/i.test(error.message||''))throw error;
+          if(metadata.correction_reason||!/PGRST202|Could not find the function public\.register_case_evidence/i.test(error.message||''))throw error;
           rows=await post('case_evidence?on_conflict=id',[metadata],'resolution=ignore-duplicates,return=representation');
         }
         checkActor();
         const returned=Array.isArray(rows)?rows.find(row=>row.id===id):null;
-        if(returned&&returned.exception_id===metadata.exception_id&&returned.storage_path===metadata.storage_path&&returned.uploaded_by===metadata.uploaded_by&&Number(returned.size_bytes)===Number(metadata.size_bytes)&&returned.file_name===metadata.file_name&&returned.mime_type===metadata.mime_type){
+        if(returned&&returned.exception_id===metadata.exception_id&&returned.storage_path===metadata.storage_path&&returned.uploaded_by===metadata.uploaded_by&&Number(returned.size_bytes)===Number(metadata.size_bytes)&&returned.file_name===metadata.file_name&&returned.mime_type===metadata.mime_type&&(!metadata.correction_reason||returned.correction_reason===metadata.correction_reason&&(returned.replaces_evidence_id||null)===(metadata.replaces_evidence_id||null)&&(returned.replaces_source_file_id||null)===(metadata.replaces_source_file_id||null))){
           pendingEvidenceUploads.delete(id);return returned;
         }
         saved=await readEvidenceReceipt(metadata);
@@ -1243,20 +1243,22 @@ const Sb = (() => {
     };
     pending.inFlight=work();try{return await pending.inFlight;}finally{pending.inFlight=null;}
   }
-  async function uploadCaseEvidence(exceptionId, file, onProgress=()=>{}) {
+  async function uploadCaseEvidence(exceptionId, file, onProgress=()=>{}, correction=null) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนแนบหลักฐาน");
     if (!exceptionId || !file || !file.size || file.size > 20 * 1024 * 1024) throw new Error("เลือกไฟล์ขนาดไม่เกิน 20 MB และต้องไม่ว่าง");
     if (!/\.(pdf|docx|png|jpe?g|gif|webp|csv|xlsx|txt)$/i.test(file.name)) throw new Error("ชนิดไฟล์ไม่รองรับ — ใช้ PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT");
+    if(correction&&(!String(correction.reason||'').trim()||String(correction.reason).trim().length>2000||!!correction.evidenceId===!!correction.sourceFileId))throw new Error('ต้องเลือกหลักฐานเดิมและระบุเหตุผลไม่เกิน 2000 ตัวอักษร');
+    const correctionMeta=correction?{correction_reason:String(correction.reason).trim(),replaces_evidence_id:correction.evidenceId||null,replaces_source_file_id:correction.sourceFileId||null}:{};
     const uploader=authUser().id;
     const buffer = await file.arrayBuffer();
     const digest=crypto.subtle?Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer)),b=>b.toString(16).padStart(2,'0')).join(''):null;
-    const previous=[...pendingEvidenceUploads.values()].find(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id&&p.metadata.file_name===file.name&&p.metadata.size_bytes===file.size&&(digest?p.digest===digest:p.file===file));
+    const previous=[...pendingEvidenceUploads.values()].find(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id&&p.metadata.file_name===file.name&&p.metadata.size_bytes===file.size&&JSON.stringify([p.metadata.correction_reason,p.metadata.replaces_evidence_id,p.metadata.replaces_source_file_id])===JSON.stringify([correctionMeta.correction_reason,correctionMeta.replaces_evidence_id,correctionMeta.replaces_source_file_id])&&(digest?p.digest===digest:p.file===file));
     if(authUser()?.id!==uploader)throw new Error('บัญชีผู้ใช้เปลี่ยนก่อนส่งไฟล์ กรุณาลองใหม่ด้วยบัญชีเดิม');
     if(previous){previous.onProgress=onProgress;return resumeCaseEvidence(previous.metadata.id);}
     const id = crypto.randomUUID();
     const storagePath = `case-evidence/${exceptionId}/${authUser().id}/${id}`;
     const metadata = { id, exception_id: exceptionId, storage_path: storagePath, file_name: file.name,
-      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: authUser().id };
+      size_bytes: file.size, mime_type: file.type || "application/octet-stream", uploaded_by: authUser().id,...correctionMeta };
     pendingEvidenceUploads.set(id,{metadata,file,digest,buffer,uploaded:false,inFlight:null,onProgress});
     return resumeCaseEvidence(id);
   }

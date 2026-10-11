@@ -773,7 +773,7 @@
   }
   function borrowLayout(view){
     const bo=h=>h.startsWith('BO ·')||['บัญชีบริษัท / Provider','ประเภท','BO ฝาก','BO ถอน','ไฟล์ BO ต้นทาง'].includes(h);
-    const headers=[...view.headers.filter(h=>h.startsWith('STM/PM')), ...['BO · เวลาทำรายการต้นทาง',...view.headers.filter(h=>bo(h)&&h!=='BO · เวลาทำรายการต้นทาง')].filter(h=>view.headers.includes(h)),...view.headers.filter(h=>!h.startsWith('STM/PM')&&!bo(h))];
+    const headers=[...view.headers.filter(h=>h.startsWith('STM/PM')), ...['BO · เวลาทำรายการต้นทาง',...view.headers.filter(h=>bo(h)&&h!=='BO · เวลาทำรายการต้นทาง')].filter(h=>view.headers.includes(h)),...view.headers.filter(h=>!h.startsWith('STM/PM')&&!bo(h)&&h!=='สถานะ Audit'),...view.headers.filter(h=>h==='สถานะ Audit')];
     const indexes=headers.map(h=>view.headers.indexOf(h)),reorder=values=>indexes.map(i=>values[i]);
     return {...view,headers,rows:view.rows.map(reorder),...(view.footerRows?{footerRows:view.footerRows.map(reorder)}:{}),...(view.widths?{widths:reorder(view.widths)}:{}),...(view.cellTones?{cellTones:view.cellTones.map(reorder)}:{}),templateSheet:'borrow:3XB'};
   }

@@ -91,7 +91,7 @@ const schema=require('../mc8-sheet-schema.js');
    const timeIndex=v.headers.indexOf('BO · เวลาทำรายการต้นทาง');
    assert.ok(v.headers[0].startsWith('STM/PM'));
    assert.ok(timeIndex>v.headers.indexOf('STM/PM · รายละเอียดต้นฉบับ'));
-   assert.ok(v.headers.indexOf('สถานะ Audit')>v.headers.indexOf('BO ถอน'));
+   assert.equal(v.headers.at(-1),'สถานะ Audit');
    assert.deepEqual(v.rows.map(r=>r[timeIndex]),sourceTimes.map(t=>`2026-10-10 ${t}:00`).sort());
    assert.equal(v.rows.length,10);
  }

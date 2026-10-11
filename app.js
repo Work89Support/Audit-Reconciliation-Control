@@ -3477,7 +3477,7 @@ async function loadExceptionSupport(e, options = {}) {
     const evidencePromise = e._caseEvidenceLoaded ? Promise.resolve(null) : Sb.caseEvidence(e.dbId);
     const [detail, files, storedEvidence] = await Promise.all([detailPromise, filesPromise, evidencePromise]);
     if (storedEvidence) {
-      e.evidence = storedEvidence.map(f => ({ id: f.id, name: f.file_name, size: f.size_bytes, at: f.created_at, storagePath: f.storage_path }));
+      e.evidence = storedEvidence.map(f => ({ id: f.id, name: f.file_name, size: f.size_bytes, at: f.created_at, storagePath: f.storage_path, correctionReason:f.correction_reason, replacesEvidenceId:f.replaces_evidence_id, replacesSourceFileId:f.replaces_source_file_id, uploadedBy:f.uploaded_by, replacedBy:storedEvidence.find(next=>next.replaces_evidence_id===f.id)?.id }));
       e._caseEvidenceLoaded = true;
     }
     if (detail) {
@@ -3645,6 +3645,39 @@ async function openEvidenceRelatedCase(id, options = {}) {
   closeModal();
   await openException(item.id, options);
 }
+async function openClosedEvidenceCorrection(e) {
+  if(state.dataset!=='production'||!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('เฉพาะหัวหน้า/ผู้ดูแลของบริษัทนี้เท่านั้น');
+  const [fresh,files]=await Promise.all([Sb.exceptionDetail(e.dbId),Sb.caseEvidence(e.dbId)]);
+  if(!fresh||!['closed','approved'].includes(fresh.status))throw new Error('สถานะล่าสุดไม่ใช่เคสปิดแล้ว กรุณาโหลดใหม่');
+  const replaced=new Set(files.map(f=>f.replaces_evidence_id).filter(Boolean));
+  const originals=files.filter(f=>!replaced.has(f.id)).map(f=>({value:'evidence:'+f.id,name:f.file_name}));
+  if(fresh.clarification_file_id&&!files.some(f=>f.replaces_source_file_id===fresh.clarification_file_id))originals.push({value:'source:'+fresh.clarification_file_id,name:'ไฟล์ชี้แจงเดิม · '+fresh.clarification_file_id});
+  openModal('แก้ไขหลักฐาน · '+h(e.code),
+    `<p>เคสปิดแล้ว · เก็บไฟล์เดิมและประวัติ · ไม่เปิดเคสใหม่ ไม่เปลี่ยนยอดหรือผลอนุมัติ</p>
+    <label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
+    ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้างหลักฐานทดแทนอัตโนมัติ</p>'}
+    <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
+    <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
+    <label><input type="checkbox" id="correctionConfirm"> ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</label>
+    <p id="correctionProgress" role="status"></p>`,
+    '<button class="ghost-button" id="correctionCancel">ยกเลิก</button><button class="primary-button" id="correctionSave">ยืนยันบันทึกหลักฐานใหม่</button>');
+  $('#correctionCancel').onclick=closeModal;
+  $('#correctionSave').onclick=async()=>{
+    const button=$('#correctionSave'),progress=$('#correctionProgress');
+    try{
+      const original=$('#correctionOriginal').value,reason=$('#correctionReason').value.trim(),file=$('#correctionFile').files[0];
+      if(!originals.some(f=>f.value===original)||!reason||!file||!$('#correctionConfirm').checked)throw new Error('เลือกหลักฐานเดิม ระบุเหตุผล เลือกไฟล์ใหม่ และติ๊กยืนยันก่อนบันทึก');
+      if(!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('สิทธิ์ผู้ใช้งานเปลี่ยน กรุณาโหลดใหม่');
+      button.disabled=true;$('#correctionCancel').disabled=true;
+      const [kind,id]=original.split(':');
+      await Sb.uploadCaseEvidence(e.dbId,file,stage=>{progress.textContent=stage;},{reason,evidenceId:kind==='evidence'?id:null,sourceFileId:kind==='source'?id:null});
+      e._caseEvidenceLoaded=false;e._detailLoaded=false;
+      closeModal();toast('แก้หลักฐานแล้ว เก็บต้นฉบับและประวัติครบ — เคสยังปิดเดิม ยอดไม่เปลี่ยน');
+      await openException(e.id);
+    }catch(error){progress.textContent=error.message;button.disabled=false;$('#correctionCancel').disabled=false;}
+  };
+}
+
 async function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
   if (!e) return toast('ไม่พบรายละเอียดเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
@@ -3750,15 +3783,17 @@ async function openException(id, options = {}) {
       ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
+      ${state.dataset==='production'&&closed&&['lead','admin'].includes(state.role)?'<button class="ghost-button" id="btnCorrectClosedEvidence">แก้ไขหลักฐาน (เคสปิดแล้ว)</button><p class="hint">เก็บไฟล์เดิมและประวัติ · ต้องระบุเหตุผล · ไม่เปิดเคสใหม่หรือแก้ยอด</p>':''}
       <p id="caseUploadProgress" role="status" aria-live="polite">${h(e._uploadResult || '')}</p>
       ${state.dataset==='production'?(Sb.pendingCaseEvidence(e.dbId)||[]).map(p=>`<div class="alert warn"><p>${h(p.name)} · ${p.uploaded?'ไฟล์อยู่ในคลังแล้ว ยังรอยืนยันทะเบียน':'ยังรอตรวจผลส่งไฟล์'} · รหัส ${h(p.id)}</p><button class="ghost-button" data-resume-evidence="${h(p.id)}" ${p.busy?'disabled':''}>ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button><small>คำขอเดิมเก็บในหน้าต่างนี้ อย่ารีเฟรชหรือปิดหน้าต่างจนยืนยันผลได้</small></div>`).join(''):''}
       <div class="evidence-box">
+        ${(e.evidence||[]).filter(f=>f.replacesSourceFileId).map(f=>`<p class="hint"><span class="badge amber">ไฟล์ชี้แจงเดิมแทนที่แล้ว · เก็บต้นฉบับ</span> ${h(f.replacesSourceFileId)} → ${h(f.name)}</p>`).join('')}
         ${
           (e.evidence || []).length
             ? `<ul class="evidence-list">${e.evidence
                 .map(
                   (f) =>
-                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b><small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
+                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b>${f.replacedBy?'<span class="badge amber">แทนที่แล้ว · เก็บต้นฉบับ</span>':''}${f.correctionReason?`<span class="badge blue">หลักฐานแก้ไขใหม่</span><small>เหตุผล: ${h(f.correctionReason)} · แทนไฟล์ ${h(f.replacesEvidenceId||f.replacesSourceFileId)} · โดย ${h(f.uploadedBy)}</small>`:''}<small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
             : `<p class="muted small-note">${state.dataset==='production' && Sb.pendingCaseEvidence(e.dbId).length ? "มีคำขอแนบไฟล์ค้างยืนยันทะเบียน — กดตรวจ / ลองบันทึกต่อด้านบน ไม่ต้องแนบซ้ำ และยังไม่นับเป็นหลักฐานที่ผูกเคสสำเร็จ" : e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
@@ -3816,7 +3851,8 @@ async function openException(id, options = {}) {
   $('#reviewNext')?.addEventListener('click', () => moveReview(1));
   overlay.addEventListener("click", closeDrawer, { once: true });
   $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  $("#btnAttachQuick").addEventListener("click", () => $("#evInput")?.click());
+  $("#btnAttachQuick").addEventListener("click", () => closed?toast('เคสปิดแล้ว ต้องใช้ปุ่มแก้ไขหลักฐานสำหรับหัวหน้า/ผู้ดูแล','warn'):$("#evInput")?.click());
+  $('#btnCorrectClosedEvidence')?.addEventListener('click',()=>openClosedEvidenceCorrection(e).catch(err=>toast(err.message,'warn')));
   $("#btnChooseClarification").addEventListener("click", () => {
     if (!can("attach") && !can("note")) return deny("เลือกเอกสารชี้แจง");
     $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
