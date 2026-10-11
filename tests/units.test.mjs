@@ -140,6 +140,16 @@ const transactionBoRows = [
   ["10383528", "2026-08-31 01:03", "ถอน", "ออโต้", "3fx366079", "พร้อมเพย์-CP(corepay)(QR)", "41350", "0", "10", "2026-08-30 22:43", "", "cake x5"],
 ];
 const transactionBo = Formats.parse("3X_BO_2026-08-31.xlsx", transactionBoRows, "2026-08-31");
+for(const company of ['3XB','MC8','MR9','PS8','UR9']){
+  const bonus=['BONUS-1','2026-10-10 01:08','โบนัส','โบนัส','xb-user','-','5','0','0','2026-10-10 01:08','','Admin'];
+  const real=[...bonus];real[0]='REAL-1';real[2]='ฝาก';real[3]='ฝาก';real[10]='โบนัสกิจกรรม';
+  const parsed=Formats.parse(`${company}_BO_2026-10-10.xlsx`,[transactionBoRows[0],bonus,real],'2026-10-10');
+  eq(`${company} activity: real unknown deposit retained`,parsed.records.length,1);
+  eq(`${company} activity: bonus preserved outside reconciliation`,parsed.aux[0]?.kind,'activity_credit');
+  eq(`${company} activity: original evidence preserved`,parsed.aux[0]?.raw,bonus.join(' | '));
+  const withdrawal=[...bonus];withdrawal[2]='ถอน';
+  eq(`${company} activity: withdrawal retained`,Formats.parse(`${company}_BO_2026-10-10.xlsx`,[transactionBoRows[0],withdrawal],'2026-10-10').records.length,1);
+}
 const bookkeepingRows=[transactionBoRows[0],
   ['10602809','2026-10-02 20:57','ฝาก','ฝาก','3fx94742','SCB 5034633029','80','80','0','2026-10-02 20:57','','Admin'],
   ['10602918','2026-10-02 20:57','เก็บ','เก็บ','','SCB 5034633029','80','','','2026-10-02 21:15','เติมมือแล้ว','น้องแอล x1'],

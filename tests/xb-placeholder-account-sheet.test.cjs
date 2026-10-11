@@ -35,3 +35,10 @@ for(const company of sheets.COMPANIES){
   assert.equal(sheets.accountReviewGroups([{...placeholder,isPair:true,pmAmount:5,pmDate:'2026-10-09'}]).length,1,'do not hide a pair or statement evidence');
 }
 console.log('All companies: placeholder deposit sheet excluded; source rows, equal-amount transactions and saved totals preserved');
+for(const company of ['3XB','MC8','MR9','PS8','UR9']){
+  const activity={...rows[0],company,account:'UNKNOWN',boAccountLabel:'UNKNOWN',boRaw:'BONUS-1 | 2026-10-10 01:08 | โบนัส | โบนัส | user | - | 5'};
+  assert.equal(sheets.accountReviewGroups([activity]).length,0,'explicit activity credits do not create account sheets');
+  assert.equal(sheets.accountReviewGroups([{...activity,boRaw:'REAL-1 | 2026-10-10 01:08 | ฝาก | ฝาก | user | - | 5'}]).length,1,'UNKNOWN alone never hides cash deposits');
+  assert.equal(sheets.accountReviewGroups([{...activity,isPair:true,pmAmount:5}]).length,1,'statement evidence is not hidden');
+  assert.equal(sheets.buildAuditExportSheets([activity],company,'2026-10-10',false,schema)[0].rows.length,1,'original evidence retained');
+}

@@ -339,6 +339,12 @@
     return rows.length&&isSys123(rows[0].company)?result.sort((a,b)=>a.account.localeCompare(b.account,'th')||((a.direction==='withdraw'?0:1)-(b.direction==='withdraw'?0:1))):result;
   }
   function isExcludedAccountSheetRow(row){
+    const raw=String(row.boRaw||'').split('|').map(value=>value.trim());
+    const activity=XB_COMPANIES.includes(row.company)
+      && /^(?:UNKNOWN|[-–—]?)$/i.test(String(row.boAccountLabel||row.account||'').trim())
+      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[2]||'')
+      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[3]||'');
+    if(activity&&directionOf(row.direction)==='deposit'&&hasSide(row,'bo')&&!hasSide(row,'pm'))return true;
     return COMPANIES.includes(row.company)&&directionOf(row.direction)==='deposit'
       &&/^[-—–]$/.test(String(row.boAccountLabel||row.account||'').trim())
       &&hasSide(row,'bo')&&!hasSide(row,'pm');
@@ -612,6 +618,14 @@
     return sheets;
   }
 
+  function placeBoOperator(view){
+    const old=view.headers.indexOf('BO · ผู้ดำเนินการ');
+    const anchor=view.headers.indexOf('เลขอ้างอิง BO')>=0
+      ?view.headers.indexOf('เลขอ้างอิง BO'):view.headers.indexOf('BO · รายละเอียดต้นฉบับ');
+    if(old<0||anchor<0||old<=anchor)return view;
+    const headers=[...view.headers];headers.splice(old,1);headers.splice(anchor+1,0,'BO · ผู้ดำเนินการ');
+    return {...view,headers,rows:view.rows.map(values=>{const row=[...values],operator=row.splice(old,1)[0];row.splice(anchor+1,0,operator);return row;})};
+  }
   function tableView(rows,company,date,complete,sheet,schema=root.MC8SheetSchema){
     const ordered=chronologicalRows(rows);
     if(/^(bo-account:|unassigned-pm:)/.test(sheet)){
@@ -623,11 +637,11 @@
       if(template)return {headers:[...template.headers,...AUDIT_HEADERS],rows:ordered.map(row=>providerExportRow(template,row,complete)),templateSheet:template.name};
       if(ordered.length&&ordered.every(isStatement)){
         const headers=[...STATEMENT_HEADERS,'BO · ผู้ดำเนินการ','STM/PM · รายละเอียดต้นฉบับ','BO · รายละเอียดต้นฉบับ','STM/PM · สถานะต้นทาง','BO · เวลาทำรายการต้นทาง'];
-        return {headers,rows:ordered.map((row,index)=>[...statementExportRow(row,index,company,date,complete),row.bo?.performedBy||'',row.pmRaw||row.pm?.description||row.pm?.note||'',row.boRaw||row.bo?.note||'',row.pm?.status||'',row.boTransactionTime||'']),templateSheet:'statement:account'};
+        return placeBoOperator({headers,rows:ordered.map((row,index)=>[...statementExportRow(row,index,company,date,complete),row.bo?.performedBy||'',row.pmRaw||row.pm?.description||row.pm?.note||'',row.boRaw||row.bo?.note||'',row.pm?.status||'',row.boTransactionTime||'']),templateSheet:'statement:account'});
       }
       const borrowed=ordered.some(row=>row.company==='3XB'&&isBorrowAccount(row.boAccountLabel||row.account,row.company));
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ',...(borrowed?['BO ฝาก','BO ถอน','BO · เวลาทำรายการต้นทาง']:[])];
-      return {headers,rows:ordered.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',...(borrowed?[row.direction==='deposit'?numeric(row.boAmount):'',row.direction==='withdraw'?numeric(row.boAmount):'',row.boTransactionTime||'']:[])])};
+      return placeBoOperator({headers,rows:ordered.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',...(borrowed?[row.direction==='deposit'?numeric(row.boAmount):'',row.direction==='withdraw'?numeric(row.boAmount):'',row.boTransactionTime||'']:[])])});
     }
     if(sheet.startsWith('statement:'))return {headers:[...STATEMENT_HEADERS],rows:ordered.map((row,index)=>statementExportRow(row,index,company,date,complete))};
     if(SHEETS.includes(sheet)){

@@ -406,7 +406,7 @@ const Formats = (() => {
         drop("วันที่ไม่ตรงกับวันที่ตรวจ");
         continue;
       }
-      if (f.spec.side === "aux" || rec.kind === "bookkeeping") out.aux.push(rec);
+      if (f.spec.side === "aux" || rec.kind === "bookkeeping" || rec.kind === "activity_credit") out.aux.push(rec);
       else {
         out.records.push(rec);
         const key = rec.channel || "ไม่ระบุ";
@@ -452,6 +452,12 @@ const Formats = (() => {
       const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
       const identity = boAccountOf(boIdentityRaw);
       const note = val(f, r, "หมายเหตุ");
+      // XB bonus/activity rows are internal credits, not cash deposits. An
+      // unknown account alone is never sufficient to exclude a real deposit.
+      const activityCredit = XB_COMPANIES.has(normalizeCompany(company))
+        && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(type.trim())
+        && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(val(f, r, "ประเภทดำเนินการ").trim())
+        && /^(?:UNKNOWN|[-–—]?)$/i.test(boIdentityRaw.trim());
       // XB's "เก็บ" row tracks a completed manual credit; it is not another
       // customer deposit. Keep the original evidence outside transaction totals.
       // A real deposit with the same note (or a row with a member) stays intact.
@@ -470,6 +476,7 @@ const Formats = (() => {
         source: "bo",
         formatCode: "bo_transaction_export",
         originalType:type.trim(),
+        ...(activityCredit ? {kind:"activity_credit", exclusionReason:"เครดิตโบนัส/กิจกรรมภายใน ไม่ใช่รายการฝากเงินจริง"} : {}),
         ...(bookkeeping ? {kind:"bookkeeping", originalType:type, exclusionReason:"แถวเก็บติดตามการเติมมือ ไม่ใช่ยอดฝากเพิ่ม"} : {}),
         date: matchT.date,
         sec: matchT.sec,
