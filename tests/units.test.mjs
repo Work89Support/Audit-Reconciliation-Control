@@ -99,6 +99,21 @@ const mypayPartial = Formats.parse("MC mypays24-report-withdraw.csv", mypayRows,
 eq("MYPAY partial+sended: use actual payout", mypayPartial.records.length, 1);
 eq("MYPAY partial+sended: partial marker retained", mypayPartial.records[0].partial, true);
 
+// Real AUTOPEER exports may serialize exact cents with IEEE-754 noise.
+for (const [paid, expected] of [["122.39999999999998",122.4],["494.44000000000005",494.44],["0.01",0.01],["12.345",null],["",null],["NaN",null],["Infinity",null],["-1",null],["0",null],["1e2",null],["0.00000000000001",null]]) {
+  const rows=[["id","amount","provider","status","requestTime","updateTime","transferredAmount","_id","submitStatus"],
+    ["P2C-precision",1500,"autopeer","PARTIAL","2026-10-10 02:05:56","2026-10-10 02:11:24",paid,"6ac93b149050d0a69e0de0e9","SENDED"]];
+  const before=JSON.stringify(rows);
+  const parsed=Formats.parse("3XB_PM_AUTOPEER_W_2026-10-10.csv",rows,"2026-10-10");
+  eq(`PARTIAL precision ${paid}: eligible count`,parsed.records.length,expected===null?0:1);
+  if(expected!==null) {
+    eq(`PARTIAL precision ${paid}: actual cents`,parsed.records[0].amount,expected);
+    eq(`PARTIAL precision ${paid}: provider identity`,parsed.records[0].providerRef,"6ac93b149050d0a69e0de0e9");
+    ok(`PARTIAL precision ${paid}: raw evidence retained`,parsed.records[0].raw.includes(paid));
+  }
+  eq(`PARTIAL precision ${paid}: source immutable`,JSON.stringify(rows),before);
+}
+
 const autopeerWithdrawRows = [
   ["UFABET7M"],
   ["วันที่", "Ref", "Username", "ธนาคาร", "เลขบัญชี", "ชื่อ - นามสกุล ผู้รับ", "แจ้งถอน", "P2P จ่าย", "Progress", "Status"],

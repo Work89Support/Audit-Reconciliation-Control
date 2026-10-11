@@ -95,7 +95,7 @@
     }).map(item=>item.row);
   }
   function realRaw(value){const s=String(value||'').trim();return s&&!/^[—–-]|^ไม่พบรายการ|^รอข้อมูล|^ไม่มีข้อมูล/i.test(s)?s:'';}
-  function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);return hit?hit[1].toLowerCase():'';}
+  function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*([a-f0-9]{24})\b/i);return hit?hit[1].toLowerCase():'';}
   async function hydrateBoOperators(data,files,readRows){
     const names={};
     data.xbInformation=[];
@@ -142,7 +142,7 @@
     return {...source,performedBy,...(providerReference?{providerReference,note:providerReference}:{})};
   }
   function uniqueProviderId(value){
-    const ids=[...new Set(String(value??'').toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g)||[])];
+    const ids=[...new Set(String(value??'').toLowerCase().match(/\b[a-f0-9]{24}\b/g)||[])];
     return ids.length===1?ids[0]:'';
   }
   function normalizedPm(pm,raw='',fallbackProviderReference=''){

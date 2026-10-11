@@ -22,7 +22,7 @@ const Formats = (() => {
   // resolves to column A.
   const exactHeader = (s) => String(s ?? "").replace(/​/g, "").trim().toLowerCase();
   const sapanProviderId = (value) => {
-    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);
+    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*([a-f0-9]{24})\b/i);
     return hit ? hit[1].toLowerCase() : "";
   };
 
@@ -579,7 +579,7 @@ const Formats = (() => {
       // column A `id` (P2C...) as a substitute because that creates false
       // Sapan matches and leaves the real BO row unmatched.
       const rawProviderRefs = [...new Set(r.flatMap((cell) =>
-        String(cell ?? "").match(/\b6aa[a-f0-9]{21}\b/gi) || []
+        String(cell ?? "").match(/\b[a-f0-9]{24}\b/gi) || []
       ))];
       const providerRef = exactProviderRef || (rawProviderRefs.length === 1 ? rawProviderRefs[0] : "");
       const dir = (meta && meta.dir) || (/^wd|^wit|^wtd/i.test(id) ? "withdraw" : "deposit");
@@ -648,7 +648,17 @@ const Formats = (() => {
       // Never use the requested amount or rounded Progress as a partial payout.
       const paidRaw = valAny(f, r, ["transferredAmount", "ยอดโอนจริง", "P2P จ่าย", "p2pจ่าย", "โอนจริง"]);
       const paidText = paidRaw.replace(/[,\s฿]/g, "");
-      if (partial && (!/^\d+(?:\.\d{1,2})?$/.test(paidText) || Number(paidText) <= 0)) {
+      // Accept binary floating-point noise around exact cents, not genuine
+      // fractional cents. Keep paidRaw/raw unchanged as source evidence.
+      const paidNumber = Number(paidText);
+      const paidCents = paidNumber * 100;
+      const centNoise = Math.abs(paidCents - Math.round(paidCents));
+      const validPaid = /^\d+(?:\.\d+)?$/.test(paidText)
+        && Number.isFinite(paidCents) && paidNumber > 0
+        && Number.isSafeInteger(Math.round(paidCents))
+        && Math.round(paidCents) > 0
+        && centNoise <= Math.min(0.000001, Math.max(1, Math.abs(paidCents)) * Number.EPSILON * 8);
+      if (partial && !validPaid) {
         return drop("PARTIAL ไม่มียอดจ่ายจริงที่ตรวจสอบได้"), null;
       }
       /* ยอดที่ใช้จับคู่: ถอน = จ่ายจริง (รองรับ SUCCESS-PARTIAL / ยอดซอยย่อย), ฝาก = โอนจริง */

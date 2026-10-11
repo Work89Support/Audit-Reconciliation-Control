@@ -683,7 +683,8 @@ await (async () => {
 })();
 
 await (async () => {
-  const providerRef='6aaac4bfed5cd6e1fd9d67a6';
+  // ObjectId prefix changes over time; exact labelled 24-hex identity is stable.
+  const providerRef='6ac93b149050d0a69e0de0e9';
   const stm=rec({company:'AUTOPEER',subco:'MC8',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:2200,sec:100,ref:'P2C-20260916-233303-UIHHCL',transactionRef:'P2C-20260916-233303-UIHHCL',sourceId:'P2C-20260916-233303-UIHHCL',providerRef});
   const bo=rec({company:'MC8',account:'AUTOPEER',isPmChannel:true,direction:'withdraw',amount:2200,sec:80000,ref:'2718608',note:`ตรวจแล้ว Sapan: ${providerRef} | โอนจริง 2500 สำเร็จ 2200 คืน 300`});
   let r=await run([stm],[bo]);

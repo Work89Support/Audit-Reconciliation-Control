@@ -380,7 +380,7 @@ const Engine = (() => {
     // `Sapan: 6aa...`, while some omit the colon or spell the label `Spean`.
     // The label is only a boundary marker.  Return the exact 24-character
     // provider id and never include payout/refund text that follows it.
-    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);
+    const hit = String(value ?? "").match(/\b(?:sapan|spean)\s*[:：]?\s*([a-f0-9]{24})\b/i);
     return hit ? hit[1].toLowerCase() : "";
   };
   const referenceInBo = (reference, bo) => {
@@ -397,9 +397,9 @@ const Engine = (() => {
   // from becoming two false exceptions in production.
   const providerIdOf = (statement) => {
     const explicit = identityText(statement && statement.providerRef);
-    if (/^6aa[a-f0-9]{21}$/.test(explicit)) return explicit;
+    if (/^[a-f0-9]{24}$/.test(explicit)) return explicit;
     const rawIds = [...new Set(String(statement && statement.raw || "")
-      .toLowerCase().match(/\b6aa[a-f0-9]{21}\b/g) || [])];
+      .toLowerCase().match(/\b[a-f0-9]{24}\b/g) || [])];
     return rawIds.length === 1 ? rawIds[0] : "";
   };
   const providerRefMatches = (statement, bo) => {

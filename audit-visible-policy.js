@@ -22,7 +22,7 @@
   }
   function clean(value){return String(value||'').trim().toUpperCase().replace(/\s+/g,' ');}
   function providerReference(value){
-    const hit=String(value||'').match(/\b6aa[a-f0-9]{21}\b/i);
+    const hit=String(value||'').match(/\b[a-f0-9]{24}\b/i);
     return hit?hit[0].toUpperCase():'';
   }
   function detailOf(row,side){return row?.customer_details?.[side]||row?.customer?.[side]||{};}
