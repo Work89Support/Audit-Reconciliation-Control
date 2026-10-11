@@ -268,7 +268,20 @@
         visibleRows.push(row);representedBo.add(key);if(source)representedSources.add(source);
       }
     }
-    return visibleRows;
+    // Old runs may still contain activity-credit cases. Keep their stored
+    // history untouched, but route verified informational BO rows out of
+    // financial summaries/exports. UNKNOWN alone is never proof of activity.
+    const informationSources=new Set((data.xbInformation||[])
+      .filter(r=>r.company===fallbackCompany&&r.kind==='xb_information')
+      .map(r=>`${r.sourceFileId}|${r.rowNo}`));
+    return visibleRows.filter(row=>{
+      if(!XB_COMPANIES.includes(row.company)||row.isPair||hasSide(row,'pm')
+        ||directionOf(row.direction)!=='deposit'
+        ||!/^(?:UNKNOWN|[-–—]?)$/i.test(String(row.boAccountLabel||row.account||'').trim()))return true;
+      const source=row.boSource||row.case?.customer_details?.source_rows?.bo;
+      return !informationSources.has(`${source?.fileId}|${source?.row}`)
+        && !isExcludedAccountSheetRow({...row,account:'UNKNOWN',boAccountLabel:'UNKNOWN'});
+    });
   }
   function sys123AccountGroup(row){
     if(!isSys123(row.company))return null;
