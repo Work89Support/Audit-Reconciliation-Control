@@ -3505,6 +3505,7 @@ async function loadExceptionSupport(e, options = {}) {
     host.className = 'case-files-ready';
     host.innerHTML = exceptionFilesMarkup(files, e);
     const selectedFile=files.find(f=>f.id===e.clarificationFileId);
+    e._clarificationFileName=selectedFile?.file_name||'';
     if(selectedFile){
       const summary=document.createElement('section');summary.className='case-selected-evidence';
       summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.resolutionNote || e.responseText || 'ตรวจเหตุผลและรายการในเอกสารก่อนยืนยัน')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>ผูกหลักฐานแล้ว ไม่ใช่การยืนยันปิดเคส · ดูสถานะ Audit ด้านบน</small>`;
@@ -3651,14 +3652,14 @@ async function openClosedEvidenceCorrection(e) {
   if(!fresh||!['closed','approved'].includes(fresh.status))throw new Error('สถานะล่าสุดไม่ใช่เคสปิดแล้ว กรุณาโหลดใหม่');
   const replaced=new Set(files.map(f=>f.replaces_evidence_id).filter(Boolean));
   const originals=files.filter(f=>!replaced.has(f.id)).map(f=>({value:'evidence:'+f.id,name:f.file_name}));
-  if(fresh.clarification_file_id&&!files.some(f=>f.replaces_source_file_id===fresh.clarification_file_id))originals.push({value:'source:'+fresh.clarification_file_id,name:'ไฟล์ชี้แจงเดิม · '+fresh.clarification_file_id});
+  if(fresh.clarification_file_id&&!files.some(f=>f.replaces_source_file_id===fresh.clarification_file_id))originals.push({value:'source:'+fresh.clarification_file_id,name:'ไฟล์ชี้แจงเดิม · '+(e._clarificationFileName||fresh.clarification_file_id)});
   openModal('แก้ไขหลักฐาน · '+h(e.code),
     `<p>เคสปิดแล้ว · เก็บไฟล์เดิมและประวัติ · ไม่เปิดเคสใหม่ ไม่เปลี่ยนยอดหรือผลอนุมัติ</p>
-    <label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
+    <div class="evidence-correction-fields"><label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
     ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้างหลักฐานทดแทนอัตโนมัติ</p>'}
     <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
     <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
-    <label><input type="checkbox" id="correctionConfirm"> ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</label>
+    <label class="evidence-correction-confirm"><input type="checkbox" id="correctionConfirm"><span>ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</span></label></div>
     <p id="correctionProgress" role="status"></p>`,
     '<button class="ghost-button" id="correctionCancel">ยกเลิก</button><button class="primary-button" id="correctionSave">ยืนยันบันทึกหลักฐานใหม่</button>');
   $('#correctionCancel').onclick=closeModal;
