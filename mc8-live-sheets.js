@@ -479,7 +479,10 @@
     const total=(map,side)=>[...map.values()].reduce((sum,r)=>sum+(cents(r[`${side}Amount`])||0),0);
     const pmCents=total(pm,'pm'),boCents=total(bo,'bo'),crossDayBoCents=total(crossDay,'bo');
     const waitingBo=uniqueSides(rows.filter(r=>r.waiting),'bo'),waitingBoCents=total(waitingBo,'bo');
-    return {pmCount:pm.size,pmCents,boCount:bo.size,boCents,waitingBoCount:waitingBo.size,waitingBoCents,matchedCount:matched.length,matchedPmCents:matched.reduce((s,r)=>s+(cents(r.pmAmount)||0),0),matchedBoCents:matched.reduce((s,r)=>s+(cents(r.boAmount)||0),0),unmatchedPmCount:unmatchedPm.size,unmatchedPmCents:total(unmatchedPm,'pm'),unmatchedBoCount:unmatchedBo.size,unmatchedBoCents:total(unmatchedBo,'bo'),crossDayCount:crossDay.size,crossDayBoCents,duplicateCount:duplicate.size,duplicateCents:[...duplicate.values()].reduce((s,r)=>s+(cents(r.boAmount)??cents(r.pmAmount)??0),0),diffBeforeCents:pmCents-(boCents-crossDayBoCents-waitingBoCents),diffAfterCents:pmCents-(boCents-waitingBoCents)};
+    // Display-only intersection: other cross-day cases must not inflate the
+    // waiting-source status. Existing financial totals remain unchanged.
+    const waitingCrossDay=new Map([...waitingBo].filter(([key])=>crossDay.has(key)));
+    return {pmCount:pm.size,pmCents,boCount:bo.size,boCents,waitingBoCount:waitingBo.size,waitingBoCents,waitingCrossDayCount:waitingCrossDay.size,waitingCrossDayCents:total(waitingCrossDay,'bo'),matchedCount:matched.length,matchedPmCents:matched.reduce((s,r)=>s+(cents(r.pmAmount)||0),0),matchedBoCents:matched.reduce((s,r)=>s+(cents(r.boAmount)||0),0),unmatchedPmCount:unmatchedPm.size,unmatchedPmCents:total(unmatchedPm,'pm'),unmatchedBoCount:unmatchedBo.size,unmatchedBoCents:total(unmatchedBo,'bo'),crossDayCount:crossDay.size,crossDayBoCents,duplicateCount:duplicate.size,duplicateCents:[...duplicate.values()].reduce((s,r)=>s+(cents(r.boAmount)??cents(r.pmAmount)??0),0),diffBeforeCents:pmCents-(boCents-crossDayBoCents-waitingBoCents),diffAfterCents:pmCents-(boCents-waitingBoCents)};
   }
   function providerSheets(company,rows=[]){
     if(isSevenM(company))return [...SEVEN_M_SHEETS,...sourceSheets(company)];
@@ -530,7 +533,17 @@
       &&(status==='all'||r.kind===status)
       &&(sheet==='all'||sheet==='summary'||(accountRows?accountRows.has(r):statementAccount?(String(r.account)===statementAccount&&(!statementDirection||directionOf(r.direction)===statementDirection)):sheetOf(r)===sheet)));
   }
-  function statusOf(s,complete){return s.waitingBoCount?'ยังไม่มี STM/PM · รอข้อมูล':!complete?'ข้อมูลยังไม่ครบ':s.diffAfterCents===0&&s.unmatchedPmCount===0&&s.unmatchedBoCount===0&&s.duplicateCount===0?'ยอดตรง':'ต้องตรวจ';}
+  function statusOf(s,complete){
+    if(s.waitingBoCount&&s.matchedCount){
+      const parts=[complete?`จับคู่แล้ว ${s.matchedCount} รายการ`:'ข้อมูลยังไม่ครบ'];
+      if(s.waitingCrossDayCount)parts.push(`รอตรวจข้ามวัน ${s.waitingCrossDayCount} รายการ / ${moneyCents(s.waitingCrossDayCents)} บาท`);
+      const sameDay=s.waitingBoCount-s.waitingCrossDayCount;
+      if(sameDay)parts.push(`รอ STM/PM ${sameDay} รายการ / ${moneyCents(s.waitingBoCents-s.waitingCrossDayCents)} บาท`);
+      if(s.unmatchedPmCount||s.unmatchedBoCount>s.waitingBoCount||s.duplicateCount||s.diffAfterCents)parts.push('มีรายการอื่นต้องตรวจ');
+      return parts.join(' · ');
+    }
+    return s.waitingBoCount?'ยังไม่มี STM/PM · รอข้อมูล':!complete?'ข้อมูลยังไม่ครบ':s.diffAfterCents===0&&s.unmatchedPmCount===0&&s.unmatchedBoCount===0&&s.duplicateCount===0?'ยอดตรง':'ต้องตรวจ';
+  }
   function summaryRow(name,s,complete,key=name){const warning=complete&&(s.diffAfterCents||s.unmatchedPmCount||s.unmatchedBoCount||s.duplicateCount);return `<tr class="${warning?'mc8-warning':''}"><th><button type="button" data-live-sheet="${esc(key)}">${esc(name)}</button></th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr>`;}
   function summaryFooter(rows,complete,pageCount){const s=summarize(rows);return `<tfoot><tr><th>รวม ${pageCount} หน้า</th><td>${s.pmCount} / ${moneyCents(s.pmCents)}</td><td>${s.boCount} / ${moneyCents(s.boCents)}</td><td>${s.matchedCount} / ${moneyCents(s.matchedPmCents)}</td><td>${s.unmatchedPmCount} / ${moneyCents(s.unmatchedPmCents)}</td><td>${s.unmatchedBoCount} / ${moneyCents(s.unmatchedBoCents)}</td><td>${s.crossDayCount} / ${moneyCents(s.crossDayBoCents)}</td><td>${s.duplicateCount} / ${moneyCents(s.duplicateCents)}</td><td>${moneyCents(s.diffBeforeCents)}</td><td>${moneyCents(s.diffAfterCents)}</td><td>${statusOf(s,complete)}</td></tr></tfoot>`;}
   function totalsPanel(label,s,complete,amountLabel='ยอด STM / PM'){
@@ -701,7 +714,7 @@
     const summaryTones=summaryRows.map(row=>row[6]!==0||row[7]>0?'warning':'');
     const sheets=[
       {name:'ข้อมูลทั้งหมด',headers:[...ALL_HEADERS],rows:allRows,...allTones,widths:[18,18,18,20,12,20,14,18,10,16,22,16,24,34,20,14,18,10,16,22,16,24,34,18,40,38,22,28],footerRows:[allTotal]},
-      {name:'สรุป',headers:['ชีต','ชื่อบัญชีเต็มตาม BO / STM ไม่มี BO','ประเภท','จำนวน STM/PM','รวมยอด STM/PM','รวมยอด BO','ผลต่าง','รายการต้องตรวจ','สถานะ'],rows:summaryRows,rowTones:summaryTones,widths:[34,56,12,16,20,20,18,18,32],footerRows:[['รวม','','',allSummary.pmCount,allSummary.pmCents/100,allSummary.boCents/100,allSummary.diffAfterCents/100,rows.filter(r=>['review','pending_next_day'].includes(r.kind)).length,complete?'ครบตามรอบ':'ข้อมูลยังไม่ครบ']]},
+      {name:'สรุป',headers:['ชีต','ชื่อบัญชีเต็มตาม BO / STM ไม่มี BO','ประเภท','จำนวน STM/PM','รวมยอด STM/PM','รวมยอด BO','ผลต่าง','รายการต้องตรวจ','สถานะ'],rows:summaryRows,rowTones:summaryTones,widths:[34,56,12,16,20,20,18,18,summaryRows.some(row=>String(row[8]).startsWith('จับคู่แล้ว '))?90:32],footerRows:[['รวม','','',allSummary.pmCount,allSummary.pmCents/100,allSummary.boCents/100,allSummary.diffAfterCents/100,rows.filter(r=>['review','pending_next_day'].includes(r.kind)).length,complete?'ครบตามรอบ':'ข้อมูลยังไม่ครบ']]},
     ];
     if(rows.some(isExcludedAccountSheetRow))sheets[1].footerRows[0][1]='รวมยอดต้นทางเดิม รวม BO - ฝากที่ไม่สร้างชีต (ตรวจในข้อมูลทั้งหมด)';
     for(const group of groups){

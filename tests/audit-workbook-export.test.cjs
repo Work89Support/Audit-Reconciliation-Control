@@ -5,6 +5,19 @@ assert.ok(fs.readFileSync(require.resolve('../app.js'),'utf8').includes('audit_r
 const row=(overrides={})=>({key:'row',isPair:true,kind:'matched',company:'MC8',account:'AUTOPEER',direction:'deposit',code:'PAIR-1',bo:{user:'bo-user',reference:'BO-1',account:'1111',bank:'KBANK'},pm:{user:'pm-user',reference:'PM-1',account:'1111',bank:'KBANK'},boAmount:100,pmAmount:100,boTime:'2026-09-15 10:00:00',pmTime:'2026-09-15 10:00:10',reason:'same amount and identity',boSource:{row:2},pmSource:{row:2,timeColumn:'paymentTime',amountColumn:'realAmount'},...overrides});
 const rows=[row(),row({key:'info',code:'PAIR-INFO',kind:'advisory',reason:'แสดงข้อมูลเพิ่มเติมโดยไม่ต้องยืนยัน'}),row({key:'review',code:'EX-1',isPair:false,kind:'review',boAmount:200,pmAmount:200,reason:'รอ Audit ยืนยัน'}),row({key:'error',code:'EX-2',isPair:false,kind:'review',account:'AZPAY',direction:'withdraw',boAmount:300,pmAmount:null,pm:{},reason:'ไม่พบ STM/PM'}),row({key:'crossday',code:'EX-XDAY',isPair:false,kind:'pending_next_day',account:'COREPAY',exType:'cross_day',reason:'รอข้อมูลของวันถัดไป'}),row({key:'closed',code:'EX-3',isPair:false,kind:'closed',account:'1998545397',boAmount:50,pmAmount:50,reason:'Audit ปิดเคสแล้ว'})];
 const before=JSON.stringify(rows),sheets=live.buildAuditExportSheets(rows,'MC8','2026-09-15',true,schema);
+// Mixed BBL summaries acknowledge saved matches without declaring the
+// remaining waiting-source transaction matched or closing its case.
+const sk8Matched=[190,350,50,100,60,100,100,620].map((amount,i)=>row({key:`sk8-${i}`,company:'SK8',account:'6517249394',bo:{reference:`sk8-bo-${i}`},pm:{reference:`sk8-stm-${i}`},boAmount:amount,pmAmount:amount,boSource:{fileId:'sk8-bo',row:i},pmSource:{fileId:'sk8-stm',row:i}}));
+const sk8Waiting=row({key:'sk8-wait',company:'SK8',account:'6517249394',bo:{reference:'sk8-wait'},pm:{},isPair:false,kind:'review',waiting:true,crossDay:true,boAmount:100,pmAmount:null,boSource:{fileId:'sk8-bo',row:8},pmSource:null,case:{status:'open'}});
+const mixed=[...sk8Matched,sk8Waiting],mixedBefore=JSON.stringify(mixed);
+const mixedSummary=live.buildAuditExportSheets(mixed,'SK8','2026-10-10',true,schema)[1].rows[0];
+assert.deepEqual(mixedSummary.slice(3,7),[8,1570,1670,0]);
+assert.equal(mixedSummary[8],'จับคู่แล้ว 8 รายการ · รอตรวจข้ามวัน 1 รายการ / 100.00 บาท');
+assert.match(live.buildAuditExportSheets(mixed,'SK8','2026-10-10',false,schema)[1].rows[0][8],/^ข้อมูลยังไม่ครบ/);
+const sameDayWaiting={...sk8Waiting,crossDay:false};
+assert.equal(live.buildAuditExportSheets([...sk8Matched,sameDayWaiting],'SK8','2026-10-10',true,schema)[1].rows[0][8],'จับคู่แล้ว 8 รายการ · รอ STM/PM 1 รายการ / 100.00 บาท');
+assert.equal(live.summarize([...mixed,row({key:'other-crossday',account:'CYBERPLUS',isPair:false,kind:'review',crossDay:true,boAmount:1224,pmAmount:null,boSource:{fileId:'other-bo',row:1}})]).waitingCrossDayCount,1);
+assert.equal(JSON.stringify(mixed),mixedBefore,'summary changes never mutate source amounts or cases');
 assert.deepEqual(sheets.map(s=>s.name),['ข้อมูลทั้งหมด','สรุป','1998545397','AUTOPEER · ฝาก','AZPAY · ถอน','COREPAY · ฝาก']);
 const all=sheets[0],summary=sheets[1],at=sheets.find(s=>s.name==='AUTOPEER · ฝาก');
 assert.equal(all.title,undefined,'first header starts at row 1');
