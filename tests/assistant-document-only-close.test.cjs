@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const state={role:'audit_assistant'};
+const context={state};vm.createContext(context);
+vm.runInContext(fs.readFileSync('case-closure.js','utf8')+';this.closure=CaseClosure;',context);
+const sample={currency:'THB',system_amount:110,bank_amount:null};
+for(const amount of [110,30000])assert.equal(context.closure.assistantCloseBlock({...sample,system_amount:amount}),'');
+for(const e of [{...sample,system_amount:30000.01},{...sample,system_amount:null},{...sample,system_amount:0},{...sample,currency:'USD'},{...sample,bank_amount:116},{...sample,bank_amount:Infinity},{...sample,review_flags:{uncertain:true}}])assert.ok(context.closure.assistantCloseBlock(e));
+assert.equal(context.closure.assistantCloseBlock({...sample,bank_amount:115}),'');
+assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:{...sample,stored_document_at_submit:true}}),true);
+assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:sample}),false);
+assert.equal(context.closure.selfEligible({outcome:'damage',loss_amount:110,snapshot:{...sample,stored_document_at_submit:true}}),false);
+const sql=fs.readFileSync('supabase/20261011_assistant_document_only_close.sql','utf8');
+assert.match(sql,/current_audit_assistant/);assert.match(sql,/30000/);
+assert.doesNotMatch(sql,/update public\.exceptions|update public\.case_closure_requests/);
+console.log('PASS: assistant BO <=30000, missing STM allowed, proof/no-loss required; currency, flags and known-pair difference retained');

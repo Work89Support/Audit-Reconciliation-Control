@@ -7,10 +7,10 @@ const CaseClosure=(()=>{
   function assistantCloseBlock(e){
     if(state.role!=='audit_assistant')return '';
     const a=e.system_amount,b=e.bank_amount;
-    if(a==null||b==null||!Number.isFinite(Number(a))||!Number.isFinite(Number(b)))return 'ยังไม่มียอด BO และ STM/PM ครบทั้งสองฝั่ง';
-    if(e.currency!=='THB'||Number(a)<=0||Number(b)<=0)return 'ยอดต้นทางหรือสกุลเงินไม่ผ่านเงื่อนไขปิดเอง';
+    if(a==null||!Number.isFinite(Number(a))||(b!=null&&!Number.isFinite(Number(b))))return 'ยังไม่มียอด BO ที่ยืนยันได้';
+    if(e.currency!=='THB'||Number(a)<=0||(b!=null&&Number(b)<=0))return 'ยอดต้นทางหรือสกุลเงินไม่ผ่านเงื่อนไขปิดเอง';
     if(Number(a)>30000||Number(b)>30000)return 'ยอดฝั่งใดฝั่งหนึ่งเกิน 30,000 บาท';
-    if(Math.abs(Number(a)-Number(b))>5)return 'ผลต่างเกิน 5 บาท';
+    if(b!=null&&Math.abs(Number(a)-Number(b))>5)return 'ผลต่างเกิน 5 บาท';
     if(['repeat','manual','uncertain'].some(k=>e.review_flags?.[k]))return 'พบรายการซ้ำ การแก้ไขมือ หรือข้อมูลที่ยังไม่ยืนยัน';
     return '';
   }
@@ -22,6 +22,7 @@ const CaseClosure=(()=>{
   }
   function selfEligible(q){
     const a=q.snapshot?.system_amount,b=q.snapshot?.bank_amount;
+    if(state.role==='audit_assistant')return q.outcome==='no_loss'&&Number(q.loss_amount)===0&&q.snapshot?.stored_document_at_submit===true&&!assistantCloseBlock(q.snapshot||{});
     return q.outcome==='no_loss'&&a!=null&&b!=null&&Number.isFinite(Number(a))&&Number.isFinite(Number(b))&&Math.abs(Number(a)-Number(b))<=5;
   }
   async function loadPending(force=false){
@@ -52,6 +53,11 @@ const CaseClosure=(()=>{
       $('#closureAuditReason').parentElement.before(hint);
     }
     if(state.role==='audit_assistant')$('#closureOutcome').querySelector('option[value="damage"]').disabled=true;
+    if(state.role==='audit_assistant'&&direct){
+      const hint=document.createElement('p');hint.setAttribute('role','status');
+      hint.textContent='ผู้ช่วยปิดได้เฉพาะยอด BO ไม่เกิน 30,000 บาท มีหลักฐานในคลัง และไม่มีความเสียหาย แม้ไม่มี STM/PM — หากมียอดทั้งสองฝั่ง ผลต่างต้องไม่เกิน 5 บาท';
+      $('#closureAuditReason').parentElement.before(hint);
+    }
     $('#closureOutcome').onchange=()=>{$('#closureLossFields').hidden=$('#closureOutcome').value!=='damage';$('#closureAuditChecked').checked=false;};
     if(initialOutcome==='damage'){$('#closureOutcome').value='damage';$('#closureOutcome').onchange();}
     $('#closureSend').onclick=async event=>{
