@@ -145,7 +145,7 @@ for(const company of ['3XB','MC8','MR9','PS8','UR9']){
   const real=[...bonus];real[0]='REAL-1';real[2]='ฝาก';real[3]='ฝาก';real[10]='โบนัสกิจกรรม';
   const parsed=Formats.parse(`${company}_BO_2026-10-10.xlsx`,[transactionBoRows[0],bonus,real],'2026-10-10');
   eq(`${company} activity: real unknown deposit retained`,parsed.records.length,1);
-  eq(`${company} activity: bonus preserved outside reconciliation`,parsed.aux[0]?.kind,'activity_credit');
+  eq(`${company} activity: bonus preserved outside reconciliation`,parsed.aux[0]?.kind,'xb_information');
   eq(`${company} activity: original evidence preserved`,parsed.aux[0]?.raw,bonus.join(' | '));
   const withdrawal=[...bonus];withdrawal[2]='ถอน';
   eq(`${company} activity: withdrawal retained`,Formats.parse(`${company}_BO_2026-10-10.xlsx`,[transactionBoRows[0],withdrawal],'2026-10-10').records.length,1);
@@ -162,11 +162,11 @@ eq('XB bookkeeping: actual deposit total stays 130',trackedBo.records.reduce((s,
 eq('XB bookkeeping: both source rows preserved separately',trackedBo.aux.length,2);
 eq('XB bookkeeping: preserve BO reference',trackedBo.aux[0].ref,'10602918');
 eq('XB bookkeeping: preserve note',trackedBo.aux[0].note,'เติมมือแล้ว');
-eq('XB bookkeeping: linked to actual member deposit',trackedBo.aux[0].relatedTransactionRef,'10602809');
-eq('XB bookkeeping: note alone cannot hide unmatched row',Formats.parse('3XB_BO_2026-10-02.xlsx',[bookkeepingRows[0],bookkeepingRows[2]],'2026-10-02').records.length,1);
+eq('XB bookkeeping: explicit operation is informational',trackedBo.aux[0].infoCategory,'เก็บ');
+eq('XB bookkeeping: explicit keep stays informational without matching deposit',Formats.parse('3XB_BO_2026-10-02.xlsx',[bookkeepingRows[0],bookkeepingRows[2]],'2026-10-02').records.length,0);
 eq('XB bookkeeping: preserve original raw evidence',trackedBo.aux[0].raw,bookkeepingRows[2].join(' | '));
-for (const [label,type,user,note] of [['real manual deposit','ฝาก','','เติมมือแล้ว'],['keep with member','เก็บ','3fx94742','เติมมือแล้ว'],['unexplained keep','เก็บ','','รอตรวจ'],['withdrawal','ถอน','','เติมมือแล้ว']]) {
-  const row=[...bookkeepingRows[2]]; row[2]=type;row[4]=user;row[10]=note;
+for (const [label,type,user,note] of [['real manual deposit','ฝาก','','เติมมือแล้ว'],['withdrawal','ถอน','','เติมมือแล้ว']]) {
+  const row=[...bookkeepingRows[2]]; row[2]=type;row[3]=type;row[4]=user;row[10]=note;
   eq(`XB bookkeeping guard: ${label} remains a transaction`,Formats.parse('3XB_BO_2026-10-02.xlsx',[bookkeepingRows[0],row],'2026-10-02').records.length,1);
 }
 eq('XB bookkeeping guard: no SYS123 policy expansion',Formats.parse('FR8_BO_2026-10-02.xlsx',bookkeepingRows,'2026-10-02').records.length,4);

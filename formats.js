@@ -406,7 +406,7 @@ const Formats = (() => {
         drop("วันที่ไม่ตรงกับวันที่ตรวจ");
         continue;
       }
-      if (f.spec.side === "aux" || rec.kind === "bookkeeping" || rec.kind === "activity_credit") out.aux.push(rec);
+      if (f.spec.side === "aux" || rec.kind === "bookkeeping" || rec.kind === "activity_credit" || rec.kind === "xb_information") out.aux.push(rec);
       else {
         out.records.push(rec);
         const key = rec.channel || "ไม่ระบุ";
@@ -447,21 +447,21 @@ const Formats = (() => {
       const bankT = stamp(val(f, r, "เวลาทำรายการ")) || boT;
       if (!boT) return drop("ไม่มีเวลาที่อ่านได้"), null;
       const amount = num(val(f, r, "จำนวน"));
-      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const type = val(f, r, "ประเภท");
       const boIdentityRaw = val(f, r, "ชื่อธนาคาร");
       const identity = boAccountOf(boIdentityRaw);
       const note = val(f, r, "หมายเหตุ");
       // XB bonus/activity rows are internal credits, not cash deposits. An
       // unknown account alone is never sufficient to exclude a real deposit.
-      const activityCredit = XB_COMPANIES.has(normalizeCompany(company))
-        && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(type.trim())
-        && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(val(f, r, "ประเภทดำเนินการ").trim())
-        && /^(?:UNKNOWN|[-–—]?)$/i.test(boIdentityRaw.trim());
+      const operation = val(f, r, "ประเภทดำเนินการ").trim();
+      const operationCategory = xbInformationCategory(operation);
+      const infoCategory = XB_COMPANIES.has(normalizeCompany(company))
+        ? xbInformationCategory(type) || (operationCategory==='ยกเลิก' || !/^(?:ถอน|withdraw|payout)$/i.test(type.trim()) ? operationCategory : '') : '';
+      if (!amount && !infoCategory) return drop("ยอดเงินเป็นศูนย์"), null;
       // XB's "เก็บ" row tracks a completed manual credit; it is not another
       // customer deposit. Keep the original evidence outside transaction totals.
       // A real deposit with the same note (or a row with a member) stays intact.
-      const bookkeeping = XB_COMPANIES.has(normalizeCompany(company))
+      const bookkeeping = !infoCategory && XB_COMPANIES.has(normalizeCompany(company))
         && type.trim() === "เก็บ"
         && !val(f, r, "ยูสเซอร์").trim()
         && /เติมมือ\s*แล้ว/.test(note);
@@ -476,7 +476,7 @@ const Formats = (() => {
         source: "bo",
         formatCode: "bo_transaction_export",
         originalType:type.trim(),
-        ...(activityCredit ? {kind:"activity_credit", exclusionReason:"เครดิตโบนัส/กิจกรรมภายใน ไม่ใช่รายการฝากเงินจริง"} : {}),
+        ...(infoCategory ? {kind:"xb_information",infoCategory,operation,exclusionReason:"ข้อมูลประกอบ XB ไม่กระทบยอดและไม่สร้างเคส"} : {}),
         ...(bookkeeping ? {kind:"bookkeeping", originalType:type, exclusionReason:"แถวเก็บติดตามการเติมมือ ไม่ใช่ยอดฝากเพิ่ม"} : {}),
         date: matchT.date,
         sec: matchT.sec,
@@ -997,7 +997,11 @@ const Formats = (() => {
     return [...byRef.values(), ...noRef];
   }
 
-  return { SPECS, detect, parse, stamp, channelOf, companyOf, canonicalPm, isPm, pipe, merge };
+  function xbInformationCategory(value) {
+    const key=String(value||'').trim().replace(/\s+/g,'').toLowerCase();
+    return /^(เก็บ|collect)$/.test(key)?'เก็บ':/^(ฝากaff|aff|affiliate)$/.test(key)?'ฝาก AFF':/^(โบนัส|bonus|กิจกรรม|activity)$/.test(key)?'โบนัส':/^(ยกเลิก|cancel|cancelled|canceled)$/.test(key)?'ยกเลิก':'';
+  }
+  return { SPECS, detect, parse, stamp, channelOf, companyOf, canonicalPm, isPm, pipe, merge, xbInformationCategory };
 })();
 
 if (typeof window !== "undefined") window.Formats = Formats;

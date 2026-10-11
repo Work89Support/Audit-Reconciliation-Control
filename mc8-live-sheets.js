@@ -98,6 +98,7 @@
   function sapanProviderId(value){const hit=String(value??'').match(/\b(?:sapan|spean)\s*[:：]?\s*(6aa[a-f0-9]{21})\b/i);return hit?hit[1].toLowerCase():'';}
   async function hydrateBoOperators(data,files,readRows){
     const names={};
+    data.xbInformation=[];
     data.borrowBo=[];
     data.sourceBo=[];
     if(typeof readRows!=='function')return;
@@ -112,6 +113,10 @@
         const result=await readRows(file,data.run.business_date);
         if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
         for(const r of result){
+          if(XB_COMPANIES.includes(company)&&r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind==='xb_information'){
+            data.xbInformation.push({...r,sourceFile:file.file_name,sourceFileId:file.id});
+            continue;
+          }
           const account=r.boIdentityRaw||r.account||'';
           if(r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind!=='bookkeeping'&&(!r.originalType||/^(ฝาก|ถอน|deposit|withdraw)$/i.test(r.originalType.trim()))&&account.trim()&&['deposit','withdraw'].includes(directionOf(r.direction))&&numeric(r.amount)!==null&&Number.isInteger(r.rowNo)&&r.rowNo>0){
             const sourceRow={company,account,direction:r.direction,systemAmount:r.amount,boDate:r.boDate||r.date,
@@ -577,7 +582,13 @@
     if(!waiting.length)return '';
     return `<section class="mc8-summary mc8-warning" role="status"><h3>บัญชีที่ยังรอ STM · ยังไม่กระทบยอด</h3><p>มี BO ในรอบนี้ แต่ยังไม่มี STM ของบัญชีและประเภทนี้ ยอดด้านล่างไม่ใช่ยอดจับคู่ ไม่รวมในผลต่าง และห้ามใช้ยืนยันปิดงาน</p><div class="mc8-summary-scroll"><table><thead><tr><th>บัญชี</th><th>ประเภท</th><th>BO รายการ / ยอด</th><th>STM</th><th>สถานะ</th></tr></thead><tbody>${waiting.map(item=>`<tr><th>${esc(item.label)}</th><td>${item.direction==='deposit'?'ฝาก':item.direction==='withdraw'?'ถอน':'ไม่ระบุ'}</td><td>${esc(item.rows)} / ${moneyCents(Math.round(Number(item.amount)*100))}</td><td>ยังไม่มีข้อมูล</td><td>รอ STM · ยังไม่กระทบ</td></tr>`).join('')}</tbody></table></div></section>`;
   }
-  function buildAuditExportSheets(rows,company,date,complete=true,schema=root.MC8SheetSchema,coverage=null){
+  const XB_INFO_NAMES=['เก็บ','ฝาก AFF','โบนัส','ยกเลิก'];
+  const XB_INFO_HEADERS=['รหัส','เวลา BO','ประเภท','ประเภทดำเนินการ','ยูสเซอร์','บัญชี BO','จำนวน','ผู้ดำเนินการ','หมายเหตุ','ไฟล์ BO ต้นทาง','แถวต้นทาง','สถานะข้อมูล'];
+  function informationSheets(records,company){
+    if(!XB_COMPANIES.includes(company))return [];
+    return XB_INFO_NAMES.map(name=>({name,headers:[...XB_INFO_HEADERS],rows:(records||[]).filter(r=>r.infoCategory===name).map(r=>[r.ref||'',stamp({date:r.boDate||r.date,sec:r.boSec??r.sec}),r.originalType||'',r.operation||'',r.memberCode||'',r.boIdentityRaw||r.account||'',r.amount,r.performedBy||r.username||'',r.note||'',r.sourceFile||'',r.rowNo,'ข้อมูลประกอบ · ไม่กระทบยอด · ไม่เป็นเคส'])}));
+  }
+  function buildAuditExportSheets(rows,company,date,complete=true,schema=root.MC8SheetSchema,coverage=null,information=null){
     if(!schema?.sheets?.length)throw new Error('ไม่พบโครงหัวตาราง Audit');
     const orderedRows=chronologicalRows(rows),allRows=orderedRows.map(row=>allExportRow(row,complete)),allTones=exportTones(orderedRows,complete,ALL_HEADERS.length-1);
     const allTotal=Array(ALL_HEADERS.length).fill(''),allSummary=summarize(rows);allTotal[0]='รวม';allTotal[1]=`${rows.length.toLocaleString('th-TH')} รายการ`;allTotal[ALL_HEADERS.indexOf('BO · ยอด')]=allSummary.boCents/100;allTotal[ALL_HEADERS.indexOf('STM/PM · ยอด')]=allSummary.pmCents/100;allTotal[ALL_HEADERS.indexOf('ผลต่างยอด')]=allSummary.diffAfterCents/100;allTotal[ALL_HEADERS.length-1]='รวมทุกสถานะ';
@@ -616,6 +627,7 @@
       sheets.push({name:'รอ STM',headers:['บัญชี','ประเภท','จำนวน BO','ยอด BO','STM','สถานะ'],rows:waiting.map(item=>[item.label,item.direction==='deposit'?'ฝาก':'ถอน',item.rows,item.amount,'ยังไม่มีข้อมูล','รอ STM · ยังไม่กระทบ']),rowTones:waiting.map(()=> 'warning'),widths:[40,12,16,20,24,32]});
       sheets.find(sheet=>sheet.name==='สรุป').footerRows[0][8]='ยังรอ STM · ห้ามยืนยันปิดงาน';
     }
+    if(information)sheets.push(...informationSheets(information,company));
     sheets.forEach(sheet=>{sheet.headerStyle='template';});
     return sheets;
   }
@@ -742,15 +754,16 @@
       // Keep source identity, displayed values, tone and action in one order.
       const all=data?rowsOf(data,company):[],accountGroups=accountReviewGroups(all);
       const excludedAccountRows=all.filter(isExcludedAccountSheetRow);
-      if(sheet!=='all'&&sheet!=='summary'&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
-      const baseShown=chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
+      const infoSheets=informationSheets(data?.xbInformation,company),infoSheet=infoSheets.find(s=>'xb-info:'+s.name===sheet);
+      if(sheet!=='all'&&sheet!=='summary'&&!infoSheet&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
+      const baseShown=infoSheet?infoSheet.rows.map((values,index)=>({key:'info-'+index,kind:'information',values})):chronologicalRows(filter(all,pm,direction,status,sheet)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
       // A placeholder is not an account awaiting bank evidence (e.g. affiliate credit).
       const caseRowsToCreate=(data?.sourceBo||[]).filter(row=>waitingSources.has(`${row.boSource.fileId}|${row.boSource.row}`)&&numeric(row.systemAmount)>0&&!/^(?:\s*[-—–]\s*|\s*ไม่ระบุ(?:บัญชี)?\s*|\s*ไม่มีข้อมูล\s*)$/.test(String(row.account||'')));
       const complete=!!data?.run&&isComplete(all),bySheet=summaries(all,providerNames),supported=all;
       const waiting=waitingStatements(data?.run?.summary?.bo_first,company);
       const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0,other=all.filter(r=>sheetOf(r)==='OTHER'&&!isStatement(r));
-      const rawView=sheet==='summary'?{headers:[],rows:[]}:tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};
+      const rawView=infoSheet|| (sheet==='summary'?{headers:[],rows:[]}:tableView(baseShown,company,date,complete,sheet,root.MC8SheetSchema)),rules=columnFilters[sheet]||{},sort=sortBySheet[sheet]||{index:-1,direction:''};
       const layoutSheet=rawView.templateSheet||sheet;
       const entries=filterAndSortEntries(baseShown.map((source,index)=>({source,values:rawView.rows[index]||[]})),rules,sort),shown=entries.map(entry=>entry.source);
       page=0;
@@ -758,7 +771,7 @@
       const hidden=hiddenSet(),visible=view.headers.map((_,index)=>index).filter(index=>!hidden.has(index));
       const filterOptions=Object.fromEntries(view.headers.map((_,index)=>[index,[...new Map(rawView.rows.map(row=>[String(row[index]??''),row[index]??''])).values()].sort(compareCells)]));
       const scope=summarize(shown);
-      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...accountGroups.map(group=>[group.key,group.label])];
+      const viewTabs=[['all','ข้อมูลทั้งหมด'],['summary','สรุป'],...accountGroups.map(group=>[group.key,group.label]),...infoSheets.map(s=>['xb-info:'+s.name,s.name+' · ข้อมูลประกอบ ไม่เป็นเคส'])];
       const columnTools=sheet==='summary'?'':`<div class="mc8-table-tools"><button type="button" id="mc8-live-fullscreen">${fullscreen?'ออกจากเต็มจอ':'ดูตารางเต็มจอ'}</button><button type="button" id="mc8-live-wrap-text" aria-pressed="${wrapText}">${wrapText?'ย่อข้อความ':'แสดงข้อความทั้งหมด'}</button><details class="mc8-column-picker"><summary>เลือกคอลัมน์ (${visible.length}/${view.headers.length})</summary><div><p>ติ๊กเพื่อแสดงคอลัมน์ เหมือน Hide / Unhide ใน Excel</p><button type="button" id="mc8-live-show-columns">แสดงทั้งหมด</button>${view.headers.map((header,index)=>`<label><input type="checkbox" data-live-column="${index}" ${hidden.has(index)?'':'checked'} ${!hidden.has(index)&&visible.length===1?'disabled':''}> ${letter(index)} · ${esc(header||'คอลัมน์ว่าง')}</label>`).join('')}</div></details>${Object.values(rules).filter(Boolean).length?`<button type="button" id="mc8-live-clear-columns">ล้างฟิลเตอร์ทั้งหมด (${Object.values(rules).filter(Boolean).length})</button>`:''}<span>กดข้อความยาวเพื่อขยายเฉพาะช่อง · กด ▼ ที่หัวคอลัมน์เพื่อกรองและเรียง</span></div>`;
       container.innerHTML=`<section class="mc8-workbook ${fullscreen?'mc8-fullscreen':''} ${wrapText?'mc8-wrap-text':''}" tabindex="-1"><header class="mc8-intro"><div><h2>เอกสารกระทบยอด · ${esc(company)}</h2><p>เลือกชื่อบัญชีตาม BO · เทียบ STM/PM และ BO ในหน้าเดียว · ผลจับคู่เดิมไม่เปลี่ยน · Excel ใช้ชื่อบัญชีตาม BO เช่นเดียวกับหน้านี้</p></div><span class="mc8-pending">${esc(date)}</span></header>
         <p class="mc8-note">อ่านผลรอบงานที่บันทึกไว้เท่านั้น · ไม่รันกติกาใหม่ ไม่ปิดเคส และไม่นำไฟล์ตัวอย่างมาแทนข้อมูลจริง</p>
@@ -793,7 +806,7 @@
       container.onkeydown=event=>{if(event.key==='Escape'&&fullscreen){fullscreen=false;draw();}};
       const exportButton=container.querySelector('#mc8-live-export');if(exportButton)exportButton.onclick=()=>{
         try{
-          const sheets=buildAuditExportSheets(all,company,date,complete,root.MC8SheetSchema,data?.run?.summary?.bo_first);
+          const sheets=buildAuditExportSheets(all,company,date,complete,root.MC8SheetSchema,data?.run?.summary?.bo_first,data?.xbInformation);
           const filename=`Audit_${company}_${date}_AllCases.xlsx`;
           const result=opts.exportWorkbook?.(sheets,filename,`บริษัท ${company} · วันที่ ${date} · ${waiting.length?'ยังรอ STM · ห้ามยืนยันปิดงาน':'ข้อมูลครบทุกสถานะ'}`);
           if(!result?.ok)throw new Error(result?.reason||'ตัวเขียน Excel ยังไม่พร้อม');
@@ -839,6 +852,6 @@
     };
     load();
   }
-  root.MC8LiveSheets={mount,hydrateBoOperators,rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
+  root.MC8LiveSheets={mount,hydrateBoOperators,informationSheets,rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
   if(typeof module!=='undefined')module.exports=root.MC8LiveSheets;
 })(typeof window==='undefined'?globalThis:window);

@@ -1020,7 +1020,7 @@ async function readAuditBoOperatorRecords(file,date) {
   if(!response.ok)throw new Error('ดาวน์โหลด BO ไม่สำเร็จ ('+response.status+')');
   const result=Formats.parse(file.file_name,await XlsxReader.read(await response.arrayBuffer()),date);
   if(!['bo_compact','bo_transaction_export','bo_main'].includes(result.code))throw new Error('ไม่พบรูปแบบ BO ที่ตรวจสอบได้');
-  return result.records;
+  return [...result.records,...(result.aux||[]).filter(r=>r.kind==='xb_information')];
 }
 VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   date: state.filters.date || DEFAULT_WORK_DATE,

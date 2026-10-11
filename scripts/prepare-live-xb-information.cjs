@@ -1,0 +1,31 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const input=process.argv[2];if(!input)throw Error('Provide exported live workflow');
+const workflow=JSON.parse(fs.readFileSync(input,'utf8'));
+const formats=fs.readFileSync('formats.js','utf8');
+const helper=formats.slice(formats.indexOf('  function xbInformationCategory(value)'),formats.indexOf('  return { SPECS'));
+const classifier=formats.slice(formats.indexOf('      const operation = val(f, r, "ประเภทดำเนินการ")'),formats.indexOf('      // XB\'s "เก็บ"'));
+const infoSpread='        ...(infoCategory ? {kind:"xb_information",infoCategory,operation,exclusionReason:"ข้อมูลประกอบ XB ไม่กระทบยอดและไม่สร้างเคส"} : {}),\n';
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+let changed=0;
+for(const node of workflow.nodes){
+ let code=node.parameters?.jsCode;if(!code?.includes('const Formats'))continue;
+ assert.ok(!code.includes('kind === "xb_information"'),'already updated');
+ const route=/f\.spec\.side === "aux" \|\| rec\.kind === "bookkeeping"(?: \|\| rec\.kind === "activity_credit")?/;
+ assert.ok(route.test(code));code=code.replace(route,'f.spec.side === "aux" || rec.kind === "bookkeeping" || rec.kind === "activity_credit" || rec.kind === "xb_information"');
+ const start=code.indexOf('    bo_transaction_export('),end=code.indexOf('    bo_compact(',start);
+ assert.ok(start>=0&&end>start);let parser=code.slice(start,end);
+ assert.ok(parser.includes('      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;'));
+ parser=parser.replace('      if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;\n','');
+ if(parser.includes('      const activityCredit ='))parser=parser.replace(/      const activityCredit =[\s\S]*?;\n/, '');
+ const bookkeeping='      const bookkeeping = XB_COMPANIES.has(normalizeCompany(company))';
+ assert.ok(parser.includes(bookkeeping));parser=parser.replace(bookkeeping,classifier+'      const bookkeeping = !infoCategory && XB_COMPANIES.has(normalizeCompany(company))');
+ if(parser.includes('        ...(activityCredit ?'))parser=parser.replace(/        \.\.\.\(activityCredit \?[^\n]+\n/,infoSpread);
+ else parser=parser.replace('        ...(bookkeeping ?',infoSpread+'        ...(bookkeeping ?');
+ code=code.slice(0,start)+parser+code.slice(end);
+ const exports='  return { SPECS, detect, parse, stamp, channelOf, companyOf, canonicalPm, isPm, pipe, merge };';
+ assert.ok(code.includes(exports));code=code.replace(exports,helper+exports.replace('merge };','merge, xbInformationCategory };'));
+ new AsyncFunction(code);
+ node.parameters.jsCode=code;changed++;
+}
+assert.equal(changed,3);fs.writeFileSync('/private/tmp/audit-xb-live-prepared.json',JSON.stringify(workflow,null,2)+'\n');
+console.log('Prepared exactly three parser copies; all other node settings and workflow graph unchanged');
