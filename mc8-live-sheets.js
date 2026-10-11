@@ -172,6 +172,25 @@
     for(const row of caseRows){
       if(row.case?.customer_details?.waiting_source&&row.kind!=='closed'){row.waiting=true;row.boAccountLabel=row.case.customer_details.bo_account_label||row.account;}
       const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      // A saved BO-waiting case can outlive its successful reconciliation.
+      // Keep that case visible on the unique saved bank pair, not as another
+      // financial row. Exact BO identity is required; equal amounts are not.
+      const waitingHits=isSys123(row.company)&&isStatement(row)
+        &&e.customer_details?.waiting_source&&ref&&user&&row.boDate&&row.boTime
+        ?pairRows.filter(p=>p.company===row.company&&p.account===row.account
+          &&p.direction===row.direction&&p.boDate===row.boDate&&p.boTime===row.boTime
+          &&cents(p.boAmount)===cents(row.boAmount)
+          &&String(p.bo.reference||'').trim()===ref&&String(p.bo.user||'').trim()===user
+          &&p.pmSource?.fileId&&p.pmSource?.row!==null&&p.pmSource?.row!==undefined):[];
+      if(waitingHits.length===1){
+        const pair=waitingHits[0];
+        (pair.relatedWaitingCases ||= []).push(e);
+        if(!pair.case||pair.case.status==='closed'&&e.status!=='closed'){
+          pair.case=e;pair.code=row.code;pair.kind=row.kind;
+        }
+        pair.reason=[pair.reason,`เคสประวัติ ${row.code}: ${e.status} · BO รายการเดียวกับคู่ที่บันทึกแล้ว`].filter(Boolean).join(' · ');
+        continue;
+      }
       const closedCrossDay=e.status==='closed'&&e.auto_closed===true&&e.ex_type==='cross_day'
         &&e.closure_rule==='reserved-unique-bo-identity-match'
         &&e.closing_run_id===data?.run?.id&&ref&&user;
@@ -286,6 +305,9 @@
       .filter(r=>r.company===fallbackCompany&&r.kind==='xb_information')
       .map(r=>`${r.sourceFileId}|${r.rowNo}`));
     return visibleRows.filter(row=>{
+      // SK8 commission-request users are not company deposit/withdrawal
+      // accounts. Preserve their stored audit history outside these sheets.
+      if(row.company==='SK8'&&!['deposit','withdraw'].includes(directionOf(row.direction)))return false;
       if(!XB_COMPANIES.includes(row.company)||row.isPair||hasSide(row,'pm')
         ||directionOf(row.direction)!=='deposit'
         ||!/^(?:UNKNOWN|[-–—]?)$/i.test(String(row.boAccountLabel||row.account||'').trim()))return true;

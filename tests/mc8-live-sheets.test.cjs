@@ -113,3 +113,37 @@ mount(container,{signedIn:()=>false,date:'2026-09-16',onLocal(){},load(){throw E
 assert.ok(container.innerHTML.includes('กรุณาเข้าสู่ระบบจริง'));
 mount(container,{signedIn:()=>true,date:'2026-09-16',company:'MR9',companies:COMPANIES,onLocal(){},load:async(company,date)=>{assert.equal(company,'MR9');assert.equal(date,'2026-09-16');return input;}});
 setImmediate(()=>{assert.ok(container.innerHTML.includes('COREPAY'));assert.ok(container.innerHTML.includes('355.00'));assert.ok(container.innerHTML.includes('สรุปยอดแยกตามบัญชี BO'));assert.ok(container.innerHTML.includes('ต่างหลังข้ามวัน'));assert.ok(!container.innerHTML.includes('โหลดผลหรือหลักฐานคู่ไม่ครบ'));assert.ok(container.innerHTML.includes('ปิดได้ทันที'));console.log('Audit live sheets: five-company read-only adapter, deduplicated totals, cross-day totals and login guard passed');});
+// SYS123 BBL: old waiting cases must not repeat a BO already in a saved pair.
+{
+  const lib=require('../mc8-live-sheets.js');
+  for(const company of ['SK8','AT4']){
+    const p={company,account:company==='SK8'?'6517249394':'6517248040',direction:'deposit',amount:100,
+      bo:{fileId:'bo-fixture',row:177,date:'2026-10-10',sec:62880},
+      stm:{fileId:'stm-fixture',row:7,date:'2026-10-10',sec:null,noTime:true},
+      customer:{bo:{reference:'unique-bo-ref',user:'fixture-user'},stm:{}}};
+    const e={id:'old-wait',code:'BO-WAIT-fixture',company,account:p.account,direction:'ฝาก',status:'open',
+      ex_type:'missing_stm',system_amount:100,bank_amount:null,bo_date:'2026-10-10',bo_time:'17:28:00',
+      customer_details:{waiting_source:true,bo:p.customer.bo,source_rows:{bo:{fileId:'bo-fixture',row:176}}}};
+    const d={run:{company,business_date:'2026-10-10',summary:{match_evidence:[p]}},cases:[e,{...e,id:'history',status:'closed'}]};
+    const before=JSON.stringify(d),rows=lib.rowsOf(d,company);
+    assert.equal(rows.length,1);assert.equal(rows[0].case.id,e.id);
+    assert.equal(rows[0].case.status,'open');assert.equal(rows[0].relatedWaitingCases.length,2);
+    assert.equal(rows[0].waiting,undefined);assert.equal(rows[0].pmAmount,100);
+    assert.equal(lib.summarize(rows).boCents,10000);assert.equal(lib.summarize(rows).waitingBoCount,0);
+    assert.equal(JSON.stringify(d),before,'no stored case/source/run mutation');
+    for(const change of [{system_amount:99},{bo_time:'18:55:00'},{company:'FR8'},
+      {customer_details:{...e.customer_details,bo:{...p.customer.bo,reference:'another-ref'}}},
+      {customer_details:{...e.customer_details,bo:{...p.customer.bo,user:'another-user'}}}]){
+      assert.equal(lib.rowsOf({...d,cases:[{...e,...change}]},company).length,2,'not folded without exact identity');
+    }
+    assert.equal(lib.rowsOf({...d,run:{...d.run,summary:{match_evidence:[p,{...p,stm:{...p.stm,row:8}}]}},cases:[e]},company).length,3,'ambiguous evidence remains visible');
+    const differentTime={...p,bo:{...p.bo,row:22,sec:80280},customer:{...p.customer,bo:{...p.customer.bo,reference:'second-real-ref'}}};
+    assert.equal(lib.rowsOf({...d,run:{...d.run,summary:{match_evidence:[p,differentTime]}}},company).length,2,'same amount at another time is a distinct transaction');
+  }
+  const comm={id:'commission-fixture',company:'SK8',account:'igoal21431',direction:'-',status:'open',ex_type:'comm_cut_missing',system_amount:128,bo_date:'2026-10-10',bo_time:'19:28:13',bo_raw:'commission source fixture'};
+  const d={run:{summary:{}},cases:[comm]},before=JSON.stringify(d);
+  assert.equal(lib.rowsOf(d,'SK8').length,0);assert.equal(JSON.stringify(d),before);
+  assert.equal(lib.rowsOf({...d,cases:[{...comm,direction:'ฝาก',account:'6517249394'}]},'SK8').length,1,'real deposit retained');
+  assert.equal(lib.rowsOf({...d,cases:[{...comm,company:'AT4'}]},'AT4').length,1,'SK8 filter is company scoped');
+  console.log('SYS123 bank waiting history identity and SK8 financial direction scope passed');
+}
