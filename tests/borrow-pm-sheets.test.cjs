@@ -73,4 +73,15 @@ const schema=require('../mc8-sheet-schema.js');
    else assert.equal(result[0].account,'123456789','unproven source label must not be applied');
  }
  console.log('Canonical borrowed waiting snapshot: one named sheet, ten distinct sources and unchanged amounts passed');
+ const mrRows=tenRows.map(row=>({...row,company:'MR9',account:'บัญชีPM บ้านอื่น 111144411111',boAccountLabel:'บัญชีPM บ้านอื่น 111144411111'}));
+ const mrBefore=JSON.stringify(mrRows),mrTotals=sheets.summarize(mrRows);
+ const mrGroups=sheets.accountReviewGroups(mrRows);
+ assert.equal(mrGroups.length,1);assert.equal(mrGroups[0].rows.length,10);
+ assert.equal(mrGroups[0].label,'บัญชีPM บ้านอื่น 111144411111');
+ const mrExport=sheets.buildAuditExportSheets(mrRows,'MR9','2026-10-10',false,schema).filter(s=>s.name==='บัญชีPM บ้านอื่น 111144411111');
+ assert.equal(mrExport.length,1);assert.equal(mrExport[0].rows.length,10);
+ assert.equal(mrExport[0].footerRows[0][mrExport[0].headers.indexOf('BO ฝาก')],365305);
+ assert.equal(mrExport[0].footerRows[0][mrExport[0].headers.indexOf('BO ถอน')],365305);
+ assert.deepEqual(sheets.summarize(mrGroups[0].rows),mrTotals);assert.equal(JSON.stringify(mrRows),mrBefore);
+ console.log('MR9 borrowed PM: combined BO-named group, both direction columns and unchanged distinct transactions passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

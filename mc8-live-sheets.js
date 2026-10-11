@@ -8,7 +8,9 @@
   const LOCALPAY_SHEETS=Object.freeze(['LP ถ','LP ฝ']);
   const ANT_SHEETS=Object.freeze(['ANT ถ','ANT ฝ']);
   const BORROW_SHEET='ยืม PM บริษัทอื่น';
-  const isBorrowAccount=(value,company)=>XB_COMPANIES.includes(company)&&/ยืม\s*PM\s*(?:บ้านอื่น|บริษัทอื่น|ต่างบริษัท)/i.test(String(value||''));
+  const isBorrowAccount=(value,company)=>XB_COMPANIES.includes(company)&&(/ยืม\s*PM\s*(?:บ้านอื่น|บริษัทอื่น|ต่างบริษัท)/i.test(String(value||''))
+    ||company==='MR9'&&/บัญชี\s*PM\s*บ้านอื่น/i.test(String(value||'')));
+  const combinedBorrow=row=>['3XB','MR9'].includes(row.company)&&isBorrowAccount(row.boAccountLabel||row.account,row.company);
   const XB_COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9']);
   const SEVEN_M_BORROW_SHEET='บัญชีPM บ้านอื่น(ยืม)';
   const MANUAL_ACCOUNTS=Object.freeze({FR8:['999999999999'],AT4:['0000000009'],SK8:['1111111111','2222222222']});
@@ -383,7 +385,7 @@
       const provider=providerOfRow(row),source=sourceSheetOf(row);
       const bank=!source&&provider==='OTHER'&&(isStatement(row)||/\b(?:SCB|BBL|KBANK|KTB|TTB|BAY|TMN)\b/i.test(account));
       const tmn=/\bTMN\b/i.test(account)||String(registryCatalog?.byAccount?.(String(row.account).replace(/\D/g,''))?.bank||row.bank||row.pm?.bank||'').toUpperCase()==='TMN';
-      const split=!(row.company==='3XB'&&isBorrowAccount(account,row.company))&&(!bank||isSys123(row.company)||(isSevenM(row.company)&&tmn));
+      const split=!combinedBorrow(row)&&(!bank||isSys123(row.company)||(isSevenM(row.company)&&tmn));
       const direction=split?directionOf(row.direction):'';
       const identity=bank?(String(row.account).replace(/\D/g,'')||account.replace(/ฝาก|ถอน/g,'').trim()):account;
       const key=`bo-account:${bank?'bank:'+identity:account}${split?':'+direction:''}`;
@@ -689,7 +691,7 @@
     ];
     if(rows.some(isExcludedAccountSheetRow))sheets[1].footerRows[0][1]='รวมยอดต้นทางเดิม รวม BO - ฝากที่ไม่สร้างชีต (ตรวจในข้อมูลทั้งหมด)';
     for(const group of groups){
-      const borrowed=group.rows.some(row=>row.company==='3XB'&&isBorrowAccount(row.boAccountLabel||row.account,row.company));
+      const borrowed=group.rows.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','BO ฝาก','BO ถอน',...(borrowed?['BO · เวลาทำรายการต้นทาง']:[])];
       const scoped=chronologicalRows(group.rows),data=scoped.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',row.boSource?.fileName||row.boSource?.fileId||'',hasSide(row,'bo')&&accountDisplayDirection(row)==='deposit'?row.boAmount:'',hasSide(row,'bo')&&accountDisplayDirection(row)==='withdraw'?row.boAmount:'',...(borrowed?[row.boTransactionTime||'']:[])]);
       const s=summarize(group.rows),footer=totalRow(headers,data,'STM/PM · ยอด');
@@ -738,7 +740,7 @@
         const headers=[...STATEMENT_HEADERS,'BO · ผู้ดำเนินการ','STM/PM · รายละเอียดต้นฉบับ','BO · รายละเอียดต้นฉบับ','STM/PM · สถานะต้นทาง','BO · เวลาทำรายการต้นทาง'];
         return placeBoOperator({headers,rows:ordered.map((row,index)=>[...statementExportRow(row,index,company,date,complete),row.bo?.performedBy||'',row.pmRaw||row.pm?.description||row.pm?.note||'',row.boRaw||row.bo?.note||'',row.pm?.status||'',row.boTransactionTime||'']),templateSheet:'statement:account'});
       }
-      const borrowed=ordered.some(row=>row.company==='3XB'&&isBorrowAccount(row.boAccountLabel||row.account,row.company));
+      const borrowed=ordered.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ',...(borrowed?['BO ฝาก','BO ถอน','BO · เวลาทำรายการต้นทาง']:[])];
       return placeBoOperator({headers,rows:ordered.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',...(borrowed?[row.direction==='deposit'?numeric(row.boAmount):'',row.direction==='withdraw'?numeric(row.boAmount):'',row.boTransactionTime||'']:[])])});
     }
