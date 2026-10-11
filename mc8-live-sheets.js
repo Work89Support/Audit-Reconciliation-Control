@@ -340,10 +340,12 @@
   }
   function isExcludedAccountSheetRow(row){
     const raw=String(row.boRaw||'').split('|').map(value=>value.trim());
+    // Some XB exports omit the optional BO reference column and start at time.
+    const typeIndex=/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(raw[0]||'')?1:2;
     const activity=XB_COMPANIES.includes(row.company)
       && /^(?:UNKNOWN|[-–—]?)$/i.test(String(row.boAccountLabel||row.account||'').trim())
-      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[2]||'')
-      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[3]||'');
+      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[typeIndex]||'')
+      && /^(?:โบนัส|bonus|กิจกรรม)$/i.test(raw[typeIndex+1]||'');
     if(activity&&directionOf(row.direction)==='deposit'&&hasSide(row,'bo')&&!hasSide(row,'pm'))return true;
     return COMPANIES.includes(row.company)&&directionOf(row.direction)==='deposit'
       &&/^[-—–]$/.test(String(row.boAccountLabel||row.account||'').trim())
