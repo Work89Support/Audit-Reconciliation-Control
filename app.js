@@ -6007,6 +6007,22 @@ function bindStoredFileLinks(root, selector = "[data-storage-open]") {
   })));
 }
 
+function cloudMissingGroupsText(groups) {
+  const label = (group) => {
+    if (Array.isArray(group)) return group.map(label).join(" / ");
+    if (typeof group === "string") return group || "ไม่ระบุกลุ่มไฟล์";
+    if (!group || typeof group !== "object") return "ไม่ระบุกลุ่มไฟล์";
+    const names = Array.isArray(group.source_labels)
+      ? group.source_labels.filter((value) => typeof value === "string" && value.trim()).join(" / ") : "";
+    const account = names || (typeof group.label === "string" && group.label)
+      || (typeof group.identity === "string" && group.identity) || "ไม่ระบุบัญชี";
+    const direction = { deposit: "ฝาก", withdraw: "ถอน", ฝาก: "ฝาก", ถอน: "ถอน" }[group.direction] || "";
+    return [typeof group.kind === "string" ? group.kind : "", account, direction].filter(Boolean).join(" · ");
+  };
+  if (!Array.isArray(groups)) return "ยังไม่มีข้อมูลไฟล์ที่ขาด";
+  return groups.length ? groups.map(label).join(", ") : "ครบ";
+}
+
 async function cloudLoad(force = false) {
   const key = cloudQueryKey();
   if (cloudState.loading && !force) return;
@@ -6235,7 +6251,7 @@ VIEWS.cloud = (root) => {
             <td>${h(j.company)}${j.business_system ? `<small class="sub">${h(j.business_system)}</small>` : ""}</td>
             <td><span class="badge ${jobTone[j.status] || "grey"}">${h(jobLabel[j.status] || j.status)}</span>${j.last_error ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
             <td class="right tnum">${num(j.mail_count)}</td><td class="right tnum">${num(j.file_count)}</td>
-            <td class="muted">${Array.isArray(j.missing_groups) && j.missing_groups.length ? h(j.missing_groups.map((g) => g.join(" / ")).join(", ")) : "ครบ"}</td>
+            <td class="muted">${h(cloudMissingGroupsText(j.missing_groups))}</td>
             <td>${j.match_rate == null ? "-" : `${Number(j.match_rate).toFixed(2)}% · exception ${num(j.exception_count)}`}</td>
           </tr>`,
           )
