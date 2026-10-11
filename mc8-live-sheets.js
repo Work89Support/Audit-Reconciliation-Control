@@ -440,11 +440,12 @@
     if(!hasSide(row,side))return '';
     const detail=row[side]||{},amount=cents(row[`${side}Amount`]);
     const source=row[`${side}Source`]||{};
-    // 7M sometimes saves an operator note in the reference column. These
+    // The verified 7M KB/TMN sources save operator notes in the reference column. These
     // descriptions are not transaction IDs: equal amounts at different
     // times/users/source rows must remain separate in summaries and exports.
     const noteReference=String(detail.reference||'').trim().replace(/\s+/g,'');
     if(side==='bo'&&row.company==='UFABET7M'
+      &&['1953583301','0812792075','0639274201'].includes(String(row.account||'').replace(/\D/g,''))
       &&/^(?:ถอนมือ|ฝากมือ|(?:ระบบ|บอท|ยอด)?(?:ไม่|ไม)จับ(?:ยอด)?|โยกเงิน(?:เข้า|ออก)?)$/.test(noteReference)){
       const origin=source.fileId?source:row.case?.customer_details?.source_rows?.bo||source;
       if(origin.fileId&&origin.row!==null&&origin.row!==undefined)

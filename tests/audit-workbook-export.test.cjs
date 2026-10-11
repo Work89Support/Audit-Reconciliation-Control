@@ -72,6 +72,8 @@ for(const input of [kb,rung]){
  assert.equal(exported[1].rows[0][6],0);
  assert.equal(JSON.stringify(input),snapshot);
 }
+assert.equal(live.summarize(noteRows('5034633891','ไม่จับ',[100,100])).boCount,1,'unrelated SCB policy stays unchanged');
+assert.equal(live.summarize(rung.map(r=>({...r,company:'3XB'}))).boCount,5,'other-company reference policy stays unchanged');
 for(const note of ['ระบบไม่จับยอด','ไม่จับ','ไมจับ','ยอดไม่จับ','บอทไม่จับ']){
  const input=noteRows('0639274201',note,[100,100]);
  input.push(row({company:'UFABET7M',account:'0639274201',key:'20-unmatched',isPair:false,kind:'review',
