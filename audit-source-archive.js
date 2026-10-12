@@ -59,7 +59,7 @@
    const counts={};for(const f of summary?.files||[]){const k=f.path.split('/')[2];counts[k]??={ok:0,all:0};counts[k].all++;if(f.status==='downloaded')counts[k].ok++;}
    host.setAttribute('aria-busy',String(busy));
    host.innerHTML=`<section class="source-archive">
-    <div class="sa-intro"><span class="sa-tag">สำเนาต้นฉบับ · ไม่รันบอท</span><h3>เก็บไฟล์ไว้ทำกระทบยอดมือ</h3>${summary?'':'<p>เลือกบริษัทและวันที่ แล้วดาวน์โหลดครั้งเดียวเป็น ZIP แตกไฟล์แล้วจะได้โฟลเดอร์แยกพร้อมใช้งาน</p>'}</div>
+    ${summary?'':'<div class="sa-intro"><span class="sa-tag">สำเนาต้นฉบับ · ไม่รันบอท</span><h3>เก็บไฟล์ไว้ทำกระทบยอดมือ</h3><p>เลือกบริษัทและวันที่ แล้วดาวน์โหลดครั้งเดียวเป็น ZIP แตกไฟล์แล้วจะได้โฟลเดอร์แยกพร้อมใช้งาน</p></div>'}
     <ol class="sa-steps" aria-label="ขั้นตอนดาวน์โหลด">${['เลือกข้อมูล','ตรวจไฟล์','ดาวน์โหลด'].map((t,i)=>`<li class="${step===i+1?'is-current':step>i+1?'is-done':''}" ${step===i+1?'aria-current="step"':''}><span>${i+1}</span>${t}</li>`).join('')}</ol>
     ${summary?`<details class="sa-selection"><summary><strong>${esc(company)} · ${esc(date?.split('-').reverse().join('/'))}</strong><span>เปลี่ยนบริษัท / วัน / หลักฐาน</span></summary>`:''}
     <div class="sa-fields"><label>บริษัท<select data-company ${busy?'disabled':''}>${opts.companies.map(c=>`<option ${c===company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่กระทบยอด<input type="date" data-date value="${esc(date)}" ${busy?'disabled':''}></label></div>
@@ -81,7 +81,7 @@
    host.querySelector('[data-prepare]').onclick=async()=>{
     busy=true;prepared=null;receipt=null;readDone=0;readTotal=0;message='กำลังตรวจสิทธิ์และอ่านไฟล์ต้นฉบับ กรุณารอสักครู่';draw();
     try{prepared=await prepare({...opts,company,date,includeEvidence,cancelled:()=>cancel,progress:(n,total)=>{readDone=n;readTotal=total;message=`ตรวจไฟล์ ${n} จาก ${total} ไฟล์`;const status=host.querySelector('[data-progress-text]'),bar=host.querySelector('[data-progress]');if(status)status.textContent=message;if(bar){bar.max=total;bar.value=n;}}});message=prepared.manifest.complete?'ตรวจไฟล์เรียบร้อยแล้ว เลือกดาวน์โหลดทั้งชุดด้านล่างได้เลย':'ดูรายการไฟล์ที่ขาดด้านล่างก่อนใช้ข้อมูล';}
-    catch(e){message=e.message;}finally{busy=false;draw();}
+    catch(e){message=e.message;}finally{busy=false;draw(prepared?'[data-save]':null);}
    };
    const save=host.querySelector('[data-save]');if(save)save.onclick=async()=>{
     const result=prepared;busy=true;draw();
