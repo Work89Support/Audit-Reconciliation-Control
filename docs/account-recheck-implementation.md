@@ -74,6 +74,26 @@ An accepted account result must not automatically close existing cases.
 6. QA must not confirm actual reports, change original files or close actual cases.
    Fixture UI screenshots must be labeled as synthetic, not real-user proof.
 
+## Live read-only QA on 2026-10-12
+
+- GitHub Pages and regression CI passed for the guided controls and nonce guard.
+- The real administrator selected only 3XB BO plus AUTOPEER/ATP withdrawal PM,
+  2026-10-10. The staged worker returned 529 STM/PM rows, 529 BO rows and 529
+  matched pairs, with zero staged exceptions. The result remains `ready`.
+- A first attempt failed at the n8n completion expression. The failure finalizer
+  safely marked it failed; the expression was fixed, published and successfully
+  retested. Historical failed attempts were retained, not deleted.
+- The administrator's confirmation button enabled only after review/reason.
+  The final browser confirmation was opened and cancelled. No real report was
+  confirmed and no real case was closed.
+- Before/after SQL checks: original run ID/status unchanged, all 100 case JSON
+  records and all 17 original source-file JSON records had identical digests.
+  There is one ready additional report and zero confirmed reports for this scope.
+- File corrections/uploads/holds were tested on synthetic fixtures and real
+  migration rollback, not by correcting live financial source files during QA.
+- Manual rechecks require an existing company-day run for comparison. Incomplete
+  or missing selected STM/PM/BO sources fail closed rather than become zero activity.
+
 ## Build and local checks
 
 `node scripts/build-account-recheck-worker.mjs`

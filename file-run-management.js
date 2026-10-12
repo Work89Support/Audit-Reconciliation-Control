@@ -3,6 +3,7 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const canManage=role=>['lead','admin'].includes(role);
  const kinds=['bo_main','stm_pdf','pm_statement','doc_clarify','unknown'];
+ const kindLabel={bo_main:'BO หลังบ้าน',stm_pdf:'STM ธนาคาร',pm_statement:'Statement PM',doc_clarify:'หลักฐานประกอบ',unknown:'ยังไม่ระบุประเภท'};
  function validateCorrection(b){
   if(!b?.fileId||!b.expectedRevision||!String(b.reason||'').trim()||b.reason.trim().length<10)throw Error('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
   if(!/^[A-Z0-9]+$/.test(b.company)||!/^\d{4}-\d{2}-\d{2}$/.test(b.date)||!kinds.includes(b.kind))throw Error('บริษัท วันที่ หรือประเภทไฟล์ไม่ถูกต้อง');
@@ -23,7 +24,7 @@
     <button data-refresh ${busy?'disabled':''}>โหลดไฟล์/สถานะล่าสุด</button>
     <p role="alert">${esc(error)}</p>
     <table><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
-     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}</td><td>${esc(f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
+     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
     </tbody></table>
     <button data-run ${busy||!selected.size?'disabled':''}>รันด้วยไฟล์ที่เลือก (${selected.size})</button>
     <p>ผลต้องผ่านการทบทวนและยืนยันจากหัวหน้า/ผู้ดูแลก่อนใช้ ไม่เปิดเคสจากการตรวจเปรียบเทียบ</p>
@@ -54,7 +55,7 @@
   }
   function editorHtml(){const f=editor;return `<div class="manual-review"><h4>เพิ่มเวอร์ชันไฟล์ · เก็บต้นฉบับไว้</h4><div class="manual-fields"><label>ชื่อใหม่ <input data-name value="${esc(f.name)}"></label>
     <label>บริษัท <select data-company>${(opts.companies||[opts.company]).map(c=>`<option value="${esc(c)}" ${c===f.company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่ <input type="date" data-date value="${esc(f.date)}"></label>
-    <label>ประเภท <select data-kind>${kinds.map(k=>`<option ${f.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
+    <label>ประเภท <select data-kind>${kinds.map(k=>`<option value="${k}" ${f.kind===k?'selected':''}>${esc(kindLabel[k])}</option>`).join('')}</select></label>
     <label>ฉบับแทน <select data-replacement><option value="">ใช้ไฟล์เดิม</option>${files.filter(x=>x.id!==f.fileId&&!x.excluded).map(x=>`<option value="${esc(x.id)}" ${f.replacementId===x.id?'selected':''}>${esc(x.file_name)}</option>`).join('')}</select></label>
     <label>หรืออัปโหลดฉบับแก้ไข <input type="file" data-upload accept=".xlsx,.xls,.xlsm,.csv,.pdf,.docx"></label>
     ${upload?`<p>เลือกฉบับอัปโหลดไว้: ${esc(upload.name)} · ${upload.size} ไบต์</p>`:''}</div><label class="manual-check"><input type="checkbox" data-exclude ${f.excluded?'checked':''}>กักไฟล์นี้ ไม่นำเข้ารัน</label>
