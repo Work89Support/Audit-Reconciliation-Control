@@ -17,4 +17,5 @@ ctx.rpc=async()=>{actor='other';return []};await assert.rejects(ctx.clarificatio
 assert.ok(app.includes('สิ่งที่ Audit ขอให้ชี้แจง'));assert.ok(app.includes('h(n.text)'),'escape stored request text');
 assert.ok(app.includes("if(e.clarificationInstructionsError) return toast"));
 assert.ok(app.includes("state.role==='shift_lead' ? [] : await Sb.caseNotes"),'no full log request for company responder');
+assert.ok(app.includes("if(state.role==='shift_lead'&&e._caseEvidenceLoaded) e.hasEvidence="),'responder display uses loaded attachment register without updating case rows');
 console.log('PASS request UI/API: multiline, verified receipt, actor changes, scoped RPC, safe escaping and failed-load response guard.');
