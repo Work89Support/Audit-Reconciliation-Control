@@ -819,7 +819,7 @@ const Sb = (() => {
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
   const auditSourceArchiveManifest=(company,date,includeEvidence)=>rpc('audit_source_archive_manifest',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence});
-  const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes}))});
+  const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes,object_version:f.object_version,object_etag:f.object_etag}))});
   async function dailyJob(company, date) {
     if (!company || company === "ALL" || !date) return null;
     const rows = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=id,company,business_date,status&limit=1`);

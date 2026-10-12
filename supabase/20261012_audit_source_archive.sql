@@ -14,9 +14,12 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object(
   'id','s_'||f.id,'origin','mail','company',p_company,'source_date',b.business_date,
   'file_name',f.file_name,'storage_path',f.storage_path,'kind',f.kind,
-  'checksum',f.checksum,'size_bytes',f.size_bytes,'parsed',f.parsed,'parse_error',f.parse_error
+  'checksum',f.checksum,'registered_size_bytes',f.size_bytes,'object_version',o.updated_at,'object_etag',o.metadata->>'eTag',
+  'size_bytes',coalesce(case when o.metadata->>'size' ~ '^[0-9]{1,12}$' then (o.metadata->>'size')::bigint end,f.size_bytes),
+  'parsed',f.parsed,'parse_error',f.parse_error
  ) order by f.created_at,f.id),'[]'),coalesce(array_agg(f.id),'{}') into files,source_ids
  from public.source_files f join public.mail_batches b on b.id=f.batch_id
+ left join storage.objects o on o.bucket_id='audit-files' and o.name=f.storage_path
  where coalesce(nullif(f.company,''),b.company)=p_company
  and (b.business_date=p_date or f.id=any(coalesce(run_files,'{}'))
   or (p_include_evidence and f.id in(select clarification_file_id from public.exceptions where company=p_company and business_date=p_date)))
@@ -25,17 +28,24 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
    'id','e_'||ce.id,'origin','case_evidence','company',p_company,'source_date',e.business_date,
    'file_name',ce.file_name,'storage_path',ce.storage_path,'kind','doc_clarify',
-   'checksum',to_jsonb(ce)->>'checksum','size_bytes',ce.size_bytes,'parsed',false,'parse_error',null
+   'checksum',to_jsonb(ce)->>'checksum','registered_size_bytes',ce.size_bytes,'object_version',o.updated_at,'object_etag',o.metadata->>'eTag',
+   'size_bytes',coalesce(case when o.metadata->>'size' ~ '^[0-9]{1,12}$' then (o.metadata->>'size')::bigint end,ce.size_bytes),
+   'parsed',false,'parse_error',null
   ) order by ce.created_at,ce.id),'[]') into extra
   from public.case_evidence ce join public.exceptions e on e.id=ce.exception_id
+  left join storage.objects o on o.bucket_id='audit-files' and o.name=ce.storage_path
   where e.company=p_company and e.business_date=p_date;
   files:=files||extra;
   if to_regclass('public.source_file_replacements') is not null then
    execute $query$select coalesce(jsonb_agg(jsonb_build_object(
     'id','h_'||r.id,'origin','source_history','company',$1,'source_date',$2,
     'file_name',r.old_file_name,'storage_path',r.old_storage_path,'kind',r.kind,
-    'checksum',r.old_checksum,'size_bytes',r.old_size_bytes,'parsed',false,'parse_error',null
-   ) order by r.replaced_at,r.id),'[]') from public.source_file_replacements r where r.source_file_id=any($3) and r.company=$1$query$
+    'checksum',r.old_checksum,'registered_size_bytes',r.old_size_bytes,'object_version',o.updated_at,'object_etag',o.metadata->>'eTag',
+    'size_bytes',coalesce(case when o.metadata->>'size' ~ '^[0-9]{1,12}$' then (o.metadata->>'size')::bigint end,r.old_size_bytes),
+    'parsed',false,'parse_error',null
+   ) order by r.replaced_at,r.id),'[]') from public.source_file_replacements r
+   left join storage.objects o on o.bucket_id='audit-files' and o.name=r.old_storage_path
+   where r.source_file_id=any($3) and r.company=$1$query$
    into extra using p_company,p_date,source_ids;
    files:=files||extra;
   end if;
@@ -43,8 +53,12 @@ begin
    execute $query$select coalesce(jsonb_agg(jsonb_build_object(
     'id','v_'||r.id,'origin','source_history','company',$1,'source_date',$2,
     'file_name',r.original->>'file_name','storage_path',r.original->>'storage_path','kind',r.original->>'kind',
-    'checksum',r.original->>'checksum','size_bytes',r.original->'size_bytes','parsed',false,'parse_error',null
-   ) order by r.created_at,r.id),'[]') from public.audit_source_revisions r where r.source_file_id=any($3) and r.original->>'company'=$1$query$
+    'checksum',r.original->>'checksum','registered_size_bytes',r.original->'size_bytes','object_version',o.updated_at,'object_etag',o.metadata->>'eTag',
+    'size_bytes',case when o.metadata->>'size' ~ '^[0-9]{1,12}$' then to_jsonb((o.metadata->>'size')::bigint) else r.original->'size_bytes' end,
+    'parsed',false,'parse_error',null
+   ) order by r.created_at,r.id),'[]') from public.audit_source_revisions r
+   left join storage.objects o on o.bucket_id='audit-files' and o.name=r.original->>'storage_path'
+   where r.source_file_id=any($3) and r.original->>'company'=$1$query$
    into extra using p_company,p_date,source_ids;
    files:=files||extra;
   end if;
@@ -62,6 +76,8 @@ begin
   select 1 from jsonb_array_elements(current_files) actual where actual->>'id'=wanted->>'id'
   and actual->>'storage_path'=wanted->>'storage_path' and actual->>'file_name'=wanted->>'file_name'
   and actual->>'checksum' is not distinct from wanted->>'checksum'
+  and actual->>'object_version' is not distinct from wanted->>'object_version'
+  and actual->>'object_etag' is not distinct from wanted->>'object_etag'
   and actual->>'size_bytes' is not distinct from wanted->>'size_bytes'));
 end $$;
 revoke all on function public.audit_source_archive_manifest(text,date,boolean) from public,anon;

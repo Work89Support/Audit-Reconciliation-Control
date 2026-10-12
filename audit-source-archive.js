@@ -22,7 +22,9 @@
    const path=`${company}/${date}/${folder(f)}/${safeName(f.id)}_${safeName(f.file_name)}`;
    if(names.has(path))throw Error('ทะเบียนไฟล์มีรหัส/ชื่อซ้ำ ต้องตรวจคลังก่อน');names.add(path);
    const r={id:f.id,origin:f.origin,original_name:f.file_name,kind:f.kind,source_date:f.source_date,path,
-     source_checksum:f.checksum||null,parsed:!!f.parsed,parse_error:f.parse_error||null,status:'failed'};
+     source_checksum:f.checksum||null,expected_size_bytes:f.size_bytes??null,registered_size_bytes:f.registered_size_bytes??null,
+     object_version:f.object_version??null,object_etag:f.object_etag??null,parsed:!!f.parsed,parse_error:f.parse_error||null,status:'failed'};
+   if(f.registered_size_bytes!=null&&f.size_bytes!=null&&Number(f.registered_size_bytes)!==Number(f.size_bytes))r.size_warning='ขนาดทะเบียนเดิมต่างจาก Storage ใช้ขนาด Storage ตรวจไฟล์โดยไม่แก้ทะเบียน';
    if(!f.storage_path){r.error='ไม่มีเส้นทางไฟล์ต้นฉบับในคลัง';records.push(r);progress(records.length,data.files.length);continue;}
    if(!await validate(company,date,includeEvidence,[f]))throw Error('ข้อมูลหรือสิทธิ์ไฟล์เปลี่ยน ต้องโหลดทะเบียนใหม่');
    let buffer;
@@ -58,7 +60,7 @@
    host.querySelector('[data-evidence]').onchange=e=>{includeEvidence=e.target.checked;prepared=null;message='';draw();};
    host.querySelector('[data-prepare]').onclick=async()=>{
     busy=true;prepared=null;message='กำลังตรวจสิทธิ์และอ่านไฟล์จริง…';draw();
-    try{prepared=await prepare({...opts,company,date,includeEvidence,cancelled:()=>cancel,progress:(n,total)=>{message=`อ่านไฟล์ ${n}/${total}`;const status=host.querySelector('[role=status]');if(status)status.textContent=message;}});message=prepared.manifest.complete?'ตรวจขนาดและ SHA-256 แล้ว':'มีไฟล์ขาด/อ่านไม่ได้ ต้องดูรายการก่อนใช้';}
+    try{prepared=await prepare({...opts,company,date,includeEvidence,cancelled:()=>cancel,progress:(n,total)=>{message=`อ่านไฟล์ ${n}/${total}`;const status=host.querySelector('[role=status]');if(status)status.textContent=message;}});message=prepared.manifest.complete?'ตรวจขนาด Storage และ SHA-256 แล้ว':'มีไฟล์ขาด/อ่านไม่ได้ ต้องดูรายการก่อนใช้';const warnings=prepared.manifest.files.filter(f=>f.size_warning).length;if(warnings)message+=` · ขนาดทะเบียนเดิมต่าง ${warnings} ไฟล์ เก็บคำเตือนใน manifest ไม่แก้ต้นฉบับ`;}
     catch(e){message=e.message;}finally{busy=false;draw();}
    };
    const save=host.querySelector('[data-save]');if(save)save.onclick=async()=>{

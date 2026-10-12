@@ -27,6 +27,10 @@ reconciliation result, automatic backup or offline application.
 - No source edit, reconciliation, case creation, approval or closure calls.
 - Raw bytes, size and SHA-256 are checked; catalog checksums are enforced when
   they are SHA-256. Download transport errors cannot leak signed URLs into ZIP.
+- Storage object size is authoritative for downloaded bytes. The pre-existing
+  registry size can differ from it; both are retained in the manifest with a
+  warning, not silently rewritten. Object modification time and ETag are checked
+  again before saving to reject same-path replacements during preparation.
 - Missing or corrupt files remain explicit failed manifest entries. A partial
   filename is marked `_PARTIAL`; missing data is not treated as zero activity.
 - 500 files and 200 MB cap. Names are sanitized against archive traversal.

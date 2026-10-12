@@ -36,6 +36,9 @@ const base=()=>({company:'TEST',date:'2026-10-12',actorId:()=> 'fixture-audit',a
  assert.match(sql,/revoke all.*from public,anon/);
  assert.match(sql,/r.source_file_id=any\(\$3\) and r.company=\$1/);
  assert.match(sql,/r.source_file_id=any\(\$3\) and r.original->>'company'=\$1/);
+ assert.match(sql,/left join storage.objects o on o.bucket_id='audit-files'/);
+ const rounded=await archive.prepare({...base(),catalog:async()=>({company:'TEST',business_date:'2026-10-12',files:files.map(f=>({...f,registered_size_bytes:999}))})});
+ assert.equal(rounded.manifest.complete,true);assert.equal(rounded.manifest.files[0].registered_size_bytes,999);assert.match(rounded.manifest.files[0].size_warning,/ไม่แก้ทะเบียน/);
  const blob=writer.archive(result.entries);assert.equal(blob.type,'application/zip');
  fs.writeFileSync('/private/tmp/audit-source-archive-fixture.zip',Buffer.from(await blob.arrayBuffer()));
  console.log('Archive original bytes, SHA-256, UTF-8 ZIP paths, scope/identity guards, partial failure and read-only SQL: PASS');
