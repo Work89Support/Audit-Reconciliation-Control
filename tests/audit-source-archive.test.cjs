@@ -34,6 +34,8 @@ const base=()=>({company:'TEST',date:'2026-10-12',actorId:()=> 'fixture-audit',a
  assert.match(sql,/has_company_access\(p_company\)/);assert.match(sql,/auth.uid\(\) is null/);
  assert.doesNotMatch(sql,/\b(insert into|update public|delete from)\b/i);
  assert.match(sql,/revoke all.*from public,anon/);
+ assert.match(sql,/r.source_file_id=any\(\$3\) and r.company=\$1/);
+ assert.match(sql,/r.source_file_id=any\(\$3\) and r.original->>'company'=\$1/);
  const blob=writer.archive(result.entries);assert.equal(blob.type,'application/zip');
  fs.writeFileSync('/private/tmp/audit-source-archive-fixture.zip',Buffer.from(await blob.arrayBuffer()));
  console.log('Archive original bytes, SHA-256, UTF-8 ZIP paths, scope/identity guards, partial failure and read-only SQL: PASS');

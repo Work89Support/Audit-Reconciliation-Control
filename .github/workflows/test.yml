@@ -19,6 +19,8 @@ jobs:
       # เทสใช้เฉพาะโมดูลในตัวของ Node ไม่มี dependency ภายนอก จึงไม่ต้อง npm install
       - name: Run unit tests
         run: npm test
+      - name: Verify read-only emergency source ZIP
+        run: npm run test:source-archive
       - name: Verify cross-day image review
         run: |
           node tests/cross-day-image-review.test.cjs

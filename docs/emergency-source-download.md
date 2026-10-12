@@ -1,8 +1,9 @@
 # Emergency original-source download
 
-Status: implemented in isolated branch; NOT deployed. No production amounts,
+Status: the independent read-only SQL and frontend module were released on
+2026-10-12 (initial frontend commit `4e7471a`). No production amounts, source
 files, evidence, approvals or cases were changed. This module is independent
-of the unfinished staged manual-rerun worker.
+of the unfinished staged manual-rerun worker, which remains unreleased.
 
 ## Workflow
 
@@ -55,8 +56,9 @@ implemented in this change.
 - Supabase SQL function creation/grants were exercised inside a transaction
   ending ROLLBACK. No business function was invoked and no data was changed.
 
-Before release: independently deploy the read-only SQL migration and the
-frontend module; test an ordinary real Audit login against its existing allowed
-company using original downloads only, plus unauthorized-company denial. Do not
-publish the unrelated incomplete account-recheck/file-management work merely to
-release this feature. Preserve and review existing dirty user changes.
+Release verification: GitHub CI and Pages deployment succeeded. Production
+frontend module URLs were observed with their new version strings. Real ordinary
+Audit-user downloads and unauthorized-company denial still need verification;
+an administrator test is not evidence of the ordinary Audit role. Do not publish
+the unrelated incomplete account-recheck/file-management work merely to release
+this feature. Preserve and review existing dirty user changes.

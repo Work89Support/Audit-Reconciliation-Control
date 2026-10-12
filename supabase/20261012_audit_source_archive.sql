@@ -35,7 +35,7 @@ begin
     'id','h_'||r.id,'origin','source_history','company',$1,'source_date',$2,
     'file_name',r.old_file_name,'storage_path',r.old_storage_path,'kind',r.kind,
     'checksum',r.old_checksum,'size_bytes',r.old_size_bytes,'parsed',false,'parse_error',null
-   ) order by r.replaced_at,r.id),'[]') from public.source_file_replacements r where r.source_file_id=any($3)$query$
+   ) order by r.replaced_at,r.id),'[]') from public.source_file_replacements r where r.source_file_id=any($3) and r.company=$1$query$
    into extra using p_company,p_date,source_ids;
    files:=files||extra;
   end if;
@@ -44,7 +44,7 @@ begin
     'id','v_'||r.id,'origin','source_history','company',$1,'source_date',$2,
     'file_name',r.original->>'file_name','storage_path',r.original->>'storage_path','kind',r.original->>'kind',
     'checksum',r.original->>'checksum','size_bytes',r.original->'size_bytes','parsed',false,'parse_error',null
-   ) order by r.created_at,r.id),'[]') from public.audit_source_revisions r where r.source_file_id=any($3)$query$
+   ) order by r.created_at,r.id),'[]') from public.audit_source_revisions r where r.source_file_id=any($3) and r.original->>'company'=$1$query$
    into extra using p_company,p_date,source_ids;
    files:=files||extra;
   end if;
