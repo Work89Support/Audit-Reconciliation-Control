@@ -4,6 +4,7 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
+    "test:source-archive": "node tests/audit-source-archive.test.cjs",
     "test:evidence-library": "node tests/case-evidence-library.test.mjs",
     "test:bulk-closure": "node tests/bulk-document-closure.test.cjs && npm run test:assistant-documents",
     "test:assistant-documents": "node tests/assistant-document-only-close.test.cjs && node tests/direct-document-close.test.cjs && node tests/document-closure.test.cjs && node tests/audit-assistant-role.test.cjs",

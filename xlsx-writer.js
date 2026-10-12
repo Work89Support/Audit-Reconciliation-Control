@@ -26,7 +26,7 @@ const XlsxWriter = (() => {
   const utf8 = (s) => enc.encode(s);
 
   /* ---------- ZIP (store) ---------- */
-  function zip(files) {
+  function zip(files, mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
     const chunks = [];
     const central = [];
     let offset = 0;
@@ -83,7 +83,7 @@ const XlsxWriter = (() => {
     ev.setUint32(16, offset, true);
 
     return new Blob([...chunks, ...central, eocd], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      type: mime,
     });
   }
 
@@ -284,7 +284,17 @@ ${named.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openx
     return zip(files);
   }
 
-  return { build, colName };
+  function archive(files) {
+    if(!Array.isArray(files)||files.length>5000)throw Error('ZIP file count exceeds limit');
+    const seen=new Set();let total=0;
+    for(const f of files){
+      if(!f.name||f.name.startsWith('/')||f.name.includes('\\')||f.name.split('/').some(p=>!p||p==='.'||p==='..')||/[\x00-\x1f]/.test(f.name)||seen.has(f.name))throw Error('Unsafe or duplicate ZIP path');
+      if(!(f.data instanceof Uint8Array))throw Error('ZIP data must be original bytes');
+      total+=f.data.byteLength;if(total>200*1024*1024)throw Error('ZIP exceeds 200 MB');seen.add(f.name);
+    }
+    return zip(files,'application/zip');
+  }
+  return { build, colName, archive };
 })();
 
 if (typeof module !== "undefined") module.exports = XlsxWriter;

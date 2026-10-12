@@ -1013,6 +1013,21 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+function openAuditSourceArchive(){
+  if(state.dataset!=='production'||!Sb.signedIn())return deny('ดาวน์โหลดไฟล์จริง');
+  const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),initialActor=Sb.authUser()?.id;
+  openModal('ดาวน์โหลดไฟล์จริง — เผื่อทำงานมือ','<div id="auditSourceArchivePanel"></div>','<button id="auditArchiveCancel">ปิด / ยกเลิกการเตรียม</button>');
+  const dispose=AuditSourceArchive.mount($('#auditSourceArchivePanel'),{
+    company:companies.includes(state.filters.company)?state.filters.company:companies[0],date:state.filters.to||state.filters.date||DEFAULT_WORK_DATE,companies,initialActor,
+    actorId:()=>Sb.authUser()?.id,catalog:Sb.auditSourceArchiveManifest,download:path=>Sb.download(path,{force:true}),
+    validate:Sb.auditSourceArchiveValidate,
+    access:async()=>{const result=await Sb.myAccess();return Array.isArray(result)?result[0]:result;},
+    sha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
+    zip:XlsxWriter.archive,save:Exporter.saveBlob,
+  });
+  $('#modal')._contentCleanup=dispose;
+  $('#auditArchiveCancel').onclick=()=>{dispose();closeModal();};
+}
 async function readAuditBoOperatorRecords(file,date) {
   if(state.dataset!=='production'||!Sb.signedIn()||file.kind!=='bo_main'||!canAccessCompany(file.company))throw new Error('ไม่มีสิทธิ์อ่าน BO ต้นทาง');
   if(!/\.xlsx$/i.test(file.file_name))throw new Error('ไฟล์ BO นี้ไม่ใช่ XLSX ที่รองรับ');
@@ -1105,6 +1120,10 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
+  $('#sourceArchiveEntry')?.remove();
+  if(state.dataset==='production'&&Sb.signedIn()&&['cloud','intake','exceptions','daily-summary','mc8-sheets'].includes(route.id)&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
+    const backup=document.createElement('button');backup.id='sourceArchiveEntry';backup.className='ghost-button';backup.textContent='ดาวน์โหลดไฟล์จริง (ทำงานมือ)';backup.onclick=openAuditSourceArchive;$('#btnExport').parentElement.appendChild(backup);
+  }
   if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets"].includes(route.id)) {
     const liveNotice = liveOverviewState.loading
       ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`

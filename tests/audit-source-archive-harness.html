@@ -1,0 +1,17 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ดาวน์โหลดไฟล์ต้นฉบับ — ข้อมูลจำลอง</title>
+<style>body{font:17px Arial;max-width:1060px;margin:35px auto;background:#f3f7fb;color:#123}label{display:inline-block}input,select,button{padding:12px;margin:8px}#panel{padding:25px;background:white;border:1px solid #ccd}button:disabled{opacity:.5}</style>
+<h1>ดาวน์โหลดไฟล์จริงสำหรับทำงานมือ — หน้าทดสอบ</h1><p>สิทธิ์ Audit จำลอง ไม่เชื่อมคลังจริง ไม่แก้ยอดหรือเคสจริง</p>
+<label><input type="checkbox" id="fail"> จำลอง BO ดาวน์โหลดไม่ได้</label><div id="panel"></div><p id="receipt" role="status"></p>
+<script src="../xlsx-writer.js"></script><script src="../export.js"></script><script src="../audit-source-archive.js"></script>
+<script>
+const enc=new TextEncoder(),payloads={'fixture/stm':enc.encode('TEST fixture STM original bytes'),'fixture/bo':enc.encode('TEST fixture BO original bytes'),'fixture/evidence':enc.encode('TEST fixture evidence original bytes')};
+const files=[{id:'stm-fixture',company:'TEST',origin:'mail',kind:'stm_pdf',file_name:'TEST_STM_original.txt',storage_path:'fixture/stm'},{id:'bo-fixture',company:'TEST',origin:'mail',kind:'bo_main',file_name:'TEST_BO_original.txt',storage_path:'fixture/bo'},{id:'evidence-fixture',company:'TEST',origin:'case_evidence',kind:'doc_clarify',file_name:'TEST_EVIDENCE_original.txt',storage_path:'fixture/evidence'}];
+AuditSourceArchive.mount(document.querySelector('#panel'),{
+ companies:['TEST'],company:'TEST',date:'2026-10-12',initialActor:'audit-fixture',actorId:()=> 'audit-fixture',
+ access:async()=>({active:true,role:'monitor',companies:['TEST']}),
+ catalog:async(company,date,include)=>({company,business_date:date,job_status:'error (fixture)',files:files.filter(f=>include||f.kind!=='doc_clarify')}),
+ download:async path=>{if(document.querySelector('#fail').checked&&path==='fixture/bo')throw Error('จำลอง BO หายจากคลัง');return payloads[path];},validate:async()=>true,
+ sha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),zip:XlsxWriter.archive,
+ save:(blob,name)=>{Exporter.saveBlob(blob,name);document.querySelector('#receipt').textContent='ดาวน์โหลด ZIP ข้อมูลจำลองแล้ว ไม่มีไฟล์หรือเคสจริงถูกเปลี่ยน';},
+});
+</script></html>
