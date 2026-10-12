@@ -222,14 +222,18 @@
     },
     {
       "parameters": {
-        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=gte.{{ $json.business_date }}&business_date=lte.{{ DateTime.fromISO($json.business_date,{zone:'Asia/Bangkok'}).plus({days:1}).toISODate() }}&select=id,business_date,company,source_files(id,file_name,storage_path,kind,company,parsed,row_count,checksum,size_bytes,created_at,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "supabaseApi",
         "options": {
           "response": {
             "response": {}
           }
-        }
+        },
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_company:$json.company,p_date:$json.business_date}) }}"
       },
       "id": "files",
       "name": "Supabase: อ่านรายการไฟล์ของวัน",
@@ -248,7 +252,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); const sys123=new Set(['AT4','FR8','SK8']); const jobCompany=String(job.company||'').toUpperCase(); for(const b of $input.all().map(x=>x.json)){const batchDate=String(b.business_date||'').slice(0,10); const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10); for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||'')); const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue; if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''))||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const bblFile=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); const key=bblFile?'BBL:'+String(f.id):keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
+        "jsCode": "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); const sys123=new Set(['AT4','FR8','SK8']); const jobCompany=String(job.company||'').toUpperCase(); for(const b of $input.all().map(x=>x.json)){const batchDate=String(b.business_date||'').slice(0,10); const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10); for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||'')); const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue; if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''))||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const bblFile=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); const key=bblFile?'BBL:'+String(f.id):keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;"
       },
       "id": "filter-files",
       "name": "เลือกไฟล์ของบริษัท",

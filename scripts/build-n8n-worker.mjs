@@ -696,6 +696,11 @@ const connections = {
 };
 
 const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
+// Read append-only source corrections without mutating original file receipts.
+const managedFileReader=nodes.find(node=>node.name==='Supabase: อ่านรายการไฟล์ของวัน');
+Object.assign(managedFileReader.parameters,{method:'POST',url:'={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches',sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify({p_company:$json.company,p_date:$json.business_date}) }}'});
+const managedFileSelector=nodes.find(node=>node.name==='เลือกไฟล์ของบริษัท');
+managedFileSelector.parameters.jsCode=managedFileSelector.parameters.jsCode.replace('({json:{job,file},pairedItem:',"({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:");
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
 // Keep the manual/round worker's embedded parser in lockstep with the tested
 // browser parser.  That workflow has its own orchestration graph, so replace

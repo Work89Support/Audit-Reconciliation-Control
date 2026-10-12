@@ -1,0 +1,74 @@
+{
+  "name": "Audit — Manual recheck failure finalizer (no financial writes)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "manual-recheck-error",
+      "name": "Worker ตรวจซ้ำล้มเหลว",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "parameters": {},
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/fail_account_recheck_execution",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_execution_id:String($json.execution?.id||\"\"),p_error:\"Worker ล้มเหลว กรุณาตรวจ execution ID ใน n8n ก่อนลองใหม่\"}) }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "fail-manual-recheck",
+      "name": "Supabase: จบงานตรวจซ้ำที่ล้มเหลว",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Worker ตรวจซ้ำล้มเหลว": {
+      "main": [
+        [
+          {
+            "node": "Supabase: จบงานตรวจซ้ำที่ล้มเหลว",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none"
+  }
+}

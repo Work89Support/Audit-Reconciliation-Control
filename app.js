@@ -1013,6 +1013,44 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+function openAccountRecheck({company,date,accounts,fileIds=null}) {
+  if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
+  openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
+  const dispose=AccountRecheck.mount($('#accountRecheckPanel'),{
+    company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,role:()=>state.role,actor:()=>Sb.authUser()?.id,
+    request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,confirm:Sb.confirmAccountRecheck,
+    detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
+    finalConfirmation:async q=>window.confirm(`${q.company} ${q.business_date} บัญชี ${q.account}\nยืนยันผลตรวจซ้ำที่ทบทวนแล้ว? แสดงรายงานยืนยันแยกจากรอบบริษัทเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส`),
+  });
+  $('#modal')._contentCleanup=dispose;
+  $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};
+}
+function openFileRunManagement({company,date,accounts}) {
+  if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('จัดการไฟล์/พักรัน');
+  openModal('เลือกไฟล์ / แก้ข้อมูล / พักรัน','<div id="fileRunManagementPanel"></div>','<button id="fileRunManagementDismiss">ปิด</button>');
+  const dispose=FileRunManagement.mount($('#fileRunManagementPanel'),{
+    company,date,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
+    companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
+    setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
+    confirmHold:async b=>window.confirm(`${b.paused?'พัก':'เปิด'}รัน ${company} ${date}?\n${b.reason}\nไม่แก้ยอดหรือปิดเคส`),
+    uploadCorrection:Sb.uploadAuditSourceCorrection,
+    onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
+    confirmCorrection:async b=>window.confirm(`เก็บต้นฉบับไว้ เพิ่มเวอร์ชันใหม่ และพักงานบริษัท/วันที่ที่เกี่ยวข้อง?\n${b.name}\n${b.reason}`),
+    onRun:async fileIds=>{
+      try{let choices=accounts;
+        if(!choices.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}
+        dispose();closeModal();openAccountRecheck({company,date,accounts:choices,fileIds});
+      }catch(error){toast(error.message,'bad');}
+    },
+  });
+  $('#modal')._contentCleanup=dispose;
+  $('#fileRunManagementDismiss').onclick=()=>{dispose();closeModal();};
+}
+function chooseFileRunManagement(){
+  const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),company=companies.includes(state.filters.company)?state.filters.company:companies[0];
+  openModal('เลือกขอบเขตจัดการไฟล์ / พักรัน',`<label>บริษัท<select id="fileManageCompany">${companies.map(c=>`<option ${c===company?'selected':''}>${h(c)}</option>`).join('')}</select></label><label>วันที่<input type="date" id="fileManageDate" value="${h(state.filters.to||state.filters.date||DEFAULT_WORK_DATE)}"></label>`,'<button id="fileManageContinue">เปิดไฟล์/สถานะของวัน</button>');
+  $('#fileManageContinue').onclick=()=>{const company=$('#fileManageCompany').value,date=$('#fileManageDate').value;if(!company||!/^\d{4}-\d{2}-\d{2}$/.test(date))return toast('เลือกบริษัทและวันที่ให้ครบ','warn');closeModal();openFileRunManagement({company,date,accounts:[]});};
+}
 function openAuditSourceArchive(){
   if(state.dataset!=='production'||!Sb.signedIn())return deny('ดาวน์โหลดไฟล์จริง');
   const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),initialActor=Sb.authUser()?.id;
@@ -1046,6 +1084,8 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   load: Sb.reconciliationOverview,
   loadFiles: runId => Sb.exceptionFiles(runId),
   readBoRecords: readAuditBoOperatorRecords,
+  onRecheck: openAccountRecheck,
+  onManageFiles: openFileRunManagement,
   exportBoWaitingCases: downloadBoWaitingCaseRequest,
   isActive: () => state.route === 'mc8-sheets',
   onLocal: () => MC8Sheets.render(root),
@@ -1121,11 +1161,14 @@ function render() {
   renderFilters();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
+  $('#fileManageEntry')?.remove();
   $('#sourceArchiveEntry')?.remove();
   if(state.dataset==='production'&&Sb.signedIn()&&['cloud','intake','exceptions','daily-summary','mc8-sheets'].includes(route.id)&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
+    const entry=document.createElement('button');entry.id='fileManageEntry';entry.className='ghost-button';entry.textContent='รันมือ / จัดการไฟล์';entry.onclick=chooseFileRunManagement;$('#btnExport').parentElement.appendChild(entry);
     const backup=document.createElement('button');backup.id='sourceArchiveEntry';backup.className='ghost-button';backup.textContent='ดาวน์โหลดไฟล์จริง (ทำงานมือ)';backup.onclick=openAuditSourceArchive;$('#btnExport').parentElement.appendChild(backup);
     if(['cloud','intake'].includes(route.id)){
       const card=document.createElement('section');card.className='source-archive-launch';card.innerHTML='<div><h2>ดาวน์โหลดต้นฉบับไว้ทำกระทบยอดมือ</h2><p>เลือกบริษัทและวันที่ · ได้ ZIP แยกโฟลเดอร์ STM/PM, BO และหลักฐาน · ไม่รันบอทหรือเปลี่ยนเคส</p></div><button>ดาวน์โหลดไฟล์ต้นฉบับ</button>';card.querySelector('button').onclick=openAuditSourceArchive;$('#viewRoot').prepend(card);
+      const manual=document.createElement('section');manual.className='source-archive-launch';manual.innerHTML='<div><h2>รันตรวจซ้ำ / จัดการไฟล์</h2><p>1 เลือกบริษัทและวัน → 2 เลือกไฟล์/บัญชี → 3 ตรวจและทบทวนผล · หัวหน้า/ผู้ดูแลยืนยันเท่านั้น<br>แก้ชื่อ/บริษัท/ฉบับแทน หรือพักรันได้ โดยเก็บต้นฉบับและประวัติ</p></div><button>เลือกไฟล์และรันตรวจซ้ำ</button>';manual.querySelector('button').onclick=chooseFileRunManagement;$('#viewRoot').prepend(manual);
     }
   }
   if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets"].includes(route.id)) {
@@ -2036,6 +2079,8 @@ VIEWS.dashboard = (root) => {
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
 const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
+dailyCompanyState.confirmedRechecks=[];
+dailyCompanyState.recheckReportError='';
 
 async function loadDailyCompanySummary(force = false) {
   const date = state.dailySummary.date = visibleDate(state.dailySummary.date || PROD_TODAY);
@@ -2043,6 +2088,7 @@ async function loadDailyCompanySummary(force = false) {
   const sameSelection = dailyCompanyState.date === date && dailyCompanyState.company === company;
   if ((dailyCompanyState.loading && sameSelection) || (!force && sameSelection && dailyCompanyState.batches)) return;
   const requestId = ++dailyCompanyState.requestId;
+  dailyCompanyState.confirmedRechecks=[];dailyCompanyState.recheckReportError='';
   if (!sameSelection) {
     dailyCompanyState.batches = null;
     dailyCompanyState.quality = null;
@@ -2112,6 +2158,7 @@ async function loadDailyCompanySummary(force = false) {
       Sb.currentExceptionsSummary({ from: date, to: date, company, limit: 250 }),
       Sb.damages({ from: date, to: date, company, limit: 500 }),
       Sb.matchedEvidence(company,date),
+      company==='ALL'||!['monitor','audit_assistant','lead','admin'].includes(state.role)?Promise.resolve([]):Sb.listAccountRechecks(company,date),
     ]);
     if (requestId !== dailyCompanyState.requestId) return;
     const rawExceptions = details[0].status === "fulfilled" ? (details[0].value || []) : [];
@@ -2121,7 +2168,9 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptions,matchEvidence);
     dailyCompanyState.exceptions = actionableAuditRows(rawExceptions,matchEvidence).map(mapLiveException);
     dailyCompanyState.damages = details[1].status === "fulfilled" ? (details[1].value || []) : [];
-    dailyCompanyState.detailsError = details.some((item) => item.status === "rejected") ? "รายละเอียด Exception หรือความเสียหายบางส่วนตอบกลับช้า" : null;
+    dailyCompanyState.confirmedRechecks=details[3].status==='fulfilled'?(details[3].value||[]).filter(q=>q.status==='confirmed'):[];
+    dailyCompanyState.recheckReportError=details[3].status==='rejected'?'ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้':'';
+    dailyCompanyState.detailsError = details.slice(0,3).some((item) => item.status === "rejected") ? "รายละเอียด Exception หรือความเสียหายบางส่วนตอบกลับช้า" : null;
     dailyCompanyState.detailsLoading = false;
     dailyCompanyState.updatedAt = new Date();
   } catch (error) {
@@ -2294,6 +2343,7 @@ function exportDailyCompanySummary(data) {
     },
   ];
   const filename = `daily-audit_${date}_${data.company}.xlsx`;
+  sheets.push(...AccountRecheck.confirmedSheets((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===data.company&&q.business_date===date)));
   const meta = `บริษัท ${data.company} · วันที่ ${date} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
   const result = Exporter.workbook(sheets, filename, meta);
   if (result.ok) {
@@ -2606,6 +2656,8 @@ function renderDailyCompanySummary(root) {
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
+      ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
+      ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
       <section class="panel daily-focus-board">
         <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>
         <div class="daily-reconcile-tiles action-tiles">
@@ -3097,6 +3149,8 @@ VIEWS.exceptions = (root) => {
         load: Sb.reconciliationOverview,
         loadFiles: runId => Sb.exceptionFiles(runId),
         readBoRecords: readAuditBoOperatorRecords,
+        onRecheck: openAccountRecheck,
+        onManageFiles: openFileRunManagement,
         exportBoWaitingCases: downloadBoWaitingCaseRequest,
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },

@@ -915,6 +915,8 @@
         ${data?.run?.id&&opts.exportBoWaitingCases&&caseRowsToCreate.length?`<button type="button" id="mc8-export-bo-cases">ส่งออก BO รอหลักฐาน (${caseRowsToCreate.length})</button><p>ส่งออกข้อมูลต้นทางเพื่อสร้างผ่าน Worker ที่มีสิทธิ์เดิม · ไม่สร้างเคสจากบัญชีเว็บและไม่เปลี่ยน RLS</p>`:''}
         ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
+        ${root.AccountRecheck?.reportPanel(data?.confirmedRechecks||[])||''}
+        ${data?.recheckReportError?'<p role="alert">ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้ · ผลรอบบริษัทด้านล่างยังเป็นผลเดิม</p>':''}
         ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · ยังรอตรวจ ${all.filter(row=>!row.isPair&&row.case?.status!=='closed').length} เคส</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status">${esc(waitingCaseNotice(all))}</p>`:''}
         <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกตามบัญชี BO</h3><div class="mc8-summary-scroll"><table><thead><tr><th>บัญชี</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${accountGroups.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,accountGroups.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · แถวรวมไม่นับซ้ำ${excludedAccountRows.length?` · ไม่สร้างชีตบัญชีว่าง - ฝาก (${excludedAccountRows.length} รายการ) · แถวรวมยังคงยอดต้นทางเดิม รวมรายการที่ไม่สร้างชีต · ตรวจย้อนหลังได้ในข้อมูลทั้งหมด`:' · รายการที่ระบุบัญชี BO ไม่ได้ยังแสดงแยกไว้ ไม่ซ่อนหลักฐาน'}</p></section>
         <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('xb-info:')?'ไม่เข้ากระทบยอด':value.startsWith('bo-account:')?'STM/PM ↔ BO':'STM/PM รอ BO'}</small></button>`).join('')}</div>
@@ -925,6 +927,17 @@
       container.querySelector('#mc8-live-load').onclick=()=>{const v=container.querySelector('#mc8-live-date').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){error='กรุณาเลือกวันที่';draw();return;}date=v;remembered.date=v;opts.onDate?.(date);load();};
       const local=container.querySelector('#mc8-local-view');if(local)local.onclick=()=>{slots.delete(container);opts.onLocal?.();};
       if(!data?.run)return;
+      if(opts.onRecheck&&data.complete){
+        const accounts=[...new Set([
+          ...(data.run.summary?.match_evidence||[]).map(r=>r.account),
+          ...(data.cases||[]).map(r=>r.account),
+          ...(data.run.summary?.bo_first?.required||[]).map(r=>r.identity),
+        ].filter(value=>value&&String(value).toUpperCase()!=='UNKNOWN'))];
+        const button=document.createElement('button');button.type='button';button.textContent='ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี';
+        button.disabled=!accounts.length;button.onclick=()=>opts.onRecheck({company,date,accounts});
+        container.querySelector('.mc8-filters').appendChild(button);
+        if(opts.onManageFiles){const manage=document.createElement('button');manage.type='button';manage.textContent='เลือกไฟล์ / แก้ข้อมูล / พักรัน';manage.onclick=()=>opts.onManageFiles({company,date,accounts});container.querySelector('.mc8-filters').appendChild(manage);}
+      }
       const fullscreenButton=container.querySelector('#mc8-live-fullscreen');if(fullscreenButton)fullscreenButton.onclick=()=>{fullscreen=!fullscreen;draw();if(fullscreen)container.querySelector('.mc8-workbook')?.focus();};
       const wrapButton=container.querySelector('#mc8-live-wrap-text');if(wrapButton)wrapButton.onclick=()=>{wrapText=!wrapText;draw();};
       const showColumns=container.querySelector('#mc8-live-show-columns');if(showColumns)showColumns.onclick=()=>{hiddenBySheet[sheet]=[];saveHidden();draw();};
@@ -941,6 +954,7 @@
       const exportButton=container.querySelector('#mc8-live-export');if(exportButton)exportButton.onclick=()=>{
         try{
           const sheets=buildAuditExportSheets(all,company,date,complete,root.MC8SheetSchema,data?.run?.summary?.bo_first,data?.xbInformation);
+          sheets.push(...(root.AccountRecheck?.confirmedSheets(data?.confirmedRechecks||[])||[]));
           const filename=`Audit_${company}_${date}_AllCases.xlsx`;
           const result=opts.exportWorkbook?.(sheets,filename,`บริษัท ${company} · วันที่ ${date} · ${waiting.length?'ยังรอ STM · ห้ามยืนยันปิดงาน':'ข้อมูลครบทุกสถานะ'}`);
           if(!result?.ok)throw new Error(result?.reason||'ตัวเขียน Excel ยังไม่พร้อม');

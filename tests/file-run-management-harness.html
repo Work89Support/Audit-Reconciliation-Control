@@ -1,0 +1,16 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>จัดการไฟล์และพักรัน — ข้อมูลจำลอง</title>
+<style>body{font:16px Arial;max-width:1120px;margin:24px auto;background:#f3f7fb;color:#123}table{width:100%;background:white}th,td{text-align:left;padding:14px;border-bottom:1px solid #dde}button,input,select{padding:8px;margin:5px}label{display:inline-block}button:disabled{opacity:.5}</style>
+<h1>จัดการไฟล์และพักรัน — ข้อมูลจำลองเท่านั้น</h1><p>ไม่มีการแก้ไฟล์ ยอด หรือเคสจริง</p>
+<label>สิทธิ์จำลอง <select id="role"><option value="lead">หัวหน้า</option><option value="admin">ผู้ดูแลระบบ</option><option value="audit_assistant">ผู้ช่วย</option></select></label>
+<link rel="stylesheet" href="../styles.css"><div id="panel"></div><p id="receipt" role="status">ยังไม่มีการแก้ข้อมูลจำลอง</p>
+<script src="../file-run-management.js"></script><script>
+const files=[{id:'bo-a',file_name:'TEST_BO_D.xlsx',company:'TEST',business_date:'2026-10-12',kind:'bo_main',revision:1,parsed:true},{id:'stm-a',file_name:'TEST_STM.xlsx',company:'TEST',business_date:'2026-10-12',kind:'stm_pdf',revision:1,parsed:true},{id:'extra',file_name:'TEST_STM_extra.xlsx',company:'TEST',business_date:'2026-10-12',kind:'stm_pdf',revision:1,parsed:false}];
+let hold=null,history=[];
+FileRunManagement.mount(document.querySelector('#panel'),{
+ company:'TEST',date:'2026-10-12',role:()=>document.querySelector('#role').value,
+ load:async()=>({files,hold}),history:async id=>history.filter(r=>r.id===id),confirmCorrection:async()=>true,confirmHold:async()=>true,
+ correct:async b=>{const f=files.find(f=>f.id===b.fileId);history.unshift({id:f.id,revision:f.revision+1,reason:b.reason,created_at:'เวลาทดสอบ',originalName:f.file_name});f.file_name=b.name;f.revision++;f.excluded=b.excluded;hold={paused:true,reason:b.reason,revision:(hold?.revision||0)+1};document.querySelector('#receipt').textContent='เพิ่มเวอร์ชันจำลองแล้ว เก็บต้นฉบับและประวัติไว้ ไม่แก้ยอด ไม่ปิดเคสจริง';},
+ setHold:async b=>{hold={...b,revision:(hold?.revision||0)+1};document.querySelector('#receipt').textContent='เปลี่ยนสถานะพักงานจำลองแล้ว ไม่มีงานจริงถูกหยุด';},
+ onRun:ids=>document.querySelector('#receipt').textContent='เลือกไฟล์เพื่อรันจำลอง '+ids.length+' ฉบับ ไม่ส่งคำสั่งจริง',
+});
+</script></html>

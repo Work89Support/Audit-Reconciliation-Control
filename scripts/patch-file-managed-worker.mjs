@@ -1,0 +1,13 @@
+import fs from 'node:fs/promises';
+const path=process.argv[2]||new URL('../n8n/audit-headless-worker.json',import.meta.url);
+const w=JSON.parse(await fs.readFile(path,'utf8'));
+const n=w.nodes.find(n=>n.name==='Supabase: อ่านรายการไฟล์ของวัน');
+if(!n)throw Error('Daily worker file reader changed');
+n.parameters.method='POST';n.parameters.url='={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches';
+n.parameters.sendBody=true;n.parameters.specifyBody='json';
+n.parameters.jsonBody='={{ JSON.stringify({p_company:$json.company,p_date:$json.business_date}) }}';
+const s=w.nodes.find(n=>n.name==='เลือกไฟล์ของบริษัท');
+const needle='({json:{job,file},pairedItem:';
+if(s.parameters.jsCode.includes(needle))s.parameters.jsCode=s.parameters.jsCode.replace(needle,"({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:");
+else if(!s.parameters.jsCode.includes('file.physical_source_file_id'))throw Error('Daily worker source selector changed');
+await fs.writeFile(path,JSON.stringify(w,null,2)+'\n');

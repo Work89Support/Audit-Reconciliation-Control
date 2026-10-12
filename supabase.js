@@ -740,6 +740,8 @@ const Sb = (() => {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
     if (!run.id) return {run,cases:[],complete:false};
+    let confirmedRechecks=[],recheckReportError='';
+    try{confirmedRechecks=(await listAccountRechecks(company,date)).filter(q=>q.status==='confirmed');}catch(error){recheckReportError=error.message;}
     let confirmations=[],confirmationError='';
     try {
       for(let offset=0;;offset+=1000){
@@ -758,9 +760,9 @@ const Sb = (() => {
     for (let offset = 0; offset < 20000; offset += 500) {
       const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
-      if (page.length < 500) return { run, cases, waitingHistory, complete: true, confirmations, confirmationError };
+      if (page.length < 500) return { run, cases, waitingHistory, complete: true, confirmations, confirmationError,confirmedRechecks,recheckReportError };
     }
-    return { run, cases, waitingHistory, complete: false, confirmations, confirmationError };
+    return { run, cases, waitingHistory, complete: false, confirmations, confirmationError,confirmedRechecks,recheckReportError };
   }
 
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
@@ -818,8 +820,41 @@ const Sb = (() => {
     });
 
   const queueDueJobs = (from, to) => rpc("queue_due_daily_recon_jobs", { p_from: from, p_to: to });
+  const requestAccountRecheck=body=>json('/functions/v1/account-recheck',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000,
+  });
+  const listAccountRechecks=(company,date)=>rpc('list_account_rechecks',{p_company:company,p_date:date});
+  const accountRecheckDetail=async id=>{const rows=await json(`/rest/v1/account_recheck_jobs?id=eq.${encodeURIComponent(id)}&select=id,company,business_date,account,direction,mode,status,result,error,revision,confirmed_at,confirmed_by,confirmation_reason,base_run_id&limit=1`);if(!rows[0])throw Error('ไม่พบผลหรือไม่มีสิทธิ์บริษัท');return rows[0];};
+  const confirmAccountRecheck=body=>rpc('confirm_account_recheck',body);
   const auditSourceArchiveManifest=(company,date,includeEvidence)=>rpc('audit_source_archive_manifest',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence});
   const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes,object_version:f.object_version,object_etag:f.object_etag}))});
+  const effectiveAuditFiles=(company,date)=>rpc('effective_audit_source_files',{p_company:company,p_date:date});
+  async function fileRunManagement(company,date){
+    const [files,holds]=await Promise.all([effectiveAuditFiles(company,date),json(`/rest/v1/audit_run_holds?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&limit=1`)]);
+    return {files,hold:holds[0]||null};
+  }
+  const sourceRevisionHistory=id=>json(`/rest/v1/audit_source_revisions?source_file_id=eq.${encodeURIComponent(id)}&select=revision,reason,created_at,effective_name,company,business_date,kind,replacement_file_id,excluded,original&order=revision.desc`);
+  const setAuditRunHold=b=>rpc('set_audit_run_hold',{p_company:b.company,p_date:b.date,p_paused:b.paused,p_reason:b.reason,p_expected_revision:b.expectedRevision});
+  const correctAuditSource=b=>rpc('correct_audit_source',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_name:b.name,p_company:b.company,p_date:b.date,p_kind:b.kind,p_replacement_id:b.replacementId,p_excluded:b.excluded,p_reason:b.reason});
+  const pendingSourceUploads=new Map();
+  async function uploadAuditSourceCorrection(b,file){
+    const bytes=await file.arrayBuffer(),actor=authUser()?.id;
+    if(!actor||!file.size||file.size>50*1024*1024)throw Error('เข้าสู่ระบบและเลือกไฟล์ไม่เกิน 50 MB');
+    const checksum=await sha256Hex(bytes),key=JSON.stringify([actor,b,file.name,file.size,checksum]);
+    let receipt=pendingSourceUploads.get(key);
+    if(!receipt){receipt={id:crypto.randomUUID(),uploaded:false};pendingSourceUploads.set(key,receipt);}
+    const id=receipt.id;
+    const storagePath=`manual-replacements/${actor}/${id}/${replacementSafeName(file.name)}`;
+    if(!receipt.uploaded){
+      try{await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(storagePath)}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:bytes,timeoutMs:120000});}
+      catch(error){if(!/already exists|duplicate/i.test(error.message))throw error;}
+      // A retry may find the same actor-owned immutable nonce; RPC verifies its owner and size.
+      receipt.uploaded=true;
+    }
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่');
+    const result=await rpc('upload_audit_source_revision',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_metadata:{id,storage_path:storagePath,file_name:file.name,mime_type:file.type||'application/octet-stream',size_bytes:file.size,checksum},p_correction:b});
+    pendingSourceUploads.delete(key);return result;
+  }
   async function dailyJob(company, date) {
     if (!company || company === "ALL" || !date) return null;
     const rows = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=id,company,business_date,status&limit=1`);
@@ -1452,8 +1487,11 @@ const Sb = (() => {
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
+    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
+    fileRunManagement,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
+    uploadAuditSourceCorrection,
     cfg,
     saveConfig,
     configured,

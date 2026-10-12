@@ -141,8 +141,10 @@ assert.equal(worker.connections["TMN ตรวจภาพครบแล้ว?
 assert.equal(worker.connections["ใช้รายการ TMN ที่ตรวจภาพ"].main[0][0].node, "แปลงรายการเป็นมาตรฐาน");
 assert.match(worker.nodes.find(node => node.name === "เป็น PDF?").parameters.conditions.conditions[0].leftValue, /docx/, "Word statements must enter document OCR");
 assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /'docx'/, "worker must select classified Word statements");
-assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /business_date=gte/, "worker must read the job day as the lower source boundary");
-assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /plus\(\{days:1\}\)/, "worker must inspect one adjacent batch for late KTB statements");
+assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /effective_audit_source_batches/, "worker must read corrected, non-quarantined source receipts");
+const managedSql=await readFile(new URL('../supabase/20261012_file_run_management.sql',import.meta.url),'utf8');
+assert.match(managedSql,/between p_date and p_date\+1/,"managed sources retain the exact job/adjacent-day boundary");
+assert.match(managedSql,/where not coalesce\(\(value->>'excluded'\)\:\:boolean,false\)/,"quarantined sources must not enter automatic processing");
 assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /adjacent&&!\(sys123\.has\(jobCompany\)&&ktbStatement\)/, "worker must limit adjacent-day evidence to System 123 KTB statements");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
 assert.equal(worker.connections["อ่าน PDF โดยตรง"].main[0][0].node, "ตรวจรายการ PDF ก่อน OCR");
@@ -345,7 +347,8 @@ assert.match(workerText, /seven_m_tmn_screenshot_completeness:true/, "worker sum
 assert.match(workerText, /seven_m_tmn_ocr_reciprocal_repair:true/, "worker summary must identify auditable TMN OCR repair");
 assert.match(workerText, /seven_m_tmn_exact_amount_first:true/, "worker summary must prove exact TMN amounts own BO rows before OCR repair");
 assert.match(workerText, /seven_m_tmn_duplicate_rows_suppressed:result\.tmnOcrDuplicateRowsSuppressed\|\|0/, "worker summary must expose suppressed duplicate TMN screenshot rows");
-assert.match(workerText, /source_file_ocr\(provider,confidence,page_count,line_count,extracted_text,rows,updated_at\)/, "worker must load stored structured OCR evidence with the source file");
+assert.match(managedSql, /'source_file_ocr',\(select coalesce\(jsonb_agg\(to_jsonb\(o\)\)/, "managed file RPC preserves complete structured OCR evidence");
+assert.match(managedSql,/o.source_file_id=coalesce\(r.replacement_file_id,f.id\)/,"OCR evidence must follow the selected physical replacement");
 assert.match(workerText, /parseStructuredOcr/, "worker must verify structured OCR rows against the current PDF text");
 assert.match(workerText, /duplicate_statement_rows_removed/, "worker must report whole-statement duplicate rows removed");
 assert.match(workerText, /duplicate_source_rows_removed/, "worker must report duplicate STM or PM rows removed even when file names differ");
