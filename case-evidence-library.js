@@ -32,14 +32,14 @@
     const visible = rows.filter(row => [row.file_name,row.company,row.business_date,row.case_code,row.uploader]
       .join(' ').toLocaleLowerCase().includes(needle));
     const statuses = {closed:'ปิดเคสแล้ว',approved:'อนุมัติแล้ว',open:'เคสเปิด',clarifying:'รอชี้แจง',answered:'รอ Audit ตรวจ',pair_pending:'รออนุมัติจับคู่'};
-    return `<p role="status">แสดง ${visible.length} จาก ${rows.length} ไฟล์ · หลักฐานเท่านั้น ไม่เข้ากระทบยอด</p><div class="table-wrap"><table><thead><tr><th>ไฟล์ / ที่มา</th><th>บริษัท / วันที่เคส</th><th>เลขเคส / สถานะ</th><th>ผู้แนบ / เวลารับ</th><th>ประวัติหลักฐาน</th><th></th></tr></thead><tbody>${visible.map(row => {
+    return `<p role="status">แสดง ${visible.length} จาก ${rows.length} ไฟล์ · หลักฐานเท่านั้น ไม่เข้ากระทบยอด</p><div class="table-wrap"><table class="case-evidence-catalogue"><colgroup><col style="width:26%"><col style="width:10%"><col style="width:21%"><col style="width:17%"><col style="width:14%"><col style="width:12%"></colgroup><thead><tr><th>ไฟล์ / ที่มา</th><th>บริษัท / วันที่เคส</th><th>เลขเคส / สถานะ</th><th>ผู้แนบ / เวลารับ</th><th>ประวัติหลักฐาน</th><th></th></tr></thead><tbody>${visible.map(row => {
       const time = row.received_at ? new Date(row.received_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'}) : 'ไม่ระบุ';
       const correction = row.correction_reason;
       return `<tr><td><b>${esc(row.file_name)}</b><small class="sub">${row.origin === 'case' ? 'แนบผ่านเคส / ผู้ชี้แจง' : 'ไฟล์จากเมล'} · ${Math.ceil(Number(row.size_bytes || 0)/1024)} KB</small></td><td>${esc(row.company)}<small class="sub">${esc(row.business_date)}</small></td><td>${esc(row.case_code || '—')}<small class="sub">${esc(statuses[row.case_status] || row.case_status || 'หลักฐานจากเมล')}</small></td><td><small>${esc(row.uploader || 'ไม่ระบุ')}</small><small class="sub">${esc(time)}</small></td><td>${correction ? `<b>ฉบับแก้หลักฐาน</b><small class="sub">เหตุผล: ${esc(correction)}</small><small class="sub">อ้างถึงไฟล์เดิม ${esc(row.replaces_evidence_id || row.replaces_source_file_id)}</small>` : 'ไฟล์เดิม · เก็บไว้ครบ'}</td><td><button type="button" class="primary-button xs" data-library-preview="${esc(row.origin+':'+row.id)}" ${row.storage_path ? '' : 'disabled'}>เปิดดูในระบบ</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">ไม่พบหลักฐานตามตัวกรองนี้</td></tr>'}</tbody></table></div>`;
   }
   function mount(host, rows, openPreview) {
-    host.innerHTML = `<label>ค้นหาชื่อไฟล์ เลขเคส บริษัท หรือผู้แนบ<input type="search" data-library-search placeholder="ค้นหาหลักฐาน" /></label><div data-library-results></div>`;
+    host.innerHTML = `<style>.case-evidence-catalogue{table-layout:fixed;width:100%;min-width:850px}.case-evidence-catalogue th,.case-evidence-catalogue td{white-space:normal;overflow-wrap:anywhere;vertical-align:top}.case-evidence-catalogue td{padding:12px 8px}.case-evidence-catalogue button{white-space:normal}.case-evidence-catalogue small{display:block}</style><label>ค้นหาชื่อไฟล์ เลขเคส บริษัท หรือผู้แนบ<input type="search" data-library-search placeholder="ค้นหาหลักฐาน" /></label><div data-library-results></div>`;
     const target = host.querySelector('[data-library-results]');
     const draw = () => {
       target.innerHTML = render(rows, host.querySelector('[data-library-search]').value);
