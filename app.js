@@ -3769,11 +3769,16 @@ async function openException(id, options = {}) {
       Object.assign(e,mapLiveException(fresh),{notes:e.notes||[],evidence:e.evidence||[]});
     } catch(err) { return toast('ตรวจสถานะล่าสุดไม่ได้: '+err.message,'warn'); }
     try {
-      e.notes = await Sb.caseNotes(e.dbId);
+      e.notes = state.role==='shift_lead' ? [] : await Sb.caseNotes(e.dbId);
     } catch (err) {
       e.notes = [];
       toast("โหลด Note ส่วนกลางไม่สำเร็จ: " + err.message, "warn");
     }
+    if (state.selected !== id) return;
+    e.clarificationInstructions=[];
+    e.clarificationInstructionsError=null;
+    try { e.clarificationInstructions=await Sb.clarificationInstructions(e.dbId); }
+    catch(err) { e.clarificationInstructionsError=err.message; }
     if (state.selected !== id) return;
     try { await refreshQuickCloseEvidence(e); }
     catch (err) { e._quickSourceEvidence = false; toast("ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: " + err.message, "warn"); }
@@ -3820,6 +3825,10 @@ async function openException(id, options = {}) {
       ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt || 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
       ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
       <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
+      <section class="clarification-instructions" aria-label="สิ่งที่ Audit ขอให้ชี้แจง">
+        <h3>สิ่งที่ Audit ขอให้ชี้แจง</h3>
+        ${e.clarificationInstructionsError?`<p role="alert">โหลดคำขอไม่สำเร็จ: ${h(e.clarificationInstructionsError)} กรุณาโหลดเคสใหม่ก่อนตอบ</p>`:(e.clarificationInstructions||[]).length?`<ol>${e.clarificationInstructions.map(n=>`<li><p class="clarification-request-text">${h(n.text)}</p><small>Audit ${h(n.by)} · ${h(n.at)}</small></li>`).join('')}</ol>`:'<p>ยังไม่มีรายละเอียดคำขอชี้แจงที่บันทึกไว้ กรุณาสอบถาม Audit โดยอ้างอิงเลขเคสนี้</p>'}
+      </section>
       <div class="case-summary-grid" id="caseSummarySection">
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
         <div><span>บริษัท</span><b>${h(e.company || "ไม่ระบุ")}</b></div>
@@ -3883,11 +3892,11 @@ async function openException(id, options = {}) {
         <p class="muted small-note">แนบได้หลายไฟล์: PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT · ไฟล์ละไม่เกิน 20 MB · การแนบไม่ใช่การอนุมัติหรือปิดเคส</p>
       </div>
 
-      <h3 class="drawer-h3">ผลตรวจ / Note ของ Audit</h3>
-      <p class="hint">เก็บผลตรวจในประวัติ ไม่ใช่ส่งคำตอบชี้แจง และไม่ใช่ปิดเคส</p>
-      <div class="note-form">
-        <textarea id="noteText" rows="3" placeholder="บันทึกสิ่งที่ตรวจพบ..."></textarea>
-        <button class="ghost-button" id="btnNote">บันทึก Note</button>
+      <h3 class="drawer-h3" ${state.role==='shift_lead'?'hidden':''}>รายละเอียดที่ Audit ขอให้บริษัทชี้แจง</h3>
+      <p class="hint" ${state.role==='shift_lead'?'hidden':''}>ข้อความที่บันทึกจะแสดงแก่ผู้ชี้แจงของบริษัทนี้ เก็บประวัติเดิม ไม่ส่งคำตอบและไม่ปิดเคส หากยังไม่ส่งเคส ให้กดส่งขอชี้แจงต่อ</p>
+      <div class="note-form" ${state.role==='shift_lead'?'hidden':''}>
+        <textarea id="noteText" rows="3" maxlength="2000" placeholder="ระบุสิ่งที่ต้องชี้แจงและหลักฐานที่ต้องการ..." ${closed?'disabled':''}></textarea>
+        <button class="ghost-button" id="btnNote" ${closed?'disabled':''}>บันทึกรายละเอียดคำขอชี้แจง</button>
       </div>
       <section class="case-response-section" id="caseResponseSection">
         <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>ใช้ตอบคำถามพร้อมหลักฐาน แยกจาก Note ผลตรวจด้านบน</p>
@@ -4055,8 +4064,8 @@ async function openException(id, options = {}) {
         logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
         saveOverride(e);
       }
-      recordCaseUiResult(e, 'บันทึกผลตรวจ / Note สำเร็จ — ยังไม่ใช่การส่งคำชี้แจงหรือปิดเคส');
-      toast("บันทึก note แล้ว");
+      recordCaseUiResult(e, 'บันทึกรายละเอียดคำขอแล้ว — ผู้ชี้แจงเห็นในเคสที่ส่งแล้ว ยังไม่ปิดเคส');
+      toast("บันทึกรายละเอียดคำขอชี้แจงแล้ว");
       if (state.selected === id) await openException(id);
     } catch (err) {
       toast("บันทึก Note ไม่สำเร็จ: " + err.message, "warn");
@@ -4083,6 +4092,7 @@ async function openException(id, options = {}) {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     if(e.hasEvidence)return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
     if (!["open", "answered"].includes(e.status)) return;
+    if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
     const button = event.currentTarget;
     button.disabled = true;
     try {
@@ -4112,10 +4122,11 @@ async function openException(id, options = {}) {
       button.disabled = false;
     }
   });
-  $("#btnRespond").disabled = e.status !== "clarifying";
+  $("#btnRespond").disabled = e.status !== "clarifying" || !!e.clarificationInstructionsError;
   $("#btnRespond").addEventListener("click", async (event) => {
     if (!can("respond")) return deny("ตอบชี้แจง");
     if (e.status !== "clarifying") return;
+    if(e.clarificationInstructionsError) return toast('ยังอ่านคำขอชี้แจงไม่ได้ กรุณาโหลดเคสใหม่ก่อนตอบ','warn');
     const answerText = $("#responseText").value.trim();
     if (!answerText) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
     const answeringRole=currentUser().role;

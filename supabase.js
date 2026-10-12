@@ -1187,18 +1187,25 @@ const Sb = (() => {
     }
   }
 
+  async function clarificationInstructions(id) {
+    if (!signedIn() || !authUser()?.id || !id) throw new Error('ต้องเข้าสู่ระบบและเลือกเคสก่อนอ่านคำขอชี้แจง');
+    const actor=authUser().id;
+    const rows=await rpc('case_clarification_instructions',{p_exception_id:id});
+    if(authUser()?.id!==actor || !signedIn()) throw new Error('บัญชีเปลี่ยนระหว่างอ่านคำขอชี้แจง');
+    if(!Array.isArray(rows)) throw new Error('อ่านคำขอชี้แจงไม่สำเร็จ');
+    return rows;
+  }
+
   async function appendCaseNote(id, text) {
     if (!signedIn() || !authUser()?.id) throw new Error("ต้องเข้าสู่ระบบก่อนบันทึก Note");
     const detail = String(text || "").trim();
     if (!id || !detail) throw new Error("กรุณาระบุเคสและข้อความ Note");
-    const saved = await post("audit_log", [{
-      actor: currentEmail() || authUser().id, actor_user_id: authUser().id,
-      action: "case_note", entity: "exception", target: id, detail,
-    }], "return=representation");
-    if (!Array.isArray(saved) || saved.length !== 1 || saved[0].detail !== detail) {
+    const actor=authUser().id;
+    const saved = await rpc('append_clarification_instruction',{p_exception_id:id,p_text:detail});
+    if (authUser()?.id!==actor || !signedIn() || !saved?.id || saved.text !== detail) {
       throw new Error("ยังยืนยันการบันทึก Note ไม่ได้ กรุณาตรวจประวัติก่อนลองซ้ำ");
     }
-    return { id: saved[0].id, by: saved[0].actor, at: saved[0].at, text: saved[0].detail };
+    return saved;
   }
 
   // Keep uncertain receipts in this tab only. Never discard an uploaded object,
@@ -1568,6 +1575,7 @@ const Sb = (() => {
     caseEvidence,
     caseEvidenceLibrary,
     caseNotes,
+    clarificationInstructions,
     appendCaseNote,
     uploadCaseEvidence,
     pendingCaseEvidence,resumeCaseEvidence,
