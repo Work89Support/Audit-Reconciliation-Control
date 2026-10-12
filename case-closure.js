@@ -36,6 +36,50 @@ const CaseClosure=(()=>{
     const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
     return JSON.stringify(stable({id:q.id,exception_id:q.exception_id,company:q.company,business_date:q.business_date,outcome:q.outcome,loss_amount:q.loss_amount,audit_reason:q.audit_reason,requested_by:q.requested_by,review_origin:q.review_origin,snapshot:q.snapshot}));
   }
+  const reviewStorageKey='audit.bulk-document-review.v1';
+  const reviewedSelectionState={scope:null,reviewed:new Map(),selected:new Set()};
+  function reviewScope(){return JSON.stringify([Sb.authUser()?.id||'',state.role,can('approve'),companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany).sort()]);}
+  function persistBulkSelection(){
+    try{sessionStorage.setItem(reviewStorageKey,JSON.stringify({scope:reviewedSelectionState.scope,reviewed:[...reviewedSelectionState.reviewed].slice(-100),selected:[...reviewedSelectionState.selected].slice(0,100)}));}catch{/* Memory-only fallback when browser session storage is unavailable. */}
+  }
+  function loadBulkSelection(){
+    const scope=reviewScope();
+    if(reviewedSelectionState.scope===scope)return;
+    reviewedSelectionState.scope=scope;reviewedSelectionState.reviewed.clear();reviewedSelectionState.selected.clear();
+    try{const saved=JSON.parse(sessionStorage.getItem(reviewStorageKey)||'null');if(saved?.scope===scope){
+      for(const pair of (Array.isArray(saved.reviewed)?saved.reviewed:[]).slice(-100))if(Array.isArray(pair)&&typeof pair[0]==='string'&&/^[a-f0-9]{64}$/.test(pair[1]))reviewedSelectionState.reviewed.set(pair[0],pair[1]);
+      for(const id of (Array.isArray(saved.selected)?saved.selected:[]).slice(0,100))if(reviewedSelectionState.reviewed.has(id))reviewedSelectionState.selected.add(id);
+    }}catch{/* Invalid persisted state never unlocks a case. */}
+    persistBulkSelection();
+  }
+  async function reviewReceipt(q,caseRow){
+    if(!bulkEligible(q))throw Error('สิทธิ์หรือคำขอเปลี่ยน ต้องเปิดตรวจใหม่');
+    const e=caseRow||await Sb.exceptionDetail(q.exception_id);
+    const keys=['run_id','company','business_date','direction','account','currency','system_amount','bank_amount','bo_raw','stm_raw','clarification_file_id','document_due_at'];
+    if(!e||e.status!=='answered'||e.case_closure_request_id!==q.id||e.manual_pair_id||e.superseded_by_exception_id||!canAccessCompany(e.company)||keys.some(k=>JSON.stringify(e[k]??null)!==JSON.stringify(q.snapshot?.[k]??null)))throw Error('สถานะหรือต้นทางเปลี่ยน ต้องเปิดตรวจใหม่');
+    const [evidence,source]=await Promise.all([Sb.caseEvidence(q.exception_id),e.clarification_file_id?Sb.exceptionFiles(null,e.clarification_file_id):Promise.resolve([])]);
+    if(!evidence.some(f=>f.storage_path&&Number(f.size_bytes)>0)&&!source.some(f=>f.id===e.clarification_file_id&&f.storage_path))throw Error('ไม่พบหลักฐานที่ผูกไว้ล่าสุด ต้องเปิดตรวจใหม่');
+    // Persist only a digest, not financial fields, filenames, or document contents.
+    const stable=v=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
+    const payload=JSON.stringify(stable({request:reviewFingerprint(q),case:Object.fromEntries([...keys,'status','updated_at'].map(k=>[k,e[k]??null])),evidence:[...evidence].sort((a,b)=>String(a.id).localeCompare(String(b.id))),source:[...source].sort((a,b)=>String(a.id).localeCompare(String(b.id)))}));
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload)))].map(n=>n.toString(16).padStart(2,'0')).join('');
+  }
+  async function rememberBulkReview(q){
+    loadBulkSelection();const scope=reviewedSelectionState.scope;
+    const fresh=await Sb.caseClosureRequest(q.id),receipt=await reviewReceipt(fresh);
+    if(scope!==reviewScope()||reviewFingerprint(fresh)!==reviewFingerprint(q))throw Error('บัญชีหรือคำขอเปลี่ยน ต้องเปิดตรวจใหม่');
+    reviewedSelectionState.reviewed.set(q.id,receipt);persistBulkSelection();
+  }
+  async function restoreBulkSelection(rows){
+    loadBulkSelection();const scope=reviewedSelectionState.scope,opened=new Set();
+    for(const [id,receipt] of [...reviewedSelectionState.reviewed]){
+      const q=rows.find(row=>row.id===id);let valid=false;
+      try{valid=!!q&&await reviewReceipt(q)===receipt;}catch{/* Fail closed on denied, incomplete, or changed proof. */}
+      if(scope!==reviewScope())return {opened:new Set(),selected:new Set()};
+      if(valid)opened.add(q.exception_id);else{reviewedSelectionState.reviewed.delete(id);reviewedSelectionState.selected.delete(id);}
+    }
+    persistBulkSelection();return {opened,selected:reviewedSelectionState.selected};
+  }
   async function approveBulkReviewed(items){
     if(!items.length||items.length>100||items.some(item=>item.read!==true)||new Set(items.map(item=>item.q.id)).size!==items.length)throw Error('ต้องยืนยันอ่านหลักฐานทุกเคส เลือกไม่ซ้ำ และไม่เกิน 100 เคส');
     const user=Sb.authUser()?.id,results=[];
@@ -47,6 +91,7 @@ const CaseClosure=(()=>{
         const e=await Sb.exceptionDetail(q.exception_id);
         const keys=['run_id','company','business_date','direction','account','currency','system_amount','bank_amount','bo_raw','stm_raw','clarification_file_id','document_due_at'];
         if(!e||e.status!=='answered'||e.case_closure_request_id!==q.id||e.manual_pair_id||e.superseded_by_exception_id||!canAccessCompany(e.company)||keys.some(k=>JSON.stringify(e[k]??null)!==JSON.stringify(q.snapshot?.[k]??null)))throw Error('สถานะหรือต้นทางเคสเปลี่ยน ต้องเปิดตรวจใหม่');
+        if(item.receipt&&await reviewReceipt(q,e)!==item.receipt)throw Error('หลักฐานหรือข้อมูลเปลี่ยนหลังอ่าน ต้องเปิดตรวจใหม่');
         const note='อ่านหลักฐานของเคสนี้ครบแล้ว ยืนยันไม่มีความเสียหาย 0 บาท — อนุมัติจากรายการที่เลือก';
         const legacy=q.requested_by===user&&['lead','admin'].includes(state.role)&&q.review_origin==='audit_submission';
         const saved=legacy?await Sb.approveOwnDocumentClosure({p_id:q.id,p_note:note}):await Sb.decideCaseClosure({p_id:q.id,p_action:'approve',p_note:note});
@@ -60,6 +105,8 @@ const CaseClosure=(()=>{
   }
   function openBulkReview(chosen,opened,refresh){
     if(!chosen.length||chosen.length>100)return toast('เลือก 1–100 เคสที่เปิดหลักฐานแล้ว','warn');
+    const scope=reviewScope(),reviewed=chosen.map(q=>({q,read:true,receipt:reviewedSelectionState.reviewed.get(q.id)}));
+    if(reviewed.some(item=>!item.receipt))return toast('รายการที่อ่านไว้เปลี่ยนแล้ว กรุณาเปิดตรวจใหม่','warn');
     openModal('ทบทวนก่อนปิดเคสที่เลือก',`<p>ปิดเฉพาะเคสไม่มีความเสียหาย 0 บาท ไม่รวมยอดหรือยุบรายการ ต้องอ่านหลักฐานและยืนยันแยกทุกเคส</p><div class="closure-bulk-review">${chosen.map((q,i)=>`<section><b>${h(q.company)} · ${h(q.snapshot?.code||q.exception_id)}</b><p>วันที่ ${h(q.business_date)} · BO ${h(money(q.snapshot?.system_amount))} บาท · ไม่มีความเสียหาย 0 บาท</p><p>${h(q.audit_reason)}</p><label><input type="checkbox" data-bulk-read="${i}" ${opened.has(q.exception_id)?'':'disabled'}> ฉันอ่านหลักฐานของเคสนี้ครบแล้ว และยืนยันว่าไม่มีความเสียหาย</label></section>`).join('')}</div><label><input type="checkbox" id="closureBulkConfirm">ยืนยันปิดเฉพาะรายการที่เลือก ระบบจะตรวจสิทธิ์ หลักฐาน และสถานะล่าสุดรายเคสอีกครั้ง</label><p id="closureBulkResult" role="status"></p>`,`<button class="ghost-button" id="closureBulkCancel">ยกเลิก</button><button class="primary-button" id="closureBulkApprove" disabled>ยืนยันปิด ${chosen.length} เคส</button>`);
     const ready=()=>$('#closureBulkConfirm').checked&&[...document.querySelectorAll('[data-bulk-read]')].every(el=>el.checked);
     const sync=()=>{$('#closureBulkApprove').disabled=!ready();};
@@ -67,11 +114,12 @@ const CaseClosure=(()=>{
     $('#closureBulkCancel').onclick=closeModal;
     $('#closureBulkApprove').onclick=async()=>{
       if(!ready())return;
+      if(scope!==reviewScope())return toast('บัญชีหรือสิทธิ์เปลี่ยน ต้องเปิดตรวจใหม่','warn');
       $('#closureBulkApprove').disabled=true;$('#closureBulkCancel').disabled=true;
       document.querySelectorAll('[data-bulk-read],#closureBulkConfirm').forEach(el=>el.disabled=true);
       $('#closureBulkResult').textContent='กำลังตรวจและดำเนินการทีละเคส กรุณารอ ไม่กดส่งซ้ำ';
       try{
-        const results=await approveBulkReviewed(chosen.map(q=>({q,read:true})));
+        const results=await approveBulkReviewed(reviewed);
         $('#closureBulkResult').textContent=results.map(r=>`${r.q.company} ${r.q.snapshot?.code||r.q.exception_id}: ${r.ok?'ปิดสำเร็จ':r.error}`).join('\n');
         $('#closureBulkCancel').disabled=false;$('#closureBulkCancel').textContent='กลับไปตรวจคิวล่าสุด';
         $('#closureBulkCancel').onclick=async()=>{closeModal();await refresh();};
@@ -159,7 +207,7 @@ const CaseClosure=(()=>{
     if(!host)return;await loadPending(true);if(!host.isConnected)return;
     if(queueState.rows===null){host.textContent='ยังโหลดยอดรอหัวหน้าไม่ครบ: '+queueState.error;return;}
     let rows=queueState.rows;
-    const selected=new Set(),opened=new Set();
+    const {selected,opened}=await restoreBulkSelection(rows);if(!host.isConnected)return;
     let recentHistory=[];
     if(!rows.length){
       try{recentHistory=(await Sb.caseClosureHistory()).filter(q=>q.status!=='pending').slice(0,6);}
@@ -196,13 +244,13 @@ const CaseClosure=(()=>{
         const date=q.business_date?String(q.business_date).split('-').reverse().join('/'):'ไม่ระบุ';
         return `<article class="closure-case-card"><div class="closure-case-top"><div>${bulkEligible(q)?`<label class="closure-case-select"><input type="checkbox" data-closure-select="${h(q.id)}" aria-label="เลือก ${h(q.company)} ${h(q.snapshot?.code||q.exception_id)}" ${selected.has(q.id)?'checked':''} ${opened.has(q.exception_id)?'':'disabled title="เปิดหลักฐานเพื่อเลือกเคสนี้ก่อน"'}>เลือก${opened.has(q.exception_id)?' · เปิดตรวจแล้ว':' (ยังไม่ได้เปิดตรวจ)'}</label>${opened.has(q.exception_id)?'':`<button class="ghost-button sm" data-closure-open="${h(q.exception_id)}">เปิดหลักฐานเพื่อเลือก</button>`}`:''}<span class="closure-company">${h(q.company)}</span><h4>${h(q.snapshot?.code||q.exception_id)}</h4><span class="closure-case-date">วันที่เคส ${h(date)}</span></div><span class="closure-state ${q.status==='approved'?'is-approved':q.status==='pending'?'is-pending':'is-returned'}">${h(statusText)}</span></div><div class="closure-case-amounts"><div><span>ยอด BO</span><strong>${h(amount(q.snapshot?.system_amount))}</strong></div><div><span>ยอด STM / PM</span><strong>${h(amount(q.snapshot?.bank_amount))}</strong></div><div class="closure-outcome ${q.outcome==='no_loss'?'is-zero':'is-loss'}"><span>ผลตรวจที่เสนอ</span><strong>${h(outcomeLabel(q))}</strong></div></div><div class="closure-case-bottom"><div><span>ผลตรวจ Audit / หลักฐานอ้างอิง</span><p>${h(q.audit_reason||'ไม่ระบุ')}</p></div><button class="${q.status==='pending'?'primary-button':'ghost-button'} sm" data-closure-open="${h(q.exception_id)}">${q.status==='pending'?'เปิดเคสเพื่อตรวจ':'ดูรายละเอียดและประวัติ'} →</button>${q.status==='pending'&&can('approve')?`<button class="primary-button sm" data-closure-review="${h(q.exception_id)}">อนุมัติ</button>`:''}</div></article>`;
       }).join('')||'<div class="closure-empty"><b>ไม่มีคำขอตามตัวกรองนี้</b><p>เคสที่แนบเอกสารอย่างเดียว ยังต้องให้ Audit ตรวจผลและส่งหัวหน้าก่อน<br>ดูเคสเดิมได้ในรายการภาพรวมด้านล่าง หรือเลือกสถานะ “ทุกคำขอ” เพื่อดูประวัติ</p></div>';
-      const syncBulk=()=>{if(!can('approve'))return;$('#closureBulkCount').textContent=`เลือก ${selected.size} เคส`;$('#closureBulkOpen').disabled=!selected.size;const eligible=visible.filter(q=>bulkEligible(q)&&opened.has(q.exception_id));$('#closureBulkHint').textContent=eligible.length?`เปิดตรวจแล้ว ${eligible.length} เคส · ติ๊กเลือกหรือเลือกทั้งหมดได้ · ต้องยืนยันอ่านหลักฐานรายเคสก่อนปิด`:'ยังเลือกไม่ได้: กด “เปิดหลักฐานเพื่อเลือก” ของแต่ละเคส อ่านเอกสาร แล้วกลับมาติ๊ก · ไม่มีการปิดเคสอัตโนมัติ';$('#closureBulkSelectAll').disabled=!eligible.length;$('#closureBulkSelectAll').checked=!!eligible.length&&eligible.every(q=>selected.has(q.id));};
+      const syncBulk=()=>{if(!can('approve'))return;persistBulkSelection();$('#closureBulkCount').textContent=`เลือก ${selected.size} เคส`;$('#closureBulkOpen').disabled=!selected.size;const eligible=visible.filter(q=>bulkEligible(q)&&opened.has(q.exception_id));$('#closureBulkHint').textContent=eligible.length?`เปิดตรวจแล้ว ${eligible.length} เคส · จำรายการหลังรีเฟรชในบัญชีนี้ · ข้อมูลหรือหลักฐานเปลี่ยนต้องอ่านใหม่ · ต้องยืนยันรายเคสก่อนปิด`:'ยังเลือกไม่ได้: กด “เปิดหลักฐานเพื่อเลือก” ของแต่ละเคส อ่านเอกสาร แล้วกลับมาติ๊ก · ไม่มีการปิดเคสอัตโนมัติ';$('#closureBulkSelectAll').disabled=!eligible.length;$('#closureBulkSelectAll').checked=!!eligible.length&&eligible.every(q=>selected.has(q.id));};
       host.querySelectorAll('[data-closure-select]').forEach(el=>el.onchange=()=>{if(el.checked&&selected.size>=100){el.checked=false;return toast('เลือกได้ไม่เกิน 100 เคส','warn');}el.checked?selected.add(el.dataset.closureSelect):selected.delete(el.dataset.closureSelect);syncBulk();});
       if(can('approve')){
         $('#closureBulkSelectAll').onchange=event=>{visible.filter(q=>bulkEligible(q)&&opened.has(q.exception_id)).forEach(q=>{if(event.target.checked&&selected.size<100)selected.add(q.id);else if(!event.target.checked)selected.delete(q.id);});draw();};
         $('#closureBulkOpen').onclick=()=>openBulkReview(visible.filter(q=>selected.has(q.id)),opened,()=>mountQueue(host));syncBulk();
       }
-      host.querySelectorAll('[data-closure-open]').forEach(b=>b.onclick=async()=>{try{await openEvidenceRelatedCase(b.dataset.closureOpen,{focusFiles:true});opened.add(b.dataset.closureOpen);if(host.isConnected)draw();}catch(err){toast(err.message,'warn');}});
+      host.querySelectorAll('[data-closure-open]').forEach(b=>b.onclick=async()=>{try{await openEvidenceRelatedCase(b.dataset.closureOpen,{focusFiles:true});const q=visible.find(q=>q.exception_id===b.dataset.closureOpen);if(q&&bulkEligible(q)){await rememberBulkReview(q);opened.add(q.exception_id);}if(host.isConnected)draw();}catch(err){toast(err.message,'warn');}});
       host.querySelectorAll('[data-closure-review]').forEach(b=>b.onclick=()=>{
         const q=visible.find(q=>q.exception_id===b.dataset.closureReview);
         return openApprovalReview(b.dataset.closureReview,'closure',q?.id).catch(err=>toast(err.message,'warn'));
@@ -220,5 +268,5 @@ const CaseClosure=(()=>{
       root.querySelectorAll('[data-sla-company]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const days=Number(form.elements.days.value);if(!Number.isInteger(days)||days<1||days>365)return toast('กำหนด 1–365 วัน','warn');const button=form.querySelector('button');button.disabled=true;try{const saved=await Sb.saveCompanyCaseSla(form.dataset.slaCompany,days);if(saved?.document_days!==days)throw Error('ยังยืนยันค่าไม่ได้');form.querySelector('[role=status]').textContent='บันทึกแล้ว ใช้กับคำขอใหม่';}catch(err){form.querySelector('[role=status]').textContent='บันทึกไม่สำเร็จ: '+err.message;}finally{button.disabled=false;}});
     }catch(err){root.innerHTML=`<section class="panel"><p>โหลดการตั้งค่าไม่ได้: ${h(err.message)} — ไม่ถือว่าเป็นค่าศูนย์</p></section>`;}
   }
-  return {queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel,assistantCloseBlock,bulkEligible,reviewFingerprint,approveBulkReviewed};
+  return {queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel,assistantCloseBlock,bulkEligible,reviewFingerprint,approveBulkReviewed,reviewReceipt,rememberBulkReview,restoreBulkSelection,persistBulkSelection,reviewedSelectionState};
 })();
