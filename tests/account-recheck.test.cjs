@@ -23,6 +23,9 @@ assert.match(calc,/scopedStm=stm.filter\(scopeRow\),scopedBo=bo.filter\(scopeRow
 assert.match(calc,/records:f.format.source==='bo'\?\(f.records\|\|\[\]\).filter\(scopeRow\):\[\]/);
 assert.match(workflow.nodes.find(n=>n.type==='n8n-nodes-base.webhook').parameters.authentication,/headerAuth/);
 const names=new Set(workflow.nodes.map(n=>n.name));
+const finishExpression=workflow.nodes.find(n=>n.name==='Supabase: เก็บผลรอทบทวน').parameters.jsonBody;
+assert.doesNotMatch(finishExpression.slice(3,-2),/\}\}/,'nested closers must not terminate the n8n expression early');
+new Function('$json','return '+finishExpression.slice(3,-2));
 for(const [name,c] of Object.entries(workflow.connections)){
  assert.ok(names.has(name));for(const branch of c.main)for(const edge of branch)assert.ok(names.has(edge.node));
 }
