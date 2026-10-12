@@ -189,7 +189,7 @@ language plpgsql stable security definer set search_path=public as $$
 begin
  if not coalesce(public.current_user_active(),false) or not coalesce(public.has_company_access(p_company),false)
  or coalesce(public.current_app_role(),'') not in ('monitor','lead','admin') then raise exception 'ไม่มีสิทธิ์อ่านผลตรวจซ้ำ';end if;
- return (select coalesce(jsonb_agg(jsonb_build_object('id',q.id,'company',q.company,'business_date',q.business_date,
+ return (select coalesce(jsonb_agg(jsonb_build_object('id',q.id,'request_key',q.request_key,'company',q.company,'business_date',q.business_date,
  'account',q.account,'direction',q.direction,'mode',q.mode,
  'status',case when q.status in ('queued','running') and q.lease_expires_at<now() then 'failed' else q.status end,
  'revision',q.revision,'error',case when q.status in ('queued','running') and q.lease_expires_at<now() then 'งานหมดเวลา ตรวจสถานะแล้วสั่งใหม่ได้' else q.error end,

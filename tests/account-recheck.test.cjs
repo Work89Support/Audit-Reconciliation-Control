@@ -5,6 +5,7 @@ for(const role of ['lead','admin'])assert.equal(ui.canConfirm(role),true);
 const scope={company:'SK8',date:'2026-10-11',account:'6517249394',direction:'deposit'};
 assert.ok(ui.validScope(scope));assert.ok(!ui.validScope({...scope,direction:'unknown'}));assert.ok(!ui.validScope({...scope,account:''}));
 const sql=fs.readFileSync('supabase/20261012_account_recheck.sql','utf8');
+assert.match(fs.readFileSync('account-recheck.js','utf8'),/getItem\(key\)===q.request_key/,'an older terminal job must not clear a newer uncertain request nonce');
 assert.match(sql,/current_app_role\(\),''\) not in \('lead','admin'\)/);
 assert.match(sql,/effective_audit_source_files\(q.company,q.business_date\)\)\) is distinct from q.snapshot/);
 assert.match(sql,/q.revision<>p_expected_revision/);

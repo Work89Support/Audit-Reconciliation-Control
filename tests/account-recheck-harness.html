@@ -9,7 +9,7 @@ let fixtures=[],calls=0;
 const result={stm_count:10,bo_count:12,matched:10,exceptions:[{account:'DEMO-A',system_amount:100,ex_type:'BO รอ STM'},{account:'DEMO-A',system_amount:200,ex_type:'BO รอ STM'}],match_evidence:[]};
 AccountRecheck.mount(document.querySelector('#panel'),{
  company:'TEST',date:'2026-10-12',accounts:['DEMO-A','DEMO-B'],role:()=>document.querySelector('#role').value,
- request:async s=>{fixtures.unshift({id:s.requestKey,company:s.company,business_date:s.date,account:s.account,direction:s.direction,mode:s.mode,status:'ready',revision:1,result});return fixtures[0];},
+ request:async s=>{fixtures.unshift({id:s.requestKey,request_key:s.requestKey,company:s.company,business_date:s.date,account:s.account,direction:s.direction,mode:s.mode,status:'ready',revision:1,result});return fixtures[0];},
  detail:async id=>structuredClone(fixtures.find(q=>q.id===id)),
  list:async()=>fixtures,finalConfirmation:async()=>true,
  confirm:async b=>{if(!AccountRecheck.canConfirm(document.querySelector('#role').value))throw Error('สิทธิ์ไม่ผ่าน');const q=fixtures.find(q=>q.id===b.p_id);q.status='confirmed';calls++;document.querySelector('#receipt').textContent='ยืนยันข้อมูลจำลอง '+calls+' ครั้ง · ไม่ปิดเคสจริง';},
