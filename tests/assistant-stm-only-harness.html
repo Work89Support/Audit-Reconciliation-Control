@@ -1,0 +1,14 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ผู้ช่วยปิดเคส STM/PM ไม่มี BO — ข้อมูลจำลอง</title>
+<link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../styles.css">
+<style>body{font-family:Kanit,sans-serif;background:#edf4ff;padding:24px;color:#193753}main,#testModal{max-width:760px;margin:24px auto;background:white;padding:28px;border:1px solid #cadbee;border-radius:16px}label{display:grid;gap:8px;margin:16px 0}input[type=checkbox]{width:auto}footer{display:flex;gap:12px;margin-top:20px}h1{font-size:24px}</style>
+<main><h1>ทดสอบสิทธิ์ผู้ช่วย · ข้อมูลจำลองเท่านั้น</h1><p>มี STM/PM 250 บาท · ไม่มี BO · มีหลักฐาน · ไม่มีความเสียหาย</p><p>ใช้ไฟล์กติกาที่เตรียมเผยแพร่ · ไม่เชื่อมฐานข้อมูลและไม่ปิดเคสจริง</p><button id="review" class="primary-button">ตรวจเงื่อนไขผู้ช่วย</button></main><section id="testModal" hidden></section><p id="result" role="status"></p>
+<script>
+const $=s=>document.querySelector(s),h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const state={dataset:'production',role:'audit_assistant'},can=()=>true,canAccessCompany=()=>true,companyMaster=()=>[],money=n=>Number(n).toFixed(2),caseLabel=()=> 'TEST-STM-250 · จำลอง EX-3022';
+const e={dbId:'test-only',notes:[{text:'ตรวจหลักฐานจำลองแล้ว ไม่มีความเสียหาย'}]},fresh={status:'open',currency:'THB',system_amount:null,bank_amount:250};
+const DamageSummary={categories:{external:'บุคคลภายนอก'}};
+const Sb={signedIn:()=>true,authUser:()=>({id:'test-assistant'}),exceptionDetail:async()=>fresh,
+ closeDocumentCase:async()=>{throw Error('ห้ามบันทึก: หน้านี้เป็นข้อมูลจำลอง');},submitCaseClosure:async()=>{throw Error('ห้ามส่งคำขอจริง');}};
+const toast=t=>$('#result').textContent=t,closeModal=()=>$('#testModal').hidden=true,
+openModal=(title,body,foot)=>{$('#testModal').innerHTML='<h2>'+h(title)+'</h2>'+body+'<footer>'+foot+'</footer>';$('#testModal').hidden=false;};
+</script><script src="../case-closure.js?v=assistant-stm-only-20261012"></script><script>$('#review').onclick=()=>CaseClosure.openSubmit(e);</script></html>

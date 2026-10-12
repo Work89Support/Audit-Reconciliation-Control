@@ -5,6 +5,10 @@ vm.runInContext(fs.readFileSync('case-closure.js','utf8')+';this.closure=CaseClo
 const sample={currency:'THB',system_amount:110,bank_amount:null};
 for(const amount of [110,30000])assert.equal(context.closure.assistantCloseBlock({...sample,system_amount:amount}),'');
 for(const e of [{...sample,system_amount:30000.01},{...sample,system_amount:null},{...sample,system_amount:0},{...sample,currency:'USD'},{...sample,bank_amount:116},{...sample,bank_amount:Infinity},{...sample,review_flags:{uncertain:true}}])assert.ok(context.closure.assistantCloseBlock(e));
+for(const amount of [250,30000])assert.equal(context.closure.assistantCloseBlock({...sample,system_amount:null,bank_amount:amount}),'');
+for(const amount of [0,-1,30000.01,Infinity,NaN])assert.ok(context.closure.assistantCloseBlock({...sample,system_amount:null,bank_amount:amount}));
+assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:{...sample,system_amount:null,bank_amount:250,stored_document_at_submit:true}}),true);
+assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:{...sample,system_amount:null,bank_amount:250}}),false);
 assert.equal(context.closure.assistantCloseBlock({...sample,bank_amount:115}),'');
 assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:{...sample,stored_document_at_submit:true}}),true);
 assert.equal(context.closure.selfEligible({outcome:'no_loss',loss_amount:0,snapshot:sample}),false);
@@ -12,4 +16,7 @@ assert.equal(context.closure.selfEligible({outcome:'damage',loss_amount:110,snap
 const sql=fs.readFileSync('supabase/20261011_assistant_document_only_close.sql','utf8');
 assert.match(sql,/current_audit_assistant/);assert.match(sql,/30000/);
 assert.doesNotMatch(sql,/update public\.exceptions|update public\.case_closure_requests/);
-console.log('PASS: assistant BO <=30000, missing STM allowed, proof/no-loss required; currency, flags and known-pair difference retained');
+const stmSql=fs.readFileSync('supabase/20261012_assistant_stm_only_close.sql','utf8');
+assert.match(stmSql,/system_amount' is not null or e->>'bank_amount' is not null/);
+assert.doesNotMatch(stmSql,/update public\.exceptions|update public\.case_closure_requests/);
+console.log('PASS: assistant BO-only and STM-only <=30000, proof/no-loss required; currency, flags and known-pair difference retained');
