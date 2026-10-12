@@ -3965,8 +3965,10 @@ async function openException(id, options = {}) {
     });
     $('#btnCrossCompanyPair').after(headClose);
   }
-  ManualPairing.mountReview(e,$('#manualPairReview'));
-  CaseClosure.mountReview(e,$('#caseClosureReview'));
+  if(state.role!=='shift_lead'){
+    ManualPairing.mountReview(e,$('#manualPairReview'));
+    CaseClosure.mountReview(e,$('#caseClosureReview'));
+  }
   $('#btnSendClosure')?.addEventListener('click',()=>CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn')));
   $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
   drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
