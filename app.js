@@ -1017,6 +1017,7 @@ function openAuditSourceArchive(){
   if(state.dataset!=='production'||!Sb.signedIn())return deny('ดาวน์โหลดไฟล์จริง');
   const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),initialActor=Sb.authUser()?.id;
   openModal('ดาวน์โหลดไฟล์จริง — เผื่อทำงานมือ','<div id="auditSourceArchivePanel"></div>','<button id="auditArchiveCancel">ปิด / ยกเลิกการเตรียม</button>');
+  $('#modal').classList.add('source-archive-modal');
   const dispose=AuditSourceArchive.mount($('#auditSourceArchivePanel'),{
     company:companies.includes(state.filters.company)?state.filters.company:companies[0],date:state.filters.to||state.filters.date||DEFAULT_WORK_DATE,companies,initialActor,
     actorId:()=>Sb.authUser()?.id,catalog:Sb.auditSourceArchiveManifest,download:path=>Sb.download(path,{force:true}),
@@ -1025,7 +1026,7 @@ function openAuditSourceArchive(){
     sha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
     zip:XlsxWriter.archive,save:Exporter.saveBlob,
   });
-  $('#modal')._contentCleanup=dispose;
+  $('#modal')._contentCleanup=()=>{dispose();$('#modal').classList.remove('source-archive-modal');};
   $('#auditArchiveCancel').onclick=()=>{dispose();closeModal();};
 }
 async function readAuditBoOperatorRecords(file,date) {
@@ -1123,6 +1124,9 @@ function render() {
   $('#sourceArchiveEntry')?.remove();
   if(state.dataset==='production'&&Sb.signedIn()&&['cloud','intake','exceptions','daily-summary','mc8-sheets'].includes(route.id)&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
     const backup=document.createElement('button');backup.id='sourceArchiveEntry';backup.className='ghost-button';backup.textContent='ดาวน์โหลดไฟล์จริง (ทำงานมือ)';backup.onclick=openAuditSourceArchive;$('#btnExport').parentElement.appendChild(backup);
+    if(['cloud','intake'].includes(route.id)){
+      const card=document.createElement('section');card.className='source-archive-launch';card.innerHTML='<div><h2>ดาวน์โหลดต้นฉบับไว้ทำกระทบยอดมือ</h2><p>เลือกบริษัทและวันที่ · ได้ ZIP แยกโฟลเดอร์ STM/PM, BO และหลักฐาน · ไม่รันบอทหรือเปลี่ยนเคส</p></div><button>ดาวน์โหลดไฟล์ต้นฉบับ</button>';card.querySelector('button').onclick=openAuditSourceArchive;$('#viewRoot').prepend(card);
+    }
   }
   if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets"].includes(route.id)) {
     const liveNotice = liveOverviewState.loading

@@ -51,25 +51,46 @@
   await revalidate();return {entries,manifest,revalidate,filename:`Audit_Sources_${company}_${date}${complete?'':'_PARTIAL'}.zip`};
  }
  function mount(host,opts){
-  let busy=false,prepared=null,message='',cancel=false,company=opts.company||opts.companies[0],date=opts.date,includeEvidence=false;
-  function draw(){
+  let busy=false,prepared=null,receipt=null,message='',cancel=false,readDone=0,readTotal=0,company=opts.company||opts.companies[0],date=opts.date,includeEvidence=false;
+  const folderNames={'01_STM_PM':'STM / PM','02_BO':'BO หลังบ้าน','03_EVIDENCE':'หลักฐานประกอบ','04_OTHER':'ไฟล์อื่น ๆ','05_HISTORY':'ประวัติไฟล์เดิม'};
+  function draw(focusSelector){
    if(cancel)return;
-   host.innerHTML=`<h3>ดาวน์โหลดไฟล์จริงสำหรับกระทบยอดมือ</h3><p>ZIP แยกโฟลเดอร์ STM/PM → BO → หลักฐาน เก็บไบนารีเดิม ไม่แปลงข้อมูล</p><label>บริษัท <select data-company ${busy?'disabled':''}>${opts.companies.map(c=>`<option ${c===company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่ <input type="date" data-date value="${esc(date)}" ${busy?'disabled':''}></label><label><input type="checkbox" data-evidence ${includeEvidence?'checked':''} ${busy?'disabled':''}> รวมหลักฐานประกอบและประวัติไฟล์</label><button data-prepare ${busy?'disabled':''}>เตรียม ZIP ไฟล์จริง</button><p role="status">${esc(message)}</p>${prepared?`<p>${prepared.manifest.complete?'ครบตามทะเบียน':'ชุดบางส่วน'} · ได้ ${prepared.manifest.downloaded_files}/${prepared.manifest.expected_files} ไฟล์</p><button data-save ${busy?'disabled':''}>${prepared.manifest.complete?'ดาวน์โหลด ZIP':'ดาวน์โหลดชุดบางส่วนพร้อมรายการไฟล์ที่ขาด'}</button>`:''}<p>ไม่รันบอท ไม่แก้ยอด ไม่เปิดหรือปิดเคส หากระบบคลังล่มต้องใช้ชุดที่ดาวน์โหลดไว้ก่อนแล้ว</p>`;
-   host.querySelector('[data-company]').onchange=e=>{company=e.target.value;prepared=null;message='';draw();};
-   host.querySelector('[data-date]').onchange=e=>{date=e.target.value;prepared=null;message='';draw();};
-   host.querySelector('[data-evidence]').onchange=e=>{includeEvidence=e.target.checked;prepared=null;message='';draw();};
+   const summary=prepared?.manifest||receipt?.manifest,step=receipt||prepared?3:busy?2:1;
+   const counts={};for(const f of summary?.files||[]){const k=f.path.split('/')[2];counts[k]??={ok:0,all:0};counts[k].all++;if(f.status==='downloaded')counts[k].ok++;}
+   host.setAttribute('aria-busy',String(busy));
+   host.innerHTML=`<section class="source-archive">
+    <div class="sa-intro"><span class="sa-tag">สำเนาต้นฉบับ · ไม่รันบอท</span><h3>เก็บไฟล์ไว้ทำกระทบยอดมือ</h3>${summary?'':'<p>เลือกบริษัทและวันที่ แล้วดาวน์โหลดครั้งเดียวเป็น ZIP แตกไฟล์แล้วจะได้โฟลเดอร์แยกพร้อมใช้งาน</p>'}</div>
+    <ol class="sa-steps" aria-label="ขั้นตอนดาวน์โหลด">${['เลือกข้อมูล','ตรวจไฟล์','ดาวน์โหลด'].map((t,i)=>`<li class="${step===i+1?'is-current':step>i+1?'is-done':''}" ${step===i+1?'aria-current="step"':''}><span>${i+1}</span>${t}</li>`).join('')}</ol>
+    ${summary?`<details class="sa-selection"><summary><strong>${esc(company)} · ${esc(date?.split('-').reverse().join('/'))}</strong><span>เปลี่ยนบริษัท / วัน / หลักฐาน</span></summary>`:''}
+    <div class="sa-fields"><label>บริษัท<select data-company ${busy?'disabled':''}>${opts.companies.map(c=>`<option ${c===company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่กระทบยอด<input type="date" data-date value="${esc(date)}" ${busy?'disabled':''}></label></div>
+    <label class="sa-option"><input type="checkbox" data-evidence ${includeEvidence?'checked':''} ${busy?'disabled':''}><span><strong>รวมหลักฐานประกอบและประวัติไฟล์</strong><small>แยกโฟลเดอร์ไว้ให้ ไม่เอาหลักฐานหรือไฟล์รุ่นเดิมไปนับยอดซ้ำ</small></span></label>
+    ${summary?'</details>':''}
+    <button class="sa-prepare ${summary?'sa-recheck':''}" data-prepare ${busy||!date||!company?'disabled':''}>${busy?'กำลังตรวจไฟล์…':prepared||receipt?'ตรวจไฟล์ใหม่':'ตรวจไฟล์ก่อนดาวน์โหลด'}</button>
+    <div class="sa-status" role="status" aria-live="polite"><span data-progress-text>${esc(message)}</span>${busy?`<progress data-progress max="${Math.max(1,readTotal)}" value="${readDone}" aria-label="ความคืบหน้าการอ่านไฟล์"></progress>`:''}</div>
+    ${summary?`<div class="sa-result ${summary.complete?'is-complete':'is-partial'}"><strong>${receipt?'ดาวน์โหลดแล้ว':summary.complete?'พร้อมดาวน์โหลด':'ไฟล์ยังไม่ครบ'}</strong><b>${summary.downloaded_files} / ${summary.expected_files} ไฟล์</b><span>${summary.complete?'ครบตามทะเบียนไฟล์ที่ระบบพบ':'ขาดหรืออ่านไม่ได้ '+summary.failed_files+' ไฟล์ · ห้ามถือว่าเป็นยอดศูนย์'}</span></div>
+    <div class="sa-folders">${Object.entries(counts).map(([k,n])=>`<div><strong>${esc(folderNames[k]||k)}</strong><b>${n.ok} / ${n.all} ไฟล์</b></div>`).join('')}</div>
+    ${prepared?`<button class="sa-download ${summary.complete?'':'is-partial'}" data-save ${busy?'disabled':''}>${summary.complete?'ดาวน์โหลด ZIP ทั้งชุด':'ดาวน์โหลดเฉพาะไฟล์ที่ได้ (ยังไม่ครบ)'}</button><p class="sa-after">หลังดาวน์โหลด: แตก ZIP → เก็บชุดต้นฉบับ → ทำงานบนสำเนาอีกชุด</p>`:`<p class="sa-after">ไฟล์: <strong>${esc(receipt.filename)}</strong><br>เปิดโฟลเดอร์ Downloads แล้วแตก ZIP ก่อนใช้งาน</p>`}
+    ${summary.failed_files?`<div class="sa-missing"><strong>ไฟล์ที่ต้องตามเพิ่มเติม</strong><ul>${summary.files.filter(f=>f.status!=='downloaded').map(f=>`<li>${esc(f.original_name)}<small>${esc(f.error)}</small></li>`).join('')}</ul></div>`:''}
+    <details class="sa-details"><summary>ดูรายชื่อไฟล์และรายละเอียดการตรวจ</summary><p>เก็บผลตรวจขนาดและลายนิ้วมือไฟล์ไว้ใน manifest.json หากขนาดทะเบียนเดิมต่างจาก Storage จะมีคำเตือน แต่ไม่แก้ทะเบียน</p><div class="sa-file-list">${summary.files.map(f=>`<div><span>${esc(f.original_name)}</span><strong>${f.status==='downloaded'?'ได้ไฟล์แล้ว':'ต้องตามไฟล์'}</strong>${f.size_warning?`<small>${esc(f.size_warning)}</small>`:''}</div>`).join('')}</div></details>`:''}
+    <p class="sa-safety">ไม่เปลี่ยนยอด ผลกระทบยอด หรือเคสในระบบ · ถ้าคลังไฟล์ล่ม ต้องใช้ชุดที่ดาวน์โหลดเก็บไว้ก่อนแล้ว</p>
+   </section>`;
+   const reset=()=>{prepared=null;receipt=null;message='';};
+   host.querySelector('[data-company]').onchange=e=>{company=e.target.value;reset();draw('[data-company]');};
+   host.querySelector('[data-date]').onchange=e=>{date=e.target.value;reset();draw('[data-date]');};
+   host.querySelector('[data-evidence]').onchange=e=>{includeEvidence=e.target.checked;reset();draw('[data-evidence]');};
    host.querySelector('[data-prepare]').onclick=async()=>{
-    busy=true;prepared=null;message='กำลังตรวจสิทธิ์และอ่านไฟล์จริง…';draw();
-    try{prepared=await prepare({...opts,company,date,includeEvidence,cancelled:()=>cancel,progress:(n,total)=>{message=`อ่านไฟล์ ${n}/${total}`;const status=host.querySelector('[role=status]');if(status)status.textContent=message;}});message=prepared.manifest.complete?'ตรวจขนาด Storage และ SHA-256 แล้ว':'มีไฟล์ขาด/อ่านไม่ได้ ต้องดูรายการก่อนใช้';const warnings=prepared.manifest.files.filter(f=>f.size_warning).length;if(warnings)message+=` · ขนาดทะเบียนเดิมต่าง ${warnings} ไฟล์ เก็บคำเตือนใน manifest ไม่แก้ต้นฉบับ`;}
+    busy=true;prepared=null;receipt=null;readDone=0;readTotal=0;message='กำลังตรวจสิทธิ์และอ่านไฟล์ต้นฉบับ กรุณารอสักครู่';draw();
+    try{prepared=await prepare({...opts,company,date,includeEvidence,cancelled:()=>cancel,progress:(n,total)=>{readDone=n;readTotal=total;message=`ตรวจไฟล์ ${n} จาก ${total} ไฟล์`;const status=host.querySelector('[data-progress-text]'),bar=host.querySelector('[data-progress]');if(status)status.textContent=message;if(bar){bar.max=total;bar.value=n;}}});message=prepared.manifest.complete?'ตรวจไฟล์เรียบร้อยแล้ว เลือกดาวน์โหลดทั้งชุดด้านล่างได้เลย':'ดูรายการไฟล์ที่ขาดด้านล่างก่อนใช้ข้อมูล';}
     catch(e){message=e.message;}finally{busy=false;draw();}
    };
    const save=host.querySelector('[data-save]');if(save)save.onclick=async()=>{
     const result=prepared;busy=true;draw();
-    try{await result.revalidate();if(cancel||opts.actorId()!==opts.initialActor)throw Error('สิทธิ์เปลี่ยน ห้ามดาวน์โหลด');opts.save(opts.zip(result.entries),result.filename);message='ดาวน์โหลดแล้ว ไม่มีผลหรือเคสจริงถูกเปลี่ยน';}
+    try{await result.revalidate();if(cancel||opts.actorId()!==opts.initialActor)throw Error('สิทธิ์เปลี่ยน ห้ามดาวน์โหลด');opts.save(opts.zip(result.entries),result.filename);receipt={manifest:result.manifest,filename:result.filename};message='ดาวน์โหลดสำเร็จ ไม่เปลี่ยนยอดหรือเคสในระบบ';}
     catch(e){message=e.message;}finally{prepared=null;busy=false;draw();}
    };
+   if(focusSelector)host.querySelector(focusSelector)?.focus();
   }
-  draw();return()=>{cancel=true;prepared=null;host.innerHTML='';};
+  draw();return()=>{cancel=true;prepared=null;receipt=null;host.innerHTML='';};
  }
  root.AuditSourceArchive={prepare,mount,scopeAllowed,safeName,folder,MAX_BYTES};if(typeof module!=='undefined')module.exports=root.AuditSourceArchive;
 })(typeof window==='undefined'?globalThis:window);

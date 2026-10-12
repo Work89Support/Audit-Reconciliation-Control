@@ -37,6 +37,9 @@ const base=()=>({company:'TEST',date:'2026-10-12',actorId:()=> 'fixture-audit',a
  assert.match(sql,/r.source_file_id=any\(\$3\) and r.company=\$1/);
  assert.match(sql,/r.source_file_id=any\(\$3\) and r.original->>'company'=\$1/);
  assert.match(sql,/left join storage.objects o on o.bucket_id='audit-files'/);
+ const panel=fs.readFileSync('audit-source-archive.js','utf8'),css=fs.readFileSync('audit-source-archive.css','utf8');
+ assert.match(panel,/เลือกข้อมูล','ตรวจไฟล์','ดาวน์โหลด/);assert.match(panel,/ไฟล์ที่ต้องตามเพิ่มเติม/);
+ assert.match(panel,/sa-selection/);assert.match(panel,/receipt=null;message=''/);assert.match(css,/@media\(max-width:600px\)/);
  const rounded=await archive.prepare({...base(),catalog:async()=>({company:'TEST',business_date:'2026-10-12',files:files.map(f=>({...f,registered_size_bytes:999}))})});
  assert.equal(rounded.manifest.complete,true);assert.equal(rounded.manifest.files[0].registered_size_bytes,999);assert.match(rounded.manifest.files[0].size_warning,/ไม่แก้ทะเบียน/);
  const blob=writer.archive(result.entries);assert.equal(blob.type,'application/zip');

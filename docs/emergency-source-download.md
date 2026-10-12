@@ -66,3 +66,18 @@ Audit-user downloads and unauthorized-company denial still need verification;
 an administrator test is not evidence of the ordinary Audit role. Do not publish
 the unrelated incomplete account-recheck/file-management work merely to release
 this feature. Preserve and review existing dirty user changes.
+
+Live administrator verification: 3XB / 2026-10-11, 10/10 original files downloaded
+in a complete registry-snapshot ZIP. CRC and all ten extracted SHA-256 hashes
+passed; total source bytes 6,465,521. All ten legacy registry sizes differed from
+Storage sizes, so the new reader retains those registry values as warnings and
+uses Storage sizes. No underlying receipt metadata or financial records changed.
+CI's original macOS-only fixture directory failed on Ubuntu; the fixture now uses
+a unique OS temporary directory. CI and Pages for `9dc5287` both passed.
+
+Usability update: prominent download card on Cloud/Intake, a three-step flow,
+company/date selection, optional evidence clearly marked as non-financial,
+folder counts and a primary download action. Missing files are listed immediately;
+technical registry-size warnings remain in expandable details and the manifest.
+Changing selection invalidates prepared bytes. This changes presentation only,
+not the server permission, object-version, amount or case gates.
