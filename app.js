@@ -5972,6 +5972,14 @@ async function openStoredFilePreview(meta) {
     const target = $("#filePreviewContent");
     if (!target) return;
     if (["pdf"].includes(ext) || String(meta.mime).includes("pdf")) {
+      if(meta.readOnly) {
+        // Render authenticated bytes in the app; do not depend on a browser PDF plug-in.
+        const cleanup = await StatementPreview.mount(target, {id:meta.id || meta.path, storage_path:meta.path});
+        if(target.isConnected) $('#modal')._contentCleanup = cleanup;
+        else cleanup?.();
+        logAction('preview_file','case_evidence',meta.id || meta.path,`ดู PDF หลักฐาน ${name}`);
+        return;
+      }
       const originalUrl = await getSigned();
       if (pendingReplacementFile) return;
       target.innerHTML = `<iframe class="file-preview-frame" src="${h(originalUrl)}" title="ตัวอย่าง ${h(name)}"></iframe>`;

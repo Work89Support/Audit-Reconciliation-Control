@@ -34,6 +34,7 @@ api.json=async()=>{actor='other';return [];}; await assert.rejects(api.caseEvide
 const app=read('app.js');
 assert.match(app,/!meta.readOnly && !String\(meta.path \|\| ''\).startsWith\('case-evidence\/'\)/);
 assert.match(app,/files = files.filter\(file => file.kind !== 'doc_clarify'/);
+assert.match(app,/if\(meta.readOnly\) \{[\s\S]*?StatementPreview.mount\(target, \{id:meta.id \|\| meta.path, storage_path:meta.path\}\)/,'read-only PDF uses authenticated canvas renderer, not a browser plugin');
 const drawer=app.slice(app.indexOf("drawer.querySelectorAll('[data-case-evidence]')"),app.indexOf('const acceptStoredEvidence'));
 assert.match(drawer,/openStoredFilePreview/); assert.doesNotMatch(drawer,/link.click/);
 assert.match(read('index.html'),/case-evidence-library.js/);
