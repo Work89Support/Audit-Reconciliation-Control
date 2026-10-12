@@ -3906,7 +3906,7 @@ async function openException(id, options = {}) {
         <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
       </section>
     <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
       <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากยอดต่างเล็กน้อยและไม่เสียหาย ให้ใช้ “ตรวจยอดต่าง / จับคู่เอง” ระบุเหตุผลและตรวจหลักฐาน ไม่ต้องบันทึกความเสียหายเพื่อให้ผ่านเช็กลิสต์</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
       <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "ปิดเคส" : "ยังปิดไม่ได้"}</button></div>
@@ -7835,7 +7835,7 @@ VIEWS.clarify = (root) => {
       </section>
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
     root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
-    const openCompanyCases = (company) => go("exceptions", {
+    const openCompanyCases = (company) => go(state.role==='shift_lead'?"clarify":"exceptions", {
       filters: { company },
       exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
     });
@@ -7848,7 +7848,8 @@ VIEWS.clarify = (root) => {
         }
       });
     });
-    $("#openApprovalQueue")?.addEventListener("click", () => go("approvals"));
+    if(state.role==='shift_lead') $('#openApprovalQueue').hidden=true;
+    $("#openApprovalQueue")?.addEventListener("click", () => {if(state.role!=='shift_lead')go(can('approve')?"approvals":"audit-review");});
     return;
   }
   retagTracks();
