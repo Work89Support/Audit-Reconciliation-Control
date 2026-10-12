@@ -107,15 +107,30 @@ const CaseClosure=(()=>{
     if(!chosen.length||chosen.length>100)return toast('เลือก 1–100 เคสที่เปิดหลักฐานแล้ว','warn');
     const scope=reviewScope(),reviewed=chosen.map(q=>({q,read:true,receipt:reviewedSelectionState.reviewed.get(q.id)}));
     if(reviewed.some(item=>!item.receipt))return toast('รายการที่อ่านไว้เปลี่ยนแล้ว กรุณาเปิดตรวจใหม่','warn');
-    openModal('ทบทวนก่อนปิดเคสที่เลือก',`<p>ปิดเฉพาะเคสไม่มีความเสียหาย 0 บาท ไม่รวมยอดหรือยุบรายการ ต้องอ่านหลักฐานและยืนยันแยกทุกเคส</p><div class="closure-bulk-review">${chosen.map((q,i)=>`<section><b>${h(q.company)} · ${h(q.snapshot?.code||q.exception_id)}</b><p>วันที่ ${h(q.business_date)} · BO ${h(money(q.snapshot?.system_amount))} บาท · ไม่มีความเสียหาย 0 บาท</p><p>${h(q.audit_reason)}</p><label><input type="checkbox" data-bulk-read="${i}" ${opened.has(q.exception_id)?'':'disabled'}> ฉันอ่านหลักฐานของเคสนี้ครบแล้ว และยืนยันว่าไม่มีความเสียหาย</label></section>`).join('')}</div><label><input type="checkbox" id="closureBulkConfirm">ยืนยันปิดเฉพาะรายการที่เลือก ระบบจะตรวจสิทธิ์ หลักฐาน และสถานะล่าสุดรายเคสอีกครั้ง</label><p id="closureBulkResult" role="status"></p>`,`<button class="ghost-button" id="closureBulkCancel">ยกเลิก</button><button class="primary-button" id="closureBulkApprove" disabled>ยืนยันปิด ${chosen.length} เคส</button>`);
-    const ready=()=>$('#closureBulkConfirm').checked&&[...document.querySelectorAll('[data-bulk-read]')].every(el=>el.checked);
-    const sync=()=>{$('#closureBulkApprove').disabled=!ready();};
+    openModal('ทบทวนก่อนปิดเคสที่เลือก',`<p>ปิดเฉพาะเคสไม่มีความเสียหาย 0 บาท ไม่รวมยอดหรือยุบรายการ ต้องทบทวนหลักฐานครบทุกเคสก่อนยืนยัน การเลือกทั้งหมดไม่ใช่การปิดเคส</p><div class="inline-actions"><button type="button" class="ghost-button" id="closureBulkReadAll">เลือกทั้งหมด · ฉันอ่านหลักฐานครบแล้ว</button><button type="button" class="ghost-button" id="closureBulkReadNone">ยกเลิกการเลือกทั้งหมด</button><span id="closureBulkReadCount" role="status"></span></div><div class="closure-bulk-review">${chosen.map((q,i)=>`<section><b>${h(q.company)} · ${h(q.snapshot?.code||q.exception_id)}</b><p>วันที่ ${h(q.business_date)} · BO ${h(money(q.snapshot?.system_amount))} บาท · ไม่มีความเสียหาย 0 บาท</p><p>${h(q.audit_reason)}</p><label><input type="checkbox" data-bulk-read="${i}" ${opened.has(q.exception_id)?'':'disabled'}> ฉันอ่านหลักฐานของเคสนี้ครบแล้ว และยืนยันว่าไม่มีความเสียหาย</label></section>`).join('')}</div><label><input type="checkbox" id="closureBulkConfirm">ยืนยันปิดเฉพาะรายการที่เลือก ระบบจะตรวจสิทธิ์ หลักฐาน และสถานะล่าสุดรายเคสอีกครั้ง</label><p id="closureBulkResult" role="status"></p>`,`<button class="ghost-button" id="closureBulkCancel">ยกเลิก</button><button class="primary-button" id="closureBulkApprove" disabled>ยืนยันปิด ${chosen.length} เคส</button>`);
+    const readInputs=()=>[...$('#modal').querySelectorAll('[data-bulk-read]')];
+    const ready=()=>$('#closureBulkConfirm').checked&&readInputs().every(el=>el.checked&&!el.disabled);
+    const sync=()=>{
+      const inputs=readInputs(),checked=inputs.filter(el=>el.checked).length;
+      $('#closureBulkApprove').disabled=!ready();
+      $('#closureBulkReadCount').textContent=`ยืนยันอ่านแล้ว ${checked} / ${inputs.length} เคส`;
+      $('#closureBulkReadAll').disabled=inputs.every(el=>el.checked||el.disabled);
+      $('#closureBulkReadNone').disabled=!inputs.some(el=>el.checked&&!el.disabled);
+    };
+    const setRead=checked=>{
+      if(scope!==reviewScope())return toast('บัญชีหรือสิทธิ์เปลี่ยน ต้องเปิดตรวจใหม่','warn');
+      setBulkReadConfirmation(readInputs(),checked);sync();
+    };
+    $('#closureBulkReadAll').onclick=()=>setRead(true);
+    $('#closureBulkReadNone').onclick=()=>setRead(false);
     $('#closureBulkConfirm').onchange=sync;document.querySelectorAll('[data-bulk-read]').forEach(el=>el.onchange=sync);
     $('#closureBulkCancel').onclick=closeModal;
+    sync();
     $('#closureBulkApprove').onclick=async()=>{
       if(!ready())return;
       if(scope!==reviewScope())return toast('บัญชีหรือสิทธิ์เปลี่ยน ต้องเปิดตรวจใหม่','warn');
       $('#closureBulkApprove').disabled=true;$('#closureBulkCancel').disabled=true;
+      $('#closureBulkReadAll').disabled=true;$('#closureBulkReadNone').disabled=true;
       document.querySelectorAll('[data-bulk-read],#closureBulkConfirm').forEach(el=>el.disabled=true);
       $('#closureBulkResult').textContent='กำลังตรวจและดำเนินการทีละเคส กรุณารอ ไม่กดส่งซ้ำ';
       try{
@@ -125,6 +140,9 @@ const CaseClosure=(()=>{
         $('#closureBulkCancel').onclick=async()=>{closeModal();await refresh();};
       }catch(err){$('#closureBulkResult').textContent=err.message+' — ตรวจสถานะก่อนลองซ้ำ';$('#closureBulkCancel').disabled=false;}
     };
+  }
+  function setBulkReadConfirmation(inputs,checked){
+    for(const input of inputs)if(!input.disabled)input.checked=checked===true;
   }
   async function loadPending(force=false){
     if(state.dataset!=='production'||!auditable())return;
@@ -268,5 +286,5 @@ const CaseClosure=(()=>{
       root.querySelectorAll('[data-sla-company]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const days=Number(form.elements.days.value);if(!Number.isInteger(days)||days<1||days>365)return toast('กำหนด 1–365 วัน','warn');const button=form.querySelector('button');button.disabled=true;try{const saved=await Sb.saveCompanyCaseSla(form.dataset.slaCompany,days);if(saved?.document_days!==days)throw Error('ยังยืนยันค่าไม่ได้');form.querySelector('[role=status]').textContent='บันทึกแล้ว ใช้กับคำขอใหม่';}catch(err){form.querySelector('[role=status]').textContent='บันทึกไม่สำเร็จ: '+err.message;}finally{button.disabled=false;}});
     }catch(err){root.innerHTML=`<section class="panel"><p>โหลดการตั้งค่าไม่ได้: ${h(err.message)} — ไม่ถือว่าเป็นค่าศูนย์</p></section>`;}
   }
-  return {queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel,assistantCloseBlock,bulkEligible,reviewFingerprint,approveBulkReviewed,reviewReceipt,rememberBulkReview,restoreBulkSelection,persistBulkSelection,reviewedSelectionState};
+  return {setBulkReadConfirmation,queueState,loadPending,openSubmit,mountReview,mountQueue,mountSettings,approvalNote,selfEligible,outcomeLabel,assistantCloseBlock,bulkEligible,reviewFingerprint,approveBulkReviewed,reviewReceipt,rememberBulkReview,restoreBulkSelection,persistBulkSelection,reviewedSelectionState};
 })();

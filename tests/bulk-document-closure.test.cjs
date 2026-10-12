@@ -7,6 +7,9 @@ const storage=new Map(),sessionStorage={getItem:key=>storage.get(key)||null,setI
 const ctx={state,Sb,can:()=>state.role!=='monitor',canAccessCompany:()=>access,companyMaster:()=>['UFABET7M'],crypto:require('node:crypto').webcrypto,TextEncoder,sessionStorage};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('case-closure.js','utf8')+';this.C=CaseClosure;',ctx);
 const fixture=id=>({id,exception_id:'case-'+id,company:'UFABET7M',business_date:'2026-10-10',status:'pending',outcome:'no_loss',loss_amount:0,requested_by:'audit',review_origin:'audit_submission',audit_reason:'ตรวจหลักฐานแล้ว',snapshot:{stored_document_at_submit:true,company:'UFABET7M',business_date:'2026-10-10',currency:'THB',system_amount:110,bank_amount:null}});
+const checkboxes=[{checked:false,disabled:false},{checked:false,disabled:false},{checked:false,disabled:true}];
+ctx.C.setBulkReadConfirmation(checkboxes,true);assert.deepEqual(checkboxes.map(el=>el.checked),[true,true,false],'select all skips disabled/unread cases');
+ctx.C.setBulkReadConfirmation(checkboxes,false);assert.ok(checkboxes.every(el=>!el.checked));assert.equal(calls.length,0,'select/clear never invokes approval');
 const seed=qs=>{calls=[];requests=Object.fromEntries(qs.map(q=>[q.id,structuredClone(q)]));cases=Object.fromEntries(qs.map(q=>[q.exception_id,{...structuredClone(q.snapshot),status:'answered',case_closure_request_id:q.id}]));};
 (async()=>{
  const a=fixture('a'),b=fixture('b'),items=[a,b].map(q=>({q,read:true}));
