@@ -1120,6 +1120,25 @@ const Sb = (() => {
     return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
   }
 
+  // RLS on both tables remains authoritative, including closed-case history.
+  // Scope by transaction date, not upload date; paginate without a fake zero on failure.
+  async function caseEvidenceLibrary({from,to,company} = {}) {
+    const actor = authUser()?.id;
+    if(!actor || !signedIn()) throw new Error('ต้องเข้าสู่ระบบก่อนอ่านคลังหลักฐาน');
+    const filters = ['select=*,exceptions!inner(id,code,company,business_date,status)', 'order=created_at.desc,id.asc'];
+    if(from) filters.push(`exceptions.business_date=gte.${encodeURIComponent(from)}`);
+    if(to) filters.push(`exceptions.business_date=lte.${encodeURIComponent(to)}`);
+    if(company && company !== 'ALL') filters.push(`exceptions.company=eq.${encodeURIComponent(company)}`);
+    const rows = [];
+    for(let offset=0; ; offset+=500) {
+      const page=await json(`/rest/v1/case_evidence?${filters.join('&')}&limit=500&offset=${offset}`);
+      if(authUser()?.id !== actor || !signedIn()) throw new Error('บัญชีเปลี่ยนระหว่างอ่านคลังหลักฐาน กรุณาโหลดใหม่');
+      if(!Array.isArray(page)) throw new Error('อ่านคลังหลักฐานจากเคสไม่สำเร็จ');
+      rows.push(...page);
+      if(page.length < 500) return rows;
+    }
+  }
+
   // Full, append-only Audit notes. Existing audit_log RLS remains authoritative.
   async function caseNotes(id) {
     if (!id) return [];
@@ -1506,6 +1525,7 @@ const Sb = (() => {
     requestClarification,
     submitClarification,
     caseEvidence,
+    caseEvidenceLibrary,
     caseNotes,
     appendCaseNote,
     uploadCaseEvidence,

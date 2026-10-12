@@ -3892,9 +3892,10 @@ async function openException(id, options = {}) {
   drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
     button.disabled = true;
     try {
-      const url = await Sb.signedUrl(button.dataset.caseEvidence);
-      const link = document.createElement('a');
-      link.href = url; link.target = '_blank'; link.rel = 'noopener'; link.click();
+      const file = (e.evidence || []).find(f => f.storagePath === button.dataset.caseEvidence);
+      await openStoredFilePreview({path:button.dataset.caseEvidence, name:file?.name || 'หลักฐานจากเคส',
+        size:file?.size, company:e.company, date:e.date, kind:'doc_clarify', status:'parsed',
+        readOnly:true, caseCode:e.id, evidenceOrigin:'แนบผ่านเคส / ผู้ชี้แจง'});
     } catch (error) { toast("เปิดหลักฐานไม่ได้: " + error.message, "warn"); }
     finally { button.disabled = false; }
   }));
@@ -5603,9 +5604,9 @@ VIEWS["audit-log"] = (root) => {
 /* =============================================================
    VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
    ============================================================= */
-const cloudState = { batches: null, daily: null, operations: null, loading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
+const cloudState = { batches: null, caseAttachments: null, evidenceError: null, daily: null, operations: null, loading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
 
-const cloudQueryKey = () => `${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
+const cloudQueryKey = () => `${Sb.authUser()?.id || ''}|${state.role}|${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
 
 function isTransientFileError(error) {
   return /timeout|timed out|abort|network|fetch|connection|temporar|gateway|database/i.test(String(error?.message || error || ""));
@@ -5704,7 +5705,7 @@ async function openStoredFilePreview(meta) {
     ["unknown", "ยังไม่ทราบประเภท", "ใช้เมื่อยังไม่สามารถยืนยันประเภทไฟล์ได้"],
   ];
   const selectedKindHelp = (kindOptions.find(([kind]) => kind === meta.kind) || kindOptions[kindOptions.length - 1])[2];
-  const canReclassify = state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
+  const canReclassify = !meta.readOnly && !String(meta.path || '').startsWith('case-evidence/') && state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
   const canMatchClarification = canReclassify && meta.kind === "doc_clarify";
   const clarificationPanel = canMatchClarification ? `<section class="file-clarification-match" id="fileClarificationMatch">
     <div class="file-clarification-head"><div><small>ใช้ไฟล์นี้เป็นหลักฐาน</small><b>จับคู่กับเคสที่ยังไม่พบคู่ของ ${h(meta.company || "บริษัทนี้")}</b><span>เลือกได้หลายเคสหรือเลือกทั้งหมด ระบบจะส่งสถานะเป็น “มีคำชี้แจง—รอ Audit ตรวจ” และยังไม่ปิดเคสอัตโนมัติ</span></div><span class="spinner" id="fileClarificationSpinner"></span></div>
@@ -5723,6 +5724,8 @@ async function openStoredFilePreview(meta) {
     `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
+  if(meta.readOnly) $('#filePreviewContent').insertAdjacentHTML('beforebegin',
+    `<section class="panel"><b>หลักฐานในคลัง · เปิดอ่านเท่านั้น</b><p>${h(meta.evidenceOrigin || 'หลักฐาน')} · ${h(meta.caseCode || 'ไฟล์จากเมล')} · ไม่อ่านเป็นรายการกระทบยอด</p>${meta.uploadedBy ? `<small>ผู้แนบ/ผู้ส่ง: ${h(meta.uploadedBy)} · เวลา: ${h(meta.uploadedAt || '—')}</small>` : ''}${meta.correctionReason ? `<p>เหตุผลแก้หลักฐาน: ${h(meta.correctionReason)}</p><small>อ้างถึงไฟล์เดิม: ${h(meta.replacesEvidenceId || meta.replacesSourceFileId || '—')} · ไฟล์เดิมยังอยู่ในคลัง</small>` : ''}</section>`);
   if (canMatchClarification) EvidenceRecommendations.mount($("#modal .modal-body"), meta, companyOptions, Sb, openStoredFilePreview);
   $("#filePreviewClose").addEventListener("click", closeModal);
   let signedUrl = "";
@@ -6070,6 +6073,8 @@ async function cloudLoad(force = false) {
   cloudState.loading = true;
   cloudState.error = null;
   cloudState.partialError = null;
+  cloudState.evidenceError = null;
+  cloudState.caseAttachments = null;
   if (changedFilter) {
     cloudState.batches = null;
     cloudState.daily = null;
@@ -6083,12 +6088,15 @@ async function cloudLoad(force = false) {
     Sb.batches({ from, to, company: state.filters.company, force }),
     Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
     Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
+    Sb.caseEvidenceLibrary({ from, to, company: state.filters.company }),
   ]);
   if (requestId !== cloudState.requestId || key !== cloudQueryKey()) return;
   if (result[0].status === "fulfilled") cloudState.batches = result[0].value || [];
   if (result[1].status === "fulfilled") cloudState.daily = result[1].value || [];
   if (result[2].status === "fulfilled") cloudState.operations = result[2].value || [];
-  const failed = result.flatMap((item, index) => item.status === "rejected" ? [["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด"][index]] : []);
+  if (result[3].status === "fulfilled") cloudState.caseAttachments = result[3].value;
+  else cloudState.evidenceError = 'โหลดหลักฐานจากเคสไม่สำเร็จ กรุณารีเฟรช ไม่ใช่การยืนยันว่าไม่มีหลักฐาน';
+  const failed = result.flatMap((item, index) => item.status === "rejected" ? [["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด", "หลักฐานจากเคส"][index]] : []);
   if (failed.length) {
     cloudState.partialError = `โหลดไม่สำเร็จ: ${failed.join(", ")}`;
     cloudState.error = result[0].status === "rejected" ? `${cloudState.partialError} — ยังไม่แสดงจำนวนไฟล์เพื่อป้องกันยอดศูนย์ปลอม` : null;
@@ -6099,6 +6107,8 @@ async function cloudLoad(force = false) {
 
 /* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
 async function cloudImport(files, opts = {}) {
+  // Evidence must never enter parsers, markParsed or reconciliation, even if supplied manually.
+  files = files.filter(file => file.kind !== 'doc_clarify' && !String(file.storage_path || '').startsWith('case-evidence/'));
   const blocked = files.filter((file) => file.parse_error || file.kind === "unknown");
   files = files.filter((file) => !file.parse_error && file.kind !== "unknown");
   if (blocked.length) toast(`พักไฟล์ปัญหา ${num(blocked.length)} ไฟล์ไว้ก่อน — ต้องแก้ประเภทหรือข้อผิดพลาดก่อนรัน`, "warn");
@@ -6243,6 +6253,11 @@ VIEWS.cloud = (root) => {
   const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
 
   root.innerHTML = `
+    <section class="panel" id="caseEvidenceLibraryPanel">
+      <div class="panel-heading"><div><p class="eyebrow">Evidence Library</p><h2>คลังหลักฐาน · เมลและผู้ชี้แจง</h2><small>ใช้บริษัทและวันที่เคสจากตัวกรองด้านบน · เก็บไฟล์เดิมและประวัติครบ · ไม่เข้ากระทบยอด</small></div></div>
+      ${cloudState.evidenceError ? `<p role="alert">${h(cloudState.evidenceError)}</p>` : cloudState.caseAttachments === null ? '<p role="status">กำลังโหลดหลักฐานจากเคส…</p>' : ''}
+      <div id="caseEvidenceLibrary"></div>
+    </section>
     <section class="status-strip four action-tiles">
       <article class="ok" data-scroll-cloud="cloudInbox"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())} · กดดูเมล</small></article>
       <article data-cloud-view="all"><span>ไฟล์ทั้งหมด</span><strong>${num(allFiles.length)}</strong><small>กดดูทุกสถานะ</small></article>
@@ -6398,6 +6413,7 @@ VIEWS.cloud = (root) => {
         : ""
     }`;
 
+  if(cloudState.caseAttachments !== null) CaseEvidenceLibrary.mount($('#caseEvidenceLibrary'), CaseEvidenceLibrary.entries(cloudState.batches, cloudState.caseAttachments), openStoredFilePreview);
   $("#cReload").addEventListener("click", () => cloudLoad(true));
   $("#cEvidenceRecommendations").addEventListener("click", () => EvidenceRecommendations.browse(Sb, state.date || DEFAULT_WORK_DATE, openStoredFilePreview));
   $("#cPickNew").addEventListener("click", () => {
@@ -8407,6 +8423,8 @@ async function performProductionEntry() {
   if (!ROUTE_ROLES[state.role].includes(state.route)) state.route = "cloud";
   if (!location.hash || parseHash() !== state.route) location.hash = "#/" + state.route;
   cloudState.batches = null;
+  cloudState.caseAttachments = null;
+  cloudState.evidenceError = null;
   cloudState.daily = null;
   cloudState.operations = null;
   cloudState.key = "";
@@ -8541,6 +8559,10 @@ async function boot() {
   $("#btnLogout").addEventListener("click", () => {
     Sb.signOut();
     cloudState.batches = null;
+    cloudState.caseAttachments = null;
+    cloudState.evidenceError = null;
+    cloudState.requestId++;
+    cloudState.loading = false;
     location.hash = "#/cloud";
     showLoginGate();
   });
