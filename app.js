@@ -3862,12 +3862,14 @@ async function openException(id, options = {}) {
         ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(n.at)}</b><span>${h(n.text)}</span></div></li>`).join("")}
       </ol>
 
+      <section ${state.role==='shift_lead'?'hidden':''}>
       <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
       ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ใช้หลักฐานคู่ BO/PM ต้นทาง" : "คู่ BO/PM ตรงกัน ไม่พบคู่ซ้ำ — Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน"}</p>` : ""}
       <ul class="close-check" id="caseChecklistSection">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
       ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
+      </section>
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
       ${state.dataset==='production'&&closed&&['lead','admin'].includes(state.role)?'<button class="ghost-button" id="btnCorrectClosedEvidence">แก้ไขหลักฐาน (เคสปิดแล้ว)</button><p class="hint">เก็บไฟล์เดิมและประวัติ · ต้องระบุเหตุผล · ไม่เปิดเคสใหม่หรือแก้ยอด</p>':''}
