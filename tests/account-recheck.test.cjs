@@ -20,6 +20,7 @@ for(const n of workflow.nodes){
  if(n.parameters.url)assert.ok(!/\/exceptions|finish_daily_recon_job|create_recon_run/.test(n.parameters.url));
 }
 const calc=workflow.nodes.find(n=>n.name==='กระทบยอดและสร้าง Exception').parameters.jsCode;
+assert.match(calc,/const scopeRow=r=>String\(r.subco\|\|r.company/,'statement bank code must not replace the business company');
 assert.match(calc,/scopedStm=stm.filter\(scopeRow\),scopedBo=bo.filter\(scopeRow\)/);
 assert.match(calc,/records:f.format.source==='bo'\?\(f.records\|\|\[\]\).filter\(scopeRow\):\[\]/);
 assert.match(workflow.nodes.find(n=>n.type==='n8n-nodes-base.webhook').parameters.authentication,/headerAuth/);

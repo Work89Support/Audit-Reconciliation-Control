@@ -25,7 +25,7 @@ selectFiles.parameters.jsCode=selectFiles.parameters.jsCode.replace(/const healt
 selectFiles.parameters.jsCode=selectFiles.parameters.jsCode.replace('({json:{job,file},pairedItem:',"({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:");
 const needle="if(bo.some(r=>r.formatCode))";
 if(!calculate.parameters.jsCode.includes(needle))throw Error('Scoped worker baseline changed');
-calculate.parameters.jsCode=calculate.parameters.jsCode.replace(needle,`const scopeRow=r=>String(r.company||r.subco||'').toUpperCase()===job.company
+calculate.parameters.jsCode=calculate.parameters.jsCode.replace(needle,`const scopeRow=r=>String(r.subco||r.company||'').toUpperCase()===job.company
  &&(job.account==='ALL'||String(r.account||'').trim()===job.account)&&(job.direction==='all'||r.direction===job.direction);
  const scopedStm=stm.filter(scopeRow),scopedBo=bo.filter(scopeRow);
  stm.length=0;stm.push(...scopedStm);bo.length=0;bo.push(...scopedBo);

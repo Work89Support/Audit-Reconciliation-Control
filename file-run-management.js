@@ -11,7 +11,7 @@
   return b;
  }
  function mount(host,opts){
-  let files=[],hold=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='';
+  let files=[],hold=null,manualOnly=false,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='';
   const actor=opts.actor?.(),sameActor=()=>!actor||opts.actor?.()===actor;
   function draw(){
    if(!alive)return;
@@ -20,7 +20,8 @@
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
     <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):'ยังไม่ได้พักรัน'}</p>
     <label>เหตุผลพัก/เปิดงาน <input data-hold-reason maxlength="2000" value="${esc(holdReason)}"></label>
-    <button data-hold ${busy||!canManage(opts.role())?'disabled':''}>${hold?.paused?'เปิดให้รันต่อ':'พักรันบริษัท–วันที่นี้'}</button>
+    <button data-hold ${busy||!canManage(opts.role())||(hold?.paused&&manualOnly)?'disabled':''}>${hold?.paused?'เปิดให้รันต่อ':'พักรันบริษัท–วันที่นี้'}</button>
+    ${manualOnly?'<p class="manual-note">ไฟล์มีเวอร์ชันแก้ไข: ตรวจมือและยืนยันรายงานแยกได้ แต่ยังล็อกบอทรอบหลักไว้จนตรวจการเชื่อมเคสเดิมครบ เพื่อไม่เปิดเคสซ้ำหรือย้ายประวัติอนุมัติผิดรายการ</p>':''}
     <button data-refresh ${busy?'disabled':''}>โหลดไฟล์/สถานะล่าสุด</button>
     <p role="alert">${esc(error)}</p>
     <table><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
@@ -59,7 +60,7 @@
     <label>ฉบับแทน <select data-replacement><option value="">ใช้ไฟล์เดิม</option>${files.filter(x=>x.id!==f.fileId&&!x.excluded).map(x=>`<option value="${esc(x.id)}" ${f.replacementId===x.id?'selected':''}>${esc(x.file_name)}</option>`).join('')}</select></label>
     <label>หรืออัปโหลดฉบับแก้ไข <input type="file" data-upload accept=".xlsx,.xls,.xlsm,.csv,.pdf,.docx"></label>
     ${upload?`<p>เลือกฉบับอัปโหลดไว้: ${esc(upload.name)} · ${upload.size} ไบต์</p>`:''}</div><label class="manual-check"><input type="checkbox" data-exclude ${f.excluded?'checked':''}>กักไฟล์นี้ ไม่นำเข้ารัน</label>
-    <label>เหตุผล <input data-reason maxlength="2000" value="${esc(f.reason)}"></label><p>บันทึกแล้วพักบริษัท/วันที่ที่เกี่ยวข้อง ต้องตรวจไฟล์ครบและให้หัวหน้า/ผู้ดูแลยืนยันก่อนเปิดรันต่อ</p><button data-save ${busy?'disabled':''}>ทบทวนและบันทึกเวอร์ชันใหม่</button><button data-cancel-edit ${busy?'disabled':''}>ยกเลิกการแก้ไข</button></div>`;}
+    <label>เหตุผล <input data-reason maxlength="2000" value="${esc(f.reason)}"></label><p>บันทึกแล้วพักบอทรอบหลักของวัน/บริษัทที่เกี่ยวข้อง ใช้ตรวจมือและยืนยันรายงานแยกก่อน เพื่อรักษาเคสเดิมและป้องกันเคสซ้ำ</p><button data-save ${busy?'disabled':''}>ทบทวนและบันทึกเวอร์ชันใหม่</button><button data-cancel-edit ${busy?'disabled':''}>ยกเลิกการแก้ไข</button></div>`;}
   function bindEditor(){
    for(const [selector,key] of [['name','name'],['company','company'],['date','date'],['kind','kind'],['replacement','replacementId'],['reason','reason']])host.querySelector('[data-'+selector+']').oninput=e=>{editor[key]=e.target.value||null;};
    host.querySelector('[data-exclude]').onchange=e=>{editor.excluded=e.target.checked;};
@@ -77,7 +78,7 @@
    };
   }
   async function action(fn){busy=true;error='';draw();try{await fn();await load();}catch(e){error=e.message;}finally{busy=false;draw();}}
-  async function load(){try{const result=await opts.load(opts.company,opts.date);files=result.files;hold=result.hold;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){error=e.message;}draw();}
+  async function load(){try{const result=await opts.load(opts.company,opts.date);files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
  root.FileRunManagement={mount,canManage,validateCorrection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;

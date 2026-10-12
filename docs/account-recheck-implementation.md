@@ -69,8 +69,10 @@ An accepted account result must not automatically close existing cases.
    remained unchanged. Existing scoped October SCB adjacent-source exceptions are
    preserved in the live selector and effective-source reader.
 5. Corrections append history and hold both affected company/day scopes. Original
-   receipts remain immutable. Resume after a correction requires a current
-   confirmed ALL/all report. A new source/case/evidence snapshot invalidates drafts.
+   receipts remain immutable. Revised company/day scopes remain manual-report-only
+   until a separately verified case-lineage migration can preserve old case UUIDs
+   and approvals. Even a confirmed scoped report cannot unblock automatic financial
+   writes there. A new source/case/evidence snapshot invalidates drafts.
 6. QA must not confirm actual reports, change original files or close actual cases.
    Fixture UI screenshots must be labeled as synthetic, not real-user proof.
 
@@ -91,6 +93,11 @@ An accepted account result must not automatically close existing cases.
   There is one ready additional report and zero confirmed reports for this scope.
 - File corrections/uploads/holds were tested on synthetic fixtures and real
   migration rollback, not by correcting live financial source files during QA.
+- A second real comparison-only MYPAY withdrawal check returned 215 STM/PM rows,
+  216 BO rows, 215 matched pairs and one virtual exception. Thai exception
+  directions are normalized for scope validation without changing stored amounts.
+- Statement company filtering prioritizes `subco` (the business) over `company`
+  (which can be a bank code), matching the underlying Engine's ownership rule.
 - Manual rechecks require an existing company-day run for comparison. Incomplete
   or missing selected STM/PM/BO sources fail closed rather than become zero activity.
 

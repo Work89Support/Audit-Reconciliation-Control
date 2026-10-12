@@ -131,9 +131,9 @@ begin
    or octet_length(p_result::text)>33554432
   then raise exception 'ผลตรวจไม่ครบ/ผิดขอบเขต';end if;
   if exists(select 1 from jsonb_array_elements(p_result->'exceptions') e
-   where (e->>'company') is distinct from q.company or (q.account<>'ALL' and (e->>'account') is distinct from q.account) or (q.direction<>'all' and (e->>'direction') is distinct from q.direction))
+   where (e->>'company') is distinct from q.company or (q.account<>'ALL' and (e->>'account') is distinct from q.account) or (q.direction<>'all' and (case e->>'direction' when 'ฝาก' then 'deposit' when 'ถอน' then 'withdraw' else e->>'direction' end) is distinct from q.direction))
    or exists(select 1 from jsonb_array_elements(p_result->'match_evidence') e
-   where (e->>'company') is distinct from q.company or (q.account<>'ALL' and (e->>'account') is distinct from q.account) or (q.direction<>'all' and (e->>'direction') is distinct from q.direction))
+   where (e->>'company') is distinct from q.company or (q.account<>'ALL' and (e->>'account') is distinct from q.account) or (q.direction<>'all' and (case e->>'direction' when 'ฝาก' then 'deposit' when 'ถอน' then 'withdraw' else e->>'direction' end) is distinct from q.direction))
   then raise exception 'ผลมีรายการนอกบัญชีที่สั่ง';end if;
  end if;
  update public.account_recheck_jobs set result=case when p_error is null then p_result else null end,

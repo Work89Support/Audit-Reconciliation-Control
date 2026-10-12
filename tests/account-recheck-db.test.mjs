@@ -82,6 +82,11 @@ const correction={name:'fixed.csv',company:'TEST',date:'2026-10-11',kind:'bo_mai
 await actor('admin');const uploaded=(await db.query('select * from upload_audit_source_revision($1,2,$2,$3)',[id(5),JSON.stringify(metadata),JSON.stringify(correction)])).rows[0];
 assert.equal((await db.query('select * from upload_audit_source_revision($1,2,$2,$3)',[id(5),JSON.stringify(metadata),JSON.stringify(correction)])).rows[0].id,uploaded.id);
 const plan=(await db.query("select effective_audit_source_files('TEST','2026-10-11') as p")).rows[0].p;assert.equal(plan.length,2);assert.equal(plan.find(f=>f.id===id(5)).physical_source_file_id,uploadId);
-await assert.rejects(db.query("select set_audit_run_hold('TEST','2026-10-11',false,'dummy resume blocked',3)"),/ยืนยัน|เปลี่ยน/);
+await assert.rejects(db.query("select set_audit_run_hold('TEST','2026-10-11',false,'dummy resume blocked',3)"),/ยืนยัน|เปลี่ยน|เชื่อมเคสเดิม/);
 await db.exec('reset role');assert.equal(JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e')).rows),original);
-await db.close();console.log('PASS synthetic PostgreSQL: role/inactive/scope denial, duplicate delivery and requests, revision checks, lead-only confirmation, immutable original files and closed-case history. No live financial writes.');
+await actor();const thaiJob=(await db.query("select * from request_account_recheck('TEST','2026-10-11','ALL','deposit','compare',$1,null)",[id(25)])).rows[0];
+await actor('monitor','TEST',true,'service_role');const thaiClaim=(await db.query('select * from claim_account_recheck($1,$2)',[thaiJob.id,'fixture-thai-direction'])).rows[0];
+const thaiResult={...result,direction:'deposit',exceptions:[{company:'TEST',account:'A',direction:'ฝาก',ex_type:'amount_diff',bank_amount:15,system_amount:10}]};
+await assert.rejects(db.query('select finish_account_recheck($1,$2,$3,null)',[thaiJob.id,thaiClaim.revision,JSON.stringify({...thaiResult,exceptions:[{...thaiResult.exceptions[0],direction:'ถอน'}]})]),/นอกบัญชี/);
+assert.equal((await db.query('select * from finish_account_recheck($1,$2,$3,null)',[thaiJob.id,thaiClaim.revision,JSON.stringify(thaiResult)])).rows[0].status,'ready');
+await db.close();console.log('PASS synthetic PostgreSQL: role/inactive/scope denial, duplicate delivery and requests, revision checks, Thai direction scope, lead-only confirmation, immutable original files and closed-case history. No live financial writes.');

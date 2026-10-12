@@ -23,6 +23,17 @@ create policy audit_source_revisions_read on public.audit_source_revisions for s
 grant select on public.audit_run_holds,public.audit_source_revisions to authenticated;
 revoke insert,update,delete on public.audit_run_holds,public.audit_source_revisions from authenticated,anon;
 
+-- Revised receipts need an explicit case-lineage migration before automatic
+-- financial writes can resume. A staged report must never clone old cases.
+create function public.audit_source_scope_managed(p_company text,p_date date) returns boolean
+language sql stable security definer set search_path=public as $$
+ select exists(select 1 from public.audit_source_revisions r
+ join public.source_files f on f.id=r.source_file_id join public.mail_batches b on b.id=f.batch_id
+ where (r.company=p_company and r.business_date=p_date)
+ or (coalesce(f.company,b.company)=p_company and b.business_date=p_date))
+$$;
+revoke all on function public.audit_source_scope_managed(text,date) from public,anon,authenticated;
+
 create function public.set_audit_run_hold(p_company text,p_date date,p_paused boolean,p_reason text,p_expected_revision integer)
 returns public.audit_run_holds language plpgsql security definer set search_path=public as $$
 declare h public.audit_run_holds%rowtype;j public.daily_recon_jobs%rowtype;
@@ -35,6 +46,9 @@ begin
  select * into j from public.daily_recon_jobs where company=p_company and business_date=p_date and not is_archived for update;
  select * into h from public.audit_run_holds where company=p_company and business_date=p_date for update;
  if coalesce(h.revision,0) is distinct from p_expected_revision then raise exception 'สถานะพักงานเปลี่ยนแล้ว โหลดใหม่';end if;
+ if not p_paused and public.audit_source_scope_managed(p_company,p_date) then
+  raise exception 'วัน/บริษัทนี้มีไฟล์เวอร์ชันแก้ไข ใช้ตรวจมือและยืนยันรายงานแยกได้ แต่ยังไม่เปิดบอทเขียนรอบหลัก จนตรวจการเชื่อมเคสเดิมเพื่อป้องกันเคสซ้ำ';
+ end if;
  if not p_paused and exists(select 1 from public.audit_source_revisions where company=p_company and business_date=p_date)
  and not exists(select 1 from public.account_recheck_jobs q where q.company=p_company and q.business_date=p_date
   and q.status='confirmed' and q.mode='account' and q.account='ALL' and q.direction='all' and q.base_run_id=j.last_run_id
@@ -177,6 +191,7 @@ end $$;
 create function public.audit_run_blocked(p_company text,p_date date) returns boolean
 language sql stable security definer set search_path=public as $$
  select exists(select 1 from public.audit_run_holds where company=p_company and business_date=p_date and paused)
+ or public.audit_source_scope_managed(p_company,p_date)
  or exists(select 1 from public.account_recheck_jobs where company=p_company and business_date=p_date and status in ('queued','running') and lease_expires_at>=now())
 $$;
 revoke all on function public.audit_run_blocked(text,date) from public,anon;
@@ -208,6 +223,17 @@ grant execute on function public.effective_audit_source_batches(text,date) to au
 revoke all on function public.set_audit_run_hold(text,date,boolean,text,integer),public.correct_audit_source(uuid,integer,text,text,date,text,uuid,boolean,text),public.effective_audit_source_files(text,date) from public,anon;
 grant execute on function public.set_audit_run_hold(text,date,boolean,text,integer),public.correct_audit_source(uuid,integer,text,text,date,text,uuid,boolean,text),public.effective_audit_source_files(text,date) to authenticated;
 grant execute on function public.effective_audit_source_files(text,date) to service_role;
+create function public.file_run_management_state(p_company text,p_date date) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+begin
+ if not coalesce(public.current_user_active(),false) or not coalesce(public.has_company_access(p_company),false)
+ then raise exception 'ไม่มีสิทธิ์อ่านบริษัทนี้';end if;
+ return jsonb_build_object('files',public.effective_audit_source_files(p_company,p_date),
+ 'hold',(select to_jsonb(h) from public.audit_run_holds h where company=p_company and business_date=p_date),
+ 'manualOnly',public.audit_source_scope_managed(p_company,p_date));
+end $$;
+revoke all on function public.file_run_management_state(text,date) from public,anon;
+grant execute on function public.file_run_management_state(text,date) to authenticated;
 create policy manual_source_revision_upload on storage.objects for insert to authenticated
 with check(bucket_id='audit-files' and public.current_user_active() and public.current_app_role() in ('lead','admin')
  and name like 'manual-replacements/'||auth.uid()::text||'/%');

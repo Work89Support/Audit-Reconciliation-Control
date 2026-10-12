@@ -830,8 +830,7 @@ const Sb = (() => {
   const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes,object_version:f.object_version,object_etag:f.object_etag}))});
   const effectiveAuditFiles=(company,date)=>rpc('effective_audit_source_files',{p_company:company,p_date:date});
   async function fileRunManagement(company,date){
-    const [files,holds]=await Promise.all([effectiveAuditFiles(company,date),json(`/rest/v1/audit_run_holds?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&limit=1`)]);
-    return {files,hold:holds[0]||null};
+    return rpc('file_run_management_state',{p_company:company,p_date:date});
   }
   const sourceRevisionHistory=id=>json(`/rest/v1/audit_source_revisions?source_file_id=eq.${encodeURIComponent(id)}&select=revision,reason,created_at,effective_name,company,business_date,kind,replacement_file_id,excluded,original&order=revision.desc`);
   const setAuditRunHold=b=>rpc('set_audit_run_hold',{p_company:b.company,p_date:b.date,p_paused:b.paused,p_reason:b.reason,p_expected_revision:b.expectedRevision});
