@@ -1015,11 +1015,11 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
-function openAccountRecheck({company,date,accounts,fileIds=null}) {
+function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
   openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
   const dispose=AccountRecheck.mount($('#accountRecheckPanel'),{
-    company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,role:()=>state.role,actor:()=>Sb.authUser()?.id,
+    company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,initialJobId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
     request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,loadState:Sb.fileRunManagement,confirm:Sb.confirmAccountRecheck,
     detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
     finalConfirmation:AccountRecheck.finalConfirmation,
@@ -1671,6 +1671,9 @@ function renderLiveDashboard(root) {
   const failed = quality.filter((x) => !x.primaryResult && (x.status === "error" || Number(x.error_count || 0) > 0)).length;
   const checklistInRange = (liveOverviewState.checklist || []).filter(inLiveRange);
   const checklistByCompanyDate = new Map(checklistInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
+  const manualFollowups=manualFollowupItems(checklistInRange);
+  const manualFollowupErrors=[...new Set(checklistInRange.map(r=>r.workflowStatusError).filter(Boolean))];
+  const manualFollowupReady=Array.isArray(liveOverviewState.checklist)&&!hasLiveCoreError('เช็กลิสต์');
   const currentExceptionCount = (row) => {
     const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
     return lifecycle?.open_count != null && lifecycle?.resolved_count != null
@@ -1746,6 +1749,14 @@ function renderLiveDashboard(root) {
       <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${showMetric(qualityAvailable, needsReview)}</strong><small>${qualityAvailable ? "ข้อมูลมาแล้วแต่ยังไม่ครบ" : "ผลกระทบยอดยังไม่พร้อม"} · กดดูสิ่งที่ขาด</small></article>
       <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${showMetric(qualityAvailable, waiting + failed)}</strong><small>${qualityAvailable ? `รอ ${num(waiting)} · ล้มเหลว ${num(failed)}` : "ผลกระทบยอดยังไม่พร้อม"} · กดแก้ไฟล์</small></article>
       <article class="bad" data-action-route="exceptions"><span>เคสที่ระบบตรวจพบ</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : !liveOverviewState.exceptionsReady ? "ยอดเสี่ยงยังโหลดไม่สำเร็จ" : `ยอดเสี่ยงเฉพาะ ${num(exceptions.length)} เคสที่โหลด ${money0(risk)} บาท · ไม่ใช่ยอดรวมทั้งระบบ`} · กดตรวจเคส</small></article>
+    </section>
+
+    <section class="panel manual-followup-panel" aria-labelledby="manualFollowupTitle">
+      <div class="panel-heading"><div><p class="eyebrow">ไม่ลืมยืนยันผลรันมือ</p><h2 id="manualFollowupTitle">ผลรันมือที่ต้องทำต่อ ${manualFollowupReady?`(${num(manualFollowups.length)})`:''}</h2><small class="head-sub">ตามบริษัทและช่วงวันที่ที่เลือก · แสดงรอบล่าสุดของแต่ละขอบเขต · เปิดทบทวนเท่านั้น ไม่ยืนยันหรือเปลี่ยนผลหลักอัตโนมัติ</small></div></div>
+      ${!manualFollowupReady?'<p role="status">ยังตรวจสถานะรายงานไม่สำเร็จ กรุณารีเฟรช ไม่ได้หมายความว่าไม่มีงานค้าง</p>':''}
+      ${manualFollowupErrors.map(e=>`<p role="alert">${h(e)} · รายการอาจยังไม่ครบ</p>`).join('')}
+${manualFollowups.map(q=>`<article class="manual-followup-item"><div><strong>${h(q.company)} · ${h(q.business_date)}</strong><p>${q.status==='ready'?'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยันรายงาน':'ยืนยันรายงานแล้ว · ยังไม่ใช้เป็นผลหลัก'}</p><small>${h(q.account==='ALL'?'ทุกบัญชี':q.account)} · ${h({all:'ฝากและถอน',deposit:'ฝาก',withdraw:'ถอน'}[q.direction]||q.direction)} · รันเมื่อ ${h(displayTime(q.created_at))}</small>${q.account!=='ALL'||q.direction!=='all'?'<small class="sub">รายงานเฉพาะขอบเขต: ยืนยันเก็บเป็นรายงานแยกได้ แต่ใช้แทนผลหลักทั้งบริษัทไม่ได้</small>':''}</div>${['lead','admin'].includes(state.role)&&canAccessCompany(q.company)?`<button class="primary-button" data-manual-followup="${h(q.id)}">${q.status==='ready'?'ทบทวนและยืนยันรายงาน':q.account!=='ALL'||q.direction!=='all'?'เปิดรายงานเฉพาะขอบเขต':'ทบทวนใช้เป็นผลหลัก'}</button>`:'<small>ให้หัวหน้า/ผู้ดูแลในบริษัทนี้ดำเนินการ</small>'}</article>`).join('')}
+      ${manualFollowupReady&&!manualFollowups.length&&!manualFollowupErrors.length?'<p class="empty">ไม่พบผลรันมือที่รอยืนยันหรือยังไม่ใช้เป็นผลหลักในขอบเขตนี้</p>':''}
     </section>
 
     <section class="action-overview">
@@ -1880,6 +1891,20 @@ return `<tr class="action-row" data-summary-company="${h(row.company)}" data-sum
     go("cloud");
   });
   $("#liveRefresh")?.addEventListener("click", () => loadLiveOverview(true));
+  root.querySelectorAll('[data-manual-followup]').forEach(button=>button.addEventListener('click',async()=>{
+    const q=manualFollowups.find(x=>x.id===button.dataset.manualFollowup),actor=Sb.authUser()?.id;
+    const allowed=()=>actor===Sb.authUser()?.id&&['lead','admin'].includes(state.role)&&q&&canAccessCompany(q.company);
+    if(!allowed())return deny('ทบทวนผลรันมือ');
+    button.disabled=true;
+    try{
+      const [items,primary]=await Promise.all([Sb.listAccountRechecks(q.company,q.business_date),Sb.readManualPrimary(q.company,q.business_date)]);
+      if(!allowed())throw Error('บัญชีผู้ใช้หรือสิทธิ์เปลี่ยน กรุณาเปิดใหม่');
+      if(primary?.stale)throw Error(primary.message);
+      const current=manualFollowupItems([{company:q.company,business_date:q.business_date,rechecks:items,primaryResult:primary}]).find(x=>x.id===q.id);
+      if(!current)throw Error('รายงานนี้มีสถานะหรือรอบใหม่แล้ว กรุณารีเฟรช Dashboard');
+      openAccountRecheck({company:q.company,date:q.business_date,accounts:[current.account],initialJobId:current.id});
+    }catch(error){toast(error.message,'warn');}finally{if(button.isConnected)button.disabled=false;}
+  }));
   $("#liveRetry")?.addEventListener("click", () => loadLiveOverview(true));
 }
 
@@ -2248,6 +2273,20 @@ function dailyCompanyOptions() {
 function dailyMissingKinds(rows) {
   const kinds = (rows || []).flatMap((row) => Array.isArray(row.missing_groups) ? row.missing_groups.flat(3) : []);
   return [...new Set(kinds)].map((kind) => LIVE_KIND_LABEL[kind] || kind);
+}
+
+function manualFollowupItems(rows) {
+  const output=[],seen=new Set();
+  for(const row of rows){
+    const latest=new Map(),primary=row.primaryResult;
+    const jobs=[...(row.rechecks||[])].filter(q=>q.mode==='account'&&q.company===row.company&&q.business_date===row.business_date).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
+    for(const q of jobs){const scope=JSON.stringify([q.account,q.direction]);if(latest.has(scope))continue;latest.set(scope,q);
+      if(!['ready','confirmed'].includes(q.status)||q.id===primary?.recheck_id||seen.has(q.id))continue;
+      if(primary&&Date.parse(q.created_at)<=Date.parse(primary.accepted_at))continue;
+      seen.add(q.id);output.push({...q});
+    }
+  }
+  return output.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
 }
 
 function dailyResultStatus(row,run={}) {
