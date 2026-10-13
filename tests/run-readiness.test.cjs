@@ -10,5 +10,6 @@ const sql=fs.readFileSync('supabase/20261013_manual_run_readiness.sql','utf8');
 assert.match(sql,/alter column base_run_id drop not null/);
 assert.match(sql,/j.last_run_id is distinct from q.base_run_id/);
 assert.doesNotMatch(sql,/update public\.(exceptions|recon_runs|source_files)|insert into public.exceptions|delete from/i);
-assert.match(fs.readFileSync('account-recheck.js','utf8'),/dispatchError=reply.dispatch_error\|\|'';await refresh/,'refresh must not erase unknown dispatch warning');
+assert.match(fs.readFileSync('account-recheck.js','utf8'),/dispatchError=reply.dispatch_error\|\|'';dispatchJobId=reply.id\|\|null;await refresh/,'refresh must not erase unknown dispatch warning');
+assert.match(fs.readFileSync('account-recheck.js','utf8'),/q.id===dispatchJobId&&q.status!=='queued'/,'older ready jobs must not clear a new uncertain dispatch');
 console.log('PASS run readiness: distinct queues, escaped reasons, failures, unknown status fail-closed, no financial writes');
