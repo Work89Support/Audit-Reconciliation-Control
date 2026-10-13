@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),display=require('../audit-display.js');
+assert.equal(display.dateTime('2026-10-13T06:42:43.011756+00:00'),'13 ต.ค. 2026 เวลา 13:42 น. (เวลาไทย)');
+assert.equal(display.dateTime('2026-10-12T18:05:00Z'),'13 ต.ค. 2026 เวลา 01:05 น. (เวลาไทย)');
+assert.equal(display.dateTime('2026-10-13 13:42:43'),'13 ต.ค. 2026 เวลา 13:42 น. (เวลาไทย)');
+assert.equal(display.dateTime('2026-10-13T13:42:43+07:00'),'13 ต.ค. 2026 เวลา 13:42 น. (เวลาไทย)');
+assert.equal(display.dateTime('2026-10-12'),'12 ต.ค. 2026');
+assert.equal(display.dateTime(null),'ยังไม่มีข้อมูลเวลา');
+assert.equal(display.dateTime('not a date'),'ไม่พบเวลาที่ถูกต้อง');
+assert.equal(display.dateOnly('2026-02-30'),'ไม่พบวันที่ที่ถูกต้อง');
+const input={at:'2026-10-13T06:42:43Z',amount:100,status:'open'},before=JSON.stringify(input);display.dateTime(input.at);assert.equal(JSON.stringify(input),before);
+console.log('PASS shared Thai display: offsets, local notes, calendar rollover, invalid/missing values and immutable input');

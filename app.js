@@ -12,6 +12,7 @@ const h = (s) =>
 const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money0 = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
 const num = (n) => Number(n || 0).toLocaleString("th-TH");
+const displayTime = value => AuditDisplay.dateTime(value);
 function normalizeEvidenceSearch(value) {
   const thaiDigits = { "๐": "0", "๑": "1", "๒": "2", "๓": "3", "๔": "4", "๕": "5", "๖": "6", "๗": "7", "๘": "8", "๙": "9" };
   return String(value ?? "").toLocaleLowerCase("th-TH")
@@ -1794,7 +1795,7 @@ function renderLiveDashboard(root) {
           const providerNotes = `${!coverage && inactiveProviders ? `<small class="sub">ทะเบียนยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">ชื่อรอยืนยันในชีต: ${h(pendingProviders)}</small>` : ""}`;
           const boFirstMissing = missingCoverage.map((item) => `ขาด ${item.kind} ${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
           const pending = () => checklistMark(false, "รอวันทำการ", true);
-          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(row.last_mail_at ? String(row.last_mail_at).replace("T", " ").slice(0, 16) : "-")}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
+          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(displayTime(row.last_mail_at))}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
       </tbody></table></div>
       <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
@@ -1833,7 +1834,7 @@ function renderLiveDashboard(root) {
     </section>
 
     <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">รายการล่าสุด</p><h2>สถานะรายวันแยกบริษัท</h2><small class="head-sub">อัปเดต ${liveOverviewState.updatedAt ? liveOverviewState.updatedAt.toLocaleString("th-TH") : "-"}</small></div><span class="health ok">ข้อมูลจริง Supabase</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">รายการล่าสุด</p><h2>สถานะรายวันแยกบริษัท</h2><small class="head-sub">อัปเดต ${liveOverviewState.updatedAt ? displayTime(liveOverviewState.updatedAt) : "-"}</small></div><span class="health ok">ข้อมูลจริง Supabase</span></div>
       <div class="table-wrap"><table class="live-table">
         <thead><tr><th>วันที่</th><th>บริษัท / ระบบ</th><th>สถานะ</th><th class="right">ไฟล์</th><th>ไฟล์ที่ยังขาด</th><th>ผลกระทบยอด</th></tr></thead>
         <tbody>${recent.map((row) => {
@@ -2479,7 +2480,7 @@ function renderDailyCompanySummary(root) {
       const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
       const statusLabel = statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
       const tone = statementNeedsBoReview(file) ? "amber" : file.parse_error ? "red" : file.parsed ? "green" : "amber";
-      return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
+      return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(displayTime(file.receivedAt))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
     }).join("");
     const boPreviewButton = (file, sourceLabel) => {
       if (!file) return "";
@@ -2658,7 +2659,7 @@ function renderDailyCompanySummary(root) {
       </section>`;
     root.innerHTML = controls + rulesPanel + `
       ${auditSheetHtml}
-      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? dailyCompanyState.updatedAt.toLocaleString("th-TH") : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
+      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? displayTime(dailyCompanyState.updatedAt) : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
       ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
@@ -2723,7 +2724,7 @@ ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result
             : file.parsed
               ? `<span class="badge green">${h(parsedFileLabel(file))}</span>`
               : `<span class="badge amber">รออ่าน</span>`;
-        return `<tr><td>${h(String(file.receivedAt).replace("T", " ").slice(0, 16))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${evidence || file.row_count == null ? "-" : num(file.row_count)}</td><td>${statusHtml}</td></tr>`;
+        return `<tr><td>${h(displayTime(file.receivedAt))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${evidence || file.row_count == null ? "-" : num(file.row_count)}</td><td>${statusHtml}</td></tr>`;
       }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
 
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Exception resolution</p><h2>ผลการตรวจและแก้ไขทั้งหมด</h2><small class="head-sub">แก้ไขแล้ว ${num(data.resolvedTotal)} · ยังไม่ปิด ${num(data.stillOpen)} · แสดงรายละเอียดชุดแรก ${num(data.exceptions.length)}/${num(data.exceptionTotal)}</small></div><button class="ghost-button sm" id="dailyGoExceptions">เปิดหน้าติดตามเคส</button></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>เคส / เวลา</th><th>ประเภท</th><th>บัญชี</th><th class="right">ยอด BO</th><th class="right">ยอด STM</th><th class="right">ผลต่าง</th><th>ระดับ</th><th>สถานะการแก้ไข</th><th>ผู้เกี่ยวข้อง / สาเหตุ</th></tr></thead><tbody>${data.exceptions.map((row) => `<tr class="clickable" data-daily-ex="${h(row.id)}"><td><b>${h(row.id)}</b><small class="sub">${h(row.time || "-")}</small></td><td>${h(row.typeName)}</td><td>${h(row.account)}<small class="sub">${h(row.bank)} · ${h(row.direction)}</small></td><td class="right tnum">${row.systemAmount == null ? "-" : money(row.systemAmount)}</td><td class="right tnum">${row.bankAmount == null ? "-" : money(row.bankAmount)}</td><td class="right tnum danger">${money(row.amountDiff || row.riskAmount)}</td><td><span class="badge ${h(row.severity)}">${h(sevMeta(row.severity).name)}</span></td><td><span class="badge ${h(statusMeta(row.status).tone)}">${h(statusMeta(row.status).name)}</span></td><td>${h(row.employee)}<small class="sub">${h(row.cause)}</small></td></tr>`).join("") || `<tr><td colspan="9" class="empty">${data.exceptionTotal ? `ผลรันระบุ ${num(data.exceptionTotal)} Exception แต่ยังไม่มีรายละเอียดเคสที่เปิดดูได้` : "ไม่พบ Exception ของบริษัทนี้ในวันที่เลือก"}</td></tr>`}</tbody></table></div></section>`;
@@ -2938,7 +2939,7 @@ function renderLiveIntake(root) {
 
     <section class="panel">
       <div class="panel-heading">
-        <div><p class="eyebrow">ข้อมูลจริงตามบริษัท</p><h2>สถานะ PM ฝาก และถอน</h2><small class="head-sub">อัปเดต ${liveIntakeState.updatedAt ? liveIntakeState.updatedAt.toLocaleString("th-TH") : "-"}</small></div>
+        <div><p class="eyebrow">ข้อมูลจริงตามบริษัท</p><h2>สถานะ PM ฝาก และถอน</h2><small class="head-sub">อัปเดต ${liveIntakeState.updatedAt ? displayTime(liveIntakeState.updatedAt) : "-"}</small></div>
         <div class="inline-actions"><button class="ghost-button sm" id="intakeRefresh">รีเฟรช</button><button class="primary-button sm" id="intakeCloud">เปิดคลังไฟล์</button></div>
       </div>
       <div class="table-wrap"><table>
@@ -2946,7 +2947,7 @@ function renderLiveIntake(root) {
         <tbody>${rows.map((row) => {
           const tone = !row.own.length ? "grey" : row.errors ? "red" : row.parsed < row.own.length ? "amber" : "green";
           const label = !row.own.length ? "ยังไม่พบไฟล์" : row.errors ? "มีไฟล์อ่านไม่ได้" : row.parsed < row.own.length ? "รออ่าน" : "พร้อมตรวจ";
-          return `<tr><td><b>${h(row.company)}</b></td>${visibleTypes.map((type) => `<td class="right tnum">${num(row.counts[type])}</td>`).join("")}<td class="right tnum">${num(row.own.length)}</td><td class="right tnum">${num(row.parsed)}</td><td>${row.latest ? h(String(row.latest).replace("T", " ").slice(0, 16)) : "-"}</td><td><span class="badge ${tone}">${label}</span></td></tr>`;
+          return `<tr><td><b>${h(row.company)}</b></td>${visibleTypes.map((type) => `<td class="right tnum">${num(row.counts[type])}</td>`).join("")}<td class="right tnum">${num(row.own.length)}</td><td class="right tnum">${num(row.parsed)}</td><td>${row.latest ? h(displayTime(row.latest)) : "-"}</td><td><span class="badge ${tone}">${label}</span></td></tr>`;
         }).join("")}</tbody>
       </table></div>
       <p class="hint">จำนวนในคอลัมน์คือจำนวนไฟล์ที่ระบบจำแนกได้ ไม่ใช่จำนวนธุรกรรม; ไฟล์ชื่อ “ฝาก-ถอน” จะนับได้ทั้งฝากและถอน ส่วน PM แยกเป็นประเภทของตัวเอง</p>
@@ -3003,7 +3004,7 @@ VIEWS.intake = (root) => {
                 (x) => `<tr>
               <td>${h(x.companyName)}</td>
               <td>${h(x.fileType)}</td>
-              <td>${h(x.receivedAt)}</td>
+              <td>${h(displayTime(x.receivedAt))}</td>
               <td class="tnum">${x.rows ? num(x.rows) : "-"}</td>
               <td>${h(x.sender)}</td>
               <td class="mono">${h(x.checksum)}</td>
@@ -3640,7 +3641,7 @@ async function loadExceptionSupport(e, options = {}) {
           }
         }
         const list=document.createElement('section');list.className='case-mail-evidence';
-        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(f.mail_batches?.received_at||'')}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(displayTime(f.mail_batches?.received_at))}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelector('h4').textContent=`ไฟล์ของ ${fileCompany} · ${from} ถึง ${to} (${candidates.length} ไฟล์) → เคส ${e.company} ${e.code||e.id}`;
@@ -3830,13 +3831,13 @@ async function openException(id, options = {}) {
         <div><span>การปิดเคส</span><b>${closed ? 'ยืนยันปิดแล้ว' : 'ยังไม่ปิดเคส'}</b></div>
         <p class="case-permission-help">หน้าที่ของคุณ: ${can('note') ? 'บันทึกผลตรวจได้' : 'ดูข้อมูลได้'} · ${can('respond') ? 'ตอบชี้แจงได้เมื่อเคสรอชี้แจง' : 'ส่งผู้มีสิทธิ์ตอบคำชี้แจง'} · ${can('approve') ? 'ยืนยันปิดได้เมื่อผ่านเกณฑ์' : 'ต้องส่งผู้มีสิทธิ์อนุมัติปิดเคส'}</p>
       </section>
-      ${uiResult ? `<section class="case-save-result" role="status"><b>${h(uiResult.message)}</b><small>ผลบันทึกในการใช้งานครั้งนี้ · ${h(uiResult.actor)} · ${h(uiResult.at)}</small></section>` : ''}
-      ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt || 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
+      ${uiResult ? `<section class="case-save-result" role="status"><b>${h(uiResult.message)}</b><small>ผลบันทึกในการใช้งานครั้งนี้ · ${h(uiResult.actor)} · ${h(displayTime(uiResult.at))}</small></section>` : ''}
+      ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt ? displayTime(e.resolvedAt) : 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
       ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
       <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
       <section class="clarification-instructions" aria-label="สิ่งที่ Audit ขอให้ชี้แจง">
         <h3>สิ่งที่ Audit ขอให้ชี้แจง</h3>
-        ${e.clarificationInstructionsError?`<p role="alert">โหลดคำขอไม่สำเร็จ: ${h(e.clarificationInstructionsError)} กรุณาโหลดเคสใหม่ก่อนตอบ</p>`:(e.clarificationInstructions||[]).length?`<ol>${e.clarificationInstructions.map(n=>`<li><p class="clarification-request-text">${h(n.text)}</p><small>Audit ${h(n.by)} · ${h(n.at)}</small></li>`).join('')}</ol>`:'<p>ยังไม่มีรายละเอียดคำขอชี้แจงที่บันทึกไว้ กรุณาสอบถาม Audit โดยอ้างอิงเลขเคสนี้</p>'}
+        ${e.clarificationInstructionsError?`<p role="alert">โหลดคำขอไม่สำเร็จ: ${h(e.clarificationInstructionsError)} กรุณาโหลดเคสใหม่ก่อนตอบ</p>`:(e.clarificationInstructions||[]).length?`<ol>${e.clarificationInstructions.map(n=>`<li><p class="clarification-request-text">${h(n.text)}</p><small>Audit ${h(n.by)} · ${h(displayTime(n.at))}</small></li>`).join('')}</ol>`:'<p>ยังไม่มีรายละเอียดคำขอชี้แจงที่บันทึกไว้ กรุณาสอบถาม Audit โดยอ้างอิงเลขเคสนี้</p>'}
       </section>
       <div class="case-summary-grid" id="caseSummarySection">
         <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
@@ -3868,7 +3869,7 @@ async function openException(id, options = {}) {
         }</span></div></li>
         <li><span class="t-dot"></span><div><b>สาเหตุที่บันทึกไว้</b><span>${h(e.cause)}</span></div></li>
         ${e.hasEvidence || sourceEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>${sourceEvidence ? "BO/PM ต้นทาง — ตรวจอ้างอิง ยอด วัน เวลา และคู่ซ้ำแล้ว" : "มีหลักฐานบันทึกในระบบ"}</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
-        ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(n.at)}</b><span>${h(n.text)}</span></div></li>`).join("")}
+        ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(displayTime(n.at))}</b><span>${h(n.text)}</span></div></li>`).join("")}
       </ol>
 
       <section ${state.role==='shift_lead'?'hidden':''}>
@@ -3891,7 +3892,7 @@ async function openException(id, options = {}) {
             ? `<ul class="evidence-list">${e.evidence
                 .map(
                   (f) =>
-                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b>${f.replacedBy?'<span class="badge amber">แทนที่แล้ว · เก็บต้นฉบับ</span>':''}${f.correctionReason?`<span class="badge blue">หลักฐานแก้ไขใหม่</span><small>เหตุผล: ${h(f.correctionReason)} · แทนไฟล์ ${h(f.replacesEvidenceId||f.replacesSourceFileId)} · โดย ${h(f.uploadedBy)}</small>`:''}<small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(f.at)}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
+                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b>${f.replacedBy?'<span class="badge amber">แทนที่แล้ว · เก็บต้นฉบับ</span>':''}${f.correctionReason?`<span class="badge blue">หลักฐานแก้ไขใหม่</span><small>เหตุผล: ${h(f.correctionReason)} · แทนไฟล์ ${h(f.replacesEvidenceId||f.replacesSourceFileId)} · โดย ${h(f.uploadedBy)}</small>`:''}<small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(displayTime(f.at))}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
                 )
                 .join("")}</ul>`
             : `<p class="muted small-note">${state.dataset==='production' && Sb.pendingCaseEvidence(e.dbId).length ? "มีคำขอแนบไฟล์ค้างยืนยันทะเบียน — กดตรวจ / ลองบันทึกต่อด้านบน ไม่ต้องแนบซ้ำ และยังไม่นับเป็นหลักฐานที่ผูกเคสสำเร็จ" : e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
@@ -3911,7 +3912,7 @@ async function openException(id, options = {}) {
       </div>
       <section class="case-response-section" id="caseResponseSection">
         <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>ใช้ตอบคำถามพร้อมหลักฐาน แยกจาก Note ผลตรวจด้านบน</p>
-        ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(e.respondedAt || '')}</small></div>` : ''}
+        ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(displayTime(e.respondedAt))}</small></div>` : ''}
         <label ${e.status!=='clarifying'?'hidden':''}>คำชี้แจง<textarea id="responseText" rows="4" placeholder="ระบุข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และหลักฐาน" ${e.status!=='clarifying'||!can('respond')?'disabled':''}></textarea></label>
         <button class="primary-button" id="btnRespond" ${e.status!=='clarifying'||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
         <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
@@ -4692,7 +4693,7 @@ async function openDamageCollection(row) {
     <button class="ghost-button sm" id="receiptPreview">เปิดหลักฐานโอนคืนในหน้าต่างใหม่</button>
     <label>ผลตรวจหลักฐานและผู้ชำระ<textarea id="receiptNote"></textarea></label>
     <label><input id="receiptChecked" type="checkbox">ตรวจว่ารับเงินจริงแล้ว และตรงบริษัท / ผู้รับผิดชอบ / เคสนี้ ไม่ใช่ยอดที่คาดว่าจะโอน</label>
-    <h3>ประวัติการรับคืน</h3>${(row.receipts || []).map(r=>`<p>${h(r.paid_at)} · ${money(r.amount)} · ${h(r.transfer_reference)} · ${r.voided_at?'ยกเลิกแล้ว: '+h(r.void_reason):`ยืนยันแล้ว <button class="ghost-button sm" data-void-receipt="${h(r.id)}">ยกเลิกบันทึกผิด</button>`}</p>`).join('') || '<p>ยังไม่มีรายการโอนคืน</p>'}`, '<button class="ghost-button" id="receiptCancel">ยกเลิก</button><button class="primary-button" id="receiptSave">ยืนยันรับโอนคืนตามหลักฐาน</button>');
+    <h3>ประวัติการรับคืน</h3>${(row.receipts || []).map(r=>`<p>${h(displayTime(r.paid_at))} · ${money(r.amount)} · ${h(r.transfer_reference)} · ${r.voided_at?'ยกเลิกแล้ว: '+h(r.void_reason):`ยืนยันแล้ว <button class="ghost-button sm" data-void-receipt="${h(r.id)}">ยกเลิกบันทึกผิด</button>`}</p>`).join('') || '<p>ยังไม่มีรายการโอนคืน</p>'}`, '<button class="ghost-button" id="receiptCancel">ยกเลิก</button><button class="primary-button" id="receiptSave">ยืนยันรับโอนคืนตามหลักฐาน</button>');
   $('#receiptCancel').addEventListener('click',closeModal);
   $('#receiptEvidence').addEventListener('change',()=>{ $('#receiptChecked').checked=false; });
   $('#receiptPreview').addEventListener('click',async()=>{
@@ -4755,11 +4756,11 @@ function renderLiveDamage(root) {
   const total = classifiedSummary.total;
   const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
   const open = rows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
-  const loadedAt = liveDamageState.updatedAt ? liveDamageState.updatedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : "-";
+  const loadedAt = liveDamageState.updatedAt ? displayTime(liveDamageState.updatedAt) : "-";
   root.innerHTML = `
     <section class="panel damage-period"><div><h2>สรุปความเสียหายรายเดือน</h2><p class="hint">บริษัทตามตัวกรองด้านบน · ช่วงที่ใช้อยู่ ${h(rangeLabel())} · กันยายน 2569 แสดงตั้งแต่ 15/09 ตามขอบเขตระบบ</p></div><label>เลือกเดือน<input type="month" id="damageMonth" min="2026-09" value="${h(state.filters.from.slice(0,7))}"></label><button class="primary-button sm" id="damageMonthApply">แสดงทั้งเดือน</button><button class="ghost-button sm" id="damageDrillReset">ล้างตัวกรองรายละเอียด</button></section>
     <section class="damage-definition panel">
-      <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)} น.</p></div>
+      <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)}</p></div>
       <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
     </section>
     ${liveDamageState.collectionError ? `<div class="alert bad">ยังยืนยันยอดสุทธิไม่ได้: ${h(liveDamageState.collectionError)} · ไม่แสดงเป็นศูนย์และไม่อนุญาตบันทึกเพิ่มจนกว่าจะโหลดสมุดยอดสำเร็จ</div>` : ''}
@@ -5679,7 +5680,7 @@ VIEWS["audit-log"] = (root) => {
           <tbody>
             ${logs
               .map(
-                (l) => `<tr><td class="mono">${h(l.at)}</td><td>${h(l.user)}</td>
+                (l) => `<tr><td class="mono">${h(displayTime(l.at))}</td><td>${h(l.user)}</td>
               <td><span class="badge blue">${h(l.action)}</span></td><td>${h(l.entity)}</td>
               <td class="mono">${h(l.target)}</td><td class="muted">${h(l.detail)}</td></tr>`,
               )
@@ -6441,7 +6442,7 @@ VIEWS.cloud = (root) => {
 
     <section class="panel" id="cloudInbox">
       <div class="panel-heading">
-        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : cloudState.partialError ? h(cloudState.partialError) : "อัปเดตล่าสุด " + (c.lastSync ? String(c.lastSync).replace("T", " ").slice(0, 19) : "-")}</small></div>
+        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : cloudState.partialError ? h(cloudState.partialError) : "อัปเดตล่าสุด " + (c.lastSync ? displayTime(c.lastSync) : "-")}</small></div>
         <div class="inline-actions">
           <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
           <button class="ghost-button sm" id="cEvidenceRecommendations">คู่แนะนำจากหลักฐาน</button>
@@ -6449,7 +6450,7 @@ VIEWS.cloud = (root) => {
           <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>อ่านไฟล์ที่เลือก ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
         </div>
       </div>
-      <p class="hint" role="status">สแนปช็อตทะเบียนไฟล์ในแท็บนี้${fileSnapshot ? ' · บันทึกเมื่อ ' + h(new Date(fileSnapshot.updatedAt).toLocaleString('th-TH')) : ''} · เปลี่ยนหน้าใช้ข้อมูลเดิม · ตัวอย่างต้นฉบับพักในหน่วยความจำไม่เกิน 5 นาที · กดรีเฟรชเพื่ออ่านทะเบียนล่าสุด · ไม่ใช่การยืนยันสถานะปิดเคส</p>
+      <p class="hint" role="status">สแนปช็อตทะเบียนไฟล์ในแท็บนี้${fileSnapshot ? ' · บันทึกเมื่อ ' + h(displayTime(fileSnapshot.updatedAt)) : ''} · เปลี่ยนหน้าใช้ข้อมูลเดิม · ตัวอย่างต้นฉบับพักในหน่วยความจำไม่เกิน 5 นาที · กดรีเฟรชเพื่ออ่านทะเบียนล่าสุด · ไม่ใช่การยืนยันสถานะปิดเคส</p>
       <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
         ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["review", "อ่านแล้ว · รอเทียบ BO", reviewFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>
@@ -6462,7 +6463,7 @@ VIEWS.cloud = (root) => {
         <div class="mail-head">
           <div>
             <strong>${h(b.subject || "(ไม่มีหัวข้อ)")}</strong>
-            <span>${h(b.sender || "-")} · รับเมื่อ ${h(String(b.received_at || "").replace("T", " ").slice(0, 16))}</span>
+            <span>${h(b.sender || "-")} · รับเมื่อ ${h(displayTime(b.received_at))}</span>
           </div>
           <div class="mail-tags">
             ${b.company ? `<span class="badge violet">${h(b.company)}</span>` : ""}
@@ -6527,7 +6528,7 @@ VIEWS.cloud = (root) => {
               <td class="right tnum">${num(d.file_count)}</td>
               <td class="right tnum">${num(d.parsed_count)}</td>
               <td class="right tnum ${d.error_count ? "danger" : ""}">${num(d.error_count)}</td>
-              <td class="muted">${h(String(d.last_mail_at || "").replace("T", " ").slice(0, 16))}</td>
+              <td class="muted">${h(displayTime(d.last_mail_at))}</td>
             </tr>`,
               )
               .join("")}
@@ -7146,7 +7147,7 @@ VIEWS.import = (root) => {
     ${
       ImportState.lastRun
         ? `<section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Match Run</p><h2>ผลการรันล่าสุด</h2></div><span class="health ok">${h(ImportState.lastRun.at)}</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">Match Run</p><h2>ผลการรันล่าสุด</h2></div><span class="health ok">${h(displayTime(ImportState.lastRun.at))}</span></div>
       <div class="run-grid">
         <div><span>รายการฝั่งธนาคาร</span><b>${num(ImportState.lastRun.stmCount)}</b></div>
         <div><span>รายการฝั่ง BO</span><b>${num(ImportState.lastRun.boCount)}</b></div>
@@ -7356,7 +7357,7 @@ function renderLiveNotifications(root) {
   const tone = { info: "blue", warning: "amber", error: "red", success: "green" };
   root.innerHTML = `<section class="panel">
     <div class="panel-heading"><div><p class="eyebrow">Supabase recon_notifications</p><h2>การแจ้งเตือนจริง (${num(list.length)})</h2><small class="head-sub">ยังไม่อ่าน ${num(list.filter((row)=>!row.read_at).length)}</small></div><div class="inline-actions"><button class="ghost-button sm" id="liveNotifRefresh">รีเฟรช</button><button class="ghost-button sm" id="liveNotifRead">อ่านทั้งหมด</button></div></div>
-    <div class="notif-list">${list.map((row)=>`<div class="notif ${row.read_at?"":"unread"}"><span class="badge ${tone[row.level]||"grey"}">${h(row.level)}</span><div><strong>${h(row.title)}</strong><span>${h(row.detail||"")}</span><small>${h(new Date(row.created_at).toLocaleString("th-TH"))}${row.company?` · ${h(row.company)}`:""}</small></div>${row.business_date?`<button class="ghost-button xs" data-notif-date="${h(row.business_date)}" data-notif-company="${h(row.company||"ALL")}">เปิดดู</button>`:""}</div>`).join("")||`<p class="empty">ยังไม่มีการแจ้งเตือนจากระบบ</p>`}</div>
+    <div class="notif-list">${list.map((row)=>`<div class="notif ${row.read_at?"":"unread"}"><span class="badge ${tone[row.level]||"grey"}">${h(row.level)}</span><div><strong>${h(row.title)}</strong><span>${h(row.detail||"")}</span><small>${h(displayTime(row.created_at))}${row.company?` · ${h(row.company)}`:""}</small></div>${row.business_date?`<button class="ghost-button xs" data-notif-date="${h(row.business_date)}" data-notif-company="${h(row.company||"ALL")}">เปิดดู</button>`:""}</div>`).join("")||`<p class="empty">ยังไม่มีการแจ้งเตือนจากระบบ</p>`}</div>
     <p class="hint">รายการนี้อ่านจากฐานข้อมูลจริง การแจ้ง Telegram ทำงานจาก n8n ไม่ได้จำลองในเบราว์เซอร์</p>
   </section>`;
   $("#liveNotifRefresh")?.addEventListener("click",()=>loadLiveOverview(true));
@@ -7397,7 +7398,7 @@ VIEWS.notifications = (root) => {
             <div>
               <strong>${h(n.title)}</strong>
               <span>${h(n.detail)}</span>
-              <small>${h(new Date(n.at).toLocaleString("th-TH"))}</small>
+              <small>${h(displayTime(n.at))}</small>
             </div>
             ${n.link ? `<button class="ghost-button xs" data-nlink="${h(n.link)}">เปิดดู</button>` : ""}
           </div>`,
@@ -7510,7 +7511,7 @@ VIEWS.schedule = (root) => {
   const sc = Store.data.schedule;
   const rt = Store.data.retention;
   const editable = can("settings") || can("rules");
-  const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("th-TH") : "ยังไม่เคยรัน");
+  const fmtTime = (iso) => (iso ? displayTime(iso) : "ยังไม่เคยรัน");
 
   root.innerHTML = `
     <section class="grid-2">
@@ -7580,7 +7581,7 @@ VIEWS.schedule = (root) => {
         <span class="health ${Store.available ? "ok" : "attention"}">${Store.available ? "บันทึกในเครื่องได้" : "เบราว์เซอร์นี้บันทึกไม่ได้ ใช้หน่วยความจำชั่วคราว"}</span>
       </div>
       <div class="run-grid">
-        <div><span>บันทึกล่าสุด</span><b>${h(Store.data.lastSavedAt ? new Date(Store.data.lastSavedAt).toLocaleString("th-TH") : "-")}</b></div>
+        <div><span>บันทึกล่าสุด</span><b>${h(Store.data.lastSavedAt ? displayTime(Store.data.lastSavedAt) : "-")}</b></div>
         <div><span>Audit log ที่เก็บไว้</span><b>${num(Store.data.auditLog.length)}</b></div>
         <div><span>การแจ้งเตือน</span><b>${num(Store.data.notifications.length)}</b></div>
         <div><span>สถานะเคสที่แก้ไว้</span><b>${num(Object.keys(Store.data.exOverrides).length)}</b></div>
@@ -7767,7 +7768,7 @@ function cycleOf(iso) {
 
 /* กำหนดส่งคืนของแต่ละสาย */
 function dueOf(e) {
-  if(e.documentDueAt){const label=new Date(e.documentDueAt).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'});return {label,short:label,detail:'SLA เอกสารตามบริษัท ณ วันส่งคำขอ ไม่เปลี่ยนเมื่อส่งซ้ำหรือแก้ตั้งค่า และไม่ยืนยันความเสียหายอัตโนมัติ'};}
+  if(e.documentDueAt){const label=displayTime(e.documentDueAt);return {label,short:label,detail:'SLA เอกสารตามบริษัท ณ วันส่งคำขอ ไม่เปลี่ยนเมื่อส่งซ้ำหรือแก้ตั้งค่า และไม่ยืนยันความเสียหายอัตโนมัติ'};}
   const c = DB.settings.clarify;
   const t = e.track || trackOfException(e).track;
   if (t === "daily") {

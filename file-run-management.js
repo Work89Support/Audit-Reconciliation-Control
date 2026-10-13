@@ -56,7 +56,7 @@
     await action(()=>opts.setHold({company:opts.company,date:opts.date,paused:!hold?.paused,reason,expectedRevision:hold?.revision||0}));
    };
    host.querySelectorAll('[data-history]').forEach(el=>el.onclick=async()=>{
-    try{const h=await opts.history(el.dataset.history);editor=null;upload=null;reviewing='<h4>ประวัติไฟล์ — เก็บต้นฉบับครบ</h4>'+(h.length?h.map((r,i)=>`<p>${esc(r.created_at)} · ${esc(r.reason)} · เวอร์ชัน ${esc(r.revision)} · ต้นฉบับ ${esc(r.original?.file_name||r.originalName||'')} ${r.original?.storage_path?`<button data-original="${i}">เปิดไฟล์เดิม</button>`:''}</p>`).join(''):'<p>ยังไม่มีการแก้ไข ไฟล์ต้นฉบับยังอยู่ครบ</p>');draw();host.querySelectorAll('[data-original]').forEach(b=>b.onclick=()=>opts.onFile?.(h[Number(b.dataset.original)].original));}catch(e){error=e.message;draw();}
+    try{const h=await opts.history(el.dataset.history);editor=null;upload=null;reviewing='<h4>ประวัติไฟล์ — เก็บต้นฉบับครบ</h4>'+(h.length?h.map((r,i)=>`<p>${esc(root.AuditDisplay.dateTime(r.created_at))} · ${esc(r.reason)} · เวอร์ชัน ${esc(r.revision)} · ต้นฉบับ ${esc(r.original?.file_name||r.originalName||'')} ${r.original?.storage_path?`<button data-original="${i}">เปิดไฟล์เดิม</button>`:''}</p>`).join(''):'<p>ยังไม่มีการแก้ไข ไฟล์ต้นฉบับยังอยู่ครบ</p>');draw();host.querySelectorAll('[data-original]').forEach(b=>b.onclick=()=>opts.onFile?.(h[Number(b.dataset.original)].original));}catch(e){error=e.message;draw();}
    });
    host.querySelectorAll('[data-edit]').forEach(el=>el.onclick=()=>edit(files.find(f=>f.id===el.dataset.edit)));
    if(editor)bindEditor();
