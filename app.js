@@ -3703,11 +3703,11 @@ async function loadExceptionSupport(e, options = {}) {
         host.querySelector('.case-mail-evidence')?.remove();
         mailButton.after(list);bindStoredFileLinks(list);
         list.querySelector('h4').textContent=`ไฟล์ของ ${fileCompany} · ${from} ถึง ${to} (${candidates.length} ไฟล์) → เคส ${e.company} ${e.code||e.id}`;
-        list.querySelector('p').textContent='แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
+        list.querySelector('p').textContent=state.role==='shift_lead'?'เลือกไฟล์ไว้ก่อนได้โดยไม่ต้องกรอกเหตุผลตรงนี้ · จากนั้นกรอกสาเหตุและกดส่งคำชี้แจงพร้อมหลักฐานในขั้นตอนถัดไป':'แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
         if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
         const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
         search.oninput=()=>{const q=normalizeEvidenceSearch(search.value);list.querySelectorAll('article').forEach(article=>{article.hidden=!!q&&!String(article.dataset.evidenceSearch||normalizeEvidenceSearch(article.textContent)).includes(q);});};
-        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent='ใช้กับเคสนี้แล้ว';button.disabled=true;}});
+        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent=state.role==='shift_lead'?'เลือกไฟล์เดิมนี้ (ยังไม่ส่ง)':'ใช้กับเคสนี้แล้ว';button.disabled=state.role!=='shift_lead';}});
         try {
           const uses=await Sb.evidenceUsage(candidates.filter(f=>(f.company||f.batch_company)===e.company).map(f=>f.id),e.company);
           if(!document.body.contains(list))return;
