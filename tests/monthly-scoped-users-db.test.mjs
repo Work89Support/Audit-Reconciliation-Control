@@ -89,10 +89,13 @@ assert.equal((await db.query('select count(*) as n from monthly_audit_evidence')
 await db.exec(`reset role;alter table audit_log add column at timestamptz default now();
  alter table exceptions add column code text,add column approved_by uuid,add column approved_at timestamptz,add column resolved_by text,add column resolution_note text,add column closure_rule text;
  create table case_closure_requests(id uuid,exception_id uuid,company text,requested_by uuid,decided_by uuid,requested_at timestamptz default now(),decided_at timestamptz,status text,audit_reason text);
+ create table cross_day_image_reviews(id uuid,exception_id uuid,company text,stm_file_id uuid,submitted_by uuid,submitted_at timestamptz default now(),decided_by uuid,status text,reason text);
  create table case_evidence(id uuid,exception_id uuid,storage_path text,file_name text,created_at timestamptz default now());`);
 await db.query("update exceptions set code='EX-TEST',approved_by=$1,approved_at=now(),resolution_note='ตรวจหลักฐานต้นทางแล้ว',closure_rule='head-document' where id=$2",[id(2),id(34)]);
 await db.query("insert into case_closure_requests(id,exception_id,company,requested_by,decided_by,status,audit_reason) values($1,$2,'TEST',$3,$4,'approved','ตรวจหลักฐานครบแล้ว')",[id(50),id(34),id(3),id(2)]);
 await db.query("insert into case_evidence(id,exception_id,storage_path,file_name) values($1,$2,'mock-proof','dummy.pdf')",[id(51),id(34)]);
+await db.query("insert into cross_day_image_reviews(id,exception_id,company,stm_file_id,submitted_by,decided_by,status,reason) values($1,$2,'TEST',$3,$4,$5,'approved','ตรวจภาพต้นฉบับ')",[id(52),id(34),id(31),id(3),id(2)]);
+await db.query("insert into cross_day_image_reviews(id,exception_id,company,stm_file_id,submitted_by,status,reason) values($1,$2,'OTHER',$3,$4,'approved','คนละบริษัท')",[id(53),id(34),id(32),id(3)]);
 await db.exec(fs.readFileSync('supabase/20261013_monthly_audit_case_review.sql','utf8'));
 const readBefore=JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e order by id')).rows);
 await actor();detail=(await db.query('select monthly_audit_set_detail($1) as v',[set.id])).rows[0].v;
@@ -100,6 +103,8 @@ const linked=detail.items.find(x=>x.exception_id===id(34)),noCase=detail.items.f
 const review=(await db.query('select monthly_audit_item_review($1) as v',[linked.id])).rows[0].v;
 assert.equal(review.cases.length,1);assert.equal(review.cases[0].record.id,id(34));assert.equal(review.cases[0].closed_by_name,'Dummy 2');
 assert.equal(review.cases[0].record.closure_rule,'head-document');assert.equal(review.cases[0].evidence[0].file_name,'dummy.pdf');
+assert.deepEqual(review.cases[0].documents.map(f=>f.id),[id(31)],'exact image evidence only, never other-company file');
+assert.equal(review.cases[0].closures.length,2);assert.equal(review.cases[0].closures[1].audit_reason,'ตรวจภาพต้นฉบับ');
 const matched=(await db.query('select monthly_audit_item_review($1) as v',[noCase.id])).rows[0].v;
 assert.equal(matched.lineage_status,'no_case_at_sampling_run');assert.equal(matched.cases.length,0,'same amount on another source row must not inherit a case');
 await actor(4);await assert.rejects(db.query('select monthly_audit_item_review($1)',[linked.id]),/ไม่มีสิทธิ์/);

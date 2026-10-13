@@ -13,13 +13,22 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object(
   'record',to_jsonb(e),
   'closed_by_name',(select full_name from public.app_profiles p where p.user_id::text=coalesce(to_jsonb(e)->>'approved_by',to_jsonb(e)->>'resolved_by')),
-  'closures',(select coalesce(jsonb_agg(to_jsonb(q)||jsonb_build_object(
+  'closures',(select coalesce(jsonb_agg(q.record order by q.at),'[]') from (
+   select q.requested_at as at,to_jsonb(q)||jsonb_build_object(
     'requested_name',(select full_name from public.app_profiles where user_id=q.requested_by),
-    'decided_name',(select full_name from public.app_profiles where user_id=q.decided_by)) order by q.requested_at),'[]')
-   from public.case_closure_requests q where q.exception_id=e.id and q.company=c),
+    'decided_name',(select full_name from public.app_profiles where user_id=q.decided_by)) as record
+   from public.case_closure_requests q where q.exception_id=e.id and q.company=c
+   union all
+   select q.submitted_at,to_jsonb(q)||jsonb_build_object('requested_at',q.submitted_at,'audit_reason',q.reason,
+    'requested_name',(select full_name from public.app_profiles where user_id=q.submitted_by),
+    'decided_name',(select full_name from public.app_profiles where user_id=q.decided_by))
+   from public.cross_day_image_reviews q where q.exception_id=e.id and q.company=c
+  ) q),
   'evidence',(select coalesce(jsonb_agg(to_jsonb(f) order by f.created_at),'[]') from public.case_evidence f where f.exception_id=e.id),
   'documents',(select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'file_name',f.file_name,'storage_path',f.storage_path,'mime_type',f.mime_type,'size_bytes',f.size_bytes,'kind',f.kind)),'[]')
-    from public.source_files f where f.company=c and f.id::text=to_jsonb(e)->>'clarification_file_id'),
+    from public.source_files f where f.company=c and (
+      f.id::text=to_jsonb(e)->>'clarification_file_id'
+      or exists(select 1 from public.cross_day_image_reviews q where q.exception_id=e.id and q.company=c and q.stm_file_id=f.id))),
   'history',(select coalesce(jsonb_agg(jsonb_build_object('action',a.action,'detail',a.detail,'created_at',a.at,'actor_name',
     (select full_name from public.app_profiles where user_id=a.actor_user_id)) order by a.at),'[]')
     from public.audit_log a where a.company=c and a.target=e.id::text)
