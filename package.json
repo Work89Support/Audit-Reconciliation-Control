@@ -4,6 +4,7 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
+    "test:manual-primary": "node tests/manual-primary.test.cjs",
     "test:monthly-audit": "node tests/monthly-scoped-users.test.cjs",
     "test:source-archive": "node tests/audit-source-archive.test.cjs",
     "test:account-recheck": "node scripts/build-account-recheck-worker.mjs && node tests/account-recheck.test.cjs",

@@ -436,9 +436,17 @@ const Sb = (() => {
     return json(`/rest/v1/${name}?${filters.join("&")}`);
   }
 
-  const dailyStatus = (opts = 30) => rangedView("v_daily_status", "business_date.desc", opts, 30);
+  async function primaryOverlays(rows){
+    if(!rows.length)return rows;
+    const dates=rows.map(r=>r.business_date).sort(),companies=[...new Set(rows.map(r=>r.company))];
+    const versions=await json(`/rest/v1/manual_primary_results?business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})&select=company,business_date&limit=1000`);
+    const scopes=new Set(versions.map(r=>r.company+'|'+r.business_date)),resolved=new Map();
+    for(const row of rows){const key=row.company+'|'+row.business_date;if(scopes.has(key)&&!resolved.has(key)){const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)throw new Error(v.message);if(v)resolved.set(key,v);}}
+    return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);if(!v)return row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v};});
+  }
+  const dailyStatus = async (opts = 30) => primaryOverlays(await rangedView("v_daily_status", "business_date.desc", opts, 30));
   const operations = async (opts = 100) => {
-    const rows=await rangedView("v_recon_operations", "business_date.desc,company.asc", opts, 100);
+    const rows=await primaryOverlays(await rangedView("v_recon_operations", "business_date.desc,company.asc", opts, 100));
     if(!rows.length)return rows;
     const dates=rows.map(j=>j.business_date).sort();
     try{
@@ -447,7 +455,7 @@ const Sb = (() => {
       return rows.map(j=>({...j,runNotice:byScope.get(j.company+'|'+j.business_date)||null,runNoticeError:!byScope.has(j.company+'|'+j.business_date)}));
     }catch{return rows.map(j=>({...j,runNotice:null,runNoticeError:true}));}
   };
-  const quality = (opts = 1000) => rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000);
+  const quality = async (opts = 1000) => primaryOverlays(await rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000));
 
   async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {
     if (from && to) {
@@ -722,6 +730,9 @@ const Sb = (() => {
   // Follow the job's committed run, never select a possibly stale run by date alone.
   async function matchedEvidence(company, date) {
     if (!company || company === "ALL" || !date) throw new Error("เลือกบริษัทและวันที่ก่อน");
+    const primary=await readManualPrimary(company,date);
+    if(primary?.stale)throw new Error(primary.message);
+    if(primary)return ManualPrimary.run(primary);
     const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status,error_count,bo_waiting_snapshot&limit=1`);
     const snapshot=jobs[0]?.error_count===0?jobs[0]?.bo_waiting_snapshot:null;
     if (!jobs[0]?.last_run_id) return snapshot?{id:null,company,business_date:date,summary:{},jobStatus:jobs[0].status,boWaitingSnapshot:snapshot,isSnapshotOnly:true}:null;
@@ -730,13 +741,13 @@ const Sb = (() => {
   }
 
   async function reconciliationEvidence({ from, to, company } = {}) {
-    const filters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
+    const filters = ["select=last_run_id,company,business_date", "is_archived=eq.false", "limit=1000"];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-    const jobs = await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`);
-    const ids = [...new Set((jobs || []).map(row => row.last_run_id).filter(Boolean))];
-    const evidence = [];
+    const jobs = await primaryOverlays(await json(`/rest/v1/daily_recon_jobs?${filters.join("&")}`));
+    const ids = [...new Set((jobs || []).filter(row=>!row.primaryResult).map(row => row.last_run_id).filter(Boolean))];
+    const evidence = jobs.flatMap(row=>row.primaryResult?.report?.match_evidence||[]);
     for (let index = 0; index < ids.length; index += 10) {
       // Fetch only the matching evidence, not the complete large run summary.
       const page = await json(`/rest/v1/recon_runs?id=in.(${ids.slice(index,index+10).join(",")})&select=id,match_evidence:summary->match_evidence&limit=10`);
@@ -748,6 +759,10 @@ const Sb = (() => {
   async function reconciliationOverview(company, date) {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
+    if(run.primaryResult){
+      const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`);history.push(...page);if(page.length<500)break;}
+      return {run,cases:ManualPrimary.cases(run.primaryResult),caseHistory:history,waitingHistory:[],complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
+    }
     if (!run.id) return {run,cases:[],complete:false};
     let confirmedRechecks=[],recheckReportError='';
     try{confirmedRechecks=(await listAccountRechecks(company,date)).filter(q=>q.status==='confirmed');}catch(error){recheckReportError=error.message;}
@@ -856,6 +871,9 @@ const Sb = (() => {
   const listAccountRechecks=(company,date)=>rpc('list_account_rechecks',{p_company:company,p_date:date});
   const accountRecheckDetail=async id=>{const rows=await json(`/rest/v1/account_recheck_jobs?id=eq.${encodeURIComponent(id)}&select=id,company,business_date,account,direction,mode,status,result,error,revision,confirmed_at,confirmed_by,confirmation_reason,base_run_id&limit=1`);if(!rows[0])throw Error('ไม่พบผลหรือไม่มีสิทธิ์บริษัท');return rows[0];};
   const confirmAccountRecheck=body=>rpc('confirm_account_recheck',body);
+  const manualPrimaryPreview=id=>json('/rest/v1/rpc/manual_primary_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
+  const acceptManualPrimary=body=>json('/rest/v1/rpc/accept_manual_primary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
+  const readManualPrimary=(company,date)=>rpc('read_manual_primary',{p_company:company,p_date:date});
   const auditSourceArchiveManifest=(company,date,includeEvidence)=>rpc('audit_source_archive_manifest',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence});
   const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes,object_version:f.object_version,object_etag:f.object_etag}))});
   const effectiveAuditFiles=(company,date)=>rpc('effective_audit_source_files',{p_company:company,p_date:date});
@@ -1525,7 +1543,7 @@ const Sb = (() => {
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
-    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,
+    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,readManualPrimary,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
     fileRunManagement,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
