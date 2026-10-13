@@ -2413,7 +2413,7 @@ function renderDailyCompanySummary(root) {
       : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
     const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
     const selectedResultStatus=dailyResultStatus(data.checklist||{},data.quality[0]||{});
-    const status = selectedResultStatus.primary ? {label:selectedResultStatus.label,tone:'green'} : latestStatus === "completed" && data.stillOpen > 0
+    const status = selectedResultStatus.primary ? {label:selectedResultStatus.label,tone:'green'} : selectedResultStatus.manual ? {label:selectedResultStatus.manual,tone:'blue'} : latestStatus === "completed" && data.stillOpen > 0
       ? { label: "ระบบประมวลผลเสร็จ · รอ Audit ตรวจเคส", tone: "amber" }
       : LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
     const kindCounts = Object.entries(data.files.reduce((acc, file) => {
@@ -2667,7 +2667,7 @@ function renderDailyCompanySummary(root) {
         <div class="panel-heading"><div><p class="eyebrow">Audit Sheet · ภาพรวมทุกบริษัท</p><h2>สถานะงานวันที่ ${h(state.dailySummary.date)}</h2><small class="head-sub">สรุปขึ้นก่อนทันที ส่วนรายละเอียดแต่ละรายงานจะโหลดเมื่อกดเปิด</small></div><span class="badge blue">${num(sheetRows.length)} บริษัท</span></div>
         <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>รายการผิดปกติ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
           ${sheetRows.map((row) => {
-            const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.status === "completed_review"
+            const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.resultStatus.manual ? {label:row.resultStatus.manual,tone:'blue'} : row.status === "completed_review"
               ? { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" }
               : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
             const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
