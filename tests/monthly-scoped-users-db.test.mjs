@@ -86,7 +86,7 @@ await actor(4);await assert.rejects(db.query('select monthly_audit_set_detail($1
 await db.exec('reset role');assert.equal(JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e order by id')).rows),preserved);assert.equal(JSON.stringify((await db.query('select to_jsonb(r) as v from recon_runs r')).rows),runBefore);
 assert.equal((await db.query('select count(*) as n from monthly_audit_evidence')).rows[0].n,1);assert.equal((await db.query('select count(*) as n from monthly_audit_history')).rows[0].n,3);
 // Read-only drilldown: exact sample lineage, case actor/reason/proof, no amount-only links.
-await db.exec(`reset role;alter table audit_log add column created_at timestamptz default now();
+await db.exec(`reset role;alter table audit_log add column at timestamptz default now();
  alter table exceptions add column code text,add column approved_by uuid,add column approved_at timestamptz,add column resolved_by text,add column resolution_note text,add column closure_rule text;
  create table case_closure_requests(id uuid,exception_id uuid,company text,requested_by uuid,decided_by uuid,requested_at timestamptz default now(),decided_at timestamptz,status text,audit_reason text);
  create table case_evidence(id uuid,exception_id uuid,storage_path text,file_name text,created_at timestamptz default now());`);

@@ -20,8 +20,8 @@ begin
   'evidence',(select coalesce(jsonb_agg(to_jsonb(f) order by f.created_at),'[]') from public.case_evidence f where f.exception_id=e.id),
   'documents',(select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'file_name',f.file_name,'storage_path',f.storage_path,'mime_type',f.mime_type,'size_bytes',f.size_bytes,'kind',f.kind)),'[]')
     from public.source_files f where f.company=c and f.id::text=to_jsonb(e)->>'clarification_file_id'),
-  'history',(select coalesce(jsonb_agg(jsonb_build_object('action',a.action,'detail',a.detail,'created_at',a.created_at,'actor_name',
-    (select full_name from public.app_profiles where user_id=a.actor_user_id)) order by a.created_at),'[]')
+  'history',(select coalesce(jsonb_agg(jsonb_build_object('action',a.action,'detail',a.detail,'created_at',a.at,'actor_name',
+    (select full_name from public.app_profiles where user_id=a.actor_user_id)) order by a.at),'[]')
     from public.audit_log a where a.company=c and a.target=e.id::text)
  ) order by e.id),'[]') into cases
  from public.exceptions e
