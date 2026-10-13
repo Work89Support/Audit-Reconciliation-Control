@@ -2251,6 +2251,16 @@ function dailyMissingKinds(rows) {
   return [...new Set(kinds)].map((kind) => LIVE_KIND_LABEL[kind] || kind);
 }
 
+function dailyResultStatus(row,run={}) {
+  const primary=run.primaryResult||row.primaryResult;
+  const manual=row.latestRecheck;
+  const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
+  return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
+    manual:manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
+    automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
+    error:row.workflowStatusError||''};
+}
+
 function dailyAuditSheetRows(date) {
   const checklist = (dailyCompanyState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
   const quality = (dailyCompanyState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
@@ -2260,6 +2270,8 @@ function dailyAuditSheetRows(date) {
   return companies.map((company) => {
     const row = checklistByCompany.get(company) || { company };
     const run = qualityByCompany.get(company) || {};
+    const resultStatus = dailyResultStatus(row,run);
+    const primary=resultStatus.primary;
     const generatedExceptionCount = Number(run.exception_count ?? row.exception_count ?? 0);
     const hasCurrentCounts = row.open_count != null && row.resolved_count != null;
     const resolvedCount = hasCurrentCounts ? Number(row.resolved_count || 0) : 0;
@@ -2268,9 +2280,10 @@ function dailyAuditSheetRows(date) {
     const runStatus = row.job_status || run.status || "waiting_files";
     return {
       ...row,
+      resultStatus,
       status: openCount > 0 && runStatus === "completed" ? "completed_review" : (row.checklist_status || runStatus),
-      fileCount: Number(run.file_count || row.file_count || 0),
-      parsedCount: Math.max(
+      fileCount: primary ? Number(primary.source_stamp?.file_count || 0) : Number(run.file_count || row.file_count || 0),
+      parsedCount: primary ? Number(primary.source_stamp?.file_count || 0) : Math.max(
         Number(run.parsed_count || 0),
         Number(row.parsed_count || 0),
         run.run_id && runStatus === "completed" && !Number(run.error_count || row.error_count || 0)
@@ -2399,7 +2412,8 @@ function renderDailyCompanySummary(root) {
       ? data.checklist.missing_items
       : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
     const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
-    const status = latestStatus === "completed" && data.stillOpen > 0
+    const selectedResultStatus=dailyResultStatus(data.checklist||{},data.quality[0]||{});
+    const status = selectedResultStatus.primary ? {label:selectedResultStatus.label,tone:'green'} : latestStatus === "completed" && data.stillOpen > 0
       ? { label: "ระบบประมวลผลเสร็จ · รอ Audit ตรวจเคส", tone: "amber" }
       : LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
     const kindCounts = Object.entries(data.files.reduce((acc, file) => {
@@ -2653,12 +2667,12 @@ function renderDailyCompanySummary(root) {
         <div class="panel-heading"><div><p class="eyebrow">Audit Sheet · ภาพรวมทุกบริษัท</p><h2>สถานะงานวันที่ ${h(state.dailySummary.date)}</h2><small class="head-sub">สรุปขึ้นก่อนทันที ส่วนรายละเอียดแต่ละรายงานจะโหลดเมื่อกดเปิด</small></div><span class="badge blue">${num(sheetRows.length)} บริษัท</span></div>
         <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>รายการผิดปกติ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
           ${sheetRows.map((row) => {
-            const meta = row.status === "completed_review"
+            const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.status === "completed_review"
               ? { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" }
               : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
             const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
-            const action = row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
-            return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td><span class="sheet-progress ${fileOk ? "ok" : "warn"}">${num(row.parsedCount)}/${num(row.fileCount)}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td><b class="${row.openCount ? "danger" : ""}">${num(row.openCount || row.exceptionCount)}</b><small class="sub">ปิดแล้ว ${num(row.resolvedCount)}</small></td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span></td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
+            const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
+return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${num(row.parsedCount)}/${num(row.fileCount)}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td><b class="${row.openCount ? "danger" : ""}">${num(row.openCount || row.exceptionCount)}</b><small class="sub">ปิดแล้ว ${num(row.resolvedCount)}</small></td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
           }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
         </tbody></table></div>
       </section>`;
@@ -2667,6 +2681,7 @@ function renderDailyCompanySummary(root) {
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? displayTime(dailyCompanyState.updatedAt) : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
+      <section class="primary-result-note"><strong>แยกสถานะรอบงาน</strong><p>ผลหลัก: ${selectedResultStatus.primary?'ใช้ผลรันมือที่หัวหน้า/ผู้ดูแลยืนยันแล้ว':'ยังใช้ผลรอบอัตโนมัติเดิม ไม่ได้นำผลรันมือมาแทน'}</p>${selectedResultStatus.manual?`<p>${h(selectedResultStatus.manual)}</p>`:''}<p>${h(selectedResultStatus.automatic)} · สถานะนี้ไม่ใช่สถานะของผลรันมือ</p>${selectedResultStatus.error?`<p role="alert">${h(selectedResultStatus.error)}</p>`:''}</section>
       ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
 ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>${r.primaryResult.case_set?'รายการงานปัจจุบันใช้เคสชุดใหม่ · เคสเดิมดูได้ในหน้าชีต Audit':'รายการเคสด้านล่างเป็นประวัติเคสเดิม'}</p></section>`).join('')}
       ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}

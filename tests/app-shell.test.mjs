@@ -163,7 +163,7 @@ assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\.ope
 assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสปัจจุบัน ไม่ใช่ยอดที่เคยสร้างทั้งหมด");
 assert.match(app, /completed_review: \{ label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" \}/, "สถานะเคสคงค้างต้องแสดงภาษาไทย ไม่หลุดชื่อสถานะภายใน");
 assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "หน้ารายวันต้องโหลดผลทุกบริษัทเพื่อสร้างตารางภาพรวมจริง");
-assert.match(app, /data-sheet-mode="\$\{row\.missing\.length/, "แต่ละบริษัทต้องมีปุ่มไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติ");
+assert.match(app, /data-sheet-mode="\$\{row\.resultStatus\.primary \? "report" : row\.missing\.length/, "ผลหลักไปดูรายงาน ส่วนรอบเดิมยังไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติได้");
 assert.match(app, /data-case-open=/, "ตาราง Exception ต้องมีปุ่มตรวจเคสที่เห็นชัด");
 assert.match(app, /data-case-files=/, "ตาราง Exception ต้องมีปุ่มเปิดไฟล์ประกอบโดยตรง");
 assert.match(app, /มุมมองเอกสาร Excel/, "หน้า Exception ของเครือ XB ต้องเปิดดูโครงเดียวกับไฟล์ Excel ได้");
