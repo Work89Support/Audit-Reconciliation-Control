@@ -452,13 +452,13 @@ const Sb = (() => {
     if(caseCountsOnly){
       const filter=`business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})`;
       const extra=await Promise.allSettled([
-        json(`/rest/v1/account_recheck_jobs?${filter}&select=id,company,business_date,status,created_at,confirmed_at&order=created_at.desc,id.desc&limit=1000`),
+        json(`/rest/v1/account_recheck_jobs?${filter}&select=id,company,business_date,status,created_at,confirmed_at,selected_file_ids&order=created_at.desc,id.desc&limit=1000`),
         json(`/rest/v1/audit_run_holds?${filter}&select=company,business_date,paused&limit=1000`)
       ]);
       if(extra[0].status==='fulfilled')manual=extra[0].value;else workflowStatusError='สถานะรันมือยังโหลดไม่สำเร็จ';
       if(extra[1].status==='fulfilled')holds=extra[1].value;else workflowStatusError+=' · สถานะพักรันยังโหลดไม่สำเร็จ';
     }
-    return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);const counts=v?.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count,resolved_count:v.case_set.closed_count}:{};if(caseCountsOnly)return {...row,primaryResult:v||null,...counts,latestRecheck:manual.find(q=>q.company===row.company&&q.business_date===row.business_date)||null,autoPaused:holds.some(q=>q.company===row.company&&q.business_date===row.business_date&&q.paused),workflowStatusError};if(!v)return row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...counts};});
+return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);const counts=v?.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count,resolved_count:v.case_set.closed_count}:{};if(caseCountsOnly)return {...row,primaryResult:v||null,primaryFileCount:v?manual.find(q=>q.id===v.recheck_id)?.selected_file_ids?.length??null:null,...counts,latestRecheck:manual.find(q=>q.company===row.company&&q.business_date===row.business_date)||null,autoPaused:holds.some(q=>q.company===row.company&&q.business_date===row.business_date&&q.paused),workflowStatusError};if(!v)return row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...counts};});
   }
   const dailyStatus = async (opts = 30) => primaryOverlays(await rangedView("v_daily_status", "business_date.desc", opts, 30));
   const operations = async (opts = 100) => {

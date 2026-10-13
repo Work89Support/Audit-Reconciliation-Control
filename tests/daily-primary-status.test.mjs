@@ -14,7 +14,7 @@ assert.match(status(row).manual,/ยังไม่ใช้เป็นผล�
 assert.equal(status(row).primary,undefined);
 assert.equal(JSON.stringify(row),before);
 const rowsFn=app.match(/function dailyAuditSheetRows\([^]*?\n}/)[0];
-const state={checklist:[{company:'MR9',business_date:'2026-10-12',job_status:'queued',autoPaused:true,open_count:7,resolved_count:3,file_count:9}],quality:[{company:'MR9',business_date:'2026-10-12',stm_count:856,bo_count:866,matched:856,exception_count:10,primaryResult:{...primary,source_stamp:Array.from({length:8},(_,i)=>({id:i}))}}]};
+const state={checklist:[{company:'MR9',business_date:'2026-10-12',job_status:'queued',autoPaused:true,open_count:7,resolved_count:3,file_count:9,primaryFileCount:8}],quality:[{company:'MR9',business_date:'2026-10-12',stm_count:856,bo_count:866,matched:856,exception_count:10,primaryResult:{...primary,source_stamp:Array.from({length:8},(_,i)=>({id:i}))}}]};
 const rows=new Function('dailyCompanyState','isLiveCompanyRow','dailyResultStatus',`${rowsFn};return dailyAuditSheetRows;`)(state,()=>true,status);
 const snapshot=JSON.stringify(state);
 const [actual]=rows('2026-10-12');
@@ -23,8 +23,8 @@ assert.equal(actual.stmCount,856);assert.equal(actual.boCount,866);assert.equal(
 assert.equal(actual.openCount,7);assert.equal(actual.resolvedCount,3);
 assert.equal(actual.resultStatus.automatic,'รอบอัตโนมัติ: พักรัน');
 assert.equal(JSON.stringify(state),snapshot);
-assert.match(app,/fileCount: primary \? \(Array.isArray\(primary.source_stamp\)\?primary.source_stamp.length/);
-assert.match(app,/parsedCount: primary \? \(Array.isArray\(primary.source_stamp\)\?primary.source_stamp.length/);
+assert.match(app,/fileCount: primary \? row.primaryFileCount\?\?null/);
+assert.match(app,/parsedCount: primary \? row.primaryFileCount\?\?null/);
 const sb=readFileSync(new URL('../supabase.js',import.meta.url),'utf8');
 assert.match(sb,/resolved_count:v.case_set.closed_count/);
 assert.match(sb,/primaryResult:v\|\|null/);
