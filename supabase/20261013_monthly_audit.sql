@@ -42,7 +42,7 @@ create policy monthly_evidence_read on public.monthly_audit_evidence for select 
 grant select on public.monthly_audit_sets,public.monthly_audit_items,public.monthly_audit_history,public.monthly_audit_evidence to authenticated;
 revoke insert,update,delete on public.monthly_audit_sets,public.monthly_audit_items,public.monthly_audit_history,public.monthly_audit_evidence from authenticated,anon;
 
-create function public.monthly_source_key(p jsonb) returns text language sql immutable set search_path=public as $$
+create function public.monthly_source_key(p jsonb) returns text language sql immutable as $$
  select case when coalesce(nullif(p->'bo','null'::jsonb),p->'stm')->>'fileId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
  and coalesce(nullif(p->'bo','null'::jsonb),p->'stm')->>'row' ~ '^[0-9]+$'
  and p->>'direction' in ('deposit','withdraw','ฝาก','ถอน') then
@@ -56,7 +56,7 @@ language sql stable security definer set search_path=public as $$
  with runs as materialized(select r.* from public.daily_recon_jobs j join public.recon_runs r on r.id=j.last_run_id
  where j.company=p_company and j.business_date>=p_month and j.business_date<(p_month+interval '1 month') and not j.is_archived
  and j.status in ('completed','needs_review') and r.company=j.company and r.business_date=j.business_date),
- raw as (
+ raw as materialized (
  select r.id as run_id,null::uuid as exception_id,r.business_date,m||jsonb_build_object('kind','matched','bo',m->'bo','stm',m->'stm') as p,2 as priority
  from runs r,jsonb_array_elements(coalesce(r.summary->'match_evidence','[]')) m
  union all
@@ -66,11 +66,11 @@ language sql stable security definer set search_path=public as $$
  union all
  select r.id,null::uuid,r.business_date,w||jsonb_build_object('kind','waiting_source','bo',w->'boSource','stm',w->'stmSource'),3
  from runs r,jsonb_array_elements(coalesce(r.summary->'waiting_bo','[]')) w
- ),keyed as (select raw.*,public.monthly_source_key(p) as key from raw),
+ ),keyed as materialized (select raw.*,public.monthly_source_key(p) as key from raw),
  valid as(select * from keyed k where key is not null
- and exists(select 1 from public.source_files f where f.id::text=coalesce(nullif(k.p->'bo','null'::jsonb),k.p->'stm')->>'fileId' and f.company=p_company and f.parsed and f.parse_error is null)
+ and exists(select 1 from public.source_files f where f.id=case when coalesce(nullif(k.p->'bo','null'::jsonb),k.p->'stm')->>'fileId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (coalesce(nullif(k.p->'bo','null'::jsonb),k.p->'stm')->>'fileId')::uuid end and f.company=p_company and f.parsed and f.parse_error is null)
  and not exists(select 1 from jsonb_array_elements(jsonb_build_array(k.p->'bo',k.p->'stm')) s where s is not null and s<>'null'::jsonb
- and not exists(select 1 from public.source_files f where f.id::text=s->>'fileId' and f.company=p_company and f.parsed and f.parse_error is null)))
+ and not exists(select 1 from public.source_files f where f.id=case when s->>'fileId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then (s->>'fileId')::uuid end and f.company=p_company and f.parsed and f.parse_error is null)))
  select distinct on(key) key,run_id,exception_id,business_date,p from valid order by key,priority,run_id,exception_id
 $$;
 revoke all on function public.monthly_audit_population(text,date) from public,anon,authenticated;

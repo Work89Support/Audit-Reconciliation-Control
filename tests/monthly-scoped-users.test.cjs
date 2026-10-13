@@ -14,6 +14,8 @@ assert.match(app,/VIEWS\["monthly-audit"\]/);assert.match(app,/if\(state.role===
 assert.match(sb,/'x-upsert':'false'/);assert.match(sb,/register_monthly_audit_evidence/);
 assert.doesNotMatch(sql,/update public\.(recon_runs|exceptions|source_files|damages)/i);
 assert.match(sql,/unique\(month,company\)/);assert.match(sql,/distinct on\(key\)/);
+const population=sql.match(/create function public\.monthly_audit_population[^]*?\$\$;/)[0];
+assert.match(population,/f\.id=case when/);assert.doesNotMatch(population,/f\.id::text=/);
 assert.match(edge,/auth.getUser\(\)/);assert.match(edge,/claim_scoped_user_invite/);
 assert.doesNotMatch(edge,/user_metadata:\{[^}]*role/);
 console.log('PASS monthly/scoped UI contracts: quotas, January rollover, role denial, company isolation, immutable upload and no financial writes.');

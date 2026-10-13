@@ -26,6 +26,7 @@ await db.exec(`create function admin_list_user_access() returns jsonb language p
 create function admin_upsert_user_access(text,text,text,boolean,text[]) returns jsonb language plpgsql security definer as $$begin if public.current_app_role()<>'admin' then raise exception 'Admin only';end if;return '{}'::jsonb;end$$;`);
 await db.exec(fs.readFileSync('supabase/20261013_scoped_user_management.sql','utf8'));
 await db.exec(fs.readFileSync('supabase/20261013_monthly_audit.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/20261013_monthly_audit_indexed_sources.sql','utf8'));
 async function actor(n=2,api='authenticated'){await db.exec('reset role');await db.query("select set_config('test.actor',$1,false),set_config('test.api_role',$2,false)",[id(n),api]);await db.exec('set role '+api);}
 await db.exec("insert into audit_companies values('TEST',true),('OTHER',true)");
 for(const [n,role,companies] of [[1,'admin',[]],[2,'lead',['TEST']],[3,'monitor',['TEST']],[4,'monitor',['OTHER']],[5,'monitor',['TEST','OTHER']],[6,'lead',[]],[7,'shift_lead',['TEST']]]){
