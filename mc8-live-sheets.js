@@ -326,7 +326,7 @@
         if(history.length===1){
           row.case=history[0];row.key=history[0].id;row.code=history[0].code||history[0].id;
           row.kind=history[0].status==='closed'?'closed':'review';
-          row.reason=[row.reason,`เคสประวัติ ${row.code}: ${history[0].status}`,history[0].resolution_note].filter(Boolean).join(' · ');
+          row.reason=[row.reason,`${history[0].customer_details?.manual_primary_id===data?.primaryResult?.id?'เคสชุดใหม่':'เคสประวัติ'} ${row.code}: ${history[0].status}`,history[0].resolution_note].filter(Boolean).join(' · ');
         }
         visibleRows.push(row);representedBo.add(key);if(source)representedSources.add(source);
       }
