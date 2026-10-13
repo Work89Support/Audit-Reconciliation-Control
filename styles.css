@@ -969,6 +969,11 @@ table.matrix td:first-child { white-space: normal; }
 .case-response-section textarea { width:100%; box-sizing:border-box; min-height:120px; resize:vertical; }
 .case-response-section small { color:var(--muted); line-height:1.7; }
 .case-response-saved { padding:12px; border:1px solid #dce5ee; border-radius:8px; background:white; white-space:pre-wrap; overflow-wrap:anywhere; }
+.case-response-history { margin:16px 0; padding:14px; border:1px solid #dce5ee; border-radius:10px; background:#f7faff; }
+.case-response-history summary { cursor:pointer; font-weight:600; }
+.case-response-history article { padding:14px 0; border-bottom:1px solid #dce5ee; }
+.case-response-history article:last-child { border-bottom:0; }
+.case-response-history small { color:var(--muted); line-height:1.7; }
 .case-close-blockers { padding:14px; border:1px solid #edd5a0; background:#fffaf0; border-radius:9px; font-size:13px; line-height:1.7; }
 .case-close-blockers ul { margin:8px 0; padding-left:22px; }
 .case-closed-history { padding:12px; background:#f0faf4; border-radius:8px; overflow-wrap:anywhere; }

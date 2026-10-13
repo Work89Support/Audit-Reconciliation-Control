@@ -1395,6 +1395,10 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
 
+  const clarificationHistory=id=>rpc('case_clarification_history',{p_case:id});
+  const submitClarificationWithFile=(id,response,fileId,status,previousFile)=>rpc('submit_case_clarification',{
+    p_case:id,p_response:response,p_file:fileId||null,p_previous_status:status,p_previous_file:previousFile||null,
+  });
   async function submitClarification(id, body) {
     if (!String(body.response_text || "").trim()) throw new Error("กรุณากรอกคำชี้แจง");
     if (!body.clarification_file_id && !(await caseEvidence(id)).length) throw new Error("ต้องมีไฟล์ชี้แจงที่บันทึกในระบบแล้ว");
@@ -1643,6 +1647,8 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     patch,
     requestClarification,
     submitClarification,
+    clarificationHistory,
+    submitClarificationWithFile,
     caseEvidence,
     caseEvidenceLibrary,
     caseNotes,

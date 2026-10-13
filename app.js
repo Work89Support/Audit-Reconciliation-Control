@@ -3650,7 +3650,7 @@ async function loadExceptionSupport(e, options = {}) {
     e._clarificationFileName=selectedFile?.file_name||'';
     if(selectedFile){
       const summary=document.createElement('section');summary.className='case-selected-evidence';
-      summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.resolutionNote || e.responseText || 'ตรวจเหตุผลและรายการในเอกสารก่อนยืนยัน')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>ผูกหลักฐานแล้ว ไม่ใช่การยืนยันปิดเคส · ดูสถานะ Audit ด้านบน</small>`;
+      summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.responseText || e.resolutionNote || 'ยังไม่มีข้อความชี้แจงที่บันทึกไว้')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>เอกสารเดิมยังอยู่ครบ · อ่านสาเหตุและข้อความเดิมในส่วนคำชี้แจงด้านล่าง · ไม่ใช่การอนุมัติปิดเคส</small>`;
       host.prepend(summary);
     }
     const mailButton=document.createElement('button');
@@ -3720,6 +3720,15 @@ async function loadExceptionSupport(e, options = {}) {
         }catch(error){const note=document.createElement('p');note.textContent='ยังโหลดประวัติการใช้ไฟล์ไม่ได้: '+error.message;list.append(note);}
         list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
           if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
+          if(state.role==='shift_lead'){
+            if(!ClarificationFlow.canRespond(e.status,state.role))return toast('เคสนี้ไม่อยู่ในสถานะรับคำชี้แจง','warn');
+            const file=candidates.find(f=>f.id===b.dataset.linkMail);
+            if(!file||file.company!==e.company)return toast('เลือกหลักฐานของบริษัทเดียวกับเคสเท่านั้น','warn');
+            e._clarificationDraftText=$('#responseText')?.value||e._clarificationDraftText||'';
+            e._clarificationDraftFile=file;
+            await openException(e.id,{focusResponse:true});
+            return;
+          }
           b.disabled=true;
           const form=document.createElement('form');
           form.className='case-mail-reason';
@@ -3848,6 +3857,10 @@ async function openException(id, options = {}) {
     try { e.clarificationInstructions=await Sb.clarificationInstructions(e.dbId); }
     catch(err) { e.clarificationInstructionsError=err.message; }
     if (state.selected !== id) return;
+    e.clarificationHistory=[];e.clarificationHistoryError=null;
+    try { e.clarificationHistory=await Sb.clarificationHistory(e.dbId); }
+    catch(err) { e.clarificationHistoryError=err.message; }
+    if (state.selected !== id) return;
     try { await refreshQuickCloseEvidence(e); }
     catch (err) { e._quickSourceEvidence = false; toast("ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: " + err.message, "warn"); }
     if (state.selected !== id) return;
@@ -3969,11 +3982,13 @@ async function openException(id, options = {}) {
         <button class="ghost-button" id="btnNote" ${closed?'disabled':''}>บันทึกรายละเอียดคำขอชี้แจง</button>
       </div>
       <section class="case-response-section" id="caseResponseSection">
-        <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>ใช้ตอบคำถามพร้อมหลักฐาน แยกจาก Note ผลตรวจด้านบน</p>
+        <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>1 เลือกหลักฐาน → 2 ระบุสาเหตุ → 3 ส่งคำชี้แจงพร้อมหลักฐาน · การเลือกไฟล์อย่างเดียวยังไม่ส่งและไม่ปิดเคส</p>
+        ${ClarificationFlow.draftMarkup(e._clarificationDraftFile)}
         ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(displayTime(e.respondedAt))}</small></div>` : ''}
-        <label ${e.status!=='clarifying'?'hidden':''}>คำชี้แจง<textarea id="responseText" rows="4" placeholder="ระบุข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และหลักฐาน" ${e.status!=='clarifying'||!can('respond')?'disabled':''}></textarea></label>
-        <button class="primary-button" id="btnRespond" ${e.status!=='clarifying'||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
-        <small>${e.status!=='clarifying'?'ส่งคำตอบได้เมื่อเคสอยู่ในสถานะรอชี้แจง':'ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบ ยังไม่ปิดเคส'}</small>
+        ${e.clarificationHistoryError?`<p role="alert">ยังอ่านข้อความเดิมไม่สำเร็จ: ${h(e.clarificationHistoryError)} กรุณาเปิดเคสใหม่ก่อนส่ง</p>`:ClarificationFlow.historyMarkup(e.clarificationHistory,displayTime)}
+        <label ${!ClarificationFlow.canRespond(e.status,state.role)?'hidden':''}>ต้องการชี้แจงเคสนี้ โดยสาเหตุ…<textarea id="responseText" rows="4" maxlength="2000" placeholder="ระบุสาเหตุ ข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และสิ่งที่หลักฐานยืนยัน" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>${h(e._clarificationDraftText||'')}</textarea></label>
+        <button class="primary-button" id="btnRespond" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
+        <small>ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบและหลักฐานพร้อมกัน เก็บข้อความเดิมและไฟล์เดิมครบ ยังไม่ปิดเคส</small>
       </section>
     <footer class="drawer-foot" id="caseActionSection">
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
@@ -4194,26 +4209,32 @@ async function openException(id, options = {}) {
       button.disabled = false;
     }
   });
-  $("#btnRespond").disabled = e.status !== "clarifying" || !!e.clarificationInstructionsError;
+  $('#responseText').addEventListener('input',event=>e._clarificationDraftText=event.target.value);
+  if(options.focusResponse)setTimeout(()=>$('#caseResponseSection')?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+  $("#btnRespond").disabled = !ClarificationFlow.canRespond(e.status,state.role) || !!e.clarificationInstructionsError || !!e.clarificationHistoryError || !can('respond');
   $("#btnRespond").addEventListener("click", async (event) => {
     if (!can("respond")) return deny("ตอบชี้แจง");
-    if (e.status !== "clarifying") return;
+    if (!ClarificationFlow.canRespond(e.status,state.role)) return;
     if(e.clarificationInstructionsError) return toast('ยังอ่านคำขอชี้แจงไม่ได้ กรุณาโหลดเคสใหม่ก่อนตอบ','warn');
     const answerText = $("#responseText").value.trim();
-    if (!answerText) return toast("กรอกคำชี้แจงในช่องข้อความก่อนส่ง", "warn");
+    if (answerText.length<10||answerText.length>2000) return toast("กรอกสาเหตุ 10–2,000 ตัวอักษรก่อนส่ง", "warn");
     const answeringRole=currentUser().role;
     const response=['monitor','audit_assistant','lead','admin'].includes(answeringRole)
       ? `[คำชี้แจงโดย ${answeringRole==='admin'?'แอดมินระบบ':'Audit'} — ไม่ใช่การอนุมัติปิดเคส]\n${answerText}` : answerText;
-    if (state.dataset === "production" && !e.clarificationFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกและผูกกับเคสนี้ในระบบ", "warn");
+    const selectedFileId=e._clarificationDraftFile?.id||e.clarificationFileId;
+    if (state.dataset === "production" && !selectedFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกในระบบ กรุณาเลือกไฟล์หรือแนบหลักฐานก่อนส่ง", "warn");
     const button = event.currentTarget;
     button.disabled = true;
     try {
       const stamp = new Date().toISOString();
       if (state.dataset === "production") {
         if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
-        await Sb.submitClarification(e.dbId, { response_text: response, clarification_file_id: e.clarificationFileId,
-          responded_at: stamp, responded_by: Sb.authUser()?.id, updated_at: stamp });
+        if(e.clarificationHistoryError)throw Error('ยังอ่านข้อความเดิมไม่สำเร็จ กรุณาเปิดเคสใหม่ก่อนส่ง');
+        const saved=await Sb.submitClarificationWithFile(e.dbId,response,selectedFileId,e.status,e.clarificationFileId);
+        if(saved.id!==e.dbId||saved.status!=='answered'||saved.response_text!==response)throw Error('ยังยืนยันการบันทึกคำตอบไม่ได้');
+        e.clarificationFileId=saved.clarification_file_id;
       }
+      delete e._clarificationDraftFile;delete e._clarificationDraftText;
       e.status = "answered";
       e.responseText = response;
       e.respondedAt = stamp;
