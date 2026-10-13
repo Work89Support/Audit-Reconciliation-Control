@@ -2282,8 +2282,8 @@ function dailyAuditSheetRows(date) {
       ...row,
       resultStatus,
       status: openCount > 0 && runStatus === "completed" ? "completed_review" : (row.checklist_status || runStatus),
-      fileCount: primary ? Number(primary.source_stamp?.file_count || 0) : Number(run.file_count || row.file_count || 0),
-      parsedCount: primary ? Number(primary.source_stamp?.file_count || 0) : Math.max(
+      fileCount: primary ? (Array.isArray(primary.source_stamp)?primary.source_stamp.length:Number(primary.source_stamp?.file_count || 0)) : Number(run.file_count || row.file_count || 0),
+      parsedCount: primary ? (Array.isArray(primary.source_stamp)?primary.source_stamp.length:Number(primary.source_stamp?.file_count || 0)) : Math.max(
         Number(run.parsed_count || 0),
         Number(row.parsed_count || 0),
         run.run_id && runStatus === "completed" && !Number(run.error_count || row.error_count || 0)

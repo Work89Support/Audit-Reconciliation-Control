@@ -13,8 +13,8 @@ assert.match(status({...row,latestRecheck:{id:'q2',status:'ready'}},{primaryResu
 assert.match(status(row).manual,/ยังไม่ใช้เป็นผลหลัก/);
 assert.equal(status(row).primary,undefined);
 assert.equal(JSON.stringify(row),before);
-assert.match(app,/fileCount: primary \? Number\(primary.source_stamp\?\.file_count/);
-assert.match(app,/parsedCount: primary \? Number\(primary.source_stamp\?\.file_count/);
+assert.match(app,/fileCount: primary \? \(Array.isArray\(primary.source_stamp\)\?primary.source_stamp.length/);
+assert.match(app,/parsedCount: primary \? \(Array.isArray\(primary.source_stamp\)\?primary.source_stamp.length/);
 const sb=readFileSync(new URL('../supabase.js',import.meta.url),'utf8');
 assert.match(sb,/resolved_count:v.case_set.closed_count/);
 assert.match(sb,/primaryResult:v\|\|null/);
