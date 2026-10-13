@@ -5854,7 +5854,7 @@ VIEWS["monthly-audit"] = async (root) => {
   root.innerHTML='<div class="feature-workspace" id="monthlyAuditHost"></div>';
   MonthlyAudit.mount(root.querySelector('#monthlyAuditHost'),{
     actor:()=>Sb.authUser()?.id,role:()=>state.role,today:PROD_TODAY,
-    load:Sb.monthlyAuditContext,create:Sb.createMonthlyAuditSet,detail:Sb.monthlyAuditDetail,
+    load:Sb.monthlyAuditContext,create:Sb.createMonthlyAuditSet,detail:Sb.monthlyAuditDetail,review:Sb.monthlyAuditItemReview,
     assign:Sb.assignMonthlyAuditReviewer,save:Sb.saveMonthlyAuditAssessment,upload:Sb.uploadMonthlyAuditEvidence,
     preview:meta=>openStoredFilePreview({id:meta.id,name:meta.file_name,path:meta.storage_path,size:meta.size_bytes,mime:meta.mime_type,company:meta.company,kind:meta.kind||'doc_clarify',readOnly:true}),
   });

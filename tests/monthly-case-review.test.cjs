@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const m=require('../monthly-audit.js');
+assert.equal(m.caseState({status:'closed',auto_closed:true}),'ระบบปิดอัตโนมัติ');
+assert.equal(m.caseState({status:'closed',auto_closed:false}),'ปิดเคสแล้ว');
+assert.equal(m.caseState({status:'damage'}),'ยืนยันความเสียหายแล้ว');
+const items=[{id:'a',assessment:'passed'},{id:'b',assessment:'concern',note:'ข้อสังเกตเดิม'},{id:'c',assessment:'needs_evidence'},{id:'d',assessment:'pending'}];
+assert.deepEqual(m.findings(items),{total:4,passed:1,concern:[items[1]],needs_evidence:[items[2]],pending:1});
+items[1].assessment='passed';assert.equal(m.findings(items).concern.length,0,'latest result drives report, not duplicate history');
+assert.match(m.casePanel(null),/ยังไม่ได้โหลดประวัติ/);
+assert.match(m.casePanel({cases:[],lineage_status:'no_case_at_sampling_run'}),/ไม่เกิดเคสในผลรันที่สุ่ม/);
+const panel=m.casePanel({cases:[{record:{code:'EX-TEST',status:'closed',approved_at:'2026-10-13',resolution_note:'<script>bad</script>',closure_rule:'head-document'},closed_by_name:'หัวหน้า TEST',closures:[],evidence:[{file_name:'หลักฐาน.pdf'}]}]});
+assert.match(panel,/EX-TEST/);assert.match(panel,/หัวหน้า TEST/);assert.match(panel,/head-document/);assert.match(panel,/หลักฐาน.pdf/);assert.doesNotMatch(panel,/<script>/);
+assert.match(m.comparison({kind:'exception',result:{system_amount:100,bank_amount:100},bo:{row:2},stm:{sec:'bad'}}),/100.00 บาท/);
+const sql=fs.readFileSync('supabase/20261013_monthly_audit_case_review.sql','utf8');
+assert.match(sql,/can_read_monthly_audit\(i.set_id\)/);assert.match(sql,/e\.company=c and e\.business_date=i\.business_date/);assert.match(sql,/e\.run_id=i\.run_id/);assert.match(sql,/monthly_source_key/);assert.doesNotMatch(sql,/(insert into|update|delete from) public\./i);
+assert.doesNotMatch(sql,/system_amount\s*=|bank_amount\s*=/i,'never link by equal amounts');
+console.log('PASS monthly review: scoped immutable lineage, human/automatic closure labels, escaped evidence, latest findings, missing data and equal-amount isolation.');

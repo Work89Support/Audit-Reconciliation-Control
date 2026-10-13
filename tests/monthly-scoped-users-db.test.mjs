@@ -85,4 +85,25 @@ assert.equal((await db.query('select can_read_monthly_audit_path($1) as v',[path
 await actor(4);await assert.rejects(db.query('select monthly_audit_set_detail($1)',[set.id]),/ไม่มีสิทธิ์/);assert.equal((await db.query('select can_read_monthly_audit_path($1) as v',[path])).rows[0].v,false);
 await db.exec('reset role');assert.equal(JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e order by id')).rows),preserved);assert.equal(JSON.stringify((await db.query('select to_jsonb(r) as v from recon_runs r')).rows),runBefore);
 assert.equal((await db.query('select count(*) as n from monthly_audit_evidence')).rows[0].n,1);assert.equal((await db.query('select count(*) as n from monthly_audit_history')).rows[0].n,3);
-await db.close();console.log('PASS synthetic DB: strict delegated scope, no self/admin elevation, latest revision, single-use invites, fixed cohorts, shortages, source dedup, equal-amount rows retained, assigned reviewers, evidence receipts/RLS and unchanged financial history. No production sampling or grants.');
+// Read-only drilldown: exact sample lineage, case actor/reason/proof, no amount-only links.
+await db.exec(`reset role;alter table audit_log add column created_at timestamptz default now();
+ alter table exceptions add column code text,add column approved_by uuid,add column approved_at timestamptz,add column resolved_by text,add column resolution_note text,add column closure_rule text;
+ create table case_closure_requests(id uuid,exception_id uuid,company text,requested_by uuid,decided_by uuid,requested_at timestamptz default now(),decided_at timestamptz,status text,audit_reason text);
+ create table case_evidence(id uuid,exception_id uuid,storage_path text,file_name text,created_at timestamptz default now());`);
+await db.query("update exceptions set code='EX-TEST',approved_by=$1,approved_at=now(),resolution_note='ตรวจหลักฐานต้นทางแล้ว',closure_rule='head-document' where id=$2",[id(2),id(34)]);
+await db.query("insert into case_closure_requests(id,exception_id,company,requested_by,decided_by,status,audit_reason) values($1,$2,'TEST',$3,$4,'approved','ตรวจหลักฐานครบแล้ว')",[id(50),id(34),id(3),id(2)]);
+await db.query("insert into case_evidence(id,exception_id,storage_path,file_name) values($1,$2,'mock-proof','dummy.pdf')",[id(51),id(34)]);
+await db.exec(fs.readFileSync('supabase/20261013_monthly_audit_case_review.sql','utf8'));
+const readBefore=JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e order by id')).rows);
+await actor();detail=(await db.query('select monthly_audit_set_detail($1) as v',[set.id])).rows[0].v;
+const linked=detail.items.find(x=>x.exception_id===id(34)),noCase=detail.items.find(x=>x.snapshot.bo?.row===2);
+const review=(await db.query('select monthly_audit_item_review($1) as v',[linked.id])).rows[0].v;
+assert.equal(review.cases.length,1);assert.equal(review.cases[0].record.id,id(34));assert.equal(review.cases[0].closed_by_name,'Dummy 2');
+assert.equal(review.cases[0].record.closure_rule,'head-document');assert.equal(review.cases[0].evidence[0].file_name,'dummy.pdf');
+const matched=(await db.query('select monthly_audit_item_review($1) as v',[noCase.id])).rows[0].v;
+assert.equal(matched.lineage_status,'no_case_at_sampling_run');assert.equal(matched.cases.length,0,'same amount on another source row must not inherit a case');
+await actor(4);await assert.rejects(db.query('select monthly_audit_item_review($1)',[linked.id]),/ไม่มีสิทธิ์/);
+await actor(7);await assert.rejects(db.query('select monthly_audit_item_review($1)',[linked.id]),/ไม่มีสิทธิ์/);
+await db.exec('reset role');assert.equal(JSON.stringify((await db.query('select to_jsonb(e) as v from exceptions e order by id')).rows),readBefore);
+assert.equal(JSON.stringify((await db.query('select to_jsonb(r) as v from recon_runs r')).rows),runBefore);
+await db.close();console.log('PASS synthetic DB: strict delegated scope, fixed cohorts, source dedup, revisions, evidence receipts, case drilldown/closure actors, equal-amount isolation and unchanged financial history. No production writes.');

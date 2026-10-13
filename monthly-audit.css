@@ -26,5 +26,8 @@
 .feature-workspace .sub{display:block;margin-top:5px;color:#62778b}
 .feature-workspace .danger{color:#a15b08}
 .feature-workspace pre{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7faff;padding:12px;border-radius:8px}
+.monthly-case-facts,.monthly-comparison{margin:18px 0;padding:18px;background:#f5f9fd;border-left:4px solid #0867bd;border-radius:10px;overflow-wrap:anywhere}
+.monthly-case-facts dl{display:grid;grid-template-columns:minmax(140px,1fr) 3fr;gap:12px}.monthly-case-facts dt{font-weight:600}.monthly-case-facts dd{margin:0;white-space:pre-wrap}
+.monthly-case-facts button{margin:6px}.monthly-findings article{border-left-color:#b57815}.feature-toolbar [aria-current=page]{background:#0867bd;color:#fff}
 .feature-workspace :focus-visible{outline:3px solid #3c9bf0;outline-offset:3px}
 @media(max-width:640px){.feature-workspace .panel{padding:16px}.access-user-form{grid-template-columns:1fr}.feature-toolbar>*{width:100%}}

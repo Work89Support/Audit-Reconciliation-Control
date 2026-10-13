@@ -837,6 +837,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const monthlyAuditContext=month=>rpc('monthly_audit_context',{p_month:month});
   const createMonthlyAuditSet=body=>rpc('create_monthly_audit_set',body);
   const monthlyAuditDetail=id=>rpc('monthly_audit_set_detail',{p_set:id});
+  const monthlyAuditItemReview=id=>rpc('monthly_audit_item_review',{p_item:id});
   const assignMonthlyAuditReviewer=body=>rpc('assign_monthly_audit_reviewer',body);
   const saveMonthlyAuditAssessment=body=>rpc('save_monthly_audit_assessment',body);
   async function uploadMonthlyAuditEvidence(item,file,receipt){
@@ -1556,7 +1557,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
 
   return {
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
-    monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
+    monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
