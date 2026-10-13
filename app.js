@@ -6356,6 +6356,7 @@ VIEWS.cloud = (root) => {
   const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
 
   root.innerHTML = `
+    ${operations.some(j=>j.runNoticeError||j.runNotice?.hold?.paused||j.runNotice?.manualOnly||j.status==='error'||(['queued','error'].includes(j.status)&&Number(j.runNotice?.attempt_count)>=3))?`<section class="panel" aria-label="แจ้งเหตุที่งานยังไม่รัน"><h2>งานที่ต้องทราบก่อนรัน</h2><p>แยกคิวรอบหลักกับงานตรวจมือ · ตรวจเหตุผลและขั้นตอนต่อไปด้านล่าง</p>${operations.filter(j=>j.runNoticeError||j.runNotice?.hold?.paused||j.runNotice?.manualOnly||j.status==='error'||(['queued','error'].includes(j.status)&&Number(j.runNotice?.attempt_count)>=3)).map(j=>`<h3>${h(j.company)} · ${h(j.business_date)}</h3>${FileRunManagement.noticeHtml(j.runNotice)}`).join('')}<p>ผู้มีสิทธิ์สั่งตรวจใช้เมนู “รันมือ / จัดการไฟล์” · ผู้ชี้แจงแจ้ง Audit/หัวหน้าได้จากเหตุผลนี้</p></section>`:''}
     <section class="panel" id="caseEvidenceLibraryPanel">
       <div class="panel-heading"><div><p class="eyebrow">Evidence Library</p><h2>คลังหลักฐาน · เมลและผู้ชี้แจง</h2><small>ใช้บริษัทและวันที่เคสจากตัวกรองด้านบน · เก็บไฟล์เดิมและประวัติครบ · ไม่เข้ากระทบยอด</small></div></div>
       ${cloudState.evidenceError ? `<p role="alert">${h(cloudState.evidenceError)}</p>` : cloudState.caseAttachments === null ? '<p role="status">กำลังโหลดหลักฐานจากเคส…</p>' : ''}
