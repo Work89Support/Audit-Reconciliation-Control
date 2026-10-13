@@ -37,6 +37,7 @@ begin
  select * into q from public.account_recheck_jobs where id=p_id;
  if q.id is null or not coalesce(public.current_user_active(),false)
  or coalesce(public.current_app_role(),'') not in ('lead','admin') or not coalesce(public.has_company_access(q.company),false)
+ or (public.current_app_role()='lead' and not exists(select 1 from public.user_company_access where user_id=auth.uid() and upper(company)=upper(q.company)))
  then raise exception 'เฉพาะหัวหน้า/ผู้ดูแลในบริษัทที่มีสิทธิ์';end if;
  select * into j from public.daily_recon_jobs where company=q.company and business_date=q.business_date and not is_archived;
  select * into v from public.manual_primary_results where company=q.company and business_date=q.business_date order by accepted_at desc,id desc limit 1;
@@ -95,7 +96,8 @@ begin
  perform 1 from public.app_profiles where user_id=auth.uid() and active and role in ('lead','admin') for update;
  if not found then raise exception 'เฉพาะหัวหน้า/ผู้ดูแลที่ใช้งานอยู่';end if;
  select * into q from public.account_recheck_jobs where id=p_id;
- if q.id is null or not coalesce(public.has_company_access(q.company),false) then raise exception 'ไม่มีสิทธิ์บริษัท';end if;
+ if q.id is null or not coalesce(public.has_company_access(q.company),false)
+ or (public.current_app_role()='lead' and not exists(select 1 from public.user_company_access where user_id=auth.uid() and upper(company)=upper(q.company))) then raise exception 'ไม่มีสิทธิ์บริษัท';end if;
  perform 1 from public.daily_recon_jobs where company=q.company and business_date=q.business_date and not is_archived for update;
  select * into q from public.account_recheck_jobs where id=p_id for update;
  if p_reviewed is distinct from true or length(trim(coalesce(p_reason,''))) not between 10 and 2000 then raise exception 'ต้องทบทวนและระบุเหตุผล';end if;

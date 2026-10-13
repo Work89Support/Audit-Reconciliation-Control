@@ -3,6 +3,7 @@ const {PGlite}=await import(process.argv[2]);const db=new PGlite();const id=n=>`
 await db.exec(`create schema auth;create role anon;create role authenticated;
 create function auth.uid() returns uuid language sql stable as $$select current_setting('test.actor')::uuid$$;
 create table app_profiles(user_id uuid primary key,role text,active boolean);
+create table user_company_access(user_id uuid,company text);
 create function current_app_role() returns text language sql stable security definer as $$select role from app_profiles where user_id=auth.uid() and active$$;
 create function current_user_active() returns boolean language sql stable security definer as $$select exists(select 1 from app_profiles where user_id=auth.uid() and active)$$;
 create function has_company_access(c text) returns boolean language sql stable as $$select c='TEST'$$;
@@ -20,6 +21,7 @@ const pair=row=>({company:'TEST',account:'A',direction:'deposit',amount:100,bo:{
 const report={quality:'passed',company:'TEST',date:'2026-10-12',account:'ALL',direction:'all',stm_count:2,bo_count:3,matched:2,match_evidence:[pair(1),pair(2)],exceptions:[],summary:{waiting_bo:[{account:'A',direction:'deposit',amount:100,boSource:{fileId:id(10),row:3,date:'2026-10-12',sec:300}}]}};
 await db.query('insert into test_manifest values($1)',[JSON.stringify(files)]);
 await db.query("insert into app_profiles values($1,'lead',true),($2,'monitor',true),($3,'admin',true)",[id(1),id(2),id(3)]);
+await db.query("insert into user_company_access values($1,'TEST')",[id(1)]);
 await db.query('insert into recon_runs values($1,9,10,9,1)',[id(20)]);
 await db.query("insert into daily_recon_jobs values($1,'TEST','2026-10-12',$2,'queued',false)",[id(21),id(20)]);
 await db.query("insert into exceptions values($1,'closed',100)",[id(30)]);
@@ -28,6 +30,8 @@ const preserved=async()=>JSON.stringify((await db.query('select (select jsonb_ag
 const before=await preserved();async function actor(n){await db.exec('reset role');await db.query("select set_config('test.actor',$1,false)",[id(n)]);await db.exec('set role authenticated');}
 const preview=async()=>(await db.query('select manual_primary_preview($1) v',[id(40)])).rows[0].v;
 await actor(2);await assert.rejects(preview(),/หัวหน้า/);await assert.rejects(db.query("select accept_manual_primary($1,'x','Dummy QA approval reason',true)",[id(40)]),/หัวหน้า/);
+await db.exec('reset role');await db.query('delete from user_company_access where user_id=$1',[id(1)]);await actor(1);await assert.rejects(preview(),/สิทธิ์/);
+await db.exec('reset role');await db.query("insert into user_company_access values($1,'TEST')",[id(1)]);
 await actor(1);let p=await preview();assert.equal(p.allowed,true);assert.equal(p.before.bo_count,10);assert.equal(p.after.bo_count,3);
 await assert.rejects(db.query('insert into manual_primary_results(company) values($1)',['TEST']),/permission denied/);
 await assert.rejects(db.query("select accept_manual_primary($1,$2,'Dummy QA approval reason',false)",[id(40),p.token]),/ทบทวน/);

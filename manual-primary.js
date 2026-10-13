@@ -22,7 +22,7 @@
     if(!accepted)return;if(!same())throw Error('ผู้ใช้หรือสิทธิ์เปลี่ยน');
     await opts.accept({p_id:id,p_token:p.token,p_reason:note,p_reviewed:true});close();opts.onAccepted?.();
    }catch(e){d.querySelector('[data-error]').textContent=e.message;}finally{busy=false;if(d.isConnected)enable();}
-  };d.showModal();enable();return d;
+  };d.showModal();d.querySelector('[data-cancel]').focus({preventScroll:true});d.scrollTop=0;enable();return d;
  }
  function run(v){const r=v.report;return {id:v.base_run_id,company:v.company,business_date:v.business_date,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),summary:{...r.summary,match_evidence:r.match_evidence||[],manual_primary:{id:v.id,recheck_id:v.recheck_id,accepted_at:v.accepted_at,reason:v.reason}},primaryResult:v,jobStatus:'completed',boWaitingSnapshot:null};}
  function cases(v){return (v.report.exceptions||[]).map((e,i)=>({...e,id:null,code:`ผลตรวจมือ ${i+1}`,company:v.company,business_date:v.business_date,status:'open',resolution_note:null,resolved_by:null,primaryRowKey:`primary-${v.id}-${i}`}));}
