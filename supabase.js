@@ -798,6 +798,27 @@ const Sb = (() => {
   /* สิทธิ์ใช้งานจริงมาจากฐานข้อมูลเท่านั้น ไม่อ่าน role จาก user_metadata
      เพื่อป้องกันผู้ใช้แก้ metadata ฝั่ง client แล้วขยายสิทธิ์ตนเอง */
   const myAccess = () => rpc("get_my_access");
+  const leadUserManagementContext=()=>rpc('lead_user_management_context');
+  const leadUpdateUserAccess=body=>rpc('lead_update_user_access',body);
+  const leadCreateUser=body=>json('/functions/v1/scoped-invite-user',{method:'POST',headers:{'Content-Type':'application/json'},timeoutMs:45000,body:JSON.stringify(body)});
+  const monthlyAuditContext=month=>rpc('monthly_audit_context',{p_month:month});
+  const createMonthlyAuditSet=body=>rpc('create_monthly_audit_set',body);
+  const monthlyAuditDetail=id=>rpc('monthly_audit_set_detail',{p_set:id});
+  const assignMonthlyAuditReviewer=body=>rpc('assign_monthly_audit_reviewer',body);
+  const saveMonthlyAuditAssessment=body=>rpc('save_monthly_audit_assessment',body);
+  async function uploadMonthlyAuditEvidence(item,file,receipt){
+    const actor=authUser()?.id,ext=file.name.split('.').pop().toLowerCase();
+    const types={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',csv:'text/csv',txt:'text/plain'};
+    if(!actor||!types[ext]||!file.size||file.size>20*1024*1024)throw Error('เลือกไฟล์หลักฐานที่รองรับ ไม่เกิน 20 MB');
+    if(!/^[0-9a-f-]{36}$/.test(item)||!/^[0-9a-f-]{36}$/.test(receipt))throw Error('รหัสรายการหรือหลักฐานไม่ถูกต้อง');
+    const name=replacementSafeName(file.name).slice(-200),mime=types[ext],path=`monthly-audit/${actor}/${item}/${receipt}/${name}`;
+    const bytes=await file.arrayBuffer();
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าตรวจใหม่');
+    try{await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(path)}`,{method:'POST',headers:{'Content-Type':mime,'x-upsert':'false'},body:bytes,timeoutMs:120000});}
+    catch(e){if(!/already exists|duplicate/i.test(e.message))throw e;}
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าตรวจใหม่');
+    return rpc('register_monthly_audit_evidence',{p_item:item,p_id:receipt,p_name:name,p_mime:mime,p_size:file.size,p_path:path});
+  }
   const adminUserAccess = () => rpc("admin_list_user_access");
   const adminSaveUserAccess = (email, fullName, role, active, companies) => rpc("admin_upsert_user_access", {
     p_email: String(email || "").trim().toLowerCase(),
@@ -1496,6 +1517,8 @@ const Sb = (() => {
   }
 
   return {
+    leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
+    monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,

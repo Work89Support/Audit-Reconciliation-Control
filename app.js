@@ -100,6 +100,7 @@ const ROUTES = [
   {
     group: "รายงาน",
     items: [
+      { id: "monthly-audit", label: "สุ่มตรวจรายเดือน", icon: "reports", title: "สุ่มตรวจ Audit รายเดือน", desc: "เก็บชุดสุ่ม ผู้ตรวจ ผลประเมิน หมายเหตุ หลักฐาน และประวัติแยกบริษัท/เดือน", filters: false },
       { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true, hidden: true },
       { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
       { id: "talk", label: "Talk to Data", icon: "talk", title: "ถามข้อมูลด้วยภาษาไทย", desc: "ถามจากข้อมูลที่ reconcile แล้ว ทุกคำตอบอ้างอิงตัวเลข ช่วงวันที่ และลิงก์กลับหลักฐาน", filters: false, hidden: true },
@@ -227,9 +228,9 @@ function auditRuleBookMarkup(selectedCompany = "") {
 
 /* หน้าที่แต่ละ role มองเห็น */
 const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "notifications"],
-  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "talk", "rules", "notifications", "audit-log", "case-settings"],
+  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "monthly-audit", "notifications"],
+  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "monthly-audit", "notifications"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "notifications", "audit-log", "case-settings", "users"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
@@ -5480,6 +5481,11 @@ VIEWS.rules = (root) => {
    ============================================================= */
 VIEWS['case-settings'] = (root) => CaseClosure.mountSettings(root);
 VIEWS.users = async (root) => {
+  if(state.role==='lead'){
+    root.innerHTML='<div class="feature-workspace" id="scopedUsersHost"></div>';
+    ScopedUserManagement.mount(root.querySelector('#scopedUsersHost'),{actor:()=>Sb.authUser()?.id,role:()=>state.role,load:Sb.leadUserManagementContext,update:Sb.leadUpdateUserAccess,create:Sb.leadCreateUser});
+    return;
+  }
   const caps = [
     ["view", "ดูหน้าที่ได้รับสิทธิ์ / dashboard"],
     ["note", "ใส่ note"],
@@ -5779,6 +5785,16 @@ async function validateReplacementFile(file) {
   }
   return true;
 }
+
+VIEWS["monthly-audit"] = async (root) => {
+  root.innerHTML='<div class="feature-workspace" id="monthlyAuditHost"></div>';
+  MonthlyAudit.mount(root.querySelector('#monthlyAuditHost'),{
+    actor:()=>Sb.authUser()?.id,role:()=>state.role,today:PROD_TODAY,
+    load:Sb.monthlyAuditContext,create:Sb.createMonthlyAuditSet,detail:Sb.monthlyAuditDetail,
+    assign:Sb.assignMonthlyAuditReviewer,save:Sb.saveMonthlyAuditAssessment,upload:Sb.uploadMonthlyAuditEvidence,
+    preview:meta=>openStoredFilePreview({id:meta.id,name:meta.file_name,path:meta.storage_path,size:meta.size_bytes,mime:meta.mime_type,company:meta.company,kind:meta.kind||'doc_clarify',readOnly:true}),
+  });
+};
 
 async function openStoredFilePreview(meta) {
   const name = meta.name || "ไฟล์ต้นฉบับ";
