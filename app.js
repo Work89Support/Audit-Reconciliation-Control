@@ -2662,7 +2662,7 @@ function renderDailyCompanySummary(root) {
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
       ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
-      ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong><p>เวอร์ชัน ${h(r.primaryResult.id)} · ${h(r.primaryResult.accepted_at)}</p><p>ยอดรายงานและ Excel ใช้เวอร์ชันเดียวกัน · จำนวนเคสติดตามด้านล่างเป็นเคสเดิม ไม่ได้เปิด/ปิดตามผลใหม่นี้</p></section>`).join('')}
+${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>รายการเคสด้านล่างเป็นประวัติเคสเดิม</p></section>`).join('')}
       ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
       <section class="panel daily-focus-board">
         <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>
