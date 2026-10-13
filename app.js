@@ -1020,7 +1020,7 @@ function openAccountRecheck({company,date,accounts,fileIds=null}) {
     company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,role:()=>state.role,actor:()=>Sb.authUser()?.id,
     request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,loadState:Sb.fileRunManagement,confirm:Sb.confirmAccountRecheck,
     detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
-    finalConfirmation:async q=>window.confirm(`${q.company} ${q.business_date} บัญชี ${q.account}\nยืนยันผลตรวจซ้ำที่ทบทวนแล้ว? แสดงรายงานยืนยันแยกจากรอบบริษัทเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส`),
+    finalConfirmation:AccountRecheck.finalConfirmation,
   });
   $('#modal')._contentCleanup=dispose;
   $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};

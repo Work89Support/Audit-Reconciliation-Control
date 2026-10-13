@@ -3,15 +3,15 @@
 <h1>ทดสอบตรวจเฉพาะบัญชี — ข้อมูลจำลองเท่านั้น</h1>
 <p>ไม่เชื่อม Supabase/n8n ไม่มีการยืนยันผลหรือปิดเคสจริง</p>
 <label>สิทธิ์จำลอง <select id="role"><option value="monitor">Audit</option><option value="audit_assistant">ผู้ช่วย</option><option value="lead">หัวหน้า</option><option value="admin">ผู้ดูแลระบบ</option></select></label>
-<link rel="stylesheet" href="../styles.css"><div id="panel"></div><p id="receipt" role="status">ยังไม่มีการยืนยันข้อมูลจำลอง</p>
-<script src="../account-recheck.js"></script><script>
+<link rel="stylesheet" href="../styles.css?v=manual-confirm-design-20261013"><div id="panel"></div><p id="receipt" role="status">ยังไม่มีการยืนยันข้อมูลจำลอง</p>
+<script src="../account-recheck.js?v=manual-confirm-design-20261013"></script><script>
 let fixtures=[],calls=0;
 const result={stm_count:10,bo_count:12,matched:10,exceptions:[{account:'DEMO-A',system_amount:100,ex_type:'BO รอ STM'},{account:'DEMO-A',system_amount:200,ex_type:'BO รอ STM'}],match_evidence:[]};
 AccountRecheck.mount(document.querySelector('#panel'),{
  company:'TEST',date:'2026-10-12',accounts:['DEMO-A','DEMO-B'],role:()=>document.querySelector('#role').value,
  request:async s=>{fixtures.unshift({id:s.requestKey,request_key:s.requestKey,company:s.company,business_date:s.date,account:s.account,direction:s.direction,mode:s.mode,status:'ready',revision:1,result});return fixtures[0];},
  detail:async id=>structuredClone(fixtures.find(q=>q.id===id)),
- list:async()=>fixtures,finalConfirmation:async()=>true,
+ list:async()=>fixtures,finalConfirmation:AccountRecheck.finalConfirmation,
  confirm:async b=>{if(!AccountRecheck.canConfirm(document.querySelector('#role').value))throw Error('สิทธิ์ไม่ผ่าน');const q=fixtures.find(q=>q.id===b.p_id);q.status='confirmed';calls++;document.querySelector('#receipt').textContent='ยืนยันข้อมูลจำลอง '+calls+' ครั้ง · ไม่ปิดเคสจริง';},
 });
 </script></html>
