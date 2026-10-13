@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const ui=require('../file-run-management.js');
+assert.equal(ui.runNotice(null).blocked,true);
+assert.equal(ui.runNotice({job:{status:'running'}}).blocked,true);
+assert.equal(ui.runNotice({job:{status:'queued',last_run_id:null},hold:{paused:true,reason:'แก้ประเภทไฟล์'},manualOnly:true}).blocked,false);
+assert.match(ui.noticeHtml({job:{status:'queued'},hold:{paused:true,reason:'<script>bad</script>'}}),/&lt;script&gt;/);
+assert.match(ui.runNotice({job:{status:'error',attempt_count:3,last_error:'dummy failure'}}).title,/3 ครั้ง/);
+assert.match(ui.runNotice({job:{status:'queued',last_run_id:null}}).reason,/ไม่ใช่ยอดศูนย์/);
+const sql=fs.readFileSync('supabase/20261013_manual_run_readiness.sql','utf8');
+assert.match(sql,/alter column base_run_id drop not null/);
+assert.match(sql,/j.last_run_id is distinct from q.base_run_id/);
+assert.doesNotMatch(sql,/update public\.(exceptions|recon_runs|source_files)|insert into public.exceptions|delete from/i);
+assert.match(fs.readFileSync('account-recheck.js','utf8'),/dispatchError=reply.dispatch_error\|\|'';await refresh/,'refresh must not erase unknown dispatch warning');
+console.log('PASS run readiness: distinct queues, escaped reasons, failures, unknown status fail-closed, no financial writes');

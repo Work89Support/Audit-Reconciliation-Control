@@ -1018,7 +1018,7 @@ function openAccountRecheck({company,date,accounts,fileIds=null}) {
   openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
   const dispose=AccountRecheck.mount($('#accountRecheckPanel'),{
     company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,role:()=>state.role,actor:()=>Sb.authUser()?.id,
-    request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,confirm:Sb.confirmAccountRecheck,
+    request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,loadState:Sb.fileRunManagement,confirm:Sb.confirmAccountRecheck,
     detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
     finalConfirmation:async q=>window.confirm(`${q.company} ${q.business_date} บัญชี ${q.account}\nยืนยันผลตรวจซ้ำที่ทบทวนแล้ว? แสดงรายงานยืนยันแยกจากรอบบริษัทเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส`),
   });
@@ -6402,9 +6402,9 @@ VIEWS.cloud = (root) => {
         <tbody>${operations
           .map(
             (j) => `<tr class="action-row" data-summary-company="${h(j.company)}" data-summary-date="${h(j.business_date)}" role="link" tabindex="0">
-            <td><b>${h(j.business_date)}</b>${j.late_file ? '<small class="sub danger">มีไฟล์มาช้า · จะรันซ้ำ</small>' : ""}</td>
+            <td><b>${h(j.business_date)}</b>${j.late_file ? '<small class="sub danger">มีไฟล์มาช้า · ตรวจสถานะรันก่อน</small>' : ""}</td>
             <td>${h(j.company)}${j.business_system ? `<small class="sub">${h(j.business_system)}</small>` : ""}</td>
-            <td><span class="badge ${jobTone[j.status] || "grey"}">${h(jobLabel[j.status] || j.status)}</span>${j.last_error ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
+            <td><span class="badge ${j.runNotice?.hold?.paused||j.runNotice?.manualOnly?'amber':jobTone[j.status] || "grey"}">${h(j.runNotice?.hold?.paused||j.runNotice?.manualOnly?'พักบอทรอบหลัก':jobLabel[j.status] || j.status)}</span>${j.runNoticeError?'<small class="sub danger">ยังตรวจสถานะพักไม่ได้ · โหลดสถานะล่าสุดก่อนสั่งงาน</small>':j.runNotice&&(j.runNotice.hold?.paused||j.runNotice.manualOnly||j.status==='error'||Number(j.runNotice.attempt_count)>=3)?FileRunManagement.noticeHtml(j.runNotice):''}${j.last_error ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
             <td class="right tnum">${num(j.mail_count)}</td><td class="right tnum">${num(j.file_count)}</td>
             <td class="muted">${h(cloudMissingGroupsText(j.missing_groups))}</td>
             <td>${j.match_rate == null ? "-" : `${Number(j.match_rate).toFixed(2)}% · exception ${num(j.exception_count)}`}</td>
@@ -6412,7 +6412,7 @@ VIEWS.cloud = (root) => {
           )
           .join("")}</tbody>
       </table></div>
-      <p class="hint">คิวถูกสร้างจากไฟล์จริงใน Supabase; ไฟล์ที่เข้าหลังปิดงานจะติดธงและเข้าคิวกระทบยอดซ้ำโดยอัตโนมัติ</p>
+      <p class="hint">คิวรอบหลักกับงานตรวจมือเป็นคนละงาน · งานพัก/ไฟล์แก้ไขจะไม่รันหลักอัตโนมัติ เลือก “รันมือ / จัดการไฟล์” เพื่อดูเหตุผลและรันรายงานแยก</p>
     </section>`
         : ""
     }

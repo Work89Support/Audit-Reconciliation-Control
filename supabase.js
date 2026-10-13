@@ -437,7 +437,16 @@ const Sb = (() => {
   }
 
   const dailyStatus = (opts = 30) => rangedView("v_daily_status", "business_date.desc", opts, 30);
-  const operations = (opts = 100) => rangedView("v_recon_operations", "business_date.desc,company.asc", opts, 100);
+  const operations = async (opts = 100) => {
+    const rows=await rangedView("v_recon_operations", "business_date.desc,company.asc", opts, 100);
+    if(!rows.length)return rows;
+    const dates=rows.map(j=>j.business_date).sort();
+    try{
+      const notices=await rpc('audit_run_notices',{p_from:dates[0],p_to:dates[dates.length-1],p_company:typeof opts==='object'&&opts.company&&opts.company!=='ALL'?opts.company:null});
+      const byScope=new Map(notices.map(n=>[n.company+'|'+n.business_date,n]));
+      return rows.map(j=>({...j,runNotice:byScope.get(j.company+'|'+j.business_date)||null,runNoticeError:!byScope.has(j.company+'|'+j.business_date)}));
+    }catch{return rows.map(j=>({...j,runNotice:null,runNoticeError:true}));}
+  };
   const quality = (opts = 1000) => rangedView("v_recon_quality", "business_date.desc,company.asc", opts, 1000);
 
   async function dailyChecklist({ from, to, company, limit = 5000 } = {}) {

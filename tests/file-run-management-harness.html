@@ -8,7 +8,7 @@ const files=[{id:'bo-a',file_name:'TEST_BO_D.xlsx',company:'TEST',business_date:
 let hold=null,history=[];
 FileRunManagement.mount(document.querySelector('#panel'),{
  company:'TEST',date:'2026-10-12',role:()=>document.querySelector('#role').value,
- load:async()=>({files,hold}),history:async id=>history.filter(r=>r.id===id),confirmCorrection:async()=>true,confirmHold:async()=>true,
+ load:async()=>({files,hold,job:{status:'queued',last_run_id:null},manualOnly:history.length>0}),history:async id=>history.filter(r=>r.id===id),confirmCorrection:async()=>true,confirmHold:async()=>true,
  correct:async b=>{const f=files.find(f=>f.id===b.fileId);history.unshift({id:f.id,revision:f.revision+1,reason:b.reason,created_at:'เวลาทดสอบ',originalName:f.file_name});f.file_name=b.name;f.revision++;f.excluded=b.excluded;hold={paused:true,reason:b.reason,revision:(hold?.revision||0)+1};document.querySelector('#receipt').textContent='เพิ่มเวอร์ชันจำลองแล้ว เก็บต้นฉบับและประวัติไว้ ไม่แก้ยอด ไม่ปิดเคสจริง';},
  setHold:async b=>{hold={...b,revision:(hold?.revision||0)+1};document.querySelector('#receipt').textContent='เปลี่ยนสถานะพักงานจำลองแล้ว ไม่มีงานจริงถูกหยุด';},
  onRun:ids=>document.querySelector('#receipt').textContent='เลือกไฟล์เพื่อรันจำลอง '+ids.length+' ฉบับ ไม่ส่งคำสั่งจริง',

@@ -4,6 +4,16 @@
  const canManage=role=>['lead','admin'].includes(role);
  const kinds=['bo_main','stm_pdf','pm_statement','doc_clarify','unknown'];
  const kindLabel={bo_main:'BO หลังบ้าน',stm_pdf:'STM ธนาคาร',pm_statement:'Statement PM',doc_clarify:'หลักฐานประกอบ',unknown:'ยังไม่ระบุประเภท'};
+ function runNotice(s){
+  if(!s)return {title:'ยังตรวจสถานะรันไม่ได้',reason:'โหลดสถานะไม่สำเร็จ ไม่ถือว่างานพร้อมรัน',next:'โหลดสถานะล่าสุดก่อนสั่งงาน',blocked:true};
+  const j=s.job||s;
+  if(j.status==='running')return {title:'บอทรอบหลักกำลังรัน',reason:'ยังไม่รับงานตรวจมือซ้อนกับบริษัทและวันนี้',next:'รอรอบหลักจบ แล้วโหลดสถานะล่าสุด',blocked:true};
+  if(s.hold?.paused||s.manualOnly)return {title:'พักบอทรอบหลัก'+(s.manualOnly?' · มีไฟล์แก้ไข':''),reason:s.hold?.reason||'ล็อกผลรอบหลักเพื่อรักษาประวัติเคสเดิมและป้องกันเคสซ้ำ',next:'เลือกไฟล์แล้วรันตรวจมือเป็นรายงานแยกได้ แม้ยังไม่มีผลเดิม · หัวหน้า/ผู้ดูแลยืนยันผลเท่านั้น',blocked:false};
+  if(Number(j.attempt_count)>=3&&['queued','error'].includes(j.status))return {title:'รอบหลักลองครบ 3 ครั้ง',reason:j.last_error||'ต้องตรวจสาเหตุเดิมก่อนส่งรอบหลักซ้ำ',next:'ตรวจไฟล์และเหตุผลล้มเหลว · ใช้รันตรวจมือเพื่อทบทวนผลแยกได้',blocked:false};
+  if(j.status==='error')return {title:'รอบหลักล้มเหลว',reason:j.last_error||'ยังไม่มีรายละเอียดข้อผิดพลาด',next:'ตรวจไฟล์และโหลดสถานะล่าสุดก่อนสั่งตรวจมือ',blocked:false};
+  return {title:j.status==='queued'?'คิวหลักรอรอบบอท':'สถานะรอบหลัก',reason:j.last_run_id?'มีผลเดิมอ้างอิง':'ยังไม่มีผลเดิม ไม่ใช่ยอดศูนย์',next:j.status?'รันตรวจมือได้ทันทีเป็นรายงานแยก · ไม่เปลี่ยนคิวหลัก ยอด หรือเคส':'ยังไม่มีคิวบริษัท/วันที่นี้ กรุณาตรวจการรับไฟล์',blocked:!j.status};
+ }
+ function noticeHtml(s){const n=runNotice(s);return `<aside class="manual-note" role="status"><strong>${esc(n.title)}</strong><p>สาเหตุ: ${esc(n.reason)}</p><p>ทำต่อ: ${esc(n.next)}</p></aside>`;}
  function validateCorrection(b){
   if(!b?.fileId||!b.expectedRevision||!String(b.reason||'').trim()||b.reason.trim().length<10)throw Error('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
   if(!/^[A-Z0-9]+$/.test(b.company)||!/^\d{4}-\d{2}-\d{2}$/.test(b.date)||!kinds.includes(b.kind))throw Error('บริษัท วันที่ หรือประเภทไฟล์ไม่ถูกต้อง');
@@ -11,13 +21,14 @@
   return b;
  }
  function mount(host,opts){
-  let files=[],hold=null,manualOnly=false,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='';
+  let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='';
   const actor=opts.actor?.(),sameActor=()=>!actor||opts.actor?.()===actor;
   function draw(){
    if(!alive)return;
    if(!sameActor()){host.innerHTML='<p role="alert">ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่</p>';return;}
    host.innerHTML=`<section class="manual-tools"><div class="manual-scope"><strong>${esc(opts.company)} · ${esc(opts.date)}</strong><span>เลือกไฟล์ → ตรวจซ้ำ → หัวหน้ายืนยันผล</span></div><h3>เลือกไฟล์และจัดการรอบตรวจ</h3>
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
+    ${noticeHtml(runState)}
     <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):'ยังไม่ได้พักรัน'}</p>
     <label>เหตุผลพัก/เปิดงาน <input data-hold-reason maxlength="2000" value="${esc(holdReason)}"></label>
     <button data-hold ${busy||!canManage(opts.role())||(hold?.paused&&manualOnly)?'disabled':''}>${hold?.paused?'เปิดให้รันต่อ':'พักรันบริษัท–วันที่นี้'}</button>
@@ -27,16 +38,16 @@
     <table><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
      ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
     </tbody></table>
-    <button data-run ${busy||!selected.size?'disabled':''}>รันด้วยไฟล์ที่เลือก (${selected.size})</button>
+    <button data-run ${busy||!selected.size||runNotice(runState).blocked?'disabled':''}>รันตรวจมือด้วยไฟล์ที่เลือก (${selected.size})</button>
     <p>ผลต้องผ่านการทบทวนและยืนยันจากหัวหน้า/ผู้ดูแลก่อนใช้ ไม่เปิดเคสจากการตรวจเปรียบเทียบ</p>
     <div data-detail>${editor?editorHtml():reviewing||''}</div></section>`;
    host.querySelector('[data-hold-reason]').oninput=e=>{holdReason=e.target.value;};
    host.querySelector('[data-refresh]').onclick=load;
    host.querySelectorAll('[data-select]').forEach(el=>el.onchange=()=>{
     el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);
-    const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size;run.textContent=`รันด้วยไฟล์ที่เลือก (${selected.size})`;
+    const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size||runNotice(runState).blocked;run.textContent=`รันตรวจมือด้วยไฟล์ที่เลือก (${selected.size})`;
    });
-   host.querySelector('[data-run]').onclick=()=>{if(sameActor())opts.onRun([...selected]);};
+   host.querySelector('[data-run]').onclick=()=>{if(sameActor()&&!runNotice(runState).blocked)opts.onRun([...selected]);};
    host.querySelector('[data-hold]').onclick=async()=>{
     const reason=host.querySelector('[data-hold-reason]').value.trim();
     if(!sameActor()||!canManage(opts.role()))return;
@@ -78,8 +89,8 @@
    };
   }
   async function action(fn){busy=true;error='';draw();try{await fn();await load();}catch(e){error=e.message;}finally{busy=false;draw();}}
-  async function load(){try{const result=await opts.load(opts.company,opts.date);files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){error=e.message;}draw();}
+  async function load(){try{const result=await opts.load(opts.company,opts.date);runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);

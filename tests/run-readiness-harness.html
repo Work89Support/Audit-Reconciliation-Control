@@ -1,0 +1,12 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>แจ้งสถานะรัน — ข้อมูลจำลอง</title>
+<link rel="stylesheet" href="../styles.css"><style>body{max-width:1000px;margin:24px auto;padding:18px;font-family:Kanit,Arial;background:#f5f8fb}button,select{margin:8px;padding:10px}</style>
+<h1>แจ้งสถานะรัน — ข้อมูลจำลองเท่านั้น</h1><p>ไม่เชื่อมระบบจริง ไม่แก้ยอด ไม่ยืนยันผลหรือปิดเคส</p>
+<label>สถานการณ์ <select id="scenario"><option value="held">แก้ไฟล์ / พักรัน / ยังไม่มีผลเดิม</option><option value="failed">ล้มเหลวครบ 3 ครั้ง</option><option value="running">บอทรอบหลักกำลังรัน</option><option value="unavailable">โหลดสถานะไม่สำเร็จ</option><option value="dispatch">ส่งงาน Worker ไม่สำเร็จ</option></select></label>
+<div id="panel"></div><script src="../file-run-management.js"></script><script src="../account-recheck.js"></script><script>
+let dispose,items=[];const scenario=document.querySelector('#scenario');
+function mount(){dispose?.();items=[];dispose=AccountRecheck.mount(document.querySelector('#panel'),{
+ company:'TEST',date:'2026-10-12',accounts:['ALL'],role:()=> 'lead',actor:()=> 'dummy-head',
+ loadState:async()=>{if(scenario.value==='unavailable')throw Error('ตัวอย่างเครือข่ายขัดข้อง');return {job:{status:scenario.value==='running'?'running':'queued',attempt_count:scenario.value==='failed'?3:0,last_run_id:null,last_error:'ตัวอย่างอ่านไฟล์ไม่สำเร็จ'},hold:scenario.value==='held'?{paused:true,reason:'แก้ไฟล์ฝาก/ถอนที่ระบุประเภทผิด'}:null,manualOnly:scenario.value==='held'};},
+ list:async()=>items,request:async s=>{items=[{id:'dummy',request_key:s.requestKey,company:s.company,business_date:s.date,account:'ALL',direction:s.direction,mode:s.mode,status:'queued'}];return {dispatch_error:'ตัวอย่าง Worker ไม่รับงาน · ตรวจสถานะก่อนสั่งซ้ำ'};}
+});}scenario.onchange=mount;mount();
+</script></html>
