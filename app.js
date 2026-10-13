@@ -1081,6 +1081,10 @@ async function readAuditBoOperatorRecords(file,date) {
   if(!['bo_compact','bo_transaction_export','bo_main'].includes(result.code))throw new Error('ไม่พบรูปแบบ BO ที่ตรวจสอบได้');
   return [...result.records,...(result.aux||[]).filter(r=>r.kind==='xb_information')];
 }
+async function openManualPrimaryCaseSet(id,onReload){
+  if(!['lead','admin'].includes(state.role))return deny('ยืนยันเคสชุดใหม่');
+  return PrimaryCaseSets.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,preview:Sb.manualPrimaryCasesPreview,activate:Sb.activateManualPrimaryCases,onActivated:()=>{toast('สร้างเคสชุดใหม่แล้ว เก็บเคสเดิมเป็นประวัติ');onReload?.();}});
+}
 VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   date: state.filters.date || DEFAULT_WORK_DATE,
   company: MC8LiveSheets.COMPANIES.includes(state.dailySummary.company) ? state.dailySummary.company : 'MC8',
@@ -1100,6 +1104,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
     if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
     await openEvidenceRelatedCase(row.id);
   },
+  onNewCaseSet: ['lead','admin'].includes(state.role)?openManualPrimaryCaseSet:null,
   onCaseError: (error) => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
   onFile: (file,date,company) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||company,date,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
   exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
@@ -2663,7 +2668,7 @@ function renderDailyCompanySummary(root) {
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
       ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
-${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>รายการเคสด้านล่างเป็นประวัติเคสเดิม</p></section>`).join('')}
+${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>${r.primaryResult.case_set?'รายการงานปัจจุบันใช้เคสชุดใหม่ · เคสเดิมดูได้ในหน้าชีต Audit':'รายการเคสด้านล่างเป็นประวัติเคสเดิม'}</p></section>`).join('')}
       ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
       <section class="panel daily-focus-board">
         <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>

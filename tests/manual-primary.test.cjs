@@ -11,4 +11,10 @@ assert.equal(primary.formatTime('invalid'),'ไม่พบเวลาที่
 assert.match(primary.noticeInfo({...v,reason:'<script>bad</script>'}),/&lt;script&gt;/);
 assert.match(primary.noticeInfo(v),/<details[^>]*>[\s\S]*qa-version/);
 assert.equal(v.accepted_at,'2026-10-13');
+const real={id:'real-new-case',code:'MR9-R-qa-001',status:'open',customer_details:{manual_primary_id:v.id,manual_primary_row_kind:'exception',manual_primary_row_index:0}};
+const withException={...v,report:{...v.report,exceptions:[{system_amount:100,bank_amount:null,customer_details:{source_rows:{bo:{fileId:'bo',row:3}}}}]}};
+assert.equal(primary.cases(withException,[real])[0].id,real.id);
+assert.equal(primary.cases(withException,[{...real,customer_details:{...real.customer_details,manual_primary_id:'another-version'}}])[0].id,null);
+assert.equal(primary.cases(withException,[real,{...real,id:'ambiguous'}])[0].id,null);
+assert.equal(primary.cases(withException,[real])[0].system_amount,100);
 console.log('PASS primary UI/export: source rows unchanged, Thai time and escaped collapsible metadata');

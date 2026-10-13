@@ -298,6 +298,12 @@ const Sb = (() => {
     }
   }
   const json = async (path, opts = {}) => {
+    // Collections use the active case set; explicit detail/evidence/history reads stay intact.
+    if((!opts.method||opts.method.toUpperCase()==='GET')&&!opts.includeHistorical){
+      if(path.startsWith('/rest/v1/exceptions?')&&!/[?&]id=eq\./.test(path))path=path.replace('/rest/v1/exceptions?','/rest/v1/active_audit_exceptions?');
+      for(const name of ['case_closure_requests','cross_day_pair_requests','cross_day_image_reviews','manual_case_pairs'])
+        if(path.startsWith('/rest/v1/'+name+'?')&&/[?&]status=eq.pending(?:&|$)/.test(path))path=path.replace('/rest/v1/'+name+'?','/rest/v1/active_'+name+'?');
+    }
     const actor = session?.user?.id || '';
     const read = (!opts.method || opts.method.toUpperCase() === 'GET') && !opts.signal;
     const key = read ? JSON.stringify([base(), session?.access_token || '', actor, readGeneration, path, opts.headers || {}, opts.timeoutMs || 30000]) : null;
@@ -436,13 +442,13 @@ const Sb = (() => {
     return json(`/rest/v1/${name}?${filters.join("&")}`);
   }
 
-  async function primaryOverlays(rows){
+  async function primaryOverlays(rows,{caseCountsOnly=false}={}){
     if(!rows.length)return rows;
     const dates=rows.map(r=>r.business_date).sort(),companies=[...new Set(rows.map(r=>r.company))];
     const versions=await json(`/rest/v1/manual_primary_results?business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})&select=company,business_date&limit=1000`);
     const scopes=new Set(versions.map(r=>r.company+'|'+r.business_date)),resolved=new Map();
     for(const row of rows){const key=row.company+'|'+row.business_date;if(scopes.has(key)&&!resolved.has(key)){const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)throw new Error(v.message);if(v)resolved.set(key,v);}}
-    return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);if(!v)return row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v};});
+    return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);if(!v)return row;if(caseCountsOnly)return {...row,...(v.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count}: {})};const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...(v.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count}: {})};});
   }
   const dailyStatus = async (opts = 30) => primaryOverlays(await rangedView("v_daily_status", "business_date.desc", opts, 30));
   const operations = async (opts = 100) => {
@@ -474,13 +480,13 @@ const Sb = (() => {
         });
         rows.push(...chunk);
       }
-      return rows.slice(0, cap);
+      return primaryOverlays(rows.slice(0, cap),{caseCountsOnly:true});
     }
     const filters = ["select=*", "order=business_date.desc,company.asc", `limit=${limit}`];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-    return json(`/rest/v1/v_daily_company_checklist?${filters.join("&")}`);
+    return primaryOverlays(await json(`/rest/v1/v_daily_company_checklist?${filters.join("&")}`),{caseCountsOnly:true});
   }
 
   async function boFirstCoverage({ from, to, company, limit = 5000 } = {}) {
@@ -760,8 +766,9 @@ const Sb = (() => {
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
     if(run.primaryResult){
-      const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`);history.push(...page);if(page.length<500)break;}
-      return {run,cases:ManualPrimary.cases(run.primaryResult),caseHistory:history,waitingHistory:[],complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
+      const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true});history.push(...page);if(page.length<500)break;}
+      const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id)),current=history.filter(e=>ids.has(e.id));
+      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>e.customer_details?.manual_primary_row_kind==='waiting'),complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
     }
     if (!run.id) return {run,cases:[],complete:false};
     let confirmedRechecks=[],recheckReportError='';
@@ -873,7 +880,9 @@ const Sb = (() => {
   const confirmAccountRecheck=body=>rpc('confirm_account_recheck',body);
   const manualPrimaryPreview=id=>json('/rest/v1/rpc/manual_primary_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
   const acceptManualPrimary=body=>json('/rest/v1/rpc/accept_manual_primary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
-  const readManualPrimary=(company,date)=>rpc('read_manual_primary',{p_company:company,p_date:date});
+  const readManualPrimary=async(company,date)=>{const v=await rpc('read_manual_primary',{p_company:company,p_date:date});if(v&&!v.stale)v.case_set=await rpc('read_manual_primary_case_set',{p_id:v.id});return v;};
+  const manualPrimaryCasesPreview=id=>json('/rest/v1/rpc/manual_primary_cases_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
+  const activateManualPrimaryCases=body=>json('/rest/v1/rpc/activate_manual_primary_cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
   const auditSourceArchiveManifest=(company,date,includeEvidence)=>rpc('audit_source_archive_manifest',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence});
   const auditSourceArchiveValidate=(company,date,includeEvidence,files)=>rpc('audit_source_archive_validate',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence,p_files:files.map(f=>({id:f.id,storage_path:f.storage_path,file_name:f.file_name,checksum:f.checksum,size_bytes:f.size_bytes,object_version:f.object_version,object_etag:f.object_etag}))});
   const effectiveAuditFiles=(company,date)=>rpc('effective_audit_source_files',{p_company:company,p_date:date});
@@ -1543,7 +1552,7 @@ const Sb = (() => {
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
-    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,readManualPrimary,
+    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
     fileRunManagement,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
