@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const api=require('../mc8-live-sheets.js');
+const row=(key,amount)=>({key,company:'MC8',account:'1998545397',direction:'deposit',isPair:true,kind:'matched',boAmount:amount,pmAmount:amount,bo:{account:'CUSTOMER'},pm:{name:'ชื่อลูกค้า'},boSource:{fileId:'bo',row:key==='a'?1:2},pmSource:{fileId:'stm',row:key==='a'?1:2},boDate:'2026-10-12',pmDate:'2026-10-12'});
+const rows=[row('a',100),row('b',100)],before=JSON.stringify(rows);
+const [group]=api.accountReviewGroups(rows);
+assert.equal(group.label,'KB ทินกร 1998545397');
+assert.equal(group.account,'1998545397');assert.equal(group.key,'bo-account:bank:1998545397');
+assert.equal(group.rows.length,2);assert.equal(api.summarize(group.rows).boCents,20000);assert.equal(api.summarize(group.rows).pmCents,20000);
+assert.deepEqual(api.filter(rows,'all','all','all',group.key),rows);
+assert.equal(JSON.stringify(rows),before);
+assert.equal(api.accountReviewGroups([{...rows[0],company:'MR9'}])[0].label,'1998545397');
+assert.equal(api.accountReviewGroups([{...rows[0],account:'1234567890'}])[0].label,'1234567890');
+assert.equal(api.accountReviewGroups([{...rows[0],boAccountLabel:'KBANK 1998545397 (ชื่อจาก BO)'}])[0].label,'KBANK 1998545397 (ชื่อจาก BO)');
+console.log('PASS manual bank label: exact scoped registry name, unchanged grouping/source/amounts, no cross-company or customer-name inference');

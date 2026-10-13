@@ -18,7 +18,7 @@ const sameDayWaiting={...sk8Waiting,crossDay:false};
 assert.equal(live.buildAuditExportSheets([...sk8Matched,sameDayWaiting],'SK8','2026-10-10',true,schema)[1].rows[0][8],'จับคู่แล้ว 8 รายการ · รอ STM/PM 1 รายการ / 100.00 บาท');
 assert.equal(live.summarize([...mixed,row({key:'other-crossday',account:'CYBERPLUS',isPair:false,kind:'review',crossDay:true,boAmount:1224,pmAmount:null,boSource:{fileId:'other-bo',row:1}})]).waitingCrossDayCount,1);
 assert.equal(JSON.stringify(mixed),mixedBefore,'summary changes never mutate source amounts or cases');
-assert.deepEqual(sheets.map(s=>s.name),['ข้อมูลทั้งหมด','สรุป','1998545397','AUTOPEER · ฝาก','AZPAY · ถอน','COREPAY · ฝาก']);
+assert.deepEqual(sheets.map(s=>s.name),['ข้อมูลทั้งหมด','สรุป','KB ทินกร 1998545397','AUTOPEER · ฝาก','AZPAY · ถอน','COREPAY · ฝาก']);
 const all=sheets[0],summary=sheets[1],at=sheets.find(s=>s.name==='AUTOPEER · ฝาก');
 assert.equal(all.title,undefined,'first header starts at row 1');
 assert.equal(all.headers.at(-1),'สถานะสำหรับเทียบทีมกระทบมือ');
@@ -32,7 +32,7 @@ assert.deepEqual(at.rows.map(r=>r[all.headers.length-1]),['ปิดได้ท
 assert.match(at.rows[0][at.headers.indexOf('เหตุผลระบบ')],/เวลา PM: paymentTime/);
 assert.match(at.rows[0][at.headers.indexOf('เหตุผลระบบ')],/ยอด PM: realAmount/);
 assert.equal(summary.rows.find(r=>r[1]==='AUTOPEER · ฝาก')[7],1,'advisory is not an Audit action');
-assert.equal(sheets.find(s=>s.name==='1998545397').rows[0][all.headers.length-1],'ปิดเคสแล้ว');
+assert.equal(sheets.find(s=>s.name==='KB ทินกร 1998545397').rows[0][all.headers.length-1],'ปิดเคสแล้ว');
 assert.match(sheets.find(s=>s.name==='COREPAY · ฝาก').rows[0][all.headers.length-1],/ค้างรอข้อมูลข้ามวัน/);
 assert.equal(sheets.find(s=>s.name==='AZPAY · ถอน').rowTones[0],'error');
 // The provider-source column rules remain unchanged in the table adapter.

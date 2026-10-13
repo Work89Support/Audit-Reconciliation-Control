@@ -377,6 +377,17 @@
     const direction=accountDisplayDirection(row);
     return {key:`bo-account:bank:${identity}:${direction}`,account:base,label:`${base} · ${direction==='withdraw'?'ถอน':'ฝาก'}`,direction,rows:[]};
   }
+  function bankDisplayLabel(row,label){
+    // Display only. Bind a full account number to this company's unique bank
+    // registration; never infer holders from an amount, customer or suffix.
+    if(row.company!=='MC8'||!/^\d{6,}$/.test(String(label).trim())||sourceSheetOf(row))return label;
+    const company=isSevenM(row.company)?'7M':row.company;
+    const hits=(registryCatalog?.ACCOUNTS||[]).filter(a=>a.subco===company&&a.source==='bank'&&String(a.account).replace(/\D/g,'')===String(label).trim()&&a.bank&&a.name);
+    const names=[...new Set(hits.map(a=>`${a.bank}|${a.name}`))];
+    if(names.length!==1)return label;
+    const meta=hits[0],bank=meta.bank==='KBANK'?'KB':meta.bank;
+    return `${bank} ${shortHolder(meta.name)} ${String(label).trim()}`;
+  }
   function boAccountGroups(rows){
     const groups=new Map();
     for(const row of rows){
@@ -392,7 +403,8 @@
       const identity=bank?(String(row.account).replace(/\D/g,'')||account.replace(/ฝาก|ถอน/g,'').trim()):account;
       const key=`bo-account:${bank?'bank:'+identity:account}${split?':'+direction:''}`;
       const base=bank&&!split?account.replace(/ฝาก|ถอน/g,'').replace(/\s+/g,' ').trim():account;
-      const label=split&&!new RegExp(direction==='deposit'?'ฝาก':'ถอน').test(base)?`${base} · ${thaiDirection({...row,direction})}`:base;
+      const displayBase=bankDisplayLabel(row,base);
+      const label=split&&!new RegExp(direction==='deposit'?'ฝาก':'ถอน').test(displayBase)?`${displayBase} · ${thaiDirection({...row,direction})}`:displayBase;
       if(!groups.has(key))groups.set(key,{key,account,label,direction,rows:[]});
       groups.get(key).rows.push(row);
     }
