@@ -558,6 +558,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .exception-summary > div { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; color: var(--muted); }
 .exception-summary b { color: var(--text); }
 .live-table td { vertical-align: top; }
+.live-table td:nth-child(3), .live-table td:nth-child(5), .live-table td:nth-child(6) { white-space: normal; max-width: 220px; overflow-wrap: anywhere; }
+.live-table td:nth-child(3) .badge { white-space: normal; line-height: 1.5; text-align: left; }
+.live-table td .sub { margin-top: 4px; }
 .spark { flex: 0 0 auto; opacity: .9; }
 @media (max-width: 1120px) {
   .company-rule-layout { grid-template-columns: 1fr; }

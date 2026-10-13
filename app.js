@@ -1665,10 +1665,10 @@ function renderLiveDashboard(root) {
   const totalMail = daily.reduce((sum, x) => sum + Number(x.mail_count || 0), 0);
   const totalFiles = daily.reduce((sum, x) => sum + Number(x.file_count || 0), 0);
   const parsedFiles = daily.reduce((sum, x) => sum + Number(x.parsed_count || 0), 0);
-  const completed = quality.filter((x) => x.status === "completed").length;
+  const completed = quality.filter((x) => x.primaryResult || x.status === "completed").length;
   const needsReview = quality.filter((x) => x.status === "needs_review").length;
-  const waiting = quality.filter((x) => x.status === "waiting_files").length;
-  const failed = quality.filter((x) => x.status === "error" || Number(x.error_count || 0) > 0).length;
+  const waiting = quality.filter((x) => !x.primaryResult && x.status === "waiting_files").length;
+  const failed = quality.filter((x) => !x.primaryResult && (x.status === "error" || Number(x.error_count || 0) > 0)).length;
   const checklistInRange = (liveOverviewState.checklist || []).filter(inLiveRange);
   const checklistByCompanyDate = new Map(checklistInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
   const currentExceptionCount = (row) => {
@@ -1695,7 +1695,7 @@ function renderLiveDashboard(root) {
     const item = companyMap.get(key);
     item.files += Number(row.file_count || 0);
     item.latest = item.latest > row.business_date ? item.latest : row.business_date;
-    if (row.status === "completed") item.completed++;
+    if (row.primaryResult || row.status === "completed") item.completed++;
     else if (row.status === "waiting_files") item.waiting++;
     else if (row.status === "error") item.error++;
     else item.review++;
@@ -1714,10 +1714,7 @@ function renderLiveDashboard(root) {
 
   const typeSummary = Object.entries(exceptions.reduce((acc, e) => ((acc[e.typeName] = (acc[e.typeName] || 0) + 1), acc), {})).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const recent = [...quality].sort((a, b) => String(b.business_date).localeCompare(String(a.business_date)) || String(a.company).localeCompare(String(b.company), "th")).slice(0, 80);
-  const missingText = (row) => {
-    const groups = Array.isArray(row.missing_groups) ? row.missing_groups.flat(2) : [];
-    return groups.length ? [...new Set(groups)].map((kind) => LIVE_KIND_LABEL[kind] || kind).join(", ") : "ครบ";
-  };
+  const missingText = (row) => cloudMissingGroupsText(row.missing_groups);
   const companyByCode = new Map(companies.map((company) => [String(company.company || "").toUpperCase(), company]));
   const latestCompanyDate = (codes) => codes.reduce((latest, code) => {
     const value = companyByCode.get(code)?.latest || "";
@@ -1773,10 +1770,11 @@ function renderLiveDashboard(root) {
     </section>
 
     <section class="panel daily-checklist-panel">
-      <div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง โดย Google Sheet ใช้ยืนยันชื่อมาตรฐานเท่านั้น</small></div><span class="health ${checklist.some((row) => !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทที่ระบบประมวลผลเสร็จ</span></div>
+<div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง · คอลัมน์เอกสารและการอ่านไฟล์เป็นรอบอัตโนมัติ · ผลหลักและผลรันมือแสดงแยกในคอลัมน์สถานะ</small></div><span class="health ${checklist.some((row) => !row.primaryResult && !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.primaryResult || row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทที่ระบบประมวลผลเสร็จ</span></div>
       <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ตาม BO</th><th>BO ที่รับ / ต้องมี</th><th>PM ตาม BO</th><th>บัญชี/Provider ที่ BO ระบุ</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
         ${checklist.map((row) => {
-          const status = CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
+          const resultStatus=dailyResultStatus(row);
+          const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
           const future = row.checklist_status === "scheduled";
           const reconFileCount = Number(row.recon_file_count ?? row.file_count ?? 0);
           const parsedOk = reconFileCount > 0 && Number(row.parsed_count) === reconFileCount && !Number(row.error_count);
@@ -1800,7 +1798,7 @@ function renderLiveDashboard(root) {
           const providerNotes = `${!coverage && inactiveProviders ? `<small class="sub">ทะเบียนยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">ชื่อรอยืนยันในชีต: ${h(pendingProviders)}</small>` : ""}`;
           const boFirstMissing = missingCoverage.map((item) => `ขาด ${item.kind} ${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
           const pending = () => checklistMark(false, "รอวันทำการ", true);
-          return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(displayTime(row.last_mail_at))}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark(row.job_status==="completed" && Number(row.open_count)===0, row.job_status==="completed" ? `จับคู่ ${num(row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(row.missing_items.join(" · "))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
+return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(displayTime(row.last_mail_at))}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark((resultStatus.primary || row.job_status==="completed") && Number(row.open_count)===0, resultStatus.primary || row.job_status==="completed" ? `จับคู่ ${num(resultStatus.primary?.report?.matched ?? row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(cloudMissingGroupsText(row.missing_items))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
         }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
       </tbody></table></div>
       <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
@@ -1845,8 +1843,9 @@ function renderLiveDashboard(root) {
         <tbody>${recent.map((row) => {
           const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
           const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
-          const status = LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
-          return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span></td><td class="right tnum">${num(row.file_count)}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสปัจจุบัน`}</td></tr>`;
+          const resultStatus = dailyResultStatus(lifecycle||{},row);
+          const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
+return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${lifecycle?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(lifecycle.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
         }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
       </table></div>
     </section>`;

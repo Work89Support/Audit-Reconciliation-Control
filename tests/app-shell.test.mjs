@@ -160,7 +160,7 @@ assert.match(app, /function dailyAuditSheetRows\(date\)[\s\S]+dailyCompanyState\
 assert.match(app, /const hasCurrentCounts = row\.open_count != null && row\.resolved_count != null/, "ตารางทุกบริษัทต้องใช้ยอดเคสปัจจุบันจาก lifecycle ไม่ฟื้นเคสเก่าจากยอดที่สร้างตอนรัน");
 assert.match(app, /const exceptionCount = hasCurrentCounts \? openCount \+ resolvedCount : generatedExceptionCount/, "ยอดสีแดงต้องเท่ากับเคสปัจจุบันเมื่อ checklist พร้อม");
 assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\.open_count[\s\S]+lifecycle\.resolved_count/, "รายการล่าสุดบนแดชบอร์ดต้องใช้ยอด lifecycle ชุดเดียวกับรายละเอียดรายบริษัท");
-assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสปัจจุบัน ไม่ใช่ยอดที่เคยสร้างทั้งหมด");
+assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสรวมชุดปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสรวมชุดปัจจุบัน พร้อมแยกค้างและปิดแล้ว");
 assert.match(app, /completed_review: \{ label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" \}/, "สถานะเคสคงค้างต้องแสดงภาษาไทย ไม่หลุดชื่อสถานะภายใน");
 assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "หน้ารายวันต้องโหลดผลทุกบริษัทเพื่อสร้างตารางภาพรวมจริง");
 assert.match(app, /data-sheet-mode="\$\{row\.resultStatus\.primary \? "report" : row\.missing\.length/, "ผลหลักไปดูรายงาน ส่วนรอบเดิมยังไปแก้ไฟล์ ตรวจข้อผิดปกติ หรืออนุมัติได้");
