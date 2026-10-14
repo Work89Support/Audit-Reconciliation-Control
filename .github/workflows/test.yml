@@ -33,5 +33,9 @@ jobs:
           npm run test:attachments
       - name: Verify authentication outage recovery
         run: node tests/auth-connecting-gate.test.mjs && node tests/auth-access-outage.test.mjs && node tests/auth-refresh-backoff.test.mjs
+      - name: Verify admin email-password provisioning and first-login isolation
+        run: |
+          node tests/password-accounts.test.cjs
+          node tests/password-accounts-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify confirmed damage and PM payout guards
         run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs
