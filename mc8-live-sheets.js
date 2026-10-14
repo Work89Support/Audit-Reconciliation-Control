@@ -755,6 +755,19 @@
     ];
     if(rows.some(isExcludedAccountSheetRow))sheets[1].footerRows[0][1]='รวมยอดต้นทางเดิม รวม BO - ฝากที่ไม่สร้างชีต (ตรวจในข้อมูลทั้งหมด)';
     for(const group of groups){
+      // Match the 7M CYBERPLUS deposit screen: STM amount is column D.
+      // Append the existing universal audit details rather than discard them.
+      if(isSevenM(company)&&group.rows.every(row=>providerOf(row.account)==='CY'&&directionOf(row.direction)==='deposit')){
+        const scoped=chronologicalRows(group.rows),view=tableView(scoped,company,date,complete,'CY ฝ',schema);
+        const auditHeaders=[...ALL_HEADERS,'BO · ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','BO ฝาก','BO ถอน'];
+        const headers=[...view.headers,...auditHeaders],data=scoped.map((row,index)=>[...view.rows[index],...allExportRow(row,complete),row.bo?.performedBy||'',row.boSource?.fileName||row.boSource?.fileId||'',hasSide(row,'bo')?row.boAmount:'','']);
+        const s=summarize(scoped),footer=totalRow(headers,data,'จำนวนเงิน'),offset=view.headers.length;
+        footer[offset+ALL_HEADERS.indexOf('STM/PM · ยอด')]=s.pmCents/100;
+        footer[offset+ALL_HEADERS.indexOf('BO · ยอด')]=s.boCents/100;
+        footer[offset+ALL_HEADERS.indexOf('ผลต่างยอด')]=s.diffAfterCents/100;
+        sheets.push({name:group.name,headers,rows:data,...exportTones(scoped,complete,view.headers.indexOf('สถานะ Audit')),footerRows:[footer],widths:headers.map(header=>/เวลา|บัญชี|เหตุผล|หมายเหตุ/.test(header||'')?30:20)});
+        continue;
+      }
       const borrowed=group.rows.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ','ไฟล์ BO ต้นทาง','BO ฝาก','BO ถอน',...(borrowed?['BO · เวลาทำรายการต้นทาง']:[])];
       const scoped=chronologicalRows(group.rows,company==='3XB'&&borrowed),data=scoped.map(row=>[...allExportRow(row,complete),row.bo?.performedBy||'',row.boSource?.fileName||row.boSource?.fileId||'',hasSide(row,'bo')&&accountDisplayDirection(row)==='deposit'?row.boAmount:'',hasSide(row,'bo')&&accountDisplayDirection(row)==='withdraw'?row.boAmount:'',...(borrowed?[row.boTransactionTime||'']:[])]);

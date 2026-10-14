@@ -17,6 +17,8 @@ for(const direction of ['deposit','withdraw']){
 const sheets=live.buildAuditExportSheets(rows,'UFABET7M','2026-10-13',true,schema);
 const detail=sheets.find(sheet=>sheet.name.includes('CYBERPLUS'));
 assert.ok(detail);
+assert.equal(detail.headers[3],'จำนวนเงิน');
+assert.deepEqual(detail.rows.map(row=>row[3]).filter(value=>value!==''),amounts);
 assert.deepEqual(detail.rows.map(row=>row[detail.headers.indexOf('STM/PM · ยอด')]).filter(value=>value!==''),amounts);
 assert.equal(detail.footerRows[0][detail.headers.indexOf('STM/PM · ยอด')],3920);
 assert.equal(JSON.stringify(input),before);
