@@ -11,7 +11,7 @@ const CrossDayWorkbench = (() => {
     queueState.loading=true;try{const rows=await Sb.pendingCrossDayPairs();if(Sb.authUser()?.id===user){queueState.rows=rows;queueState.error='';}}catch(error){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=error.message;}}finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
   }
   const writable = () => state.dataset === 'production' && Sb.signedIn() && ['monitor','audit_assistant','lead','admin'].includes(state.role);
-  const eligible = e => e.type === 'cross_day' && e.status === 'open';
+  const eligible = e => e.type === 'cross_day' && ['open','pending_next_day'].includes(e.status);
   const key = (file, row) => `${file.id}:${row.source_mode==='image'?'page':'row'}:${row.rowNo}`;
   const lateNight = value => {
     const match=String(value||'').match(/(?:^|[T\s])(\d{2}):(\d{2})(?::(\d{2}))?/);

@@ -604,6 +604,9 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const linkSelectedCaseFile = (caseId, fileId, note) => rpc('link_selected_case_file', {
     p_exception_id: caseId, p_file_id: fileId, p_note: note,
   });
+  const linkWaitingCrossDayFile = (caseId, fileId, note) => rpc('link_waiting_cross_day_file', {
+    p_exception_id:caseId,p_file_id:fileId,p_note:note,
+  });
 
   async function auditLogs({ from, to, limit = 2000 } = {}) {
     const filters = ["select=*", "order=at.desc", `limit=${limit}`];
@@ -1317,8 +1320,10 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
         checkActor();
         if(!Array.isArray(accessible)||accessible.length!==1||accessible[0].id!==metadata.exception_id)
           throw new Error('ยังไม่ได้ส่งไฟล์: ไม่พบเคสหรือไม่มีสิทธิ์อ่านเคสนี้');
-        if(!(metadata.correction_reason?['closed','approved']:['open','clarifying','answered','pair_pending']).includes(accessible[0].status))
+        if(!(metadata.correction_reason?['closed','approved']:['open','pending_next_day','clarifying','answered','pair_pending']).includes(accessible[0].status))
           throw new Error('ยังไม่ได้ส่งไฟล์: สถานะเคสเปลี่ยนหรือปิดแล้ว กรุณาตรวจล่าสุดก่อน');
+        if(accessible[0].status==='pending_next_day' && await rpc('can_attach_waiting_cross_day_evidence',{p_case:metadata.exception_id})!==true)
+          throw new Error('ยังไม่ได้ส่งไฟล์: ไม่มีสิทธิ์ หรือเคสรอข้ามวันไม่ใช่ผลหลักล่าสุด/มีคำขออยู่แล้ว');
         progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
         pending.attempted=true;
         for(let storageAttempt=0;storageAttempt<2;storageAttempt++)try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;break;}
@@ -1602,6 +1607,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     voidDamageReceipt,
     evidenceFiles,
     linkSelectedCaseFile,
+    linkWaitingCrossDayFile,
     auditLogs,
     notifications,
     clarificationMatches,

@@ -3752,12 +3752,13 @@ async function loadExceptionSupport(e, options = {}) {
             if(state.selected!==e.id||!document.body.contains(form))return;
             const note=input.value.trim();
             if(!note){status.textContent='กรุณาระบุเหตุผลก่อนผูกหลักฐาน';input.focus();return;}
-            if(headFilePicker&&(note.length<10||note.length>2000)){status.textContent='ระบุเหตุผลที่ไฟล์นี้ยืนยันรายการของเคส 10–2,000 ตัวอักษร';input.focus();return;}
+            if((headFilePicker||e.type==='cross_day'&&e.status==='pending_next_day')&&(note.length<10||note.length>2000)){status.textContent='ระบุเหตุผลที่ไฟล์นี้ยืนยันรายการของเคส 10–2,000 ตัวอักษร';input.focus();return;}
             saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
             status.textContent='กำลังผูกหลักฐาน…';
             try{
               const recommendationId=recommended.get(b.dataset.linkMail);
-              if(headFilePicker)await Sb.linkSelectedCaseFile(e.dbId,b.dataset.linkMail,note);
+              if(e.type==='cross_day'&&e.status==='pending_next_day')await Sb.linkWaitingCrossDayFile(e.dbId,b.dataset.linkMail,note);
+              else if(headFilePicker)await Sb.linkSelectedCaseFile(e.dbId,b.dataset.linkMail,note);
               else if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
               else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
               const saved=await Sb.exceptionDetail(e.dbId);
@@ -4032,7 +4033,7 @@ async function openException(id, options = {}) {
     if (picker) picker.click();
     else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
   });
-  if(e.type==='cross_day'&&e.status==='open'){
+  if(CrossDayWorkbench.eligible(e)){
     $('#btnManualPair').disabled=false;
     $('#btnManualPair').textContent='จับคู่ข้ามวัน / เตรียมหลายคู่';
   }
