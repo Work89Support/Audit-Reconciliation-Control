@@ -7,7 +7,14 @@ Deno.serve(async req=>{
   const token=req.headers.get('Authorization')?.replace(/^Bearer\s+/i,'');if(!token)return reply({message:'ต้องเข้าสู่ระบบ'},401);
   const server=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
   const {data:identity,error}=await server.auth.getUser(token);if(error||!identity.user)return reply({message:'Session หมดอายุ'},401);
-  const b=await req.json(),password=String(b.password||'');
+  const b=await req.json();
+  if(b.action==='status'){
+   const {data:profile,error:profileError}=await server.from('app_profiles').select('active,role').eq('user_id',identity.user.id).maybeSingle();
+   const {data:gate,error:gateError}=await server.from('password_change_gates').select('user_id').eq('user_id',identity.user.id).maybeSingle();
+   if(profileError||gateError)return reply({message:'ตรวจสถานะไม่สำเร็จ'},503);
+   return reply({ok:true,can_manage:profile?.active===true&&profile.role==='admin'&&!gate,password_change_required:!!gate});
+  }
+  const password=String(b.password||'');
   if(password.length<9||password.length>128||!/[a-z]/i.test(password)||!/[0-9]/.test(password))return reply({message:'รหัสผ่าน 9–128 ตัว มีตัวอักษรและตัวเลข'},400);
   if(b.action==='change_first'){
    // getUser above verifies this JWT; use its session identity only after that verification.
