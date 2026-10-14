@@ -410,6 +410,11 @@ const Sb = (() => {
     return j;
   }
 
+  const passwordChangeRequired = () => rpc('password_change_required');
+  const passwordAccount = body => json('/functions/v1/password-accounts', {
+    method:'POST',headers:{'Content-Type':'application/json'},timeoutMs:45000,body:JSON.stringify(body),
+  });
+
   function signOut() {
     clearFileSnapshots();
     readGeneration++;
@@ -1591,6 +1596,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     requestMagicLink,
     requestPasswordReset,
     updatePassword,
+    passwordChangeRequired,passwordAccount,
     signOut,
     fileSnapshotInfo,
     clearFileSnapshots,

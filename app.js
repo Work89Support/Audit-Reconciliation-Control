@@ -5656,6 +5656,10 @@ VIEWS.users = async (root) => {
       </div>
     </section>`;
 
+  if(state.role==='admin'){
+    const passwordHost=document.createElement('div');root.prepend(passwordHost);
+    PasswordAccounts.mount(passwordHost,{users,companies:companyMaster().map(c=>c.code),actor:()=>Sb.authUser()?.id,role:()=>state.role,call:Sb.passwordAccount});
+  }
   const setAccessMode = (editing=false) => {
     const username = $('#accessLoginMode').value === 'username';
     $('#accessEmail').type = username ? 'text' : 'email';
@@ -8613,6 +8617,14 @@ async function performProductionEntry() {
     if (!$('#connectionGate').hidden) $('#connectionMessage').textContent = 'ฐานข้อมูลตรวจสิทธิ์ตอบกลับช้า กำลังรอแบบจำกัดเวลา — ยังไม่ได้ออกจากระบบ ไม่ต้องรีเฟรชหรือเข้าสู่ระบบซ้ำ';
   }, 10000);
   try {
+    if(await Sb.passwordChangeRequired()){
+      $('#connectionGate').hidden=true;$('#appShell').hidden=true;$('#loginGate').hidden=false;
+      $('#loginForm').hidden=true;$('#resetForm').hidden=false;
+      $('#resetForm').dataset.firstPassword='true';$('#resetError').hidden=true;
+      $('#resetForm h1, #resetForm h2').textContent='ตั้งรหัสผ่านส่วนตัวก่อนเริ่มใช้งาน';
+      $('#resetForm .login-lead').textContent='ตั้งรหัสใหม่อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเริ่มต้นเดิม ยังไม่เปิดข้อมูลจนกว่าจะบันทึกสำเร็จ';
+      return false;
+    }
     await applyAuthenticatedRole();
   } catch (error) {
     if (error.code === 'APP_ACCESS_DENIED') {
@@ -8741,15 +8753,17 @@ async function boot() {
     const password = $("#newPassword").value;
     const confirm = $("#confirmPassword").value;
     const error = $("#resetError");
-    if (password.length < 8 || password !== confirm) {
-      error.textContent = password.length < 8 ? "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" : "รหัสผ่านทั้งสองช่องไม่ตรงกัน";
+    const firstPassword=$('#resetForm').dataset.firstPassword==='true';
+    if (password.length < (firstPassword?9:8) || password !== confirm || (firstPassword&&(!/[a-z]/i.test(password)||!/[0-9]/.test(password)))) {
+      error.textContent = firstPassword ? 'รหัสใหม่ต้องมีอย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข และทั้งสองช่องตรงกัน' : password.length < 8 ? "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" : "รหัสผ่านทั้งสองช่องไม่ตรงกัน";
       error.hidden = false;
       return;
     }
     const button = $("#resetSubmit");
     button.disabled = true;
     try {
-      await Sb.updatePassword(password);
+      if(firstPassword){await Sb.passwordAccount({action:'change_first',password});delete $('#resetForm').dataset.firstPassword;}
+      else await Sb.updatePassword(password);
       Sb.signOut();
       $("#newPassword").value = "";
       $("#confirmPassword").value = "";

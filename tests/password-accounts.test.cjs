@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const {webcrypto}=require('node:crypto');global.crypto=webcrypto;
+const UI=require('../password-accounts.js');
+const users=[{email:'old@example.com',full_name:'หัวหน้าผู้ชี้แจง · X1 · Old',role:'shift_lead'}];
+let plan=UI.parse('new@example.com\tรองหัวหน้าผู้ชี้แจง · New\nold@example.com\tไม่เปลี่ยนชื่อ',users,true);
+assert.equal(plan[0].action,'create');assert.equal(plan[1].action,'reset');assert.equal(plan[1].full_name,users[0].full_name);
+assert.equal(UI.parse('old@example.com\tOld',users,false)[0].action,'skip');
+assert.throws(()=>UI.parse('DUP@example.com\tA\ndup@example.com\tB',[],true),/ซ้ำ/);
+assert.throws(()=>UI.parse('admin@example.com\tA',[{email:'admin@example.com',role:'admin'}],true),/ไม่เปลี่ยน/);
+assert.throws(()=>UI.parse('new@example.com',[],true),/Tab/);
+const source=fs.readFileSync('password-accounts.js','utf8'),edge=fs.readFileSync('supabase/functions/password-accounts/index.ts','utf8'),sql=fs.readFileSync('supabase/20261014_email_password_accounts.sql','utf8');
+assert(!source.includes('Audit1234'));assert(!source.includes('localStorage'));assert(!edge.includes('inviteUserByEmail'));assert(!edge.includes('console.log'));assert(edge.includes('email_confirm:true'));assert(edge.includes('password_gate_context'));assert(sql.includes('current_user_active'));assert(sql.includes('current_app_role'));assert(sql.includes('has_company_access'));assert(sql.includes("p.role<>'shift_lead'"));assert(sql.includes('pg_advisory_xact_lock'));assert(sql.includes('where status=\'processing\''));assert(sql.includes('revoke all on public.password_change_gates'));assert(sql.includes("crypt(p_password,old_hash)=old_hash"));
+console.log('PASS roster dedup, preserved existing title, clarifier-only scope, no invitation email, no password persistence, server-first-password and replay guards');
