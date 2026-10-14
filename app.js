@@ -1503,7 +1503,7 @@ function liveQueueProtected() {
   const root=$('#viewRoot');
   return Array.from(root?.querySelectorAll('textarea,input,select')||[]).some(el=>
     document.activeElement===el || (['checkbox','radio'].includes(el.type)?el.checked:
-    el.tagName==='SELECT'?Array.from(el.options).some(option=>option.selected!==option.defaultSelected):el.value!==el.defaultValue));
+    el.tagName==='SELECT'?Array.from(el.options).some((option,index)=>option.selected!==(option.defaultSelected || (!el.multiple && !Array.from(el.options).some(item=>item.defaultSelected) && index===0))):el.value!==el.defaultValue));
 }
 function applyLiveQueueUpdate(force=false) {
   if(!liveQueueRoute() || liveOverviewState.loading || liveOverviewState.auxiliaryLoading
