@@ -21,6 +21,8 @@ jobs:
         run: npm test
       - name: Verify clarification request receipt and preserved navigation
         run: npm run test:ui-qa
+      - name: Verify all-role evidence checklist
+        run: node tests/case-evidence-checklist.test.cjs
       - name: Verify read-only emergency source ZIP
         run: npm run test:source-archive
       - name: Verify cross-day image review

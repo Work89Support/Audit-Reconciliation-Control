@@ -3881,9 +3881,9 @@ async function openException(id, options = {}) {
       if(state.selected!==id) return;
       if(!fresh) throw new Error('ไม่พบเคสล่าสุด');
       Object.assign(e,mapLiveException(fresh),{notes:e.notes||[],evidence:e.evidence||[]});
-      // Responder-only display: preserve the loaded attachment register after a fresh case read.
+      // Every role's checklist uses the same loaded attachment register as the file list.
       // Actual closure authority/proof still belongs to the server; never patch the case row here.
-      if(state.role==='shift_lead'&&e._caseEvidenceLoaded) e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
+      if(e._caseEvidenceLoaded) e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
     } catch(err) { return toast('ตรวจสถานะล่าสุดไม่ได้: '+err.message,'warn'); }
     try {
       e.notes = state.role==='shift_lead' ? [] : await Sb.caseNotes(e.dbId);
