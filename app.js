@@ -587,6 +587,45 @@ function caseUiKey(e) { return e.dbId || [e.company,e.date,e.runId,e.id].join('|
 function recordCaseUiResult(e, message) {
   caseUiResults.set(caseUiKey(e), {message, status:e.status, actor:(typeof Sb !== 'undefined' && Sb.currentEmail()) || currentUser().username, at:nowStamp()});
 }
+const clarificationRequestFlights = new Set();
+function captureClarificationRequestContext(e) {
+  const root = $('#viewRoot');
+  const scrolls = Array.from(root?.querySelectorAll('*') || []).filter(el => el.scrollTop || el.scrollLeft).map(el => {
+    const parts=[]; let node=el;
+    while(node && node!==root){parts.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
+    return {selector:parts.join(' > '),top:el.scrollTop,left:el.scrollLeft};
+  });
+  const rows=filteredExceptions();
+  const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
+  const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
+  return {company:e.company, x:window.scrollX,y:window.scrollY,scrolls,
+    nextIds:ordered.filter(row=>row.company===e.company && caseUiKey(row)!==caseUiKey(e)
+      && ['open','answered'].includes(row.status) && !row.hasEvidence && canAccessCompany(row.company)).map(row=>row.id)};
+}
+function restoreClarificationRequestScroll(context) {
+  const restore=()=>{
+    for(const saved of context.scrolls){const el=$('#viewRoot')?.querySelector(saved.selector);if(el){el.scrollTop=saved.top;el.scrollLeft=saved.left;}}
+    window.scrollTo({left:context.x,top:context.y,behavior:'instant'});
+  };
+  restore();requestAnimationFrame(()=>requestAnimationFrame(restore));
+}
+function showClarificationRequestReceipt(e, context) {
+  const next=()=>context.nextIds.map(id=>DB.exceptions.find(row=>row.id===id)).find(row=>row
+    && row.company===context.company && ['open','answered'].includes(row.status) && !row.hasEvidence
+    && canAccessCompany(row.company));
+  const nextCase=next();
+  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p>${nextCase?'เลือกกลับหน้ารายการ หรือตรวจเคสถัดไปของบริษัทนี้':'ไม่มีเคสที่ต้องส่งขอชี้แจงถัดไปของบริษัทนี้ในตัวกรองปัจจุบัน'}</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม</small></div>`,
+    `<button class="ghost-button" id="requestReceiptReturn">กลับหน้ารายการ</button><button class="primary-button" id="requestReceiptNext" ${nextCase?'':'disabled'}>ตรวจเคสถัดไปของบริษัทนี้</button>`);
+  let acted=false;
+  const returnToList=()=>{closeModal();closeDrawer();render();restoreClarificationRequestScroll(context);};
+  $('#requestReceiptReturn').onclick=()=>{if(acted)return;acted=true;returnToList();};
+  $('#requestReceiptNext').onclick=async()=>{
+    if(acted)return;
+    if(!can('request_clarify'))return deny('ตรวจเคสถัดไป');
+    const row=next();if(!row){$('#requestReceiptNext').disabled=true;return toast('ไม่มีเคสถัดไปในบริษัทและตัวกรองเดิมแล้ว','warn');}
+    acted=true;returnToList();await openException(row.id);
+  };
+}
 function showCaseSubmissionReceipt(kind, label = '') {
   const receipts = {
     request: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำขอปิดเคสถูกบันทึกและส่งเข้าคิวหัวหน้าแล้ว เคสยังไม่ปิดจนกว่าหัวหน้าจะตรวจและอนุมัติสำเร็จ'],
@@ -4181,6 +4220,10 @@ async function openException(id, options = {}) {
     if(e.hasEvidence)return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
     if (!["open", "answered"].includes(e.status)) return;
     if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
+    const requestKey=caseUiKey(e);
+    if(clarificationRequestFlights.has(requestKey))return;
+    const context=captureClarificationRequestContext(e);
+    clarificationRequestFlights.add(requestKey);
     const button = event.currentTarget;
     button.disabled = true;
     try {
@@ -4199,15 +4242,12 @@ async function openException(id, options = {}) {
       saveOverride(e, false);
       logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
       toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
-      state.reviewSheet = "clarification";
-      state.exFilter.status = "ALL";
-      state.page = 1;
-      render();
-      openException(id);
-      renderNav();
+      showClarificationRequestReceipt(e,context);
     } catch (err) {
       toast("ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนลองใหม่: " + err.message, "warn");
       button.disabled = false;
+    } finally {
+      clarificationRequestFlights.delete(requestKey);
     }
   });
   $('#responseText').addEventListener('input',event=>e._clarificationDraftText=event.target.value);

@@ -1,0 +1,27 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบจำลอง · ป็อปอัพส่งขอชี้แจง</title><link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../styles.css">
+<body style="padding:28px;background:#edf4fc"><h1>ทดสอบจำลอง · ไม่ส่งคำขอจริง ไม่เปลี่ยนยอดหรือปิดเคส</h1><p>ใช้โค้ดป็อปอัพและตัวจัดการส่งเดียวกับแอป · สิทธิ์ Audit / หัวหน้า · บริษัท FR8 วันที่ 13 ต.ค. 2026</p><div id="viewRoot"><section class="panel" style="padding:22px"><h2>รายการบริษัท FR8 · หน้ารายการ 3</h2><p>ตัวกรองเดิม: FR8 / 13 ต.ค. 2026 / เคสเปิด</p><div id="listScroll" style="height:180px;overflow:auto;border:1px solid #ccddee"></div></section></div><p id="result" role="status">พร้อมทดสอบ</p><section class="panel" style="padding:22px;margin-top:20px"><h2 id="caseTitle">เคสจำลอง EX-TEST-1 · FR8</h2><textarea id="noteText" placeholder="รายละเอียดที่ยังไม่บันทึก"></textarea><p><button class="primary-button" id="btnClarify">ส่งขอชี้แจง (จำลอง)</button> <button class="ghost-button" id="resetTest">เริ่มทดสอบใหม่</button></p></section><div id="modalOverlay" class="overlay" hidden></div><div id="modal" class="modal" hidden></div>
+<script>
+const $=s=>document.querySelector(s),h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const state={dataset:'production',route:'exceptions',reviewSheet:'normal',page:3,filters:{company:'FR8',date:'2026-10-13'},exFilter:{status:'open'}};
+const e={id:'EX-TEST-1',dbId:'fixture-1',company:'FR8',status:'open',hasEvidence:false},id=e.id;
+const DB={exceptions:[e,{id:'EX-TEST-2',company:'FR8',status:'open'},{id:'EX-OTHER-1',company:'MC8',status:'open'}]};
+let sent=0,renders=0;const can=()=>true,canAccessCompany=c=>c==='FR8',caseUiKey=e=>e.dbId||e.id,filteredExceptions=()=>DB.exceptions;
+const recordCaseUiResult=()=>{},saveOverride=()=>{},logAction=()=>{},deny=()=>{};
+const toast=message=>$('#result').textContent=message;
+const CaseClosure={openSubmit:()=>{throw Error('ไม่อนุญาตให้ปิดเคสในหน้าทดสอบ');}};
+const Sb={signedIn:()=>true,authUser:()=>({id:'fixture-audit'}),requestClarification:async()=>{sent++;await new Promise(r=>setTimeout(r,600));}};
+function list(){ $('#listScroll').innerHTML=Array.from({length:30},(_,n)=>`<p style="padding:6px">รายการจำลอง ${n+1} · ไม่ใช่เคสจริง</p>`).join(''); }
+function render(){renders++;list();$('#result').textContent=`คำขอจำลอง ${sent} ครั้ง · วาดรายการ ${renders} ครั้ง · บริษัท ${state.filters.company} · หน้า ${state.page}`;}
+function closeDrawer(){}
+function openException(id){$('#caseTitle').textContent=`เคสถัดไป ${id} · FR8`;$('#result').textContent+=` · เปิด ${id}`;}
+function openModal(title,body,footer){$('#modal').innerHTML=`<header class="modal-head"><h2>${title}</h2></header><div class="modal-body">${body}</div><footer class="modal-foot">${footer}</footer>`;$('#modal').hidden=false;$('#modalOverlay').hidden=false;$('#modal').classList.add('on');}
+function closeModal(){$('#modal').hidden=true;$('#modalOverlay').hidden=true;}
+list();$('#listScroll').scrollTop=240;
+fetch('../app.js').then(r=>r.text()).then(source=>{
+ const helpers=source.slice(source.indexOf('const clarificationRequestFlights'),source.indexOf('function showCaseSubmissionReceipt('));
+ const start=source.indexOf('$("#btnClarify").addEventListener("click", async (event) => {');
+ const handler=source.slice(start,source.indexOf("  $('#responseText').addEventListener",start));
+ eval(helpers+handler);
+ $('#resetTest').onclick=()=>{e.status='open';$('#btnClarify').disabled=false;$('#caseTitle').textContent='เคสจำลอง EX-TEST-1 · FR8';closeModal();};
+});
+</script></body></html>
