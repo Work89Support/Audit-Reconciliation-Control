@@ -15,6 +15,7 @@ vm.createContext(ctx);vm.runInContext(code,ctx);
  fields.push({type:'checkbox',checked:true});assert.equal(ctx.applyLiveQueueUpdate(),false);fields.length=0;
  fields.push({tagName:'SELECT',type:'select-one',multiple:false,options:[{selected:true,defaultSelected:false},{selected:false,defaultSelected:false}]});assert.equal(ctx.applyLiveQueueUpdate(),true,'native implicit first-option default must not block queue refresh');
  fields[0].options[0].selected=false;fields[0].options[1].selected=true;assert.equal(ctx.applyLiveQueueUpdate(),false,'changed selection remains protected');fields.length=0;
+ const closure=fs.readFileSync('case-closure.js','utf8');assert.match(closure,/Object.assign\(queueFilters,\{company,from,to\}\)/);assert.match(closure,/\.value=queueFilters\[key\]/);assert.match(closure,/el.defaultValue=el.value/);
  ctx.liveOverviewState.loading=true;assert.equal(ctx.applyLiveQueueUpdate(),false);ctx.liveOverviewState.loading=false;
  ctx.liveOverviewState.auxiliaryError='timeout';assert.equal(ctx.applyLiveQueueUpdate(),false);ctx.liveOverviewState.auxiliaryError=null;
  await ctx.pollLiveQueues();await ctx.pollLiveQueues();assert.equal(loads,1,'poll coalesced within 30 seconds');

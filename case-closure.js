@@ -1,6 +1,7 @@
 /* Document review is not a company clarification request or an automatic loss. */
 const CaseClosure=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
+  const queueFilters={status:'pending',company:'ALL',from:'',to:''};
   let pendingLoad=null;
   const auditable=()=>Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const directCloser=()=>can('approve')&&['lead','admin','audit_assistant'].includes(state.role);
@@ -250,8 +251,11 @@ const CaseClosure=(()=>{
     const bulkBar=document.createElement('div');bulkBar.className='closure-bulk-bar';
     bulkBar.innerHTML='<label><input type="checkbox" id="closureBulkSelectAll">เลือกเคสที่เปิดหลักฐานแล้วในหน้านี้</label><span id="closureBulkCount">เลือก 0 เคส</span><button class="primary-button sm" id="closureBulkOpen" disabled>ทบทวนและปิดเคสที่เลือก</button><p role="status" id="closureBulkHint">ยังเลือกไม่ได้: กด “เปิดหลักฐานเพื่อเลือก” ของแต่ละเคส อ่านเอกสาร แล้วกลับมาติ๊ก · เฉพาะไม่มีความเสียหาย · ไม่เกิน 100 เคส · ต้องยืนยันก่อนปิด</p>';
     if(can('approve'))host.querySelector('.closure-list-heading').after(bulkBar);
+    for(const [id,key] of [['closureQueueCompany','company'],['closureQueueFrom','from'],['closureQueueTo','to']])$('#'+id).value=queueFilters[key];
     const draw=()=>{
       const company=$('#closureQueueCompany').value,from=$('#closureQueueFrom').value,to=$('#closureQueueTo').value;
+      Object.assign(queueFilters,{company,from,to});
+      for(const id of ['closureQueueCompany','closureQueueFrom','closureQueueTo']){const el=$('#'+id);if(el.tagName==='SELECT')Array.from(el.options).forEach(o=>o.defaultSelected=o.selected);else el.defaultValue=el.value;}
       if(from&&to&&from>to){selected.clear();if(can('approve')){$('#closureBulkCount').textContent='เลือก 0 เคส';$('#closureBulkOpen').disabled=true;$('#closureBulkSelectAll').disabled=true;$('#closureBulkSelectAll').checked=false;}$('#closureVisibleCount').textContent='';$('#closureQueueRows').innerHTML='<div class="closure-empty" role="status">วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด</div>';return;}
       const visible=rows.filter(q=>(company==='ALL'||q.company===company)&&(!from||q.business_date>=from)&&(!to||q.business_date<=to));
       for(const id of selected)if(!visible.some(q=>q.id===id&&bulkEligible(q)))selected.delete(id);
