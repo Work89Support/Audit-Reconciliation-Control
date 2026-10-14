@@ -123,7 +123,9 @@ if not exists(select 1 from pg_policy where polrelid='storage.objects'::regclass
 execute $create_policy$ create policy waiting_cross_day_object_insert on storage.objects for insert to authenticated
 with check(bucket_id='audit-files' and split_part(name,'/',1)='case-evidence'
  and split_part(name,'/',3)=auth.uid()::text and array_length(string_to_array(name,'/'),1)=4
- and exists(select 1 from public.exceptions e where e.id::text=split_part(name,'/',2)
+ and exists(select 1 from public.exceptions e where e.id=case
+ when split_part(objects.name,'/',2)~'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+ then split_part(objects.name,'/',2)::uuid else null::uuid end
  and public.can_attach_waiting_cross_day_evidence(e.id))) $create_policy$;
 end if;end $policy$;
 -- Registration is the only new metadata path: exact object/size/owner checks
