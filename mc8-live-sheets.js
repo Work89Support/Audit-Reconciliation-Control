@@ -631,6 +631,13 @@
   function detail(row,side,key){return row?.[side]?.[key]??'';}
   function sourceColumns(row){
     const ant=providerOf(row.account)==='ANT';
+    // Persisted 7M CYBERPLUS cases retain the amount but may not carry the
+    // pair's column metadata. Their Thai template must not fall back to the
+    // unrelated realAmount column and hide a saved STM amount.
+    if(isSevenM(row.company)&&providerOf(row.account)==='CY')return {
+      time:row.pmSource?.timeColumn||'วันที่ทำรายการ',
+      amount:row.pmSource?.amountColumn||'จำนวนเงิน',
+    };
     const time=row.pmSource?.noTime?'ไม่มีเวลาใน STM':row.pmSource?.timeColumn||(ant?'รอยืนยันช่องเวลา ANT':row.direction==='withdraw'?'updateTime':'paymentTime');
     const amount=row.pmSource?.amountColumn||(ant?'รอยืนยันช่องยอด ANT':row.direction==='deposit'?'realAmount':/^(AT|M)$/.test(providerOf(row.account))?'transferredAmount':'amount');
     return {time,amount};
