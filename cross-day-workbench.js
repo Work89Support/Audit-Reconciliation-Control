@@ -18,6 +18,21 @@ const CrossDayWorkbench = (() => {
     return !!match&&Number(match[1])===23&&Number(match[2])<60;
   };
   const bankOf = f => /(?:^|[_\s-])BBL(?:[_\s.-]|$)/i.test(f.file_name||'')?'BBL':/(?:^|[_\s-])SCB(?:[_\s.-]|$)/i.test(f.file_name||'')?'SCB':'';
+  const caseNumber=value=>{const m=String(value??'').trim().match(/^(?:EX-)?([0-9]{1,9})$/i);return m&&Number(m[1])>0?Number(m[1]):null;};
+  function rangeSelection(cases,from,to){
+    const start=caseNumber(from),end=caseNumber(to);
+    if(start===null||end===null||start>end||end-start>=1000)throw Error('ระบุช่วงเลขเคสให้ถูกต้อง เช่น EX-3001 ถึง EX-3030 (ไม่เกิน 1,000 เลขต่อครั้ง)');
+    const seen=new Set(),ids=[];
+    for(const c of cases){const n=/^EX-/i.test(c.code||'')?caseNumber(c.code):null;if(n===null||n<start||n>end||c.status&&!['open','pending_next_day'].includes(c.status))continue;
+      if(seen.has(n))throw Error('พบเลขเคสซ้ำในขอบเขตนี้ กรุณาเลือกรายเคสและตรวจเลขอ้างอิง');seen.add(n);ids.push(c.id);}
+    return {ids,start,end,missing:end-start+1-seen.size};
+  }
+  function capturePosition(host){return {bo:host.querySelector('.cross-day-cases')?.scrollTop||0,stm:host.querySelector('#crossDayRows')?.scrollTop||0,outer:host.closest('.modal-body')?.scrollTop||0,focus:host.contains(document.activeElement)?document.activeElement?.dataset.crossPick:null};}
+  function restorePosition(host,position){
+    const bo=host.querySelector('.cross-day-cases'),stm=host.querySelector('#crossDayRows'),outer=host.closest('.modal-body');
+    if(position.focus)Array.from(host.querySelectorAll('[data-cross-pick]')).find(x=>x.dataset.crossPick===position.focus)?.focus({preventScroll:true});
+    if(bo)bo.scrollTop=position.bo;if(stm)stm.scrollTop=position.stm;if(outer)outer.scrollTop=position.outer;
+  }
   function scopedData(data,e,selection={}) {
     const anchor=(data.cases||[]).find(c=>c.id===e.dbId)||(drafts.get(e.dbId)?.uncertain?drafts.get(e.dbId).caseRow:null);
     if(!anchor?.account||anchor.business_date!==e.date)throw Error('ไม่พบเคสต้นทางในคิวล่าสุด กรุณาตรวจสถานะเคสก่อน ไม่แสดงบัญชีอื่นแทน');
@@ -80,7 +95,7 @@ const CrossDayWorkbench = (() => {
     openModal('จับคู่เคสข้ามวัน · ส่งหัวหน้าอนุมัติ',`<div id="crossDayWorkbench"><p>กำลังโหลด BO และรายการจาก STM จริง… ยังไม่บันทึกเคส</p></div>`, '<button class="ghost-button" id="crossDayClose">กลับหน้าเคส</button>');
     $('#crossDayClose').onclick=()=>{if(!busy)closeModal();};
     const host=$('#crossDayWorkbench'); let data,active=e.dbId,file=null,row=null,previewVersion=0,busy=false;
-    let retainedPreview=null,retainedFile=null,tab='work';
+    let retainedPreview=null,retainedFile=null,tab='work',rangeFrom='',rangeTo='',rangeMessage='';
     try { data=await Sb.crossDayWorkbench({p_company:e.company,p_from:addDay(e.date,-3),p_to:addDay(e.date,3)}); }
     catch(error) { if(host.isConnected)host.innerHTML=`<p role="alert">เปิดหน้าจับคู่ข้ามวันไม่ได้: ${h(error.message)} · ต้องติดตั้งเวิร์กโฟลว์ฐานข้อมูลก่อน ไม่ใช้วิธีข้ามกฎปิดเคส</p>`;return; }
     if(!host.isConnected)return;
@@ -88,7 +103,7 @@ const CrossDayWorkbench = (() => {
     try{scoped=scopedData(data,e);}catch(error){host.textContent=error.message;return;}
     const {anchor}=scoped;
     let cases=scoped.cases,files=scoped.files;
-    let selection={account:anchor.account,date:anchor.business_date,bank:''};
+    let selection={account:anchor.account,date:anchor.business_date,bank:''},boExpanded=false,reviewReason='ตรวจรายการข้ามวันจาก BO และเอกสาร STM ต้นฉบับแล้ว';
     const picked=new Set([...drafts.keys()].filter(id=>cases.some(c=>c.id===id))),pickedStm=new Set();
     // A committed-but-unconfirmed request may no longer appear among open cases.
     // Keep its local draft accessible so the same ID can be read/retried safely.
@@ -96,10 +111,12 @@ const CrossDayWorkbench = (() => {
     const sent=new Set(),reservedRows=new Set(), visibleCases=()=>cases.filter(c=>!sent.has(c.id));
     const current=()=>cases.find(c=>c.id===active);
     function render() {
+      const position=capturePosition(host);
+      reviewReason=$('#crossDayReason')?.value??reviewReason;
       const oldPreview=$('#crossDayPreview');
       if(oldPreview?.querySelector('canvas')&&oldPreview.dataset.file===file?.id){retainedPreview=oldPreview;retainedFile=file.id;}
       else {retainedPreview=null;retainedFile=null;}
-      host.innerHTML=`<p>BO ซ้าย · STM ขวา · ส่งหรือปิดหลายคู่ตามสิทธิ์ · ไม่รีหน้า</p><p role="status" id="crossDayStatus">เหลือ ${visibleCases().length} เคส · เตรียม ${[...drafts.keys()].filter(id=>cases.some(c=>c.id===id)).length} คู่ · ส่ง/ปิดแล้ว ${sent.size} คู่</p><div class="cross-day-grid"><section><h3>BO · เคสที่ยังไม่ส่ง</h3><div class="cross-day-cases">${visibleCases().map(c=>`<article class="cross-day-case ${active===c.id?'active':''}"><label><input type="checkbox" data-cross-pick="${h(c.id)}" ${drafts.has(c.id)?'checked':''} aria-label="เตรียม ${h(c.code)}"><button class="link-btn" data-cross-case="${h(c.id)}">${h(c.code)} · ${money(c.system_amount)} บาท</button></label><p>${h(c.business_date)} ${h(c.occurred_at||'')} · ${h(c.direction)} · ${h(c.account)}</p><small>${drafts.get(c.id)?.uncertain?'ยังไม่ทราบผลบันทึก — ตรวจคำขอเดิม':drafts.has(c.id)?'เตรียมคู่แล้ว':'ยังไม่เลือก STM'}</small></article>`).join('')||'<p>ส่งครบในรายการที่โหลดแล้ว ไม่ใช่ยอดครบทั้งระบบ</p>'}</div><div id="crossDayDrafts"></div></section><section><h3>STM · เอกสารต้นฉบับจริง</h3><label>เลือกเอกสาร<select id="crossDayFile"><option value="">เลือกไฟล์ STM</option>${files.map(f=>`<option value="${h(f.id)}" ${file?.id===f.id?'selected':''}>${h(f.file_name)} · ${h(f.business_date)}</option>`).join('')}</select></label><div id="crossDayPreview"><p>เลือกเอกสารเพื่อดูสเตทเมนต์จริง</p></div><div id="crossDayRows"></div><label>เหตุผลที่จับคู่<textarea id="crossDayReason" maxlength="2000" rows="3">${h(drafts.get(active)?.reason||'ตรวจรายการข้ามวันจาก BO และเอกสาร STM ต้นฉบับแล้ว')}</textarea></label><label><input id="crossDayChecked" type="checkbox"> ตรวจบริษัท บัญชี วันที่ ยอด และรายการจริงแล้ว</label><button class="primary-button" id="crossDayStage">เตรียมคู่ของเคสที่เปิดดู</button><p id="crossDayError" role="alert"></p></section></div>`;
+      host.innerHTML=`<p>BO ซ้าย · STM ขวา · ส่งหรือปิดหลายคู่ตามสิทธิ์ · ไม่รีหน้า</p><p role="status" id="crossDayStatus">เหลือ ${visibleCases().length} เคส · เตรียม ${[...drafts.keys()].filter(id=>cases.some(c=>c.id===id)).length} คู่ · ส่ง/ปิดแล้ว ${sent.size} คู่</p><div class="cross-day-grid"><section><h3>BO · เคสที่ยังไม่ส่ง</h3><div class="cross-day-cases">${visibleCases().map(c=>`<article class="cross-day-case ${active===c.id?'active':''}"><label><input type="checkbox" data-cross-pick="${h(c.id)}" ${drafts.has(c.id)?'checked':''} aria-label="เตรียม ${h(c.code)}"><button class="link-btn" data-cross-case="${h(c.id)}">${h(c.code)} · ${money(c.system_amount)} บาท</button></label><p>${h(c.business_date)} ${h(c.occurred_at||'')} · ${h(c.direction)} · ${h(c.account)}</p><small>${drafts.get(c.id)?.uncertain?'ยังไม่ทราบผลบันทึก — ตรวจคำขอเดิม':drafts.has(c.id)?'เตรียมคู่แล้ว':'ยังไม่เลือก STM'}</small></article>`).join('')||'<p>ส่งครบในรายการที่โหลดแล้ว ไม่ใช่ยอดครบทั้งระบบ</p>'}</div><div id="crossDayDrafts"></div></section><section><h3>STM · เอกสารต้นฉบับจริง</h3><label>เลือกเอกสาร<select id="crossDayFile"><option value="">เลือกไฟล์ STM</option>${files.map(f=>`<option value="${h(f.id)}" ${file?.id===f.id?'selected':''}>${h(f.file_name)} · ${h(f.business_date)}</option>`).join('')}</select></label><div id="crossDayPreview"><p>เลือกเอกสารเพื่อดูสเตทเมนต์จริง</p></div><div id="crossDayRows"></div><label>เหตุผลที่จับคู่<textarea id="crossDayReason" maxlength="2000" rows="3">${h(drafts.get(active)?.reason||reviewReason)}</textarea></label><label><input id="crossDayChecked" type="checkbox"> ตรวจบริษัท บัญชี วันที่ ยอด และรายการจริงแล้ว</label><button class="primary-button" id="crossDayStage">เตรียมคู่ของเคสที่เปิดดู</button><p id="crossDayError" role="alert"></p></section></div>`;
       host.querySelectorAll('[data-cross-case]').forEach(b=>b.onclick=()=>{if(busy)return;active=b.dataset.crossCase;const d=drafts.get(active);file=d?.file||file;row=d?.row||null;render();});
       // Keep action buttons outside checkbox labels: their default label action
       // can toggle a replacement checkbox after a synchronous render.
@@ -107,9 +124,42 @@ const CrossDayWorkbench = (() => {
         const button=label.querySelector('[data-cross-case]');
         if(button)label.after(button);
       });
-      host.querySelectorAll('[data-cross-pick]').forEach(c=>{c.checked=picked.has(c.dataset.crossPick);c.onchange=()=>{if(busy){c.checked=picked.has(c.dataset.crossPick);return;}if(!c.checked){const d=drafts.get(c.dataset.crossPick);if(d?.uncertain){c.checked=true;return toast('ยังไม่ทราบผลบันทึก ห้ามล้างคำขอเดิม','warn');}picked.delete(c.dataset.crossPick);drafts.delete(c.dataset.crossPick);render();}else{picked.add(c.dataset.crossPick);active=c.dataset.crossPick;const d=drafts.get(active);file=d?.file||file;row=d?.row||null;render();}};});
+      // Ordinary BO selection must not replace the list or the PDF DOM. Keeping
+      // the checkbox node alive also avoids the browser scrolling to a new
+      // focused node after the sixth and subsequent choices.
+      host.querySelectorAll('[data-cross-pick]').forEach(c=>{c.checked=picked.has(c.dataset.crossPick);c.onchange=()=>{
+        if(busy){c.checked=picked.has(c.dataset.crossPick);return;}
+        const position=capturePosition(host),d=drafts.get(c.dataset.crossPick);
+        $('#crossDayChecked').checked=false;
+        if(!c.checked){
+          if(d?.uncertain){c.checked=true;return toast('ยังไม่ทราบผลบันทึก ห้ามล้างคำขอเดิม','warn');}
+          picked.delete(c.dataset.crossPick);drafts.delete(c.dataset.crossPick);
+          if(d){c.closest('.cross-day-case').querySelector('small').textContent='ยังไม่เลือก STM';renderDrafts();}
+        }else{
+          picked.add(c.dataset.crossPick);active=c.dataset.crossPick;row=d?.row||null;
+          if(d?.file&&d.file.id!==file?.id){file=d.file;$('#crossDayFile').value=file.id;renderDocument();}
+        }
+        host.querySelectorAll('[data-cross-case]').forEach(button=>button.closest('.cross-day-case').classList.toggle('active',button.dataset.crossCase===active));
+        const count=$('#crossDayBoPickCount');if(count)count.textContent=`เลือกไว้ ${visibleCases().filter(c=>picked.has(c.id)).length} เคส`;
+        const comparison=$('#crossDayComparison');if(comparison)comparison.textContent=d?`กำลังตรวจ BO ${current()?.code||''} · STM ${d.row.source_mode==='image'?'ภาพหน้า':'แถว'} ${d.row.rowNo} · ยังไม่บันทึก`:'เลือก BO ทางซ้าย แล้วเลือกแถว STM หรือส่งตรวจจากภาพทางขวา';
+        restorePosition(host,position);
+      };});
+      const boList=host.querySelector('.cross-day-cases');
+      boList.classList.toggle('is-expanded',boExpanded);host.classList.toggle('cross-day-bo-expanded',boExpanded);
+      const expand=document.createElement('button');expand.id='crossDayBoExpand';expand.type='button';expand.disabled=busy;
+      const expandLabel=()=>{expand.textContent=boExpanded?'ย่อรายการ BO':'แสดง BO ทั้งหมด · ขยายรายการ';expand.setAttribute('aria-expanded',String(boExpanded));};expandLabel();
+      boList.before(expand);
+      expand.onclick=()=>{
+        if(busy)return;
+        boExpanded=!boExpanded;boList.classList.toggle('is-expanded',boExpanded);host.classList.toggle('cross-day-bo-expanded',boExpanded);expandLabel();
+      };
       const boAll=document.createElement('button');boAll.id='crossDayBoSelectAll';boAll.textContent='เลือก BO ทั้งหมดในบัญชีและวันที่นี้';boAll.disabled=busy;host.querySelector('.cross-day-cases').before(boAll);
       boAll.onclick=()=>{if(busy)return;visibleCases().forEach(c=>picked.add(c.id));render();};
+      const rangeControls=document.createElement('div');rangeControls.className='cross-day-range';
+      rangeControls.innerHTML=`<label>ตั้งแต่เลขเคส<input id="crossDayRangeFrom" placeholder="EX-3001 หรือ 3001" value="${h(rangeFrom)}" ${busy?'disabled':''}></label><label>ถึงเลขเคส<input id="crossDayRangeTo" placeholder="EX-3030 หรือ 3030" value="${h(rangeTo)}" ${busy?'disabled':''}></label><button type="button" id="crossDayRangeSelect" ${busy?'disabled':''}>เลือก BO ตามช่วงเลขเคส</button><p role="status"><span id="crossDayBoPickCount">เลือกไว้ ${visibleCases().filter(c=>picked.has(c.id)).length} เคส</span> · ${h(rangeMessage||'เพิ่มเฉพาะเคสในบัญชีและวันที่นี้ ไม่เลือก STM ไม่เตรียมคู่ และไม่ส่งอนุมัติ')}</p>`;
+      boAll.after(rangeControls);
+      $('#crossDayRangeFrom').oninput=x=>rangeFrom=x.target.value;$('#crossDayRangeTo').oninput=x=>rangeTo=x.target.value;
+      $('#crossDayRangeSelect').onclick=()=>{if(busy)return;try{const result=rangeSelection(visibleCases(),rangeFrom,rangeTo);result.ids.forEach(id=>picked.add(id));rangeMessage=`เลือกช่วง EX-${result.start} ถึง EX-${result.end} ได้ ${result.ids.length} เคส · ไม่พบ/ไม่อยู่ในขอบเขต ${result.missing} เลข · ยังไม่บันทึก`; }catch(error){rangeMessage=error.message;}render();};
       const scopeHint=document.createElement('p');scopeHint.className='alert info';scopeHint.textContent=`เฉพาะ ${anchor.company} · บัญชี ${selection.account} · วันที่ ${selection.date} เวลา 23:00–23:59 · ติ๊ก BO คือเลือกไว้ ยังไม่ใช่เตรียมคู่หรือบันทึก · คู่ที่เตรียมในบัญชีอื่นยังเก็บอยู่`;
       host.prepend(scopeHint);
       const filters=document.createElement('div');filters.className='cross-day-filters';
@@ -142,12 +192,12 @@ const CrossDayWorkbench = (() => {
         if(!next.date||next.date<addDay(e.date,-3)||next.date>addDay(e.date,3)){toast('เลือกวันที่ภายในช่วงที่โหลด ±3 วัน','warn');return;}
         selection=next;const scoped=scopedData(data,e,selection);cases=scoped.cases;files=scoped.files;
         for(const d of drafts.values())if(d.uncertain&&d.caseRow.company===anchor.company&&d.caseRow.account===selection.account&&d.caseRow.business_date===selection.date&&!cases.some(c=>c.id===d.caseRow.id))cases.push(d.caseRow);
-        active=visibleCases()[0]?.id;file=null;row=null;render();
+        active=visibleCases()[0]?.id;file=null;row=null;rangeFrom='';rangeTo='';rangeMessage='';render();const list=host.querySelector('.cross-day-cases');if(list)list.scrollTop=0;
       };
       for(const id of ['#crossDayBank','#crossDayAccount','#crossDayDate']){$(id).disabled=busy;$(id).onchange=changeScope;}
       $('#crossDayFile').onchange=()=>{if(busy)return;file=files.find(f=>f.id===$('#crossDayFile').value)||null;row=null;pickedStm.clear();$('#crossDayChecked').checked=false;renderDocument();};
       $('#crossDayStage').onclick=()=>{try{if(!$('#crossDayChecked').checked)throw Error('ต้องยืนยันตรวจรายการก่อนเตรียมคู่');if(file&&row&&reservedRows.has(key(file,row)))throw Error('STM รายการนี้ส่งแล้ว ห้ามเลือกซ้ำ');stage(current(),file,row,$('#crossDayReason').value);picked.add(active);render();}catch(error){$('#crossDayError').textContent=error.message;}};
-      renderDrafts(); renderDocument();showTab();
+      renderDrafts(); renderDocument();showTab();restorePosition(host,position);
     }
     function renderDrafts() {
       const own=[...drafts.values()].filter(d=>cases.some(c=>c.id===d.caseRow.id));
@@ -299,5 +349,5 @@ const CrossDayWorkbench = (() => {
       catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจคำขอเดิมก่อนลองซ้ำ','warn');}
     };
   }
-  return {eligible,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf};
+  return {eligible,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf,caseNumber,rangeSelection,capturePosition,restorePosition};
 })();
