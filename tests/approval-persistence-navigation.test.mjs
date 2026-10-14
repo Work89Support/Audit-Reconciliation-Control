@@ -8,7 +8,8 @@ for(const route of ['approvals','mc8-sheets','daily-summary','exceptions'])for(c
   const context={state:{route},$:()=>null,window:{scrollX:0,scrollY:200,scrollTo(){}},closeModal:()=>events.push('modal closed'),closeDrawer:()=>events.push('drawer closed'),go:()=>assert.fail('must not leave current review page'),render:()=>events.push('queue rendered'),loadLiveOverview:async()=>{if(failedRefresh)throw Error('offline');events.push('overview refreshed');},toast:text=>events.push(text)};
   vm.runInNewContext(helper,context);await context.finishApprovalReview();
   assert.equal(context.state.route,route);
-  assert.deepEqual(events.slice(0,3),['modal closed','drawer closed','queue rendered']);
+  assert.deepEqual(events.slice(0,2),['modal closed','drawer closed']);
+  if(!failedRefresh)assert.ok(events.indexOf('overview refreshed')<events.indexOf('queue rendered'),'refresh data before drawing queue');
   if(failedRefresh)assert.match(events.at(-1),/บันทึกอนุมัติแล้ว/);
 }
 for(const nested of [false,true])for(const failedRefresh of [false,true]){

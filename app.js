@@ -1492,7 +1492,50 @@ let liveInteractionVersion = 0;
 for (const eventName of ["pointerdown", "keydown", "input", "wheel", "touchmove"]) {
   document.addEventListener(eventName, () => { liveInteractionVersion++; }, { passive: true });
 }
+let liveQueueUpdatePending = false;
+let liveQueueLastPoll = 0;
+function liveQueueRoute() {
+  return ['audit-review','approvals'].includes(state.route) && state.dataset==='production' && Sb.signedIn();
+}
+function liveQueueProtected() {
+  if(document.visibilityState==='hidden')return true;
+  if(['#drawer','#modal'].some(selector=>$(selector)&&!$(selector).hidden))return true;
+  const root=$('#viewRoot');
+  return Array.from(root?.querySelectorAll('textarea,input,select')||[]).some(el=>
+    document.activeElement===el || (['checkbox','radio'].includes(el.type)?el.checked:
+    el.tagName==='SELECT'?Array.from(el.options).some(option=>option.selected!==option.defaultSelected):el.value!==el.defaultValue));
+}
+function applyLiveQueueUpdate(force=false) {
+  if(!liveQueueRoute() || liveOverviewState.loading || liveOverviewState.auxiliaryLoading
+    || !liveOverviewState.exceptionsReady || liveOverviewState.error || liveOverviewState.auxiliaryError
+    || (!force && liveQueueProtected()))return false;
+  const root=$('#viewRoot'),x=window.scrollX,y=window.scrollY;
+  const scrolls=Array.from(root?.querySelectorAll('*')||[]).filter(el=>el.scrollTop||el.scrollLeft).map(el=>{
+    const path=[];let node=el;while(node&&node!==root){path.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
+    return {selector:path.join(' > '),top:el.scrollTop,left:el.scrollLeft};
+  });
+  liveQueueUpdatePending=false;
+  render();
+  const restore=()=>{for(const saved of scrolls){const el=$('#viewRoot')?.querySelector(saved.selector);if(el){el.scrollTop=saved.top;el.scrollLeft=saved.left;}}window.scrollTo(x,y);};
+  restore();requestAnimationFrame(restore);
+  return true;
+}
+async function pollLiveQueues() {
+  if(!liveQueueRoute() || liveQueueProtected())return;
+  if(liveQueueUpdatePending)applyLiveQueueUpdate();
+  if(liveOverviewState.loading || Date.now()-liveQueueLastPoll<30000)return;
+  liveQueueLastPoll=Date.now();
+  // Read only. Never dispatch reconciliation, decisions, notes or case changes.
+  if(state.route==='approvals')for(const name of [CaseClosure,ManualPairing,CrossDayWorkbench])name.queueState.at=0;
+  await loadLiveOverview(true);
+}
+setInterval(()=>pollLiveQueues().catch(()=>{}),1000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='hidden'){liveQueueLastPoll=0;pollLiveQueues().catch(()=>{});}});
 function offerLiveOverviewUpdate() {
+  if(typeof liveQueueRoute==='function' && liveQueueRoute()) {
+    liveQueueUpdatePending=true;
+    if(applyLiveQueueUpdate())return;
+  }
   const root = $("#viewRoot");
   if (!root || !Sb.signedIn()) return;
   let notice = $("#liveUpdateAvailable");
@@ -4425,9 +4468,24 @@ async function finishApprovalReview() {
   // from the queue. A refresh failure is not a failed database decision.
   closeModal();
   closeDrawer();
+  const savedRoute=state.route;
   try {
-    await refreshCaseView();
+    if(typeof liveOverviewState!=='undefined'){
+      const deadline=Date.now()+30000;
+      while(liveOverviewState.loading){
+        if(Date.now()>deadline)throw Error('รอบโหลดก่อนหน้ายังไม่เสร็จ');
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+    }
+    if(typeof liveQueueRoute==='function'&&liveQueueRoute()){
+      for(const queue of [CaseClosure,ManualPairing,CrossDayWorkbench])queue.queueState.at=0;
+    }
     await loadLiveOverview(true);
+    if(state.route!==savedRoute)return true;
+    if(typeof liveQueueRoute==='function'&&liveQueueRoute()&&liveQueueProtected()){
+      liveQueueUpdatePending=true;return true;
+    }
+    await refreshCaseView();
     return true;
   }
   catch (err) { toast('บันทึกอนุมัติแล้ว แต่โหลดภาพรวมใหม่ไม่ได้ กรุณารีเฟรชคิว: ' + err.message, 'warn'); return false; }
@@ -4596,6 +4654,7 @@ VIEWS['audit-review'] = (root) => {
     openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
     refresh: async () => { await loadLiveOverview(true); if (state.route === 'audit-review') render(); },
   });
+  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
 };
 
 
@@ -4653,6 +4712,7 @@ VIEWS.approvals = (root) => {
   ManualPairing.mountQueue($('#pendingManualPairQueue'));
   CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'));
   CaseClosure.mountQueue($('#pendingDocumentClosureQueue'));
+  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
       if (!can("approve")) return deny("อนุมัติ");
