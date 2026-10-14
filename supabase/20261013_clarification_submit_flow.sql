@@ -47,7 +47,7 @@ begin
   select * into f from public.source_files where id=p_file for share;
   if not found or f.company is distinct from e.company or f.kind<>'doc_clarify' or coalesce(f.size_bytes,0)<=0
     or not exists(select 1 from storage.objects o where o.bucket_id='audit-files' and o.name=f.storage_path) then raise exception 'หลักฐานไม่ตรงบริษัทหรือไม่มีไฟล์ต้นฉบับ';end if;
- elsif not exists(select 1 from public.case_evidence f join storage.objects o on o.bucket_id='audit-files' and o.name=f.storage_path where f.exception_id=e.id and f.size_bytes>0) then raise exception 'ต้องมีหลักฐานจริงก่อนส่งคำชี้แจง';end if;
+ elsif not exists(select 1 from public.case_evidence ce join storage.objects o on o.bucket_id='audit-files' and o.name=ce.storage_path where ce.exception_id=e.id and ce.size_bytes>0) then raise exception 'ต้องมีหลักฐานจริงก่อนส่งคำชี้แจง';end if;
  insert into public.audit_log(actor,actor_user_id,action,entity,target,company,detail,meta)
  values(auth.uid()::text,auth.uid(),'clarification_submitted','exception',e.id::text,e.company,reason,
   jsonb_build_object('response_text',reason,'source_file_id',p_file,'previous_response_text',e.response_text,'previous_responded_at',e.responded_at,'previous_responded_by',e.responded_by,'previous_file_id',e.clarification_file_id,'previous_status',e.status));

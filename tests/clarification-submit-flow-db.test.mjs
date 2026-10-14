@@ -18,6 +18,8 @@ for(const [n,role,company] of [[1,'shift_lead','TEST'],[2,'monitor','TEST'],[3,'
 await db.query("insert into exceptions(id,company,status,resolution_note,system_amount,bank_amount) values($1,'TEST','clarifying','ข้อความเลือกไฟล์เดิมที่ต้องเห็น',100,100)",[id(10)]);
 for(const [n,c] of [[20,'TEST'],[21,'TEST'],[22,'OTHER']]){await db.query("insert into source_files values($1,$2,'doc_clarify',10,$3,'dummy.pdf')",[id(n),c,'dummy-'+n]);await db.query("insert into storage.objects values('audit-files',$1)",['dummy-'+n]);}
 await db.exec(fs.readFileSync('supabase/20261013_clarification_submit_flow.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/20261014_clarification_evidence_alias.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/20261014_clarification_evidence_alias.sql','utf8'));
 const actor=async n=>db.query("select set_config('test.actor',$1,false)",[id(n)]);await actor(1);
 const submit=(file=id(20),status='clarifying',previous=null,text='ตัวอย่างสาเหตุที่ตรงกับหลักฐาน')=>db.query('select submit_case_clarification($1,$2,$3,$4,$5) as v',[id(10),text,file,status,previous]);
 await assert.rejects(submit(id(22)),/ไม่ตรงบริษัท/);await assert.rejects(submit(id(20),'closed'),/สถานะ/);await assert.rejects(submit(id(20),'clarifying',null,'สั้น'),/สาเหตุ/);
@@ -30,4 +32,17 @@ assert(history.some(r=>r.text==='ข้อความเลือกไฟล�
 assert.equal((await db.query('select count(*)::int n from source_files')).rows[0].n,3);
 await db.query("update exceptions set status='closed' where id=$1",[id(10)]);await actor(1);await assert.rejects(submit(id(21),'closed',id(21)),/สถานะ/);
 const amounts=(await db.query('select system_amount,bank_amount from exceptions where id=$1',[id(10)])).rows[0];assert.equal(Number(amounts.system_amount),100);assert.equal(Number(amounts.bank_amount),100);
-console.log('PASS synthetic DB: atomic response+file, real proof guard, company denial, latest status/file conflict, legacy and previous history, unchanged amounts/original files. No production writes.');await db.close();
+// Regression: attached case evidence, rather than a selected source file.
+await db.query("insert into exceptions(id,company,status,system_amount,bank_amount) values($1,'TEST','clarifying',81900,81900)",[id(11)]);
+const attached=()=>db.query('select submit_case_clarification($1,$2,null,$3,null) as v',[id(11),'สาเหตุทดสอบพร้อมหลักฐานแนบ','clarifying']);
+await assert.rejects(attached(),/ต้องมีหลักฐานจริง/);
+await db.query('insert into case_evidence values($1,$2,10)',[id(11),'attached-proof']);
+await assert.rejects(attached(),/ต้องมีหลักฐานจริง/,'metadata without object must fail');
+await db.query("insert into storage.objects values('audit-files','attached-proof')");
+await actor(3);await assert.rejects(attached(),/ไม่มีสิทธิ์/);await actor(1);
+const attachmentResult=(await attached()).rows[0].v;
+assert.equal(attachmentResult.status,'answered');assert.equal(Number(attachmentResult.bank_amount),81900);
+assert.equal(Number(attachmentResult.system_amount),81900);assert.equal(attachmentResult.clarification_file_id,null);
+assert.equal((await db.query('select count(*)::int n from case_evidence')).rows[0].n,1);
+await assert.rejects(attached(),/สถานะหรือหลักฐานเปลี่ยน/);
+console.log('PASS synthetic DB: selected and uploaded evidence paths, missing object/company denial, latest status conflict, preserved history/amounts/files. No production submissions.');await db.close();
