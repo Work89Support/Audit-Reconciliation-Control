@@ -94,7 +94,9 @@ begin
    ok:=v->'report'->>'quality'='passed';
   elsif r.id is not null then
    s:=r.summary;
-   select coalesce(jsonb_agg(to_jsonb(e)),'[]') into ex from public.exceptions e where e.run_id=r.id and e.company=p_company and e.business_date=d;
+   select coalesce(jsonb_agg(jsonb_build_object('boSource',e.customer_details#>'{source_rows,bo}',
+    'system_amount',e.system_amount,'direction',e.direction,'account',e.account,'bo_date',e.bo_date,'bo_time',e.bo_time)),'[]') into ex
+   from public.exceptions e where e.run_id=r.id and e.company=p_company and e.business_date=d;
    a:=public.finance_bo_aggregate(s,ex,d,r.bo_count);
    ok:=j.status='completed' and s->>'source_parser_completion'='true' and s#>>'{bo_first,complete}'='true'
     and r.created_at is not null and not exists(select 1 from jsonb_array_elements(files) f
@@ -137,15 +139,17 @@ begin
  select coalesce(jsonb_agg(to_jsonb(r)),'[]') into receipts from public.damage_receipts r
  join public.damages d on d.id=r.damage_id and d.company=r.company
  where d.company=p_company and d.business_date<=p_to;
- if (select count(*) from public.exceptions e where e.company=p_company and e.business_date<=p_to and e.status not in ('closed','approved')
- and public.primary_case_is_current(e.id) and e.superseded_by_exception_id is null and e.risk_amount>0)>10000 then raise exception 'เคสเสี่ยงมากเกินขอบเขต';end if;
  select coalesce(jsonb_agg(jsonb_build_object('id',e.id,'code',e.code,'company',e.company,'date',e.business_date,
  'amount',e.risk_amount,'currency',e.currency,'fx_rate',e.fx_rate,'status',e.status,'type',e.type_name,
  'owner_id',e.assigned_to,'due_at',e.document_due_at,'has_evidence',e.clarification_file_id is not null) order by e.business_date,e.id),'[]') into risks
- from public.exceptions e join public.daily_recon_jobs j on j.company=e.company and j.business_date=e.business_date and j.last_run_id=e.run_id and not j.is_archived
+ from (select e.* from public.daily_recon_jobs j join public.exceptions e on j.company=e.company and j.business_date=e.business_date and j.last_run_id=e.run_id
+ where j.company=p_company and j.business_date<=p_to and not j.is_archived
+ and e.status not in ('closed','approved') and e.superseded_by_exception_id is null and e.risk_amount>0
+ and public.primary_case_is_current(e.id) and not exists(select 1 from public.damages d where d.exception_id=e.id)
+ order by e.business_date,e.id limit 10001) e
  where e.company=p_company and e.business_date<=p_to and e.status not in ('closed','approved')
- and public.primary_case_is_current(e.id) and e.superseded_by_exception_id is null and e.risk_amount>0
- and not exists(select 1 from public.damages d where d.exception_id=e.id);
+ and e.superseded_by_exception_id is null and e.risk_amount>0;
+ if jsonb_array_length(risks)>10000 then raise exception 'เคสเสี่ยงมากเกินขอบเขต';end if;
  return jsonb_build_object('company',p_company,'from',p_from,'to',p_to,'as_of',now(),
  'damages',losses,'risks',risks,'collections',ledger,'receipts',receipts);
 end $$;

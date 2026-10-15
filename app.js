@@ -1552,6 +1552,7 @@ async function pollLiveQueues() {
 setInterval(()=>pollLiveQueues().catch(()=>{}),1000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='hidden'){liveQueueLastPoll=0;pollLiveQueues().catch(()=>{});}});
 function offerLiveOverviewUpdate() {
+  if(state.route==='finance')return;
   if(typeof liveQueueRoute==='function' && liveQueueRoute()) {
     liveQueueUpdatePending=true;
     if(applyLiveQueueUpdate())return;
@@ -8814,7 +8815,7 @@ async function performProductionEntry() {
   // The company worksheet loads its own committed run. Do not also start
   // thirty days of all-company aggregates/evidence while opening that sheet.
   // Other routes retain their normal overview loaders; unknown badges stay —.
-  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'].includes(state.route)) loadLiveOverview().catch(() => {});
+  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets', 'finance'].includes(state.route)) loadLiveOverview().catch(() => {});
   return true;
 }
 

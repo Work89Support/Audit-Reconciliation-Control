@@ -34,9 +34,9 @@
     if(company!=='ALL'&&!scope.includes(company))throw Error('ไม่มีสิทธิ์บริษัทที่เลือก');
     const selected=company==='ALL'?scope:[company],range=F.period(mode,month,from,to,ctx.today),boLoaded=['overview','companies','quality'].includes(tab);
     const tasks=selected.map(c=>({kind:'cases',company:c,from:range.from,to:range.to}));
-    if(boLoaded)for(const c of selected)for(const r of [range,range.previous]){const ds=F.dates(r.from,r.to);for(let i=0;i<ds.length;i+=7)tasks.push({kind:'bo',company:c,from:ds[i],to:ds[Math.min(i+6,ds.length-1)]});}
+    if(boLoaded)for(const c of selected)for(const r of [range,range.previous]){const ds=F.dates(r.from,r.to);for(let i=0;i<ds.length;i+=2)tasks.push({kind:'bo',company:c,from:ds[i],to:ds[Math.min(i+1,ds.length-1)]});}
     const reports=[],boRows=[];let index=0,done=0;
-    const worker=async()=>{while(index<tasks.length){if(!active()||token!==generation)return;const task=tasks[index++];const r=await (task.kind==='bo'?ctx.bo:ctx.cases)(task.company,task.from,task.to);
+    const worker=async()=>{while(index<tasks.length){if(!active()||token!==generation)return;const task=tasks[index++];let r;try{r=await (task.kind==='bo'?ctx.bo:ctx.cases)(task.company,task.from,task.to);}catch(e){throw Error(`${task.company} · ${task.kind==='bo'?'BO':'ทะเบียนเคส'} · ${task.from} ถึง ${task.to}: ${e.message}`);}
      if(!active()||token!==generation)return;if(!r||r.company!==task.company)throw Error('ผลตอบกลับไม่ตรงบริษัท');
      if(task.kind==='cases')reports.push(r);else for(const d of r.days||[]){if(d.company!==task.company||!F.dates(task.from,task.to).includes(d.date))throw Error('ขอบเขต BO ไม่ตรงคำขอ');boRows.push({...d,scopeKey:d.company+'|'+d.date});}
      done++;showBusy(`อ่านแล้ว ${done}/${tasks.length} ชุด · อ่านพร้อมกันไม่เกิน 2 คำขอ`);
@@ -99,7 +99,7 @@
   }
   const focus=()=>{if(active()&&data)checkScope().catch(e=>{if(active())clear(e.message);});};root.addEventListener('focus',focus);
   host.financeDispose=()=>{disposed=true;generation++;data=null;currentView=null;root.removeEventListener('focus',focus);};
-  async function init(){if(!active())return;try{await checkScope();chrome();await load();}catch(e){if(active())clear(e.message);}}
+  async function init(){if(!active())return;try{await checkScope();if(!data&&company==='ALL')company=scope[0]||'ALL';chrome();await load();}catch(e){if(active())clear(e.message);}}
   await init();
  }
  root.FinanceExecutive={mount,exportSvg};if(typeof module!=='undefined')module.exports=root.FinanceExecutive;
