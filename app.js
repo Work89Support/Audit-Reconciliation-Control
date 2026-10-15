@@ -101,7 +101,7 @@ const ROUTES = [
   {
     group: "รายงาน",
     items: [
-      { id: "finance", label: "การเงิน & ผู้บริหาร", icon: "kpi", title: "การเงินและภาพรวมผู้บริหาร", desc: "BO ความเสี่ยง ความเสียหาย และรายงานพนักงานตามบริษัทที่ได้รับสิทธิ์ · อ่านอย่างเดียว", filters: false },
+      { id: "finance", label: "การเงิน & ผู้บริหาร", icon: "kpi", title: "การเงินและภาพรวมผู้บริหาร", desc: "BO ความเสี่ยง ความเสียหาย พนักงาน และ Action แยกตามบริษัทที่มีสิทธิ์ · ไม่แก้ยอดหรือสถานะเคส", filters: false },
       { id: "monthly-audit", label: "สุ่มตรวจรายเดือน", icon: "reports", title: "สุ่มตรวจ Audit รายเดือน", desc: "เก็บชุดสุ่ม ผู้ตรวจ ผลประเมิน หมายเหตุ หลักฐาน และประวัติแยกบริษัท/เดือน", filters: false },
       { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true, hidden: true },
       { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
@@ -1066,7 +1066,8 @@ const VIEWS = {};
 VIEWS.finance=root=>{
  if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
  FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
-  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob});
+  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,
+  actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
 };
 function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');

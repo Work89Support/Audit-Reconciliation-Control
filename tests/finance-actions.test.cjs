@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),A=require('../finance-actions.js');
+const base={company:'MR9',exception_id:'case',action_type:'remediated',state:'done',seq:1};
+assert.equal(A.summary([base,{...base,seq:2,state:'reopened'}]).remediated,0);
+assert.equal(A.summary([base,{...base,company:'MC8',seq:2}]).remediated,2,'Same case IDs cannot merge company scope');
+assert.throws(()=>A.latest([{...base,action_type:'close_case'}]));
+const p={p_action:'recovery_received',p_state:'done',p_owner:'owner',p_date:'2026-10-13',p_note:'หลักฐานรับคืนแยก',p_files:['file']};
+assert.equal(A.validate(p,'2026-10-15','2026-10-12'),p);assert.throws(()=>A.validate({...p,p_files:[]},'2026-10-15','2026-10-12'));assert.throws(()=>A.validate({...p,p_date:'2026-10-11'},'2026-10-15','2026-10-12'));
+assert.throws(()=>A.validate({...p,p_date:'2026-10-16'},'2026-10-15','2026-10-12'));
+const ui=fs.readFileSync(require.resolve('../finance-actions.js'),'utf8'),transport=fs.readFileSync(require.resolve('../supabase.js'),'utf8');
+assert.match(ui,/if\(busy\|\|!active\(\)\)return/);assert.match(ui,/request\.id/);assert.match(ui,/request_id===request\.id/);assert.match(ui,/value\.history/);assert.match(ui,/ctx\.checkScope\(\)/);
+assert.doesNotMatch(ui,/localStorage|sessionStorage|close_exception|approve_damage|save_damage|submit_clarification/);
+assert.match(transport,/'x-upsert':'false'/);assert.match(transport,/SHA-256/);assert.match(transport,/reserve_finance_action_evidence/);
+console.log('PASS Action model: independent steps, reopen history, scoped counts, required owner/date/proof, duplicate-submit guards and no operational write endpoints.');

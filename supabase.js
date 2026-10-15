@@ -837,6 +837,31 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const financeReportingCompanies=()=>rpc('finance_reporting_companies');
   const financeBoWindow=(company,from,to)=>rpc('finance_bo_window',{p_company:company,p_from:from,p_to:to});
   const financeCaseReport=(company,from,to)=>rpc('finance_case_report',{p_company:company,p_from:from,p_to:to});
+  const financeActionReport=(company,to)=>rpc('finance_action_report',{p_company:company,p_to:to});
+  const financeActionCase=(company,id)=>rpc('finance_action_case',{p_company:company,p_case:id});
+  const findFinanceActionCase=(company,date,code)=>rpc('find_finance_action_case',{p_company:company,p_date:date,p_code:code});
+  const saveFinanceAction=payload=>rpc('save_finance_action',payload);
+  async function financeActionUrl(path){
+    const j=await json(`/storage/v1/object/sign/finance-action-evidence/${encodeURI(path)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expiresIn:300})});
+    if(typeof j?.signedURL!=='string'||!j.signedURL.startsWith('/object/sign/finance-action-evidence/'))throw Error('ยังเปิดหลักฐาน Action ไม่ได้');
+    return base()+'/storage/v1'+j.signedURL;
+  }
+  async function uploadFinanceActionEvidence(company,id,file){
+    const actor=authUser()?.id,ext=file.name.split('.').pop().toLowerCase(),types={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',csv:'text/csv',txt:'text/plain'};
+    if(!actor||!types[ext]||!file.size||file.size>20971520)throw Error('เลือกหลักฐานที่รองรับ ไม่เกิน 20 MB');
+    const bytes=await file.arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',bytes),sha=[...new Uint8Array(hash)].map(n=>n.toString(16).padStart(2,'0')).join('');
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน หยุดอัปโหลด');
+    const proof=await rpc('reserve_finance_action_evidence',{p_company:company,p_case:id,p_name:replacementSafeName(file.name).slice(-200),p_size:file.size,p_mime:types[ext],p_sha256:sha});
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน หยุดอัปโหลด');
+    if(!proof.uploaded){
+      try{await req(`/storage/v1/object/finance-action-evidence/${encodeURI(proof.storage_path)}`,{method:'POST',headers:{'Content-Type':types[ext],'x-upsert':'false'},body:bytes,timeoutMs:120000});}
+      catch(e){if(!/already exists|duplicate|resource.*exists/i.test(e.message))throw e;}
+    }
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน หยุดบันทึก');
+    const checked=await rpc('reserve_finance_action_evidence',{p_company:company,p_case:id,p_name:proof.file_name,p_size:file.size,p_mime:types[ext],p_sha256:sha});
+    if(!checked.uploaded)throw Error('ยังยืนยันไฟล์เดิมไม่ครบ กดลองต่อโดยไม่เลือกไฟล์ใหม่');
+    return checked;
+  }
   const confirmAuditPairs=(runId,indices,note)=>rpc('confirm_audit_pairs',{p_run_id:runId,p_indices:indices,p_note:note});
 
   /* สิทธิ์ใช้งานจริงมาจากฐานข้อมูลเท่านั้น ไม่อ่าน role จาก user_metadata
@@ -1573,7 +1598,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
   return {
-    financeReportingCompanies,financeBoWindow,financeCaseReport,
+    financeReportingCompanies,financeBoWindow,financeCaseReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
