@@ -22,13 +22,14 @@
   const overall=read(cs,d.from,d.to),previous=read(cs,d.previous.from,d.previous.to);
   const grow=(a,p)=>({depositGrowth:change(a,p,'deposit'),withdrawGrowth:change(a,p,'withdraw'),countGrowth:change(a,p,'count'),netGrowth:change(a,p,'net')});
   const company=cs.map(company=>{const a=read([company],d.from,d.to),p=read([company],d.previous.from,d.previous.to);return {company,from:d.from,to:d.to,...a,...(d.equalDays?grow(a,p):{depositGrowth:null,withdrawGrowth:null,countGrowth:null})};});
-  const daily=days.map(date=>{const a=read(cs,date,date),p=read(cs,F.shift(date,-1),F.shift(date,-1));return {date,...a,...grow(a,p)};});
+  const groupLabel=cs.length===1?cs[0]:'รวม '+cs.length+' บริษัทที่เลือก';
+  const daily=days.map(date=>{const a=read(cs,date,date),p=read(cs,F.shift(date,-1),F.shift(date,-1));return {company:groupLabel,date,...a,...grow(a,p)};});
   const dailyCompany=days.flatMap(date=>cs.map(company=>{const a=read([company],date,date),p=read([company],F.shift(date,-1),F.shift(date,-1));return {company,date,...a,...grow(a,p),reason:all.find(r=>r.company===company&&r.date===date)?.reason||'ยังไม่มีผลอ่าน'};}));
   const monthly=[],monthlyCompany=[];
   for(const month of [...new Set(days.map(v=>v.slice(0,7)))]){
    const m=monthInfo(month),from=d.from>m.start?d.from:m.start,to=d.to<m.end?d.to:m.end,p=monthInfo(m.previous),full=from===m.start&&to===m.end;
    const pf=full?p.start:p.start.slice(0,8)+String(Math.min(Number(from.slice(8)),Number(p.end.slice(8)))).padStart(2,'0'),pt=full?p.end:p.start.slice(0,8)+String(Math.min(Number(to.slice(8)),Number(p.end.slice(8)))).padStart(2,'0'),comparable=full||Number(to.slice(8))<=Number(p.end.slice(8));
-   for(const companies of [cs,...cs.map(c=>[c])]){const a=read(companies,from,to),b=read(companies,pf,pt),r={company:companies===cs?'ทุกบริษัทตามสิทธิ์':companies[0],month,from,to,full,...a,...(comparable?grow(a,b):{depositGrowth:null,withdrawGrowth:null,countGrowth:null,netGrowth:null})};(companies===cs?monthly:monthlyCompany).push(r);}
+   for(const companies of [cs,...cs.map(c=>[c])]){const a=read(companies,from,to),b=read(companies,pf,pt),r={company:companies===cs?groupLabel:companies[0],month,from,to,full,...a,...(comparable?grow(a,b):{depositGrowth:null,withdrawGrowth:null,countGrowth:null,netGrowth:null})};(companies===cs?monthly:monthlyCompany).push(r);}
   }
   const cohort=company.map(c=>{const p=read([c.company],d.previous.from,d.previous.to),allowed=d.analysisMode!=='trend'&&d.equalDays&&c.userComplete&&p.userComplete,shared=[...c.users.keys()].filter(k=>p.users.has(k)).length;
    return {...c,overlap:allowed?shared:null,notSeenBefore:allowed?c.users.size-shared:null,returnRate:allowed&&p.users.size?shared/p.users.size*100:null};});

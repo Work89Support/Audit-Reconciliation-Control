@@ -37,7 +37,7 @@
   async function load(){
    if(busy||!active()||hasActionDraft())return;busy=true;data=null;currentView=null;const token=++generation;
    const body=host.querySelector('[data-fin-body]');body.innerHTML='<section class="panel" role="status">กำลังอ่านข้อมูลจริง… ยังไม่สรุปยอดจนกว่าจะอ่านครบ</section>';
-   host.querySelectorAll('form button, [data-fin-refresh]').forEach(b=>b.disabled=true);
+   host.querySelectorAll('[data-fin-form] input, [data-fin-form] select, [data-fin-form] button, [data-fin-refresh]').forEach(b=>b.disabled=true);
    try{
     await checkScope();if(!scope.length)throw Error('ยังไม่มีบริษัทที่ได้รับสิทธิ์รายงาน');
     if(company!=='ALL'&&!scope.includes(company))throw Error('ไม่มีสิทธิ์บริษัทที่เลือก');
@@ -56,7 +56,7 @@
     data={...range,analysisMode:mode,boRows:uniqueBo,companies:selected,actions:A.latest(F.unique(actionRows)),boLoaded,bo:F.boSummary(uniqueBo,selected,range.from,range.to),previous:F.boSummary(uniqueBo,selected,range.previous.from,range.previous.to),
      allLosses:cases.losses,losses:inPeriod,risks:cases.risks,reports,updatedAt:new Date().toISOString()};
     showBusy(`ข้อมูลล่าสุด ${ctx.formatTime(data.updatedAt)} · ผลประเมิน / ยอดรับคืน / งานติดตาม เป็นสถานะปัจจุบันของเคสที่เกิดในช่วง ไม่ใช่ภาพย้อนหลัง`);renderBody();
-   }catch(e){if(active()&&token===generation)clear(e.message);}finally{busy=false;host.querySelectorAll('form button,[data-fin-refresh]').forEach(b=>b.disabled=false);}
+   }catch(e){if(active()&&token===generation)clear(e.message);}finally{busy=false;host.querySelectorAll('[data-fin-form] input,[data-fin-form] select,[data-fin-form] button,[data-fin-refresh]').forEach(b=>b.disabled=false);}
   }
   const card=(label,value,note)=>`<article class="panel fin-stat"><span>${F.esc(label)}</span><strong>${F.esc(value)}</strong><small>${F.esc(note)}</small></article>`;
   const chartPanels=charts=>`<div class="fin-chart-grid">${charts.map((c,i)=>`<section class="panel fin-chart"><h3>${F.esc(c.title)}</h3><p class="hint">${F.esc(c.unit)}</p><div data-fin-chart="${i}"></div></section>`).join('')}</div>`;
