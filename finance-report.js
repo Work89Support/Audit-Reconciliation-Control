@@ -7,12 +7,13 @@
  const count=v=>Number(v).toLocaleString('th-TH');
  const day=d=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw Error('วันที่ไม่ถูกต้อง');const t=Date.parse(d+'T00:00:00Z');if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==d)throw Error('วันที่ไม่ถูกต้อง');return t;};
  const iso=t=>new Date(t).toISOString().slice(0,10),shift=(d,n)=>iso(day(d)+n*86400000);
- function dates(from,to){const length=(day(to)-day(from))/86400000+1;if(length<1||length>31)throw Error('เลือกช่วง 1–31 วัน');return Array.from({length},(_,i)=>shift(from,i));}
+ function dates(from,to){const length=(day(to)-day(from))/86400000+1;if(length<1||length>186)throw Error('เลือกช่วง 1–186 วัน');return Array.from({length},(_,i)=>shift(from,i));}
  function period(mode,value,from,to,today){
+  if(mode==='trend'){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))throw Error('เลือกเดือนสิ้นสุด');if(value>today.slice(0,7))throw Error('เลือกเดือนไม่เกินเดือนปัจจุบัน');const [y,m]=value.split('-').map(Number);from=iso(Date.UTC(y,m-3,1));to=iso(Date.UTC(y,m,0));if(to>=today)to=shift(today,-1);const previousFrom=iso(Date.UTC(y,m-2,1)),previousEnd=iso(Date.UTC(y,m-1,0));return {from,to,previous:{from:previousFrom,to:iso(Math.min(day(previousEnd),day(previousFrom)+(Number(to.slice(8))-1)*86400000))},equalDays:false};}
   if(mode==='month'){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))throw Error('เลือกเดือน');from=value+'-01';const [y,m]=value.split('-').map(Number);to=iso(Date.UTC(y,m,0));if(to>=today)to=shift(today,-1);}
   else if(mode==='day'){to=from;}
   else if(mode==='week'){to=shift(today,-1);from=shift(to,-6);}
-  const ds=dates(from,to);if(to>=today)throw Error('รายงานใช้วันเต็มถึงเมื่อวาน เพื่อไม่เทียบวันไม่ครบ');
+  const ds=dates(from,to);if(ds.length>31)throw Error('เลือกช่วงไม่เกิน 31 วัน หรือใช้แนวโน้ม 3 เดือน');if(to>=today)throw Error('รายงานใช้วันเต็มถึงเมื่อวาน เพื่อไม่เทียบวันไม่ครบ');
   let previous;
   if(mode==='month'){const [y,m]=from.slice(0,7).split('-').map(Number),start=iso(Date.UTC(y,m-2,1));const last=iso(Date.UTC(y,m-1,0));previous={from:start,to:iso(Math.min(day(last),day(start)+(ds.length-1)*86400000))};}
   else previous={from:shift(from,-ds.length),to:shift(from,-1)};
@@ -85,12 +86,12 @@
  function chartSvg(c,W=520,H=230){
   const number=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(1)+'ล.':Math.abs(v)>=1000?(v/1000).toFixed(1)+'พ.':Number(v).toFixed(v%1?1:0);
   const text=(x,y,t,anchor='start')=>`<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="sans-serif" font-size="12" fill="#263e59">${esc(t)}</text>`;
-  const values=c.items.filter(r=>r.value!==null&&Number.isFinite(r.value)),max=Math.max(1,...values.map(r=>r.value))*1.15;let body='';
+  const values=c.items.filter(r=>r.value!==null&&Number.isFinite(r.value)),lo=Math.min(0,...values.map(r=>r.value))*1.15,hi=Math.max(0,...values.map(r=>r.value))*1.15,span=Math.max(1,hi-lo),max=hi;let body='';
   if(!values.length)return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title)}">${text(W/2,H/2,'ยังไม่มีข้อมูลที่ครบพอแสดงกราฟ','middle')}</svg>`;
   if(c.kind==='line'){
-   const L=58,R=24,T=18,B=43,w=W-L-R,h=H-T-B;[0,.5,1].forEach(f=>{body+=`<line x1="${L}" x2="${W-R}" y1="${T+h*(1-f)}" y2="${T+h*(1-f)}" stroke="#dae6f1"/>`+text(L-6,T+h*(1-f)+4,number(max*f),'end');});
-   let path='',on=false;const step=Math.max(1,Math.ceil(c.items.length/6));c.items.forEach((r,i)=>{const x=L+(i+.5)*w/c.items.length;if(r.value===null){on=false;return;}const y=T+h-r.value/max*h;path+=(on?'L':'M')+x+','+y+' ';on=true;body+=`<circle cx="${x}" cy="${y}" r="3" fill="#0873d8"><title>${esc(r.label)}: ${esc(money(r.value))}</title></circle>`;if(i%step===0&&i<c.items.length-1||i===c.items.length-1)body+=text(x,H-22,r.label,'middle');});body+=`<path d="${path}" fill="none" stroke="#0873d8" stroke-width="2"/>`;
-  }else {const L=Math.min(130,W*.32),R=60,row=(H-22)/values.length;values.forEach((r,i)=>{const y=8+i*row,width=(W-L-R)*r.value/max;body+=text(L-8,y+row*.6,String(r.label).slice(0,20),'end')+`<rect x="${L}" y="${y+3}" width="${width}" height="${Math.max(4,row-10)}" fill="#0873d8"/>`+text(L+width+5,y+row*.6,number(r.value));});}
+   const L=58,R=24,T=18,B=43,w=W-L-R,h=H-T-B;[0,.5,1].forEach(f=>{body+=`<line x1="${L}" x2="${W-R}" y1="${T+h*(1-f)}" y2="${T+h*(1-f)}" stroke="#dae6f1"/>`+text(L-6,T+h*(1-f)+4,number(lo+span*f),'end');});
+   let path='',on=false;const step=Math.max(1,Math.ceil(c.items.length/6));c.items.forEach((r,i)=>{const x=L+(i+.5)*w/c.items.length;if(r.value===null){on=false;return;}const y=T+h-(r.value-lo)/span*h;path+=(on?'L':'M')+x+','+y+' ';on=true;body+=`<circle cx="${x}" cy="${y}" r="3" fill="${r.partial?'#d58a1b':'#0873d8'}"><title>${esc(r.label)}: ${esc(money(r.value))}</title></circle>`;if(i%step===0&&i<c.items.length-1||i===c.items.length-1)body+=text(x,H-22,r.label,'middle');});body+=`<path d="${path}" fill="none" stroke="${c.items.some(r=>r.partial)?'#d58a1b':'#0873d8'}" stroke-dasharray="${c.items.some(r=>r.partial)?'6 4':'none'}" stroke-width="2"/>`;
+  }else {const L=Math.min(130,W*.32),R=60,row=(H-22)/values.length;values.forEach((r,i)=>{const y=8+i*row,width=(W-L-R)*Math.abs(r.value)/span,zero=L+(W-L-R)*(0-lo)/span,x=r.value<0?zero-width:zero;body+=text(L-8,y+row*.6,String(r.label).slice(0,20),'end')+`<rect x="${x}" y="${y+3}" width="${width}" height="${Math.max(4,row-10)}" fill="${r.partial?'#d58a1b':'#0873d8'}"/>`+text(x+width+5,y+row*.6,number(r.value));});}
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.title+' '+c.unit)}"><title>${esc(c.title)}</title>${body}</svg>`;
  }
  function pagination(rows,page){const size=20,pages=Math.max(1,Math.ceil(rows.length/size));page=Math.min(Math.max(1,page),pages);return {rows:rows.slice((page-1)*size,page*size),page,pages,total:rows.length};}

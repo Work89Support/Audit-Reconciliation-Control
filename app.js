@@ -1066,7 +1066,7 @@ const VIEWS = {};
 VIEWS.finance=root=>{
  if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
  FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
-  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,
+  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,buildWorkbook:XlsxWriter.build,archive:XlsxWriter.archive,
   actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
 };
 function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {

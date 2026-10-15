@@ -20,6 +20,7 @@ create function public.effective_audit_source_files(c text,d date) returns jsonb
 create function public.primary_case_is_current(p uuid) returns boolean language sql as $$select true$$;
 set test.uid='${lead}';`);
 await db.exec(await fs.readFile(new URL('../supabase/20261015_finance_reporting.sql',import.meta.url),'utf8'));
+await db.exec(await fs.readFile(new URL('../supabase/20261015_finance_bo_analytics.sql',import.meta.url),'utf8'));
 const context=async()=> (await db.query('select finance_reporting_companies() result')).rows[0].result;
 assert.deepEqual(await context(),['MR9']);
 await assert.rejects(db.query(`select finance_bo_window('MC8','2026-10-12','2026-10-12')`),/ไม่มีสิทธิ์/);
@@ -29,6 +30,11 @@ const job='20000000-0000-0000-0000-000000000001',run='20000000-0000-0000-0000-00
 await db.query(`insert into recon_runs(id,company,business_date,bo_count,summary) values($1,'MR9','2026-10-12',2,$2)`,[run,summary]);await db.query(`insert into daily_recon_jobs values($1,'MR9','2026-10-12',false,$2,'completed')`,[job,run]);
 const bo=async()=> (await db.query(`select finance_bo_window('MR9','2026-10-12','2026-10-13') result`)).rows[0].result;
 let data=await bo();assert.equal(data.days[0].deposit,201.36);assert.equal(data.days[0].count,2);assert.equal(data.days[0].complete,true);assert.equal(data.days[1].complete,false);assert.equal(data.days[1].deposit,undefined,'missing source not zero');
+const identitySummary={...summary,match_evidence:summary.match_evidence.map(m=>({...m,customer:{bo:{user:'CUSTOMER-PRIVATE-001',performedBy:'STAFF-DO-NOT-COUNT'}}}))};
+await db.query('update recon_runs set summary=$1 where id=$2',[identitySummary,run]);
+const identities=await bo();assert.equal(identities.days[0].user_keys.length,1);assert.equal(identities.days[0].user_keys[0].count,2);assert.equal(identities.days[0].identified_rows,2);assert.equal(identities.days[0].user_complete,true);
+assert.doesNotMatch(JSON.stringify(identities),/CUSTOMER-PRIVATE|STAFF-DO-NOT-COUNT|identity|"users"/,'No raw IDs, operator or salt leave scoped RPC');
+assert.match(identities.days[0].user_keys[0].key,/^[a-f0-9]{32}$/);
 const duplicate={...summary,match_evidence:[...summary.match_evidence,summary.match_evidence[0]]};await db.query('update recon_runs set summary=$1 where id=$2',[duplicate,run]);assert.equal((await bo()).days[0].count,2,'same source not duplicated');
 const conflict={...summary,match_evidence:[...summary.match_evidence,{...summary.match_evidence[0],amount:999}]};await db.query('update recon_runs set summary=$1 where id=$2',[conflict,run]);assert.equal((await bo()).days[0].complete,false,'source identity conflict blocks full totals');
 await db.query('insert into manual_fixture values($1,$2,$3)',['MR9','2026-10-12',{stale:true,id:'stale'}]);assert.equal((await bo()).days[0].complete,false,'stale manual primary blocks auto fallback');
@@ -45,5 +51,6 @@ const before=(await db.query(`select (select count(*) from damages)::int d,(sele
 await cases();assert.deepEqual((await db.query(`select (select count(*) from damages)::int d,(select count(*) from exceptions)::int e,(select count(*) from recon_runs)::int r`)).rows[0],before);
 await db.exec('set role authenticated;');assert.deepEqual(await context(),['MC8','MR9']);await assert.rejects(db.query(`select finance_report_number('100')`),/permission denied/);await db.exec('reset role;');
 await db.exec(`update app_profiles set active=false where user_id='${admin}';`);await assert.rejects(context(),/ไม่มีสิทธิ์/);
+await db.exec('set role authenticated;');await assert.rejects(db.query('select salt from finance_analytics_private'),/permission denied/);await db.exec('reset role;');
 const source=await fs.readFile(new URL('../supabase/20261015_finance_reporting.sql',import.meta.url),'utf8');assert.doesNotMatch(source,/\b(update|insert into|delete from)\s+(public\.)?(damages|exceptions|recon_runs|daily_recon_jobs|damage_receipts|damage_collections)\b/i);
 console.log('PASS isolated finance DB: strict explicit company scope for lead/exec, inactive/monitor denial, current sources, source dedupe/conflict, stale primary, missing-not-zero; no live data writes.');await db.close();
