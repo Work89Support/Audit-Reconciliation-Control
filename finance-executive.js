@@ -125,12 +125,12 @@
     const sheets=view.sheets.map(s=>({...s,widths:s.headers.map(()=>24)}));sheets[sheets.length-1]={...sheets.at(-1),rows:[...sheets.at(-1).rows,['อ่านข้อมูล',ctx.formatTime(data.updatedAt)]]};
     let blob;
     if(kind==='xlsx')blob=ctx.buildWorkbook(sheets,meta);
-    else {const files=[],enc=new TextEncoder();let n=0;for(const sheet of sheets){
-     if(kind==='csv')files.push({name:sheet.name+'.csv',data:enc.encode(B.csv(sheet))});
-     else for(let start=0;start<sheet.rows.length;start+=40){await checkScope();if(!active()||data!==snapshot)throw Error('ข้อมูลหรือสิทธิ์เปลี่ยน ยกเลิกภาพ');files.push({name:sheet.name+'-'+String(++n).padStart(3,'0')+'.svg',data:enc.encode(B.tableSvg({...sheet,name:meta.title+' · '+sheet.name},start,Math.min(start+40,sheet.rows.length)))});status.textContent='สร้างภาพตารางครบแล้ว '+n+' หน้า';}
-    }blob=ctx.archive(files);}
+    else {const files=[],enc=new TextEncoder();let n=0,sheetNo=0;for(const sheet of sheets){const fileCode='table-'+String(++sheetNo).padStart(2,'0');
+     if(kind==='csv')files.push({name:fileCode+'.csv',data:enc.encode(B.csv(sheet))});
+     else for(let start=0;start<sheet.rows.length;start+=40){await checkScope();if(!active()||data!==snapshot)throw Error('ข้อมูลหรือสิทธิ์เปลี่ยน ยกเลิกภาพ');files.push({name:fileCode+'-page-'+String(++n).padStart(3,'0')+'.svg',data:enc.encode(B.tableSvg({...sheet,name:meta.title+' · '+sheet.name},start,Math.min(start+40,sheet.rows.length)))});status.textContent='สร้างภาพตารางครบแล้ว '+n+' หน้า';}
+    }files.push({name:'index.csv',data:enc.encode(B.csv({headers:['table_code','table_name','data_rows','scope','read_at'],rows:sheets.map((sheet,i)=>['table-'+String(i+1).padStart(2,'0'),sheet.name,sheet.rows.length,meta.title,ctx.formatTime(data.updatedAt)])}))});blob=ctx.archive(files);}
     await checkScope();if(!active()||data!==snapshot)throw Error('ข้อมูลหรือสิทธิ์เปลี่ยน ยกเลิกส่งออก');
-    ctx.saveBlob(blob,'audit-bo-all-tables-'+company+'-'+data.from+'-'+data.to+'.'+(kind==='xlsx'?'xlsx':'zip'));status.textContent='ส่งออกครบ '+sheets.length+' ตาราง · '+sheets.reduce((n,s)=>n+s.rows.length,0)+' แถวข้อมูล ไม่รวมเฉพาะที่เห็นบนจอ';
+    ctx.saveBlob(blob,'audit-bo-all-tables-'+company+'-'+data.from+'-'+data.to+(kind==='xlsx'?'':kind==='csv'?'-csv':'-svg-tables')+'.'+(kind==='xlsx'?'xlsx':'zip'));status.textContent='ส่งออกครบ '+sheets.length+' ตาราง · '+sheets.reduce((n,s)=>n+s.rows.length,0)+' แถวข้อมูล ไม่รวมเฉพาะที่เห็นบนจอ';
    }catch(e){if(active())status.textContent=e.message;}finally{buttons.forEach(b=>b.disabled=false);}
   }
 
