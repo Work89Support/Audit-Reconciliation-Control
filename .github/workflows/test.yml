@@ -29,12 +29,15 @@ jobs:
         run: node tests/live-queue-auto.test.cjs && node tests/live-background-update.test.mjs && node tests/audit-review-queue.test.cjs
       - name: Verify read-only emergency source ZIP
         run: npm run test:source-archive
+      - name: Verify read-only scoped finance reporting
+        run: node tests/finance-report.test.cjs
       - name: Verify cross-day image review
         run: |
           node tests/cross-day-image-review.test.cjs
           node tests/cross-day-bulk-head.test.cjs
           node tests/cross-day-workbench.test.cjs
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+          node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/cross-day-image-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/attachment-register-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/waiting-evidence-lookup-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"

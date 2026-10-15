@@ -101,6 +101,7 @@ const ROUTES = [
   {
     group: "รายงาน",
     items: [
+      { id: "finance", label: "การเงิน & ผู้บริหาร", icon: "kpi", title: "การเงินและภาพรวมผู้บริหาร", desc: "BO ความเสี่ยง ความเสียหาย และรายงานพนักงานตามบริษัทที่ได้รับสิทธิ์ · อ่านอย่างเดียว", filters: false },
       { id: "monthly-audit", label: "สุ่มตรวจรายเดือน", icon: "reports", title: "สุ่มตรวจ Audit รายเดือน", desc: "เก็บชุดสุ่ม ผู้ตรวจ ผลประเมิน หมายเหตุ หลักฐาน และประวัติแยกบริษัท/เดือน", filters: false },
       { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true, hidden: true },
       { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
@@ -231,9 +232,9 @@ function auditRuleBookMarkup(selectedCompany = "") {
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "monthly-audit", "notifications"],
   audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "monthly-audit", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "notifications", "audit-log", "case-settings", "users"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "notifications", "audit-log", "case-settings", "users", "finance"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
-  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications"],
+  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications", "finance"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
   admin: Object.keys(ROUTE_MAP),
 };
@@ -1062,6 +1063,11 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+VIEWS.finance=root=>{
+ if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
+ FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
+  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob});
+};
 function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
   openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
@@ -1216,6 +1222,7 @@ function render() {
   renderNav();
   renderAuditFlow();
   renderFilters();
+  $("#viewRoot").financeDispose?.();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
   $('#fileManageEntry')?.remove();
@@ -1228,7 +1235,7 @@ function render() {
       const manual=document.createElement('section');manual.className='source-archive-launch';manual.innerHTML='<div><h2>รันตรวจซ้ำ / จัดการไฟล์</h2><p>1 เลือกบริษัทและวัน → 2 เลือกไฟล์/บัญชี → 3 ตรวจและทบทวนผล · หัวหน้า/ผู้ดูแลยืนยันเท่านั้น<br>แก้ชื่อ/บริษัท/ฉบับแทน หรือพักรันได้ โดยเก็บต้นฉบับและประวัติ</p></div><button>เลือกไฟล์และรันตรวจซ้ำ</button>';manual.querySelector('button').onclick=chooseFileRunManagement;$('#viewRoot').prepend(manual);
     }
   }
-  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets"].includes(route.id)) {
+  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets", "finance"].includes(route.id)) {
     const liveNotice = liveOverviewState.loading
       ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`
       : liveOverviewState.error

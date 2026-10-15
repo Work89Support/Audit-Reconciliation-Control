@@ -834,6 +834,9 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+  const financeReportingCompanies=()=>rpc('finance_reporting_companies');
+  const financeBoWindow=(company,from,to)=>rpc('finance_bo_window',{p_company:company,p_from:from,p_to:to});
+  const financeCaseReport=(company,from,to)=>rpc('finance_case_report',{p_company:company,p_from:from,p_to:to});
   const confirmAuditPairs=(runId,indices,note)=>rpc('confirm_audit_pairs',{p_run_id:runId,p_indices:indices,p_note:note});
 
   /* สิทธิ์ใช้งานจริงมาจากฐานข้อมูลเท่านั้น ไม่อ่าน role จาก user_metadata
@@ -1570,6 +1573,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
   return {
+    financeReportingCompanies,financeBoWindow,financeCaseReport,
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
