@@ -588,6 +588,10 @@ function recordCaseUiResult(e, message) {
   caseUiResults.set(caseUiKey(e), {message, status:e.status, actor:(typeof Sb !== 'undefined' && Sb.currentEmail()) || currentUser().username, at:nowStamp()});
 }
 const clarificationRequestFlights = new Set();
+function isUnsentClarificationCase(row) {
+  return row.status==='open' && !row.requestedAt && !row.respondedAt && !row.closureRequestId;
+}
+function clarificationAccountKey(row) { return String(row.account||'').trim().toUpperCase(); }
 function captureClarificationRequestContext(e) {
   const root = $('#viewRoot');
   const scrolls = Array.from(root?.querySelectorAll('*') || []).filter(el => el.scrollTop || el.scrollLeft).map(el => {
@@ -598,9 +602,12 @@ function captureClarificationRequestContext(e) {
   const rows=filteredExceptions();
   const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
   const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
-  return {company:e.company, x:window.scrollX,y:window.scrollY,scrolls,
-    nextIds:ordered.filter(row=>row.company===e.company && caseUiKey(row)!==caseUiKey(e)
-      && ['open','answered'].includes(row.status) && !row.hasEvidence && canAccessCompany(row.company)).map(row=>row.id)};
+  const candidates=ordered.filter(row=>row.company===e.company && caseUiKey(row)!==caseUiKey(e)
+    && isUnsentClarificationCase(row) && canAccessCompany(row.company));
+  const account=clarificationAccountKey(e);
+  const sameAccount=row=>account && clarificationAccountKey(row)===account;
+  return {company:e.company, account:e.account, x:window.scrollX,y:window.scrollY,scrolls,
+    nextKeys:[...candidates.filter(sameAccount),...candidates.filter(row=>!sameAccount(row))].map(caseUiKey)};
 }
 function restoreClarificationRequestScroll(context) {
   const restore=()=>{
@@ -610,11 +617,12 @@ function restoreClarificationRequestScroll(context) {
   restore();requestAnimationFrame(()=>requestAnimationFrame(restore));
 }
 function showClarificationRequestReceipt(e, context) {
-  const next=()=>context.nextIds.map(id=>DB.exceptions.find(row=>row.id===id)).find(row=>row
-    && row.company===context.company && ['open','answered'].includes(row.status) && !row.hasEvidence
+  const next=()=>context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).find(row=>row
+    && row.company===context.company && isUnsentClarificationCase(row)
     && canAccessCompany(row.company));
   const nextCase=next();
-  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p>${nextCase?'เลือกกลับหน้ารายการ หรือตรวจเคสถัดไปของบริษัทนี้':'ไม่มีเคสที่ต้องส่งขอชี้แจงถัดไปของบริษัทนี้ในตัวกรองปัจจุบัน'}</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม</small></div>`,
+  const nextScope=nextCase?`บัญชีถัดไป: ${nextCase.account||'ไม่ระบุ'} · ${nextCase.code||nextCase.id} · ${clarificationAccountKey(nextCase)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ยังไม่ส่งในตัวกรองนี้แล้ว จึงไปบัญชีถัดไป'}`:'';
+  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.code||e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p>${nextCase?'เลือกกลับหน้ารายการ หรือตรวจเคสถัดไปของบริษัทนี้':'ไม่มีเคสที่ต้องส่งขอชี้แจงถัดไปของบริษัทนี้ในตัวกรองปัจจุบัน'}</p>${nextScope?`<p>${h(nextScope)}</p>`:''}<small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม</small></div>`,
     `<button class="ghost-button" id="requestReceiptReturn">กลับหน้ารายการ</button><button class="primary-button" id="requestReceiptNext" ${nextCase?'':'disabled'}>ตรวจเคสถัดไปของบริษัทนี้</button>`);
   let acted=false;
   const returnToList=()=>{closeModal();closeDrawer();render();restoreClarificationRequestScroll(context);};
@@ -4256,11 +4264,12 @@ async function openException(id, options = {}) {
     issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
   );
 
-  $("#btnClarify").textContent = e.hasEvidence ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
+  $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
+  if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
   $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
-    if(e.hasEvidence)return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+    if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
     if (!["open", "answered"].includes(e.status)) return;
     if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
     const requestKey=caseUiKey(e);

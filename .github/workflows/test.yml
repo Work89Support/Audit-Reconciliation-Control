@@ -23,6 +23,8 @@ jobs:
         run: npm run test:ui-qa
       - name: Verify all-role evidence checklist
         run: node tests/case-evidence-checklist.test.cjs
+      - name: Verify AZPAY source time and cross-day display
+        run: node tests/azpay-source-cross-day.test.cjs
       - name: Verify queue auto refresh and draft protection
         run: node tests/live-queue-auto.test.cjs && node tests/live-background-update.test.mjs
       - name: Verify read-only emergency source ZIP

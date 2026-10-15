@@ -3,8 +3,8 @@
 <script>
 const $=s=>document.querySelector(s),h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const state={dataset:'production',route:'exceptions',reviewSheet:'normal',page:3,filters:{company:'FR8',date:'2026-10-13'},exFilter:{status:'open'}};
-const e={id:'EX-TEST-1',dbId:'fixture-1',company:'FR8',status:'open',hasEvidence:false},id=e.id;
-const DB={exceptions:[e,{id:'EX-TEST-2',company:'FR8',status:'open'},{id:'EX-OTHER-1',company:'MC8',status:'open'}]};
+const e={id:'EX-TEST-1',dbId:'fixture-1',company:'FR8',account:'AZPAY',status:'open',hasEvidence:false},id=e.id;
+const DB={exceptions:[e,{id:'EX-TEST-2',company:'FR8',account:'COREPAY',status:'open'},{id:'EX-TEST-3',company:'FR8',account:'AZPAY',status:'open',hasEvidence:true},{id:'EX-OTHER-1',company:'MC8',status:'open'}]};
 let sent=0,renders=0;const can=()=>true,canAccessCompany=c=>c==='FR8',caseUiKey=e=>e.dbId||e.id,filteredExceptions=()=>DB.exceptions;
 const recordCaseUiResult=()=>{},saveOverride=()=>{},logAction=()=>{},deny=()=>{};
 const toast=message=>$('#result').textContent=message;
@@ -13,7 +13,7 @@ const Sb={signedIn:()=>true,authUser:()=>({id:'fixture-audit'}),requestClarifica
 function list(){ $('#listScroll').innerHTML=Array.from({length:30},(_,n)=>`<p style="padding:6px">รายการจำลอง ${n+1} · ไม่ใช่เคสจริง</p>`).join(''); }
 function render(){renders++;list();$('#result').textContent=`คำขอจำลอง ${sent} ครั้ง · วาดรายการ ${renders} ครั้ง · บริษัท ${state.filters.company} · หน้า ${state.page}`;}
 function closeDrawer(){}
-function openException(id){$('#caseTitle').textContent=`เคสถัดไป ${id} · FR8`;$('#result').textContent+=` · เปิด ${id}`;}
+function openException(id){const row=DB.exceptions.find(r=>r.id===id);$('#caseTitle').textContent=`เคสถัดไป ${id} · FR8 · ${row?.account} · ${row?.hasEvidence?'แนบหลักฐานแล้ว แต่ยังไม่ส่ง':'ยังไม่ส่ง'}`;$('#result').textContent+=` · เปิด ${id}`;}
 function openModal(title,body,footer){$('#modal').innerHTML=`<header class="modal-head"><h2>${title}</h2></header><div class="modal-body">${body}</div><footer class="modal-foot">${footer}</footer>`;$('#modal').hidden=false;$('#modalOverlay').hidden=false;$('#modal').classList.add('on');}
 function closeModal(){$('#modal').hidden=true;$('#modalOverlay').hidden=true;}
 list();$('#listScroll').scrollTop=240;

@@ -21,7 +21,8 @@ const input={run:{id:'r1',matched:1,stm_count:999,bo_count:999,jobStatus:'needs_
 const before=JSON.stringify(input), rows=rowsOf(input);
 assert.equal(rows.length,2);assert.equal(rows[0].boTime,'2026-09-16 01:00:00');
 assert.equal(rows[1].pmAmount,null);assert.equal(rows[1].kind,'review');
-assert.equal(filter(rows,'COREPAY','deposit','review').length,1);
+assert.equal(filter(rows,'COREPAY','deposit','review').length,0);
+assert.equal(filter(rows,'COREPAY','deposit','pending_next_day').length,1);
 assert.equal(filter(rows,'AUTOPEER','deposit','all').length,0);
 assert.equal(providerOf('ATP / Autopeer'),'AT');assert.equal(providerOf('CPXM'),'CP');assert.equal(providerOf('M24'),'M');assert.equal(providerOf('LOCALPAY'),'LP');
 assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
