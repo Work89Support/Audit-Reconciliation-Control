@@ -5,6 +5,7 @@ const records=[{rowNo:2,boDate:'2000-01-01',date:'2000-01-02',boSec:82800,sec:20
 const parse=()=>({company:'MR9',code:'bo_transaction_export',headerIdx:0,records,aux:[{}],dropped:{},warnings:[]});
 const p=S.normalize(file,[['header']],parse,'2000-01-01');assert.equal(p.rows.length,1);assert.equal(p.rows[0].date,'2000-01-01');assert.equal(p.rows[0].sec,82800);assert.equal(p.rows[0].customer_user,'customer-private');assert.equal(p.meta.other_date_rows,1);assert.equal(p.meta.aux_rows,1);
 assert.equal(S.normalize(file,{rows:[['header']],rowNumbers:[1,10,11]},parse,'2000-01-01').rows[0].row,10,'keep physical XLSX row reference');
+assert.equal(p.otherRows[0].date,'2000-01-02');assert.equal(p.otherRows[0].row,3);assert.doesNotMatch(JSON.stringify(p.otherRows),/customer_user|performedBy/);
 assert.doesNotMatch(JSON.stringify(p),/staff-not-user|performedBy|username/);assert.deepEqual(S.totals(p.rows),{count:1,deposit:100.68,withdraw:0,deposits:1,withdrawals:0});
 assert.throws(()=>S.normalize(file,[],()=>({...parse(),dropped:{'ไม่มีเวลาที่อ่านได้':1}}),'2000-01-01'),/อ่านไม่ครบ/);
 assert.doesNotThrow(()=>S.normalize(file,[['header'],['รวม']],()=>({...parse(),dropped:{'ไม่มีเวลาที่อ่านได้':1}}),'2000-01-01'));
