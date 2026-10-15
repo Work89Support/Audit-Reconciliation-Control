@@ -66,12 +66,13 @@
  function chartsFor(s,previous,companies,losses,risks){
   const sum=(rows,key)=>rows.reduce((n,r)=>n+Number(r[key]||0),0),group=(rows,key,value)=>{const m=new Map();for(const r of rows)m.set(r[key],(m.get(r[key])||0)+Number(r[value]||0));return [...m].map(([label,value])=>({label,value}));};
   const wanted=dates(s.from,s.to),days=wanted.map(date=>{const r=s.bo.rows.filter(r=>r.date===date);return {label:date.slice(5),value:sum(r,'deposit'),count:sum(r,'count'),average:sum(r,'deposits')?sum(r,'deposit')/sum(r,'deposits'):0,complete:r.length===companies.length&&r.every(r=>r.complete)};});
-  const hours=Array.from({length:24},(_,hour)=>({label:String(hour).padStart(2,'0'),value:s.bo.rows.flatMap(r=>r.hours||[]).filter(r=>r.hour===hour).reduce((n,r)=>n+r.count,0)}));
+  const knownHours=s.bo.rows.flatMap(r=>r.hours||[]);
+  const hours=knownHours.length?Array.from({length:24},(_,hour)=>({label:String(hour).padStart(2,'0'),value:knownHours.filter(r=>r.hour===hour).reduce((n,r)=>n+r.count,0)})):[];
   const channels=group(s.bo.rows.flatMap(r=>r.channels||[]),'account','amount');
   return [
    {title:'แนวโน้มยอดฝาก BO รายวัน',unit:'บาท · วันข้อมูลไม่ครบแสดงช่องว่าง',items:days.map(r=>({...r,value:r.complete?r.value:null})),kind:'line'},
    {title:'จำนวนรายการ BO รายวัน',unit:'รายการฝาก + ถอน · วันไม่ครบแสดงช่องว่าง',items:days.map(r=>({label:r.label,value:r.complete?r.count:null})),kind:'line'},
-   {title:'ยอดฝาก BO แยกบริษัท',unit:'บาท · ยอดที่อ่านได้ อาจยังไม่ครบ',items:companies.map(c=>({label:c,value:sum(s.bo.rows.filter(r=>r.company===c),'deposit')}))},
+   {title:'ยอดฝาก BO แยกบริษัท',unit:'บาท · ยอดที่อ่านได้ อาจยังไม่ครบ',items:companies.map(c=>{const rows=s.bo.rows.filter(r=>r.company===c);return {label:c,value:rows.some(r=>cents(r.deposit)!==null)?sum(rows,'deposit'):null};})},
    {title:'เปรียบเทียบยอดฝากช่วงก่อน',unit:s.bo.complete&&previous.complete&&s.equalDays?'บาท · ช่วงวันที่จำนวนวันเท่ากัน':'รอข้อมูลทั้งสองช่วงครบก่อนเปรียบเทียบ',items:s.bo.complete&&previous.complete&&s.equalDays?[{label:'ช่วงก่อน',value:previous.deposit},{label:'ช่วงเลือก',value:s.bo.deposit}]:[]},
    {title:'รายการ BO ตามชั่วโมงต้นทาง',unit:'รายการ · เฉพาะแถวที่ทราบเวลาทำรายการ',items:hours,kind:'line'},
    {title:'ยอดฝากตามบัญชี / ช่องทาง BO',unit:'บาท · ไม่ใช่ช่องทางโฆษณา',items:channels},
