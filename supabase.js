@@ -836,6 +836,10 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     });
   const financeReportingCompanies=()=>rpc('finance_reporting_companies');
   const financeBoWindow=(company,from,to)=>rpc('finance_bo_window',{p_company:company,p_from:from,p_to:to});
+  const financeReportBoWindow=(company,from,to)=>rpc('finance_report_bo_window',{p_company:company,p_from:from,p_to:to});
+  const financeBoReportManifest=(company,date)=>rpc('finance_bo_report_manifest',{p_company:company,p_date:date});
+  const acceptFinanceBoReport=payload=>rpc('accept_finance_bo_report',payload);
+  const financeBoReportHistory=(company,date)=>rpc('finance_bo_report_history',{p_company:company,p_date:date});
   const financeCaseReport=(company,from,to)=>rpc('finance_case_report',{p_company:company,p_from:from,p_to:to});
   const financeActionReport=(company,to)=>rpc('finance_action_report',{p_company:company,p_to:to});
   const financeActionCase=(company,id)=>rpc('finance_action_case',{p_company:company,p_case:id});
@@ -1598,7 +1602,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
   return {
-    financeReportingCompanies,financeBoWindow,financeCaseReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
+    financeReportingCompanies,financeBoWindow,financeReportBoWindow,financeBoReportManifest,acceptFinanceBoReport,financeBoReportHistory,financeCaseReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,

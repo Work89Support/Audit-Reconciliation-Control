@@ -1066,7 +1066,10 @@ const VIEWS = {};
 VIEWS.finance=root=>{
  if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
  FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
-  context:Sb.financeReportingCompanies,bo:Sb.financeBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,buildWorkbook:XlsxWriter.build,archive:XlsxWriter.archive,
+  context:Sb.financeReportingCompanies,bo:Sb.financeReportBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,buildWorkbook:XlsxWriter.build,archive:XlsxWriter.archive,
+  boManifest:Sb.financeBoReportManifest,acceptBoReport:Sb.acceptFinanceBoReport,boHistory:Sb.financeBoReportHistory,
+  boDownload:async file=>{if(state.route!=='finance'||!['lead','admin'].includes(state.role)||!canAccessCompany(file.company))throw Error('ไม่มีสิทธิ์อ่าน BO รายงาน');return Sb.download(file.storage_path,{force:true});},
+  boReadXlsx:async bytes=>{const sheets=(await XlsxReader.readWorkbook(bytes,{includeMetadata:true})).filter(s=>s.rows.some(r=>r.some(v=>String(v??'').trim())));if(sheets.length!==1)throw Error('BO หลายชีต/ไม่มีชีตข้อมูล ต้องทบทวนขอบเขตรายงานก่อน ไม่อ่านแค่ชีตแรก');return sheets[0];},boParse:Formats.parse,boSha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
   actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
 };
 function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {

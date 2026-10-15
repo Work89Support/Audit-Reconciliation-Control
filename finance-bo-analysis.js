@@ -3,18 +3,19 @@
  const num=v=>v===null||v===undefined?'—':Number(v).toLocaleString('th-TH',{maximumFractionDigits:2}),cache=new WeakMap();
  function aggregate(rows,expected){
   const known=rows.filter(r=>F.cents(r.deposit)!==null&&F.cents(r.withdraw)!==null),sum=k=>known.reduce((s,r)=>s+Number(r[k]||0),0),money=k=>known.reduce((s,r)=>s+F.cents(r[k]),0)/100;
-  const complete=known.length===expected&&expected>0&&rows.every(r=>r.complete===true),users=new Map();
+  const bases=new Set(known.map(r=>r.source_mode==='bo_source_report'?'bo_source':'legacy')),basis=bases.size===1?[...bases][0]:'mixed';
+  const complete=known.length===expected&&expected>0&&rows.every(r=>r.complete===true)&&basis!=='mixed',users=new Map();
   for(const r of known)for(const u of r.user_keys||[]){if(!/^[a-f0-9]{32}$/.test(u.key))throw Error('รูปแบบข้อมูลผู้ใช้ไม่ถูกต้อง');const key=r.company+'|'+u.key,old=users.get(key)||{count:0,deposits:0,withdrawals:0};for(const k of Object.keys(old))old[k]+=Number(u[k]||0);users.set(key,old);}
   const identified=sum('identified_rows'),userKnown=users.size>0||(complete&&sum('count')===0),a=[...users.values()],userComplete=complete&&rows.every(r=>r.user_complete===true);
   if(!Number.isSafeInteger(Math.round(money('deposit')*100))||!Number.isSafeInteger(Math.round(money('withdraw')*100)))throw Error('ยอดเกินขอบเขตตัวเลขที่แสดงได้');
   return {has:known.length>0,deposit:known.length?money('deposit'):null,withdraw:known.length?money('withdraw'):null,net:known.length?Math.round((money('deposit')-money('withdraw'))*100)/100:null,
    count:known.length?sum('count'):null,deposits:known.length?sum('deposits'):null,withdrawals:known.length?sum('withdrawals'):null,
-   covered:rows.filter(r=>r.complete).length,expected,complete,identified,unknownUserRows:known.length?sum('count')-identified:null,
+   covered:rows.filter(r=>r.complete).length,expected,complete,basis,identified,unknownUserRows:known.length?sum('count')-identified:null,
    userCount:userKnown?users.size:null,depositUsers:userKnown?a.filter(u=>u.deposits>0).length:null,withdrawUsers:userKnown?a.filter(u=>u.withdrawals>0).length:null,
    bothUsers:userKnown?a.filter(u=>u.deposits>0&&u.withdrawals>0).length:null,repeatUsers:userKnown?a.filter(u=>u.count>1).length:null,
    frequency:users.size?identified/users.size:null,depositPerUser:userComplete&&a.some(u=>u.deposits>0)?money('deposit')/a.filter(u=>u.deposits>0).length:null,userComplete,users};
  }
- function change(a,b,k){return a.complete&&b&&b.complete&&Number.isFinite(a[k])&&Number.isFinite(b[k])&&(k==='net'?b[k]!==0:b[k]>0)?(a[k]-b[k])/Math.abs(b[k])*100:null;}
+ function change(a,b,k){return a.complete&&b&&b.complete&&a.basis===b.basis&&a.basis!=='mixed'&&Number.isFinite(a[k])&&Number.isFinite(b[k])&&(k==='net'?b[k]!==0:b[k]>0)?(a[k]-b[k])/Math.abs(b[k])*100:null;}
  function monthInfo(m){const [y,n]=m.split('-').map(Number);return {start:m+'-01',end:new Date(Date.UTC(y,n,0)).toISOString().slice(0,10),previous:new Date(Date.UTC(y,n-2,1)).toISOString().slice(0,7)};}
  function build(d){
   const cs=d.companies,days=F.dates(d.from,d.to),all=F.unique(d.boRows||[...d.bo.rows,...d.previous.rows],'scopeKey');
@@ -31,7 +32,7 @@
    const pf=full?p.start:p.start.slice(0,8)+String(Math.min(Number(from.slice(8)),Number(p.end.slice(8)))).padStart(2,'0'),pt=full?p.end:p.start.slice(0,8)+String(Math.min(Number(to.slice(8)),Number(p.end.slice(8)))).padStart(2,'0'),comparable=full||Number(to.slice(8))<=Number(p.end.slice(8));
    for(const companies of [cs,...cs.map(c=>[c])]){const a=read(companies,from,to),b=read(companies,pf,pt),r={company:companies===cs?groupLabel:companies[0],month,from,to,full,...a,...(comparable?grow(a,b):{depositGrowth:null,withdrawGrowth:null,countGrowth:null,netGrowth:null})};(companies===cs?monthly:monthlyCompany).push(r);}
   }
-  const cohort=company.map(c=>{const p=read([c.company],d.previous.from,d.previous.to),allowed=d.analysisMode!=='trend'&&d.equalDays&&c.userComplete&&p.userComplete,shared=[...c.users.keys()].filter(k=>p.users.has(k)).length;
+  const cohort=company.map(c=>{const p=read([c.company],d.previous.from,d.previous.to),allowed=d.analysisMode!=='trend'&&d.equalDays&&c.userComplete&&p.userComplete&&c.basis===p.basis&&c.basis!=='mixed',shared=[...c.users.keys()].filter(k=>p.users.has(k)).length;
    return {...c,overlap:allowed?shared:null,notSeenBefore:allowed?c.users.size-shared:null,returnRate:allowed&&p.users.size?shared/p.users.size*100:null};});
   const cm=new Map(),hours=new Map();
   for(const r of all.filter(r=>cs.includes(r.company)&&r.date>=d.from&&r.date<=d.to)){
