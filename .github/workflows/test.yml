@@ -26,7 +26,7 @@ jobs:
       - name: Verify AZPAY source time and cross-day display
         run: node tests/azpay-source-cross-day.test.cjs
       - name: Verify queue auto refresh and draft protection
-        run: node tests/live-queue-auto.test.cjs && node tests/live-background-update.test.mjs
+        run: node tests/live-queue-auto.test.cjs && node tests/live-background-update.test.mjs && node tests/audit-review-queue.test.cjs
       - name: Verify read-only emergency source ZIP
         run: npm run test:source-archive
       - name: Verify cross-day image review

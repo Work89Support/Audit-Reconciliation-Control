@@ -18,6 +18,8 @@ vm.createContext(ctx);vm.runInContext(code,ctx);
  const closure=fs.readFileSync('case-closure.js','utf8');assert.match(closure,/Object.assign\(queueFilters,\{company,from,to\}\)/);assert.match(closure,/\.value=queueFilters\[key\]/);assert.match(closure,/el.defaultValue=el.value/);
  ctx.liveOverviewState.loading=true;assert.equal(ctx.applyLiveQueueUpdate(),false);ctx.liveOverviewState.loading=false;
  ctx.liveOverviewState.auxiliaryError='timeout';assert.equal(ctx.applyLiveQueueUpdate(),false);ctx.liveOverviewState.auxiliaryError=null;
+ ctx.liveOverviewState.auxiliaryLoading=true;await ctx.pollLiveQueues();assert.equal(loads,0,'do not overlap pending detail reads');ctx.liveOverviewState.auxiliaryLoading=false;
+ let inplace=0;ctx.renderNav=()=>{};ctx.renderAuditFlow=()=>{};elements['#viewRoot'].auditQueueUpdateInPlace=()=>{inplace++;return true;};elements['#viewRoot'].querySelector=()=>null;const painted=count;assert.equal(ctx.applyLiveQueueUpdate(),true);assert.equal(inplace,1);assert.equal(count,painted,'Audit queue update must not remount page');delete elements['#viewRoot'].auditQueueUpdateInPlace;
  await ctx.pollLiveQueues();await ctx.pollLiveQueues();assert.equal(loads,1,'poll coalesced within 30 seconds');
  ctx.state.route='approvals';vm.runInContext('liveQueueLastPoll=0',ctx);await ctx.pollLiveQueues();assert.equal(loads,2);assert.equal(ctx.CaseClosure.queueState.at,0);
  ctx.state.route='mc8-sheets';assert.equal(ctx.applyLiveQueueUpdate(),false);await ctx.pollLiveQueues();assert.equal(loads,2,'other pages unchanged');

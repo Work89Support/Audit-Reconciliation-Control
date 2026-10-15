@@ -22,7 +22,7 @@ for(const nested of [false,true])for(const failedRefresh of [false,true]){
   if(failedRefresh)assert.match(events.at(-1),/บันทึกอนุมัติแล้ว/);
 }
 {
-  const ctx={$:()=>({querySelector:()=>({auditRefreshInPlace:async()=>false})}),render:()=>assert.fail('stale workspace must not redraw current page')};
+  const ctx={state:{route:'mc8-sheets'},$:()=>({querySelector:()=>({auditRefreshInPlace:async()=>false})}),render:()=>assert.fail('stale workspace must not redraw current page')};
   vm.runInNewContext(helper,ctx);await ctx.refreshCaseView();
 }
 {

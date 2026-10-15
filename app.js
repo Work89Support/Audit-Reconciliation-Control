@@ -1510,7 +1510,7 @@ function liveQueueProtected() {
   if(['#drawer','#modal'].some(selector=>$(selector)&&!$(selector).hidden))return true;
   const root=$('#viewRoot');
   return Array.from(root?.querySelectorAll('textarea,input,select')||[]).some(el=>
-    document.activeElement===el || (['checkbox','radio'].includes(el.type)?el.checked:
+    (document.activeElement===el && el.id!=='auditReviewCompany') || (['checkbox','radio'].includes(el.type)?el.checked:
     el.tagName==='SELECT'?Array.from(el.options).some((option,index)=>option.selected!==(option.defaultSelected || (!el.multiple && !Array.from(el.options).some(item=>item.defaultSelected) && index===0))):el.value!==el.defaultValue));
 }
 function applyLiveQueueUpdate(force=false) {
@@ -1518,6 +1518,11 @@ function applyLiveQueueUpdate(force=false) {
     || !liveOverviewState.exceptionsReady || liveOverviewState.error || liveOverviewState.auxiliaryError
     || (!force && liveQueueProtected()))return false;
   const root=$('#viewRoot'),x=window.scrollX,y=window.scrollY;
+  if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
+    const updated=root.auditQueueUpdateInPlace();
+    if(updated){liveQueueUpdatePending=false;$('#liveUpdateAvailable')?.remove();root.querySelector('.live-background-notice')?.remove();renderNav();renderAuditFlow();}
+    return updated;
+  }
   const scrolls=Array.from(root?.querySelectorAll('*')||[]).filter(el=>el.scrollTop||el.scrollLeft).map(el=>{
     const path=[];let node=el;while(node&&node!==root){path.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
     return {selector:path.join(' > '),top:el.scrollTop,left:el.scrollLeft};
@@ -1531,7 +1536,7 @@ function applyLiveQueueUpdate(force=false) {
 async function pollLiveQueues() {
   if(!liveQueueRoute() || liveQueueProtected())return;
   if(liveQueueUpdatePending)applyLiveQueueUpdate();
-  if(liveOverviewState.loading || Date.now()-liveQueueLastPoll<30000)return;
+  if(liveOverviewState.loading || liveOverviewState.auxiliaryLoading || Date.now()-liveQueueLastPoll<30000)return;
   liveQueueLastPoll=Date.now();
   // Read only. Never dispatch reconciliation, decisions, notes or case changes.
   if(state.route==='approvals')for(const name of [CaseClosure,ManualPairing,CrossDayWorkbench])name.queueState.at=0;
@@ -4460,6 +4465,9 @@ async function openApprovalReview(exceptionId, kind, requestId) {
 
 async function refreshCaseView() {
   const root = $('#viewRoot');
+  if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
+    root.auditQueueUpdateInPlace();return;
+  }
   // The company review / Excel table is mounted inside auditViewBody.
   // Refresh its existing instance rather than remounting the parent shell.
   const workspace = typeof root?.auditRefreshInPlace === 'function'
@@ -4481,7 +4489,7 @@ async function finishApprovalReview() {
   try {
     if(typeof liveOverviewState!=='undefined'){
       const deadline=Date.now()+30000;
-      while(liveOverviewState.loading){
+      while(liveOverviewState.loading||liveOverviewState.auxiliaryLoading){
         if(Date.now()>deadline)throw Error('รอบโหลดก่อนหน้ายังไม่เสร็จ');
         await new Promise(resolve=>setTimeout(resolve,100));
       }
@@ -4659,9 +4667,13 @@ VIEWS.matching = (root) => {
 VIEWS['audit-review'] = (root) => {
   if (!ensureLiveOverview(root)) return;
   AuditReview.mount(root, {
-    exceptions: DB.exceptions, filters: state.filters, canAccessCompany, h, money, caseLabel, openException, toast,
+    get exceptions(){return DB.exceptions;}, get filters(){return state.filters;}, companies:companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany), canAccessCompany, h, money, caseLabel, openException, toast,
+    isActive:()=>state.route==='audit-review',
+    isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&!liveOverviewState.loading&&!liveOverviewState.auxiliaryLoading&&!liveOverviewState.error&&!liveOverviewState.auxiliaryError),
+    loadMessage:()=>liveOverviewState.error||liveOverviewState.auxiliaryError||'กำลังโหลดคิวบริษัทที่เลือก ยังไม่สรุปว่าไม่มีเคส',
+    selectCompany:async company=>{if(company!=='ALL'&&!canAccessCompany(company))throw Error('ไม่มีสิทธิ์บริษัทนี้');state.filters.company=company;renderFilters();if(state.dataset==='production')await loadLiveOverview(true);},
     openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
-    refresh: async () => { await loadLiveOverview(true); if (state.route === 'audit-review') render(); },
+    refresh: async () => { await loadLiveOverview(true); },
   });
   root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
 };
