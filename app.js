@@ -605,14 +605,18 @@ function captureClarificationRequestContext(e) {
     while(node && node!==root){parts.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
     return {selector:parts.join(' > '),top:el.scrollTop,left:el.scrollLeft};
   });
-  const rows=filteredExceptions();
+  // Sheet filters live inside MC8LiveSheets, not state.exFilter. A sheet case
+  // may be the only row hydrated into DB.exceptions, so never infer exhaustion
+  // from that partial, unrelated list.
+  const rows=state.route==='mc8-sheets'?[]:filteredExceptions();
   const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
   const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
   const candidates=ordered.filter(row=>row.company===e.company && caseUiKey(row)!==caseUiKey(e)
     && isUnsentClarificationCase(row) && canAccessCompany(row.company));
   const account=clarificationAccountKey(e);
   const sameAccount=row=>account && clarificationAccountKey(row)===account;
-  return {company:e.company, account:e.account, x:window.scrollX,y:window.scrollY,scrolls,
+  return {company:e.company, date:e.date, route:state.route, actor:Sb.authUser()?.id||null,
+    account:e.account, x:window.scrollX,y:window.scrollY,scrolls,
     nextKeys:[...candidates.filter(sameAccount),...candidates.filter(row=>!sameAccount(row))].map(caseUiKey)};
 }
 function restoreClarificationRequestScroll(context) {
@@ -622,23 +626,60 @@ function restoreClarificationRequestScroll(context) {
   };
   restore();requestAnimationFrame(()=>requestAnimationFrame(restore));
 }
-function showClarificationRequestReceipt(e, context) {
+async function loadClarificationReceiptCandidates(e,context) {
+  if(context.route!=='mc8-sheets'||state.dataset!=='production')return;
+  if(!context.date||!canAccessCompany(context.company))throw Error('ไม่พบขอบเขตบริษัทและวันที่ของเคส');
+  const [raw,scopes]=await Promise.all([
+    Sb.currentExceptions({company:context.company,from:context.date,to:context.date,limit:10000}),
+    Sb.reviewHoldScopes(),
+  ]);
+  if(!Array.isArray(raw)||raw.length>=10000||!Array.isArray(scopes))throw Error('ยังโหลดรายการเคสปัจจุบันไม่ครบ กรุณาลองตรวจอีกครั้ง');
+  if(context.actor!==(Sb.authUser()?.id||null)||context.route!==state.route)throw Error('ผู้ใช้หรือหน้ารายการเปลี่ยนแล้ว');
+  AccountReviewHolds.set(scopes);
+  const rows=raw.map(mapLiveException).filter(row=>row.company===context.company&&row.date===context.date);
+  const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
+  const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
+  const candidates=ordered.filter(row=>caseUiKey(row)!==caseUiKey(e)&&isUnsentClarificationCase(row)&&!AccountReviewHolds.match(row));
+  const same=row=>clarificationAccountKey(row)===clarificationAccountKey(e);
+  context.nextKeys=[...candidates.filter(same),...candidates.filter(row=>!same(row))].map(caseUiKey);
+  for(const row of rows){
+    const existing=DB.exceptions.find(item=>caseUiKey(item)===caseUiKey(row));
+    if(existing)Object.assign(existing,row,{notes:existing.notes||[],evidence:existing.evidence||[]});
+    else DB.exceptions.push(row);
+  }
+}
+async function showClarificationRequestReceipt(e, context) {
   const next=()=>context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).find(row=>row
     && row.company===context.company && isUnsentClarificationCase(row)
     && canAccessCompany(row.company));
-  const nextCase=next();
-  const nextScope=nextCase?`บัญชีถัดไป: ${nextCase.account||'ไม่ระบุ'} · ${nextCase.code||nextCase.id} · ${clarificationAccountKey(nextCase)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ยังไม่ส่งในตัวกรองนี้แล้ว จึงไปบัญชีถัดไป'}`:'';
-  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.code||e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p>${nextCase?'เลือกกลับหน้ารายการ หรือตรวจเคสถัดไปของบริษัทนี้':'ไม่มีเคสที่ต้องส่งขอชี้แจงถัดไปของบริษัทนี้ในตัวกรองปัจจุบัน'}</p>${nextScope?`<p>${h(nextScope)}</p>`:''}<small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม</small></div>`,
-    `<button class="ghost-button" id="requestReceiptReturn">กลับหน้ารายการ</button><button class="primary-button" id="requestReceiptNext" ${nextCase?'':'disabled'}>ตรวจเคสถัดไปของบริษัทนี้</button>`);
-  let acted=false;
-  const returnToList=()=>{closeModal();closeDrawer();render();restoreClarificationRequestScroll(context);};
+  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.code||e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p id="requestReceiptStatus">กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม · ตรวจบัญชีเดิมก่อน แล้วจึงบัญชีอื่นของบริษัทในวันเดียวกัน</small></div>`,
+    `<button class="ghost-button" id="requestReceiptReturn">กลับหน้ารายการ</button><button class="primary-button" id="requestReceiptNext" disabled>ตรวจเคสถัดไปของบริษัทนี้</button>`);
+  const nextButton=$('#requestReceiptNext'),status=$('#requestReceiptStatus');
+  let acted=false,busy=false,failed=false;
+  $('#modal')._contentCleanup=()=>{acted=true;};
+  const active=()=>!acted&&state.route===context.route&&(Sb.authUser()?.id||null)===context.actor&&$('#requestReceiptNext')===nextButton;
+  const returnToList=()=>{closeModal();closeDrawer();if(context.route!=='mc8-sheets')render();restoreClarificationRequestScroll(context);};
+  const refresh=async()=>{
+    busy=true;nextButton.disabled=true;status.textContent='กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…';
+    try{
+      await loadClarificationReceiptCandidates(e,context);
+      if(!active())return;
+      failed=false;const row=next();nextButton.disabled=!row;nextButton.textContent='ตรวจเคสถัดไปของบริษัทนี้';
+      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมส่งครบแล้ว ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
+    }catch(error){if(active()){failed=true;status.textContent='ยังตรวจเคสถัดไปไม่สำเร็จ: '+error.message+' · คำขอเดิมส่งสำเร็จแล้ว ไม่ต้องส่งซ้ำ';nextButton.disabled=false;nextButton.textContent='ลองตรวจเคสถัดไปอีกครั้ง';}}
+    finally{busy=false;}
+  };
   $('#requestReceiptReturn').onclick=()=>{if(acted)return;acted=true;returnToList();};
   $('#requestReceiptNext').onclick=async()=>{
-    if(acted)return;
+    if(!active()||busy)return;
     if(!can('request_clarify'))return deny('ตรวจเคสถัดไป');
+    if(failed)return refresh();
+    // Re-read the accepted current case set on navigation, not another send.
+    await refresh();if(!active()||failed)return;
     const row=next();if(!row){$('#requestReceiptNext').disabled=true;return toast('ไม่มีเคสถัดไปในบริษัทและตัวกรองเดิมแล้ว','warn');}
     acted=true;returnToList();await openException(row.id);
   };
+  await refresh();
 }
 function showCaseSubmissionReceipt(kind, label = '') {
   const receipts = {
@@ -4383,7 +4424,7 @@ async function openException(id, options = {}) {
       saveOverride(e, false);
       if(previousStatus!=='pending_next_day' || state.dataset!=="production") logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
       toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
-      showClarificationRequestReceipt(e,context);
+      await showClarificationRequestReceipt(e,context);
     } catch (err) {
       toast("ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนลองใหม่: " + err.message, "warn");
       button.disabled = false;
