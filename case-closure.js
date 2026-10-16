@@ -236,6 +236,7 @@ const CaseClosure=(()=>{
     if(!host)return;await loadPending(options.force===true);if(!host.isConnected)return;
     if(queueState.rows===null){host.textContent='ยังโหลดยอดรอหัวหน้าไม่ครบ: '+queueState.error;return;}
     let rows=queueState.rows;
+    if(queueFilters.status!=='pending'){rows=(await readQueueHistory(options.force)).filter(q=>queueFilters.status==='ALL'||q.status===queueFilters.status);if(!host.isConnected)return;}
     const {selected,opened}=await restoreBulkSelection(rows);if(!host.isConnected)return;
     let recentHistory=[];
     if(!rows.length){
@@ -263,6 +264,9 @@ const CaseClosure=(()=>{
     bulkBar.innerHTML='<label><input type="checkbox" id="closureBulkSelectAll">เลือกเคสที่เปิดหลักฐานแล้วในหน้านี้</label><span id="closureBulkCount">เลือก 0 เคส</span><button class="primary-button sm" id="closureBulkOpen" disabled>ทบทวนและปิดเคสที่เลือก</button><p role="status" id="closureBulkHint">ยังเลือกไม่ได้: กด “เปิดหลักฐานเพื่อเลือก” ของแต่ละเคส อ่านเอกสาร แล้วกลับมาติ๊ก · เฉพาะไม่มีความเสียหาย · ไม่เกิน 100 เคส · ต้องยืนยันก่อนปิด</p>';
     if(can('approve'))host.querySelector('.closure-list-heading').after(bulkBar);
     for(const [id,key] of [['closureQueueCompany','company'],['closureQueueFrom','from'],['closureQueueTo','to']])$('#'+id).value=queueFilters[key];
+    $('#closureQueueStatus').value=queueFilters.status;
+    Array.from($('#closureQueueStatus').options).forEach(option=>option.defaultSelected=option.selected);
+    $('#closureQueueStatus').addEventListener('change',event=>{queueFilters.status=event.target.value;});
     const draw=()=>{
       const company=$('#closureQueueCompany').value,from=$('#closureQueueFrom').value,to=$('#closureQueueTo').value;
       Object.assign(queueFilters,{company,from,to});
