@@ -3,6 +3,15 @@ const CaseClosure=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
   const queueFilters={status:'pending',company:'ALL',from:'',to:''};
   let pendingLoad=null;
+  let historyCache=null;
+  let historyLoad=null;
+  async function readQueueHistory(force=false){
+    const key=JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies]);
+    if(!force&&historyCache?.key===key&&Date.now()-historyCache.at<30000)return historyCache.rows;
+    if(historyLoad?.key===key)return historyLoad.promise;
+    const promise=Sb.caseClosureHistory().then(rows=>{if(JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies])===key)historyCache={key,at:Date.now(),rows};return rows;});
+    historyLoad={key,promise};try{return await promise;}finally{if(historyLoad?.promise===promise)historyLoad=null;}
+  }
   const auditable=()=>Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   const directCloser=()=>can('approve')&&['lead','admin','audit_assistant'].includes(state.role);
   function assistantCloseBlock(e){
@@ -148,16 +157,17 @@ const CaseClosure=(()=>{
   async function loadPending(force=false){
     if(state.dataset!=='production'||!auditable())return;
     const user=Sb.authUser()?.id;
-    if(queueState.user!==user)Object.assign(queueState,{rows:null,error:'',at:0,user});
-    if(pendingLoad)return pendingLoad;
-    if(!force&&Date.now()-queueState.at<60000)return;
+    const key=JSON.stringify([user,state.role,state.access?.companies]);
+    if(queueState.scopeKey!==key){Object.assign(queueState,{rows:null,error:'',at:0,user,scopeKey:key});Object.assign(queueFilters,{status:'pending',company:'ALL',from:'',to:'',globalKey:''});}
+    if(pendingLoad?.key===key)return pendingLoad.promise;
+    if(!force&&queueState.rows!==null&&Date.now()-queueState.at<30000)return;
     queueState.loading=true;
-    pendingLoad=(async()=>{
-      try{const rows=await Sb.pendingCaseClosures();if(Sb.authUser()?.id===user){queueState.rows=rows;queueState.error='';queueState.at=Date.now();}}
-      catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;queueState.at=0;}}
-      finally{queueState.loading=false;if(typeof renderNav==='function')renderNav();}
-    })();
-    try{await pendingLoad;}finally{pendingLoad=null;}
+    const promise=(async()=>{
+      try{const rows=await Sb.pendingCaseClosures();if(JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies])===key){queueState.rows=rows;queueState.error='';queueState.at=Date.now();}}
+      catch(err){if(queueState.scopeKey===key){queueState.rows=null;queueState.error=err.message;queueState.at=0;}}
+      finally{if(queueState.scopeKey===key){queueState.loading=false;if(typeof renderNav==='function')renderNav();}}
+    })();pendingLoad={key,promise};
+    try{await promise;}finally{if(pendingLoad?.promise===promise)pendingLoad=null;}
   }
   async function openSubmit(e,initialOutcome='no_loss'){
     if(state.dataset!=='production'||!auditable())return toast('เฉพาะ Audit ในระบบจริงส่งผลตรวจให้หัวหน้าได้','warn');
@@ -221,24 +231,25 @@ const CaseClosure=(()=>{
       };
     }catch(err){host.textContent='โหลดผลตรวจรอปิดไม่ได้: '+err.message;}
   }
-  async function mountQueue(host){
+  async function mountQueue(host,options={}){
     if(host&&!auditable()){host.textContent='คิวนี้สำหรับ Audit และหัวหน้าเท่านั้น ผู้ชี้แจงติดตามคำตอบของตนในเมนูติดตามและอนุมัติ';return;}
-    if(!host)return;await loadPending(true);if(!host.isConnected)return;
+    if(!host)return;await loadPending(options.force===true);if(!host.isConnected)return;
     if(queueState.rows===null){host.textContent='ยังโหลดยอดรอหัวหน้าไม่ครบ: '+queueState.error;return;}
     let rows=queueState.rows;
     const {selected,opened}=await restoreBulkSelection(rows);if(!host.isConnected)return;
     let recentHistory=[];
     if(!rows.length){
-      try{recentHistory=(await Sb.caseClosureHistory()).filter(q=>q.status!=='pending').slice(0,6);}
+      try{recentHistory=(await readQueueHistory(options.force)).filter(q=>q.status!=='pending').slice(0,6);}
       catch(err){queueState.error='อ่านประวัติไม่สำเร็จ: '+err.message;}
       if(!host.isConnected)return;
     }
     const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>canAccessCompany(c));
+    if(options.scope&&queueFilters.globalKey!==JSON.stringify(options.scope))Object.assign(queueFilters,options.scope,{globalKey:JSON.stringify(options.scope)});
     host.classList.add('closure-hub');
     host.innerHTML=`<header class="closure-hub-heading"><div><p class="closure-eyebrow">ตรวจเอกสาร · อนุมัติ · ย้อนดูประวัติ</p><h3>ศูนย์รอปิดเคส</h3><p class="closure-subtitle">เปิดเคสเดิม ตรวจหลักฐาน แล้วดำเนินการตามสิทธิ์</p></div><div class="closure-pending-total"><strong>${rows.length}</strong><span>คำขอรอหัวหน้า</span></div></header><div class="closure-flow" aria-label="ขั้นตอนปิดเคส"><span><i>1</i> Audit ตรวจเอกสาร</span><span><i>2</i> ส่งหัวหน้ารอปิด</span><span><i>3</i> หัวหน้าอนุมัติ</span></div><div class="closure-filter-grid"><label for="closureQueueStatus">สถานะคำขอ<select id="closureQueueStatus"><option value="pending">รอหัวหน้าปิดเคส</option><option value="ALL">ทุกคำขอ · รวมประวัติ</option><option value="approved">อนุมัติปิดแล้ว</option><option value="rejected">ส่งกลับ Audit</option></select></label><label for="closureQueueCompany">บริษัท<select id="closureQueueCompany"><option value="ALL">ทุกบริษัทตามสิทธิ์</option>${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label for="closureQueueFrom">วันที่เคสตั้งแต่<input type="date" id="closureQueueFrom"></label><label for="closureQueueTo">ถึงวันที่<input type="date" id="closureQueueTo"></label></div><div class="closure-list-heading"><b>รายการคำขอ <span id="closureVisibleCount"></span></b><span>เคสเดิมและเอกสารยังอยู่ในภาพรวม</span></div><div id="closureQueueRows" class="closure-card-list" aria-live="polite"></div><p class="closure-history-note">การส่งหัวหน้ารอปิดไม่ส่งงานให้ผู้ชี้แจงซ้ำ · อนุมัติสำเร็จจึงถือว่าปิดเคส · ย้อนดูรายละเอียดและหลักฐานได้เสมอ</p>`;
     const queueActions=document.createElement('div');
     const retry=document.createElement('button');retry.className='ghost-button sm';retry.textContent='รีเฟรชคิวจากฐานข้อมูล';
-    retry.onclick=async()=>{retry.disabled=true;try{await mountQueue(host);}finally{retry.disabled=false;}};
+    retry.onclick=async()=>{retry.disabled=true;try{await mountQueue(host,{...options,force:true});}finally{retry.disabled=false;}};
     queueActions.append(retry);host.querySelector('.closure-hub-heading').append(queueActions);
     if(recentHistory.length){
       const info=document.createElement('p');info.setAttribute('role','status');

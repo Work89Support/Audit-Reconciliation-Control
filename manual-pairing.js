@@ -2,6 +2,7 @@
 const ManualPairing=(()=>{
   const queueState={rows:null,loading:false,error:'',at:0,user:null};
   const queueFilters={company:'ALL',from:'',to:'',user:null};
+  let pendingLoad=null;
   function filterPairs(pairs,filters){
     return pairs.filter(p=>['bo','stm'].some(side=>{
       const company=p[side+'_company'],date=p.snapshot?.[side]?.business_date;
@@ -17,12 +18,16 @@ const ManualPairing=(()=>{
   async function loadPending(force=false){
     if(state.dataset!=='production'||!Sb.signedIn())return;
     const user=Sb.authUser()?.id;
-    if(queueState.user!==user){Object.assign(queueState,{rows:null,error:'',at:0,user});}
-    if(queueState.loading||(!force&&Date.now()-queueState.at<60000))return;
+    const key=JSON.stringify([user,state.role,state.access?.companies]);
+    if(queueState.scopeKey!==key){Object.assign(queueState,{rows:null,error:'',at:0,user,scopeKey:key});Object.assign(queueFilters,{company:'ALL',from:'',to:'',user,globalKey:''});}
+    if(pendingLoad?.key===key)return pendingLoad.promise;
+    if(!force&&queueState.rows!==null&&Date.now()-queueState.at<30000)return;
     queueState.loading=true;
-    try{const rows=await Sb.pendingManualPairs();await hydrateOwnEvidence(rows);if(Sb.authUser()?.id!==user)return;queueState.rows=rows;queueState.error='';}
-    catch(err){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=err.message;}}
-    finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
+    const promise=(async()=>{
+      try{const rows=await Sb.pendingManualPairs();await hydrateOwnEvidence(rows);if(JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies])!==key)return;queueState.rows=rows;queueState.error='';queueState.at=Date.now();}
+      catch(err){if(queueState.scopeKey===key){queueState.rows=null;queueState.error=err.message;queueState.at=0;}}
+      finally{if(queueState.scopeKey===key){queueState.loading=false;if(typeof renderNav==='function')renderNav();}}
+    })();pendingLoad={key,promise};try{await promise;}finally{if(pendingLoad?.promise===promise)pendingLoad=null;}
   }
   const canSubmit=()=>state.dataset==='production'&&Sb.signedIn()&&['monitor','audit_assistant','lead','admin'].includes(state.role);
   async function hydrateOwnEvidence(rows){
@@ -255,16 +260,18 @@ const ManualPairing=(()=>{
       }
     }catch(err){host.textContent='ตรวจคำขอจับคู่ไม่ได้: '+err.message+' — ห้ามปิดผ่านปุ่มเดิม';}
   }
-  async function mountQueue(host,cachedPairs=null) {
+  async function mountQueue(host,cachedPairs=null,scope=null) {
     if(!host||state.dataset!=='production'||!Sb.signedIn())return;
     host.textContent='กำลังโหลดคู่รออนุมัติทุกวันที่ตามสิทธิ์…';
     try {
       // Fetch the complete RLS-scoped request queue, independent of the 250-case page.
       const user=Sb.authUser()?.id;
-      const pairs=cachedPairs||await Sb.pendingManualPairs();await hydrateOwnEvidence(pairs);if(!host.isConnected||user!==Sb.authUser()?.id)return;
+      if(!cachedPairs)await loadPending();
+      const pairs=cachedPairs||queueState.rows;if(!pairs)throw Error(queueState.error||'ยังโหลดคิวไม่ได้');if(!host.isConnected||user!==Sb.authUser()?.id)return;
       Object.assign(queueState,{rows:pairs,error:'',at:Date.now(),user:Sb.authUser()?.id});if(typeof renderNav==='function')renderNav();
       if(queueFilters.user!==user)Object.assign(queueFilters,{company:'ALL',from:'',to:'',user});
-      const companies=[...new Set(pairs.flatMap(p=>[p.bo_company,p.stm_company]))].sort();
+      if(scope&&queueFilters.globalKey!==JSON.stringify(scope))Object.assign(queueFilters,scope,{globalKey:JSON.stringify(scope)});
+      const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany);
       const visible=filterPairs(pairs,queueFilters);
       const caseDate=(p,side)=>h(p.snapshot?.[side]?.business_date||'ไม่ระบุวันที่เคส');
       host.innerHTML=`<div class="panel-heading"><div><h3>คำขอจับคู่รออนุมัติ <span class="badge amber">${visible.length} / ${pairs.length} คำขอ</span></h3><p class="hint">1 คู่ = 1 คำขอ · ผู้ส่งอนุมัติคำขอตัวเองไม่ได้</p></div><button class="ghost-button sm" data-pair-reload>รีเฟรชคิว</button></div>
@@ -279,7 +286,7 @@ const ManualPairing=(()=>{
       host.querySelector('[data-pair-filter-clear]').onclick=()=>{Object.assign(queueFilters,{company:'ALL',from:'',to:''});mountQueue(host,pairs);};
       host.querySelectorAll('[data-pair-case]').forEach(b=>b.onclick=()=>openEvidenceRelatedCase(b.dataset.pairCase).catch(err=>toast(err.message,'warn')));
       host.querySelectorAll('[data-pair-review]').forEach(b=>b.onclick=()=>openApprovalReview(b.dataset.pairReview,'pair').catch(err=>toast(err.message,'warn')));
-      host.querySelector('[data-pair-reload]').onclick=()=>mountQueue(host);
+      host.querySelector('[data-pair-reload]').onclick=async()=>{await loadPending(true);return mountQueue(host);};
       const selected=()=>visible.filter(p=>host.querySelector(`[data-pair-select="${p.id}"]`)?.checked);
       const bulk=host.querySelector('[data-pair-bulk-approve]');
       if(bulk){

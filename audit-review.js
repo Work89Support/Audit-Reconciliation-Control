@@ -12,10 +12,11 @@ const AuditReview = (() => {
       (f.direction === 'ALL' || e.direction === f.direction));
   }
   function markup(ctx) {
-    const queue = rows(ctx.exceptions, ctx), { h, money } = ctx;
+    const ready = ctx.isReady?.() !== false;
+    const queue = ready ? rows(ctx.exceptions, ctx) : [], { h, money } = ctx;
     const companies=[...new Set(ctx.companies||ctx.exceptions.map(e=>e.company))].filter(ctx.canAccessCompany);
     return `<section class="panel audit-review-queue">
-      <div class="panel-heading"><div><p class="eyebrow">Audit Review</p><h2>เอกสารกลับมาแล้ว · รอ Audit ตรวจ</h2><p class="head-sub">ตรวจเอกสารและผลยอดในเคสเดิม แล้วเลือกจับคู่หรือส่งหัวหน้าปิดเคส</p></div><span class="health attention">${queue.length} เคสในขอบเขตที่โหลด</span></div>
+      <div class="panel-heading"><div><p class="eyebrow">Audit Review</p><h2>เอกสารกลับมาแล้ว · รอ Audit ตรวจ</h2><p class="head-sub">ตรวจเอกสารและผลยอดในเคสเดิม แล้วเลือกจับคู่หรือส่งหัวหน้าปิดเคส</p></div><span class="health attention">${ready ? queue.length : '—'} เคสในขอบเขตที่โหลด</span></div>
       <div class="alert"><strong>ไม่มีเอกสาร → ส่งให้ผู้ชี้แจง</strong><span>ผู้ชี้แจงส่งกลับ → หน้านี้ → Audit ตรวจ → หัวหน้าอนุมัติปิด · เคสที่ส่งหัวหน้าแล้วดูที่ “อนุมัติ / ปิดเคส”</span></div>
       <div class="audit-review-tools"><button class="ghost-button sm" data-audit-refresh>โหลดข้อมูลล่าสุด</button><button class="ghost-button sm" data-audit-overview>ภาพรวมเคส · รวมประวัติ</button></div>
       <label class="audit-review-company" for="auditReviewCompany">บริษัทที่ต้องการตรวจ<select id="auditReviewCompany" data-audit-company><option value="ALL" ${ctx.filters.company==='ALL'?'selected':''}>ทุกบริษัทตามสิทธิ์</option>${companies.map(company=>`<option value="${h(company)}" ${ctx.filters.company===company?'selected':''}>${h(company)}</option>`).join('')}</select></label><p class="hint" data-audit-state role="status">${h(ctx.filters.company==='ALL'?'ทุกบริษัทตามสิทธิ์':ctx.filters.company)} · คงช่วงวันที่และประเภทเดิม · อัปเดตเฉพาะคิว ไม่โหลดหน้าใหม่</p>
@@ -30,6 +31,7 @@ const AuditReview = (() => {
   function mount(root, ctx) {
     root.innerHTML=markup(ctx);
     const panel=root.querySelector('.audit-review-queue'),list=panel.querySelector('.audit-review-list');
+    if(ctx.isReady?.()===false){list.hidden=true;panel.querySelector('[data-audit-state]').textContent=ctx.loadMessage?.()||'กำลังโหลดคิว ยังไม่สรุปเป็นศูนย์';}
     bindCards(panel,ctx);
     const update=()=>{
       if(!panel.isConnected||ctx.isActive?.()===false)return false;

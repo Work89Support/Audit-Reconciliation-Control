@@ -4,11 +4,14 @@ const CrossDayWorkbench = (() => {
   let draftUser=null;
   function scopeDrafts(){const user=Sb.authUser()?.id;if(draftUser!==user){drafts.clear();draftUser=user;}}
   const queueState={rows:null,user:null,loading:false,at:0,error:''};
+  let pendingLoad=null;
   async function loadPending(force=false){
     if(state.dataset!=='production'||!Sb.signedIn())return;
-    const user=Sb.authUser()?.id;if(queueState.user!==user)Object.assign(queueState,{rows:null,user,at:0,error:''});
-    if(queueState.loading||!force&&Date.now()-queueState.at<60000)return;
-    queueState.loading=true;try{const rows=await Sb.pendingCrossDayPairs();if(Sb.authUser()?.id===user){queueState.rows=rows;queueState.error='';}}catch(error){if(Sb.authUser()?.id===user){queueState.rows=null;queueState.error=error.message;}}finally{queueState.loading=false;queueState.at=Date.now();if(typeof renderNav==='function')renderNav();}
+    const user=Sb.authUser()?.id,key=JSON.stringify([user,state.role,state.access?.companies]);if(queueState.scopeKey!==key)Object.assign(queueState,{rows:null,user,at:0,error:'',scopeKey:key});
+    if(pendingLoad?.key===key)return pendingLoad.promise;
+    if(!force&&queueState.rows!==null&&Date.now()-queueState.at<30000)return;
+    queueState.loading=true;
+    const promise=(async()=>{try{const rows=await Sb.pendingCrossDayPairs();if(JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies])===key){queueState.rows=rows;queueState.error='';queueState.at=Date.now();}}catch(error){if(queueState.scopeKey===key){queueState.rows=null;queueState.error=error.message;queueState.at=0;}}finally{if(queueState.scopeKey===key){queueState.loading=false;if(typeof renderNav==='function')renderNav();}}})();pendingLoad={key,promise};try{await promise;}finally{if(pendingLoad?.promise===promise)pendingLoad=null;}
   }
   const writable = () => state.dataset === 'production' && Sb.signedIn() && ['monitor','audit_assistant','lead','admin'].includes(state.role);
   const eligible = e => e.type === 'cross_day' && ['open','pending_next_day'].includes(e.status);
@@ -280,8 +283,9 @@ const CrossDayWorkbench = (() => {
     if(!host||state.dataset!=='production')return;
     host.innerHTML='<h3>คู่ข้ามวัน · รอหัวหน้าอนุมัติ</h3><p>กำลังโหลดคำขอ…</p>';
     try {
-      let rows=await Sb.pendingCrossDayPairs();
-      if(scope)rows=rows.filter(q=>q.company===scope.company&&q.snapshot?.bo?.account===scope.account&&q.snapshot?.bo?.business_date===scope.date);
+      await loadPending();if(queueState.rows===null)throw Error(queueState.error||'ยังโหลดคิวไม่ได้');
+      let rows=queueState.rows;
+      if(scope)rows=rows.filter(q=>(!scope.company||scope.company==='ALL'||q.company===scope.company)&&(!scope.account||q.snapshot?.bo?.account===scope.account)&&(!scope.date||q.snapshot?.bo?.business_date===scope.date)&&(!scope.from||q.snapshot?.bo?.business_date>=scope.from)&&(!scope.to||q.snapshot?.bo?.business_date<=scope.to));
       if(!host.isConnected)return;
       const head=['lead','admin'].includes(state.role),groups=new Map();
       for(const q of rows){const k=JSON.stringify([q.company,q.snapshot.bo.account,q.snapshot.bo.business_date,q.stm_file_id,q.source_page||'rows']);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(q);}

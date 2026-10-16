@@ -1335,9 +1335,12 @@ function render() {
   renderNav();
   renderAuditFlow();
   renderFilters();
+  captureFastQueueDrafts();
+  $("#viewRoot").dataset.fastQueueDraftKey = fastQueueDraftKey();
   $("#viewRoot").financeDispose?.();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
+  restoreFastQueueDrafts();
   $('#fileManageEntry')?.remove();
   $('#sourceArchiveEntry')?.remove();
   if(state.dataset==='production'&&Sb.signedIn()&&['cloud','intake','exceptions','daily-summary','mc8-sheets'].includes(route.id)&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
@@ -1730,12 +1733,35 @@ function offerLiveOverviewUpdate() {
 }
 // Read-only responder model. One authorized date-range snapshot serves all
 // company filters; never persist it or share it across actors/access scopes.
+const fastQueueDrafts = new Map();
+function fastQueueDraftKey() {
+  if (!['audit-review','approvals'].includes(state.route) || state.dataset !== 'production') return '';
+  return JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies,state.route,state.filters]);
+}
+function captureFastQueueDrafts() {
+  const root=$('#viewRoot'),key=root?.dataset.fastQueueDraftKey;
+  if (!key) return;
+  const values=fastQueueDrafts.get(key)||{};
+  root.querySelectorAll('textarea').forEach(el=>{const name=el.id||(el.hasAttribute('data-pair-bulk-note')?'pair-bulk-note':'');if(name)values[name]=el.value;});
+  fastQueueDrafts.set(key,values);
+}
+function restoreFastQueueDrafts(expectedKey=fastQueueDraftKey()) {
+  const root=$('#viewRoot');
+  if (!expectedKey || root?.dataset.fastQueueDraftKey!==expectedKey) return;
+  const values=fastQueueDrafts.get(expectedKey)||{};
+  root.querySelectorAll('textarea').forEach(el=>{const name=el.id||(el.hasAttribute('data-pair-bulk-note')?'pair-bulk-note':'');if(Object.hasOwn(values,name)&&el.value===el.defaultValue&&document.activeElement!==el)el.value=values[name];});
+}
 let responderQueueCache = null;
 let responderQueueFailure = null;
 const responderQueueFlights = new Map();
 function responderQueueMode() {
   return state.dataset === 'production' && state.route === 'clarify' && state.role === 'shift_lead' && Sb.signedIn();
 }
+function fastReviewQueueMode() {
+  return state.dataset === 'production' && Sb.signedIn() &&
+    ['audit-review','approvals'].includes(state.route) && ['monitor','audit_assistant','lead','admin'].includes(state.role);
+}
+function fastCaseQueueMode() { return responderQueueMode() || fastReviewQueueMode(); }
 function responderQueueKey() {
   return JSON.stringify([Sb.authUser()?.id, state.access?.email, state.role,
     [...(state.access?.companies || [])].sort(), state.filters.from, state.filters.to]);
@@ -1753,7 +1779,7 @@ function applyResponderQueue(snapshot) {
   moreCaseState.error = '';
 }
 async function loadResponderQueue(force = false) {
-  if (!responderQueueMode() || !Sb.authUser()?.id) return;
+  if (!fastCaseQueueMode() || !Sb.authUser()?.id) return;
   const key = responderQueueKey();
   if (!liveOverviewState.responderOnly) ++liveOverviewState.requestId;
   if (responderQueueCache?.key !== key) {
@@ -1779,19 +1805,19 @@ async function loadResponderQueue(force = false) {
     // No dashboard, history, finance, notifications or reconciliation reads.
     try {
       const rows = await Sb.currentExceptionsSummary(scope);
-      if (!responderQueueMode() || responderQueueKey() !== key) return;
+      if (!fastCaseQueueMode() || responderQueueKey() !== key) return;
       responderQueueCache = {key, at: Date.now(), total: rows.length, truncated: rows.length === scope.limit,
-        rows: rows.filter(row => row.requested_at && !row.case_closure_request_id && ['open','clarifying','answered'].includes(row.status))};
+        rows: responderQueueMode() ? rows.filter(row => row.requested_at && !row.case_closure_request_id && ['open','clarifying','answered'].includes(row.status)) : rows};
       applyResponderQueue(responderQueueCache);
       responderQueueFailure = null;
     } catch (error) {
-      if (responderQueueMode() && responderQueueKey() === key) {
+      if (fastCaseQueueMode() && responderQueueKey() === key) {
         responderQueueFailure = {key, retryAt: Date.now() + 30000};
         liveOverviewState.auxiliaryError = 'รายการเคส: ' + (error.message || 'โหลดไม่สำเร็จ') + ' · คงร่างและข้อมูลที่โหลดได้ครั้งก่อน';
       }
     } finally {
       responderQueueFlights.delete(key);
-      if (responderQueueMode() && responderQueueKey() === key) {
+      if (fastCaseQueueMode() && responderQueueKey() === key) {
         liveOverviewState.loading = false;
         liveOverviewState.auxiliaryLoading = false;
         offerLiveOverviewUpdate();
@@ -1803,6 +1829,7 @@ async function loadResponderQueue(force = false) {
 }
 async function loadLiveOverview(force = false) {
   if (state.route === 'clarify' && state.role === 'shift_lead') return loadResponderQueue(force);
+  if (typeof fastReviewQueueMode === 'function' && fastReviewQueueMode()) return loadResponderQueue(force);
   if (liveOverviewState.responderOnly) {
     liveOverviewState.responderOnly = false;
     liveOverviewState.loading = false;
@@ -1953,7 +1980,7 @@ async function loadLiveOverview(force = false) {
 
 function ensureLiveOverview(root) {
   if (state.dataset !== "production" || !Sb.signedIn()) return true;
-  if (responderQueueMode()) { loadResponderQueue().catch(() => {}); return true; }
+  if (fastCaseQueueMode()) { loadResponderQueue().catch(() => {}); return true; }
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   const stale = liveOverviewState.key !== key;
   if (liveOverviewState.responderOnly || ((!liveOverviewState.quality || stale) && !liveOverviewState.loading)) loadLiveOverview(stale);
@@ -4954,9 +4981,9 @@ VIEWS['audit-review'] = (root) => {
   AuditReview.mount(root, {
     get exceptions(){return DB.exceptions;}, get filters(){return state.filters;}, companies:companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany), canAccessCompany, h, money, caseLabel, openException, toast,
     isActive:()=>state.route==='audit-review',
-    isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&!liveOverviewState.loading&&!liveOverviewState.auxiliaryLoading&&!liveOverviewState.error&&!liveOverviewState.auxiliaryError),
+    isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&liveOverviewState.key===`${state.filters.from}|${state.filters.to}|${state.filters.company}`),
     loadMessage:()=>liveOverviewState.error||liveOverviewState.auxiliaryError||'กำลังโหลดคิวบริษัทที่เลือก ยังไม่สรุปว่าไม่มีเคส',
-    selectCompany:async company=>{if(company!=='ALL'&&!canAccessCompany(company))throw Error('ไม่มีสิทธิ์บริษัทนี้');state.filters.company=company;renderFilters();if(state.dataset==='production')await loadLiveOverview(true);},
+    selectCompany:async company=>{if(company!=='ALL'&&!canAccessCompany(company))throw Error('ไม่มีสิทธิ์บริษัทนี้');state.filters.company=company;renderFilters();if(state.dataset==='production')await loadResponderQueue();},
     openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
     refresh: async () => { await loadLiveOverview(true); },
   });
@@ -4967,17 +4994,19 @@ VIEWS['audit-review'] = (root) => {
 
 VIEWS.approvals = (root) => {
   if (!ensureLiveOverview(root)) return;
-  const queue = DB.exceptions.filter((e) => !e.closureRequestId && e.status === 'damage');
+  if(state.dataset==='production'&&!liveOverviewState.exceptionsReady){root.innerHTML='<section class="panel" role="status">กำลังโหลดคิวอนุมัติจริง… ยังไม่สรุปเป็นศูนย์</section>';return;}
+  const approvalCases = scopedExceptions();
+  const queue = approvalCases.filter((e) => !e.closureRequestId && e.status === 'damage');
   root.innerHTML = `
-    <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(DB.exceptions.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
+    <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(approvalCases.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
     <section class="panel" id="pendingManualPairQueue"></section>
     <section class="panel" id="pendingCrossDayQueue"></section>
     <section class="panel" id="pendingDocumentClosureQueue"></section>
     <section class="status-strip four">
-      <article><span>รอชี้แจง</span><strong>${num(DB.exceptions.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
+      <article><span>รอชี้แจง</span><strong>${num(approvalCases.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
       <article class="warn"><span>Audit รอตรวจเอกสาร</span><strong>${num(AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length)}</strong><small><a href="#/audit-review">เปิดคิว Audit รอตรวจ →</a> · ยังไม่ใช่คำขอหัวหน้าปิด</small></article>
-      <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(DB.exceptions.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
-      <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(DB.exceptions.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
+      <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(approvalCases.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
+      <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(approvalCases.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
     </section>
 
     <section class="panel">
@@ -5015,9 +5044,11 @@ VIEWS.approvals = (root) => {
 
   root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
   root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
-  ManualPairing.mountQueue($('#pendingManualPairQueue'));
-  CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'));
-  CaseClosure.mountQueue($('#pendingDocumentClosureQueue'));
+  const approvalScope = {company:state.filters.company,from:state.filters.from,to:state.filters.to};
+  const draftKey=fastQueueDraftKey();
+  ManualPairing.mountQueue($('#pendingManualPairQueue'),null,approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
+  CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'),approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
+  CaseClosure.mountQueue($('#pendingDocumentClosureQueue'),{scope:approvalScope}).then(()=>restoreFastQueueDrafts(draftKey));
   root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
   root.querySelectorAll("[data-approve]").forEach((b) =>
     b.addEventListener("click", () => {
