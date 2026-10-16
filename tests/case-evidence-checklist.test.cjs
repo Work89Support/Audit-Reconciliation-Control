@@ -5,7 +5,7 @@ const block=source.slice(start,source.indexOf('    } catch(err)',start));
 async function read(role,loaded,files,linked=false){
  const e={id:'case-1',dbId:'case-1',company:'FR8',status:'answered',notes:['original note'],evidence:files,_caseEvidenceLoaded:loaded,bankAmount:81900,systemAmount:null};
  const fresh={id:'case-1',hasEvidence:linked,evidence:[],notes:[],bankAmount:81900,systemAmount:null,status:'answered'};
- const ctx={e,id:e.id,state:{selected:e.id,role},Sb:{exceptionDetail:async()=>fresh},mapLiveException:x=>x};
+ const ctx={e,id:e.id,state:{selected:e.id,role},Sb:{exceptionDetail:async()=>fresh,reviewHoldForCase:async()=>null},mapLiveException:x=>x};
  vm.createContext(ctx);await vm.runInContext(`(async()=>{${block}})()`,ctx);
  assert.equal(e.bankAmount,81900);assert.equal(e.systemAmount,null);assert.equal(e.status,'answered');assert.deepEqual(e.notes,['original note']);assert.equal(e.evidence,files);
  return e.hasEvidence;

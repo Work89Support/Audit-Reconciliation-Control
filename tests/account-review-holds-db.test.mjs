@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {PGlite} from '@electric-sql/pglite';
+const {PGlite}=await import(process.argv[2]||'@electric-sql/pglite');
 const db=new PGlite(),admin='3bd23940-ef55-46ec-9a10-294779cd33b4',lead='00000000-0000-0000-0000-000000000002';
 await db.exec(`create schema auth;create role anon;create role authenticated;
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;

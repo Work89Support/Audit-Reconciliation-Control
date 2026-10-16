@@ -23,6 +23,8 @@ jobs:
         run: npm run test:ui-qa
       - name: Verify all-role evidence checklist
         run: node tests/case-evidence-checklist.test.cjs
+      - name: Verify suspended-account hold scope and report distinction
+        run: node --test tests/account-review-holds.test.cjs
       - name: Verify AZPAY source time and cross-day display
         run: node tests/azpay-source-cross-day.test.cjs
       - name: Verify queue auto refresh and draft protection
@@ -38,6 +40,7 @@ jobs:
           node tests/cross-day-workbench.test.cjs
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
           node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/account-review-holds-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-bo-source-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-actions-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/cross-day-image-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
