@@ -33,6 +33,7 @@ function fixture(company){
   assert(f.captures>=2,'capture current draft before preview and navigation');
   assert.equal(JSON.stringify(f.ctx.state),baseline);
   await f.ctx.showReadOnlyCaseQueue(f.e);f.buttons['#requestReceiptReturn'].onclick();assert.equal(f.renders,0);assert.equal(f.closes,0);
+  await f.ctx.showReadOnlyCaseQueue({...f.e,id:null,dbId:null,account:''});assert.match(f.buttons['#requestReceiptStatus'].textContent,/เริ่มจากคิวของบริษัทนี้/,'toolbar has no previous account');
   f.setRaw([]);await f.ctx.showReadOnlyCaseQueue({...f.e,id:null,dbId:null,account:''});assert.equal(f.buttons['#requestReceiptNext'].disabled,true);assert.match(f.buttons['#readOnlyCaseQueue'].innerHTML,/คิวถัดไป 0/);
  }
  const failed=fixture('FR8');failed.ctx.Sb.caseEvidenceFlags=async()=>{throw Error('evidence read timeout');};await failed.ctx.showReadOnlyCaseQueue(failed.e);assert.equal(failed.buttons['#requestReceiptNext'].disabled,false);assert.match(failed.buttons['#requestReceiptStatus'].textContent,/ยังไม่ได้ส่งคำขอ/);assert.equal(failed.buttons['#readOnlyCaseQueue'].innerHTML,'');

@@ -679,7 +679,7 @@ async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}
       await loadClarificationReceiptCandidates(e,context);
       if(!active())return;
       failed=false;const row=next();nextButton.disabled=!row;nextButton.textContent=readOnly?'เปิดดูเคสถัดไป (ไม่ส่งคำขอ)':'ตรวจเคสถัดไปของบริษัทนี้';
-      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ส่งต่อได้ ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
+      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${!clarificationAccountKey(e)?'เริ่มจากคิวของบริษัทนี้':clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ส่งต่อได้ ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
       if(readOnly){
         const queue=context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).filter(row=>row&&row.company===context.company&&canAccessCompany(row.company)&&isUnsentClarificationCase(row));
         const stats=context.queueStats||{};
