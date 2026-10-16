@@ -11,23 +11,26 @@ for(const [instant,expected] of [['2026-10-08T16:59:00Z','2026-10-07'],['2026-10
  const dateContext={Date:Clock,Intl};vm.runInNewContext(dates+'; result = DEFAULT_WORK_DATE;',dateContext);
  assert.equal(dateContext.result,expected,'Thai midnight and year rollover Day-1');
 }
-assert.match(app,/\['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'\]\.includes\(state.route\)/);
-let active=0,maxActive=0; const urls=[];
-const context={window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test.invalid',anonKey:'test-public'}},persist(){}},localStorage:{getItem(){return null},setItem(){},removeItem(){}},AbortController,setTimeout,clearTimeout,fetch:async url=>{
+assert.match(app,/\['exceptions', 'cloud', 'daily-summary', 'mc8-sheets'(?:, 'finance')?\]\.includes\(state.route\)/);
+let active=0,maxActive=0; const urls=[],calls=[];
+const context={window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test.invalid',anonKey:'test-public'}},persist(){}},localStorage:{getItem(){return null},setItem(){},removeItem(){}},AbortController,setTimeout,clearTimeout,fetch:async (url,opts={})=>{
+ calls.push({url,opts});
  urls.push(url); active++;maxActive=Math.max(active,maxActive);
  await new Promise(resolve=>setTimeout(resolve,1));
  let rows=[];
  if(url.includes('/daily_recon_jobs?')) rows=Array.from({length:23},(_,i)=>({last_run_id:'run-'+i}));
- if(url.includes('/exceptions?')) rows=Array.from({length:url.includes('offset=0')?1000:3},(_,i)=>({id:'case-'+i}));
+ if(url.includes('/rpc/audit_current_cases?')) rows=Array.from({length:JSON.parse(opts.body).p_offset===0?1000:3},(_,i)=>({id:'case-'+i}));
  if(url.includes('/recon_runs?')) rows=[{id:'run',match_evidence:[{id:'pair'}]}];
  active--;return {ok:true,status:200,text:async()=>JSON.stringify(rows)};
 }};
 vm.runInNewContext(source,context);
 const rows=await context.window.Sb.currentExceptionsSummary({from:'2026-10-07',to:'2026-10-07',company:'FR8',limit:5000});
 assert.equal(rows.length,1003);assert.equal(maxActive,1,'pages are serialized and stop at first short page');
-const pages=urls.filter(u=>u.includes('/exceptions?'));
+const pages=calls.filter(c=>c.url.includes('/rpc/audit_current_cases?'));
 assert.equal(pages.length,2);
-for(const url of pages){assert.match(url,/business_date=gte.2026-10-07/);assert.match(url,/business_date=lte.2026-10-07/);assert.match(url,/company=eq.FR8/);}
+const scope=urls.find(u=>u.includes('/daily_recon_jobs?'));assert.match(scope,/business_date=gte.2026-10-07/);assert.match(scope,/business_date=lte.2026-10-07/);assert.match(scope,/company=eq.FR8/);
+for(const {url,opts} of pages){assert.equal(opts.method,'POST');const body=JSON.parse(opts.body);assert.equal(body.p_run_ids.length,23);assert.equal(body.p_limit,1000);assert.doesNotMatch(url,/bo_raw|stm_raw/);}
+assert.deepEqual(pages.map(c=>JSON.parse(c.opts.body).p_offset),[0,1000]);
 urls.length=0;
 const evidence=await context.window.Sb.reconciliationEvidence({from:'2026-10-07',to:'2026-10-07',company:'FR8'});
 assert.equal(evidence.length,3);

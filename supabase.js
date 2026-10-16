@@ -656,11 +656,8 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     if (!runIds.length) return [];
     const pageSize = 1000;
     const fetchPage = async (offset) => {
-      const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${offset}`];
-      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-      return json(`/rest/v1/exceptions?${filters.join("&")}`);
+      return json('/rest/v1/rpc/audit_current_cases?select=*', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({p_run_ids:runIds,p_limit:Math.min(pageSize,limit-offset),p_offset:offset})});
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
@@ -700,17 +697,13 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
     const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
     if (!runIds.length) return [];
-    const runFilter = `run_id=in.(${runIds.join(",")})`;
     const fetchPage = async (offset) => {
       /* finish_daily_recon_job keeps unresolved history as explicit carry rows
          with a -C<uuid> code.  They remain auditable in exceptions/audit_log,
          but are not exceptions computed by the latest run and must not inflate
          the current queue or its totals. */
-      const filters = [`select=${columns}`, runFilter, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc,id.desc", `limit=${Math.min(pageSize, limit - offset)}`, `offset=${startOffset + offset}`];
-      if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
-      if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
-      if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
-      return json(`/rest/v1/exceptions?${filters.join("&")}`);
+      return json(`/rest/v1/rpc/audit_current_cases?select=${columns}`, {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({p_run_ids:runIds,p_limit:Math.min(pageSize,limit-offset),p_offset:startOffset+offset})});
     };
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
