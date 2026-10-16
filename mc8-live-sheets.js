@@ -176,6 +176,33 @@
     for(const row of caseRows){
       if(row.case?.customer_details?.waiting_source&&row.kind!=='closed'){row.waiting=true;row.boAccountLabel=row.case.customer_details.bo_account_label||row.account;}
       const e=row.case,ref=String(row.bo.reference||'').trim(),user=String(row.bo.user||'').trim();
+      // Rules' BO-only cross-day notice and Engine's unmatched BO can describe
+      // the exact same physical record. The Rules amount is NOT STM evidence.
+      // Fold only a source-less Rules notice onto one uniquely identified BO
+      // row with identical full raw text; never infer identity from an amount.
+      const sources=e.customer_details?.source_rows;
+      const raw=String(e.bo_raw||'').trim();
+      const isRulesNotice=e.ex_type==='cross_day'&&['open','pending_next_day'].includes(e.status)
+        &&sources&&sources.bo===null&&sources.stm===null
+        &&String(e.stm_raw||'').trim()==='— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —'
+        &&raw.length>=40&&raw.split('|').length>=5
+        &&cents(row.boAmount)>0&&cents(row.boAmount)===cents(row.pmAmount);
+      const noticeHits=isRulesNotice?caseRows.filter(target=>{
+        const original=target.case,source=original.customer_details?.source_rows?.bo;
+        return target!==row&&target.exType==='cross_day'&&['open','pending_next_day'].includes(original.status)
+          &&target.company===row.company&&target.account===row.account&&target.direction===row.direction
+          &&original.business_date===e.business_date&&cents(target.boAmount)===cents(row.boAmount)
+          &&cents(target.pmAmount)===null&&original.customer_details?.source_rows?.stm==null
+          &&source&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.fileId||'')
+          &&source.row!=null&&/^\d+$/.test(String(source.row))
+          &&String(original.bo_raw||'').trim()===raw;
+      }):[];
+      if(noticeHits.length===1){
+        const target=noticeHits[0];
+        (target.relatedCrossDayWarnings ||= []).push(e);
+        target.reason=[target.reason,`คำเตือนข้ามวันประกอบรายการเดิม ${row.code}: ${row.reason}`].filter(Boolean).join(' · ');
+        continue;
+      }
       // A saved BO-waiting case can outlive its successful reconciliation.
       // Keep that case visible on the unique saved bank pair, not as another
       // financial row. Exact BO identity is required; equal amounts are not.
@@ -1014,9 +1041,11 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
       const prev=container.querySelector('#mc8-live-prev'),next=container.querySelector('#mc8-live-next');if(prev)prev.onclick=()=>{page--;draw();};if(next)next.onclick=()=>{page++;draw();};
       const related=shown.flatMap(row=>(row.relatedAlerts||[]).map(alert=>({row,alert})));
       if(related.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนที่ผูกกับรายการเดิม"><b>คำเตือนสงสัยเติมซ้ำ — ไม่เพิ่มจำนวนหรือยอดธุรกรรม</b>${related.map(({row,alert})=>`<p>${esc(row.code)} · ${esc(alert.code||alert.id)} <button data-live-case="${esc(alert.id)}">ตรวจคำเตือน</button></p>`).join('')}</section>`);
+      const crossDayWarnings=(sheet==='summary'?all:shown).flatMap(row=>(row.relatedCrossDayWarnings||[]).map(alert=>({row,alert})));
+      if(crossDayWarnings.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนข้ามวันที่ผูกกับรายการเดิม"><b>คำเตือนข้ามวัน ${crossDayWarnings.length} รายการผูกกับ BO เดิม — ไม่ใช่ธุรกรรมหรือยอด STM เพิ่ม</b><p>จัดกลุ่มเฉพาะการแสดงเว็บและ Excel · ผลหลักต้นฉบับ เคส และประวัติไม่เปลี่ยน</p>${crossDayWarnings.map(({row,alert})=>`<p>${esc(row.code)} · คำเตือน ${esc(alert.code||alert.id)} · ${esc(alert.detail||'')}${alert.id?` <button data-live-case="${esc(alert.id)}">ดูคำเตือนเดิม</button>`:''}</p>`).join('')}</section>`);
       const newSet=container.querySelector('#mc8-new-primary-cases');if(newSet)newSet.onclick=()=>opts.onNewCaseSet(data.primaryResult.id,()=>load({preserveView:true}));
       container.querySelectorAll('[data-live-case]').forEach(b=>b.onclick=async()=>{
-        const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case||all.flatMap(r=>r.relatedAlerts||[]).find(e=>e.id===b.dataset.liveCase)||(data?.caseHistory||[]).find(e=>e.id===b.dataset.liveCase);
+        const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case||all.flatMap(r=>[...(r.relatedAlerts||[]),...(r.relatedCrossDayWarnings||[])]).find(e=>e.id===b.dataset.liveCase)||(data?.caseHistory||[]).find(e=>e.id===b.dataset.liveCase);
         if(!liveCase?.id){opts.onCaseError?.(new Error('ไม่พบ UUID ของเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่'),null,company);return;}
         const original=b.textContent;b.disabled=true;b.textContent='กำลังเปิด…';
         try{
