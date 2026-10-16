@@ -8,11 +8,13 @@ const DB={exceptions:[e]};
 const rawCases=[{id:'fixture-1',code:'EX-TEST-1',company:'FR8',business_date:'2026-10-15',account:'AZPAY',status:'clarifying'},{id:'EX-TEST-2',company:'FR8',business_date:'2026-10-15',account:'COREPAY',status:'open'},{id:'EX-TEST-3',company:'FR8',business_date:'2026-10-15',account:'AZPAY',status:'open',clarification_file_id:'existing-file'}];
 const mapLiveException=r=>({...r,dbId:r.id,date:r.business_date,hasEvidence:!!r.clarification_file_id,requestedAt:r.requested_at});
 const AccountReviewHolds={set:()=>{},match:()=>null};
+const num=String,captureCaseOpenDraft=()=>{};
 let sent=0,renders=0;const can=()=>true,canAccessCompany=c=>c==='FR8',caseUiKey=e=>e.dbId||e.id,filteredExceptions=()=>DB.exceptions;
 const recordCaseUiResult=()=>{},saveOverride=()=>{},logAction=()=>{},deny=()=>{};
 const toast=message=>$('#result').textContent=message;
 const CaseClosure={openSubmit:()=>{throw Error('ไม่อนุญาตให้ปิดเคสในหน้าทดสอบ');}};
 const Sb={signedIn:()=>true,authUser:()=>({id:'fixture-audit'}),currentExceptions:async()=>rawCases,reviewHoldScopes:async()=>[],requestClarification:async()=>{sent++;await new Promise(r=>setTimeout(r,600));return {id:e.dbId,status:'clarifying',requested_at:new Date().toISOString()};}};
+Sb.caseEvidenceFlags=async()=>({'EX-TEST-3':true});
 function list(){ $('#listScroll').innerHTML=Array.from({length:30},(_,n)=>`<p style="padding:6px">รายการจำลอง ${n+1} · ไม่ใช่เคสจริง</p>`).join(''); }
 function render(){renders++;list();$('#result').textContent=`คำขอจำลอง ${sent} ครั้ง · วาดรายการ ${renders} ครั้ง · บริษัท ${state.filters.company} · หน้า ${state.page}`;}
 function closeDrawer(){}
@@ -27,6 +29,8 @@ fetch('../app.js').then(r=>r.text()).then(source=>{
  const start=source.indexOf('$("#btnClarify").addEventListener("click", async (event) => {');
  const handler=source.slice(start,source.indexOf("  $('#responseText').addEventListener",start));
  eval(helpers+handler);
+ const preview=document.createElement('button');preview.className='ghost-button';preview.textContent='ดูคิวเคสถัดไป (อ่านอย่างเดียว · จำลอง)';document.querySelector('#btnClarify').parentElement.append(preview);
+ eval(helpers+'preview.onclick=()=>showReadOnlyCaseQueue(e);');
  $('#resetTest').onclick=()=>{e.status='pending_next_day';e.requestedAt=null;$('#btnClarify').disabled=false;$('#caseTitle').textContent='เคสจำลอง EX-TEST-1 · FR8 · รอข้ามวัน มีหลักฐานแต่ยังไม่ส่ง';closeModal();};
  $('#caseTitle').textContent='เคสจำลอง EX-TEST-1 · FR8 · รอข้ามวัน มีหลักฐานแต่ยังไม่ส่ง';
 });

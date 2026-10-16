@@ -627,7 +627,7 @@ function restoreClarificationRequestScroll(context) {
   restore();requestAnimationFrame(()=>requestAnimationFrame(restore));
 }
 async function loadClarificationReceiptCandidates(e,context) {
-  if(context.route!=='mc8-sheets'||state.dataset!=='production')return;
+  if((context.route!=='mc8-sheets'&&!context.readOnlyQueue)||state.dataset!=='production')return;
   if(!context.date||!canAccessCompany(context.company))throw Error('ไม่พบขอบเขตบริษัทและวันที่ของเคส');
   const [raw,scopes]=await Promise.all([
     Sb.currentExceptions({company:context.company,from:context.date,to:context.date,limit:10000}),
@@ -640,6 +640,12 @@ async function loadClarificationReceiptCandidates(e,context) {
   const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
   const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
   const candidates=ordered.filter(row=>caseUiKey(row)!==caseUiKey(e)&&isUnsentClarificationCase(row)&&!AccountReviewHolds.match(row));
+  if(context.readOnlyQueue){
+    const flags=await Sb.caseEvidenceFlags(candidates.map(row=>row.dbId));
+    if(context.actor!==(Sb.authUser()?.id||null)||context.route!==state.route)throw Error('ผู้ใช้หรือหน้ารายการเปลี่ยนแล้ว');
+    for(const row of candidates)row.hasEvidence=!!row.clarificationFileId||!!flags[row.dbId];
+    context.queueStats={total:rows.length,held:rows.filter(row=>AccountReviewHolds.match(row)).length};
+  }
   const same=row=>clarificationAccountKey(row)===clarificationAccountKey(e);
   context.nextKeys=[...candidates.filter(same),...candidates.filter(row=>!same(row))].map(caseUiKey);
   for(const row of rows){
@@ -648,25 +654,38 @@ async function loadClarificationReceiptCandidates(e,context) {
     else DB.exceptions.push(row);
   }
 }
-async function showClarificationRequestReceipt(e, context) {
+async function showReadOnlyCaseQueue(e) {
+  if(!can('request_clarify')||!canAccessCompany(e.company))return deny('ดูคิวเคสถัดไป');
+  if(state.dataset==='production'&&!Sb.signedIn())return deny('ดูคิวเคสถัดไป');
+  captureCaseOpenDraft();
+  const context=captureClarificationRequestContext(e);
+  context.readOnlyQueue=true;
+  return showClarificationRequestReceipt(e,context,{readOnly:true});
+}
+async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}) {
   const next=()=>context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).find(row=>row
     && row.company===context.company && isUnsentClarificationCase(row)
     && canAccessCompany(row.company));
-  openModal('ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.code||e.id)}</strong></p><p>ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส</p><p id="requestReceiptStatus">กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม · ตรวจบัญชีเดิมก่อน แล้วจึงบัญชีอื่นของบริษัทในวันเดียวกัน</small></div>`,
-    `<button class="ghost-button" id="requestReceiptReturn">กลับหน้ารายการ</button><button class="primary-button" id="requestReceiptNext" disabled>ตรวจเคสถัดไปของบริษัทนี้</button>`);
+  openModal(readOnly?'ดูคิวเคสถัดไป — อ่านอย่างเดียว':'ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.date||'')} · ${h(e.code||e.id||'ทุกบัญชี')}</strong></p><p>${readOnly?'ยังไม่ได้ส่งคำขอใด ๆ · เปิดดูรายละเอียดเท่านั้น ไม่สร้างเคส ไม่เปลี่ยนยอด และไม่ปิดเคส':'ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส'}</p><p id="requestReceiptStatus">กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม · คิวครอบคลุมทุกบัญชีในบริษัท/วันเดียวกัน ตรวจบัญชีเดิมก่อน · ไฟล์แนบอย่างเดียวยังถือว่ายังไม่ส่ง</small></div>${readOnly?'<div id="readOnlyCaseQueue" aria-label="ลำดับเคสถัดไป"></div>':''}`,
+    `<button class="ghost-button" id="requestReceiptReturn">${readOnly?'กลับเคส / รายการเดิม':'กลับหน้ารายการ'}</button><button class="primary-button" id="requestReceiptNext" disabled>ตรวจเคสถัดไปของบริษัทนี้</button>`);
   const nextButton=$('#requestReceiptNext'),status=$('#requestReceiptStatus');
   let acted=false,busy=false,failed=false;
   $('#modal')._contentCleanup=()=>{acted=true;};
   const active=()=>!acted&&state.route===context.route&&(Sb.authUser()?.id||null)===context.actor&&$('#requestReceiptNext')===nextButton;
-  const returnToList=()=>{closeModal();closeDrawer();if(context.route!=='mc8-sheets')render();restoreClarificationRequestScroll(context);};
+  const returnToList=()=>{closeModal();if(!readOnly)closeDrawer();if(!readOnly&&context.route!=='mc8-sheets')render();restoreClarificationRequestScroll(context);};
   const refresh=async()=>{
     busy=true;nextButton.disabled=true;status.textContent='กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…';
     try{
       await loadClarificationReceiptCandidates(e,context);
       if(!active())return;
-      failed=false;const row=next();nextButton.disabled=!row;nextButton.textContent='ตรวจเคสถัดไปของบริษัทนี้';
-      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมส่งครบแล้ว ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
-    }catch(error){if(active()){failed=true;status.textContent='ยังตรวจเคสถัดไปไม่สำเร็จ: '+error.message+' · คำขอเดิมส่งสำเร็จแล้ว ไม่ต้องส่งซ้ำ';nextButton.disabled=false;nextButton.textContent='ลองตรวจเคสถัดไปอีกครั้ง';}}
+      failed=false;const row=next();nextButton.disabled=!row;nextButton.textContent=readOnly?'เปิดดูเคสถัดไป (ไม่ส่งคำขอ)':'ตรวจเคสถัดไปของบริษัทนี้';
+      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ส่งต่อได้ ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
+      if(readOnly){
+        const queue=context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).filter(row=>row&&row.company===context.company&&canAccessCompany(row.company)&&isUnsentClarificationCase(row));
+        const stats=context.queueStats||{};
+        $('#readOnlyCaseQueue').innerHTML=`<p>เคสในผลหลัก ${num(stats.total||0)} · พักตรวจ ${num(stats.held||0)} · คิวถัดไป ${num(queue.length)} (ไม่รวมเคสที่กำลังเปิด)</p><div class="table-wrap"><table><thead><tr><th>ลำดับ</th><th>เคส</th><th>บัญชี</th><th>หลักฐาน</th></tr></thead><tbody>${queue.slice(0,100).map((row,i)=>`<tr data-next-queue-case="${h(row.dbId||row.id)}"><td>${i+1}${clarificationAccountKey(row)===clarificationAccountKey(e)?' · บัญชีเดิม':''}</td><td>${h(row.code||row.id)}</td><td>${h(row.account||'ไม่ระบุ')}</td><td>${row.hasEvidence?'แนบแล้ว — ยังไม่ส่ง':'ยังไม่แนบ — ยังไม่ส่ง'}</td></tr>`).join('')||'<tr><td colspan="4">ไม่มีเคสถัดไปที่ส่งต่อได้</td></tr>'}</tbody></table></div>${queue.length>100?'<p>แสดง 100 เคสแรกจากคิวทั้งหมด · ปุ่มถัดไปใช้คิวครบทุกเคส</p>':''}`;
+      }
+    }catch(error){if(active()){failed=true;status.textContent='ยังตรวจเคสถัดไปไม่สำเร็จ: '+error.message+(readOnly?' · ยังไม่ได้ส่งคำขอ':' · คำขอเดิมส่งสำเร็จแล้ว ไม่ต้องส่งซ้ำ');nextButton.disabled=false;nextButton.textContent='ลองตรวจเคสถัดไปอีกครั้ง';if(readOnly)$('#readOnlyCaseQueue').innerHTML='';}}
     finally{busy=false;}
   };
   $('#requestReceiptReturn').onclick=()=>{if(acted)return;acted=true;returnToList();};
@@ -677,7 +696,7 @@ async function showClarificationRequestReceipt(e, context) {
     // Re-read the accepted current case set on navigation, not another send.
     await refresh();if(!active()||failed)return;
     const row=next();if(!row){$('#requestReceiptNext').disabled=true;return toast('ไม่มีเคสถัดไปในบริษัทและตัวกรองเดิมแล้ว','warn');}
-    acted=true;returnToList();await openException(row.id);
+    acted=true;if(readOnly)captureCaseOpenDraft();returnToList();await openException(row.id);
   };
   await refresh();
 }
@@ -1204,6 +1223,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   onRecheck: openAccountRecheck,
   onManageFiles: openFileRunManagement,
   exportBoWaitingCases: downloadBoWaitingCaseRequest,
+  onNextCaseQueue: can('request_clarify') ? scope=>showReadOnlyCaseQueue({...scope,account:''}) : null,
   isActive: () => state.route === 'mc8-sheets',
   onLocal: () => MC8Sheets.render(root),
   onCompany: company => { state.dailySummary.company = company; },
@@ -4110,6 +4130,7 @@ async function openException(id, options = {}) {
     </header>
 
     <div class="drawer-body">
+      ${can('request_clarify')?'<p><button type="button" class="ghost-button" id="caseNextQueue">ดูคิวเคสถัดไป (อ่านอย่างเดียว)</button></p>':''}
       ${AccountReviewHolds.banner(e.reviewHold)}
       <section class="case-work-status" aria-label="สถานะและหน้าที่ของผู้ใช้งาน">
         <div><span>ผลระบบ</span><b>${e.status==='damage' ? 'ยืนยันความเสียหายแล้ว — ดูทะเบียนและหลักฐาน' : closed ? 'ดูผลและหลักฐานต้นทาง' : 'มีข้อผิดปกติให้ตรวจ — ยังไม่ยืนยันความเสียหาย'}</b></div>
@@ -4226,6 +4247,7 @@ async function openException(id, options = {}) {
   AuditUi.open(drawer);
 
   $("#drawerClose").addEventListener("click", closeDrawer);
+  $('#caseNextQueue')?.addEventListener('click',()=>showReadOnlyCaseQueue(e));
   $('#btnGoMissing')?.addEventListener('click',()=>{
     const first=missingChecks[0]?.key;
     const target=first==='raw'||first==='evidence'?'#caseFilesSection':first==='note'?'#noteText':'#caseChecklistSection';

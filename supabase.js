@@ -1270,6 +1270,24 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
   }
 
+  // Queue display only: read attachment presence under existing case_evidence
+  // RLS. Never create/link evidence or write a clarification/status here.
+  async function caseEvidenceFlags(ids) {
+    const unique=[...new Set(ids||[])];
+    if(unique.some(id=>!(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).test(id)))throw Error('รหัสเคสในคิวไม่ถูกต้อง');
+    const flags={};
+    for(let start=0;start<unique.length;start+=100){
+      const batch=unique.slice(start,start+100);
+      for(let offset=0;;offset+=500){
+        const rows=await json(`/rest/v1/case_evidence?select=exception_id&exception_id=in.(${batch.join(',')})&order=id.asc&limit=500&offset=${offset}`);
+        if(!Array.isArray(rows))throw Error('ยังตรวจหลักฐานในคิวไม่ครบ');
+        for(const row of rows)if(batch.includes(row.exception_id))flags[row.exception_id]=true;
+        if(rows.length<500)break;
+      }
+    }
+    return flags;
+  }
+
   // RLS on both tables remains authoritative, including closed-case history.
   // Scope by transaction date, not upload date; paginate without a fake zero on failure.
   async function caseEvidenceLibrary({from,to,company} = {}) {
@@ -1657,6 +1675,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     clarificationMatches,
     evidenceUsage,
     currentExceptions,
+    caseEvidenceFlags,
     currentExceptionsSummary,
     searchExceptions,
     exceptionDetail,
