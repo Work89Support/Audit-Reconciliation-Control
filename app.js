@@ -3348,7 +3348,10 @@ VIEWS.exceptions = (root) => {
       company,
       date: state.filters.to || DEFAULT_WORK_DATE,
       minDate: VISIBLE_DATE_FROM,
-      load: Sb.reconciliationOverview,
+      load: async (company,date) => {
+        const [data,scopes]=await Promise.all([Sb.reconciliationOverview(company,date),Sb.reviewHoldScopes()]);
+        AccountReviewHolds.set(scopes);return data;
+      },
       loadRecommendations: Sb.evidenceCaseRecommendations,
       onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
       onExport: exportSheets,

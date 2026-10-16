@@ -6,7 +6,9 @@ const ReviewOverview = (() => {
   const workspaces = new Map();
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
+  const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
   function closureReviewAction(row) {
+    if(holdFor(row))return {action:'review',label:'พักตรวจ / รอ STM',enabled:false};
     if (row.status === 'open') return {action:'close',label:'ยืนยันปิดเคส',enabled:true};
     if (['answered','clarifying','pair_pending'].includes(row.status)) return {
       action:'review', enabled:true,
@@ -65,6 +67,7 @@ const ReviewOverview = (() => {
   const detailHeaders=['วัน / เวลา','ยอด','บัญชีลูกค้า','ท้าย 4','ธนาคารลูกค้า','ชื่อ / User','User','อ้างอิง','รายละเอียดต้นฉบับ'];
   function auditLabel(row) {
     if (!row.case) return row.confirmation?'Audit ยืนยันแล้ว':'ยังไม่ยืนยันโดย Audit';
+    if(holdFor(row.case))return AccountReviewHolds.label;
     return ({open:'รอตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',closed:'ยืนยันแล้ว ปิดเคส',approved:'อนุมัติแล้ว',damage:'ความเสียหาย'})[row.case.status] || row.case.status;
   }
   function xbPayoutNote(row) {
