@@ -935,6 +935,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const confirmAccountRecheck=body=>rpc('confirm_account_recheck',body);
   const manualPrimaryPreview=id=>json('/rest/v1/rpc/manual_primary_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
   const acceptManualPrimary=body=>json('/rest/v1/rpc/accept_manual_primary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
+  const acceptManualPrimaryWithCases=body=>json('/rest/v1/rpc/accept_manual_primary_with_cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
   const readManualPrimary=async(company,date)=>{const v=await rpc('read_manual_primary',{p_company:company,p_date:date});if(v&&!v.stale)v.case_set=await rpc('read_manual_primary_case_set',{p_id:v.id});return v;};
   const manualPrimaryCasesPreview=id=>json('/rest/v1/rpc/manual_primary_cases_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
   const activateManualPrimaryCases=body=>json('/rest/v1/rpc/activate_manual_primary_cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
@@ -1614,7 +1615,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
-    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
+    requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
     fileRunManagement,sourceRevisionHistory,setAuditRunHold,correctAuditSource,

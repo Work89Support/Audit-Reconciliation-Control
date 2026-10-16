@@ -980,7 +980,7 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
           ...(data.run.summary?.bo_first?.required||[]).map(r=>r.identity),
         ].filter(value=>value&&String(value).toUpperCase()!=='UNKNOWN'))];
         const button=document.createElement('button');button.type='button';button.textContent='ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี';
-        button.disabled=!accounts.length;button.onclick=()=>opts.onRecheck({company,date,accounts});
+        button.disabled=!accounts.length;button.onclick=()=>opts.onRecheck({company,date,accounts,onPrimaryReady:()=>load({preserveView:true})});
         container.querySelector('.mc8-filters').appendChild(button);
         if(opts.onManageFiles){const manage=document.createElement('button');manage.type='button';manage.textContent='เลือกไฟล์ / แก้ข้อมูล / พักรัน';manage.onclick=()=>opts.onManageFiles({company,date,accounts});container.querySelector('.mc8-filters').appendChild(manage);}
       }

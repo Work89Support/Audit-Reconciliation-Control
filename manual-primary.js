@@ -11,6 +11,10 @@
   if(!same())throw Error('เฉพาะหัวหน้า/ผู้ดูแล');
   const p=await opts.preview(id);if(!same())throw Error('ผู้ใช้หรือสิทธิ์เปลี่ยน');
   const d=root.document.createElement('dialog');d.className='manual-final-dialog primary-result-dialog';d.setAttribute('aria-labelledby','primaryTitle');d.innerHTML=html(p);root.document.body.appendChild(d);
+  if(opts.withCases){
+   d.querySelector('.manual-final-safety:not([role])')?.remove();
+   d.querySelector('.manual-final-content').insertAdjacentHTML('beforeend',`<p class="manual-final-safety" data-case-handoff>การยืนยันจะใช้ผลหลักและสร้างชุดเคสพร้อมดำเนินการ ${esc(p.after?.exception_count??0)} เคสพร้อมกัน · เก็บเคสเดิมเป็นประวัติ ไม่เปลี่ยนยอดหรือปิดเคส · ถ้าสร้างเคสไม่สำเร็จจะไม่รับรองผลหลักค้างไว้</p>`);
+  }
   d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',annotationNotice(p));
   const close=()=>{d.close();d.remove();};d.querySelectorAll('[data-cancel]').forEach(x=>x.onclick=close);d.addEventListener('cancel',e=>{e.preventDefault();close();});
   const reason=()=>root.AccountRecheck.confirmationReason(d.querySelector('[data-reason]').value,d.querySelector('[data-other]').value);
@@ -21,7 +25,7 @@
    busy=true;enable();try{
     const latest=await opts.preview(id);if(!same()||!latest.allowed||latest.token!==p.token)throw Error('ไฟล์ ผลหลัก หรือขอบเขตเปลี่ยน ต้องเปิดทบทวนใหม่');
     const note=reason();d.querySelector('[data-next]').textContent='ยืนยันใช้เป็นผลหลัก';
-    const final=root.document.createElement('dialog');final.className='manual-final-dialog';final.innerHTML=`<header><h2>ยืนยันขั้นสุดท้าย</h2></header><div class="manual-final-content"><p>${esc(p.company)} · ${esc(p.date)}</p><p>${esc(note)}</p><p>จะเปลี่ยนรายงานหลักที่เว็บและ Excel ใช้เท่านั้น เก็บผลเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส</p></div><footer><button data-back>ยกเลิก</button><button data-accept class="primary">ยืนยันใช้ผลตรวจมือเป็นผลหลัก</button></footer>`;root.document.body.appendChild(final);
+    const final=root.document.createElement('dialog');final.className='manual-final-dialog';final.innerHTML=`<header><h2>ยืนยันขั้นสุดท้าย</h2></header><div class="manual-final-content"><p>${esc(p.company)} · ${esc(p.date)}</p><p>${esc(note)}</p><p>${opts.withCases?`จะใช้ผลหลักและสร้างชุดเคสพร้อมดำเนินการ ${esc(p.after?.exception_count??0)} เคส · เก็บเคสเดิมและหลักฐานเป็นประวัติ ไม่คัดลอกการอนุมัติ ไม่เปลี่ยนยอดหรือปิดเคส`:'จะเปลี่ยนรายงานหลักที่เว็บและ Excel ใช้เท่านั้น เก็บผลเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส'}</p></div><footer><button data-back>ยกเลิก</button><button data-accept class="primary">${opts.withCases?'ยืนยันใช้ผลหลักและเปิดชุดเคส':'ยืนยันใช้ผลตรวจมือเป็นผลหลัก'}</button></footer>`;root.document.body.appendChild(final);
     const accepted=await new Promise(resolve=>{const finish=v=>{final.close();final.remove();resolve(v);};final.querySelector('[data-back]').onclick=()=>finish(false);final.querySelector('[data-accept]').onclick=()=>finish(true);final.addEventListener('cancel',e=>{e.preventDefault();finish(false);});final.showModal();});
     if(!accepted)return;if(!same())throw Error('ผู้ใช้หรือสิทธิ์เปลี่ยน');
     const saved=await opts.accept({p_id:id,p_token:p.token,p_reason:note,p_reviewed:true});close();await opts.onAccepted?.(saved);

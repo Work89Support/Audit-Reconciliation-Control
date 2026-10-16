@@ -1072,7 +1072,7 @@ VIEWS.finance=root=>{
   boReadXlsx:async bytes=>{const sheets=(await XlsxReader.readWorkbook(bytes,{includeMetadata:true})).filter(s=>s.rows.some(r=>r.some(v=>String(v??'').trim())));if(sheets.length!==1)throw Error('BO หลายชีต/ไม่มีชีตข้อมูล ต้องทบทวนขอบเขตรายงานก่อน ไม่อ่านแค่ชีตแรก');return sheets[0];},boParse:Formats.parse,boSha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
   holds:Sb.reviewHoldReport,actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
 };
-function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {
+function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null,onPrimaryReady=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
   openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
   const dispose=AccountRecheck.mount($('#accountRecheckPanel'),{
@@ -1081,11 +1081,12 @@ function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=nul
     detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
     finalConfirmation:AccountRecheck.finalConfirmation,
     onPrimary:id=>ManualPrimary.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,
-      preview:Sb.manualPrimaryPreview,accept:Sb.acceptManualPrimary,
+      preview:Sb.manualPrimaryPreview,accept:Sb.acceptManualPrimaryWithCases,withCases:true,
       onAccepted:async value=>{
-        toast('ใช้ผลตรวจมือเป็นผลหลักแล้ว — ทบทวนเปิดเคสจริงจากผลชุดนี้ต่อ','ok');
+        toast(`ใช้ผลตรวจมือเป็นผลหลักและเตรียมเคสพร้อมดำเนินการแล้ว ${value?.case_set?.case_count??0} เคส`,'ok');
         dispose();closeModal();
-        if(value?.id)await openManualPrimaryCaseSet(value.id,()=>loadLiveOverview(true));
+        if(onPrimaryReady)await onPrimaryReady();
+        else { await loadLiveOverview(true); render(); }
       }}),
   });
   $('#modal')._contentCleanup=dispose;
