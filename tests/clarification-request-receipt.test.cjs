@@ -28,4 +28,13 @@ e.hasEvidence=true;e.requestedAt=null;e.respondedAt=null;assert.equal(ctx.isUnse
 const context=ctx.captureClarificationRequestContext(e);rows.filter(r=>r!==e).forEach(r=>r.status='clarifying');ctx.showClarificationRequestReceipt(e,context);assert.match(modal.body,/ไม่มีเคส/);assert.match(modal.footer,/disabled/);await buttons['#requestReceiptNext'].onclick();assert.equal(opened.length,1,'skip case changed after capture');
 ctx.showClarificationRequestReceipt(e,context);buttons['#requestReceiptReturn'].onclick();buttons['#requestReceiptReturn'].onclick();assert.equal(renders,2,'return button one action only');assert.equal(JSON.stringify(state),baseline);
 console.log('PASS request popup: one-flight, no automatic render/navigation, preserved filters/page/scroll, same-company eligible next, stale next skipped, failure retry and no closure. Mock transport only.');
+for(const company of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9']){
+ Object.assign(e,{company,status:'pending_next_day',hasEvidence:true,requestedAt:null,respondedAt:null});
+ ctx.canAccessCompany=()=>true;
+ ctx.Sb.requestClarification=async()=>({id:e.dbId,status:'clarifying',requested_at:'2026-10-16T09:00:00Z',requested_by:'actor'});
+ assert.equal(ctx.isUnsentClarificationCase(e),true);
+ await click();assert.equal(e.status,'clarifying');assert.equal(e.requestedAt,'2026-10-16T09:00:00Z');
+}
+assert.equal(JSON.stringify(state),baseline,'waiting cross-day requests keep filters/page/scroll');
+console.log('PASS mock UI: all nine companies waiting cross-day, evidence-only does not route to close, server request time retained. No production requests.');
 })().catch(e=>{console.error(e);process.exit(1);});

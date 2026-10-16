@@ -1147,6 +1147,11 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     });
 
   async function requestClarification(id, previousStatus, body) {
+    if (previousStatus === 'pending_next_day') {
+      const result = await rpc('request_waiting_cross_day_clarification', {p_case:id});
+      if (!result || result.id !== id || result.status !== 'clarifying') throw new Error('ยังยืนยันคำขอไม่ได้ กรุณาเปิดเคสล่าสุด');
+      return result;
+    }
     if (!["open", "answered"].includes(previousStatus)) throw new Error("สถานะนี้ส่งรอผู้ชี้แจงไม่ได้");
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
       method: "PATCH",

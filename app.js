@@ -590,7 +590,7 @@ function recordCaseUiResult(e, message) {
 }
 const clarificationRequestFlights = new Set();
 function isUnsentClarificationCase(row) {
-  return row.status==='open' && !row.requestedAt && !row.respondedAt && !row.closureRequestId;
+  return ['open','pending_next_day'].includes(row.status) && !row.requestedAt && !row.respondedAt && !row.closureRequestId;
 }
 function clarificationAccountKey(row) { return String(row.account||'').trim().toUpperCase(); }
 function captureClarificationRequestContext(e) {
@@ -4299,11 +4299,11 @@ async function openException(id, options = {}) {
 
   $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
   if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
-  $("#btnClarify").disabled = !["open", "answered"].includes(e.status);
+  $("#btnClarify").disabled = !["open", "answered", "pending_next_day"].includes(e.status);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
-    if (!["open", "answered"].includes(e.status)) return;
+    if (!["open", "answered", "pending_next_day"].includes(e.status)) return;
     if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
     const requestKey=caseUiKey(e);
     if(clarificationRequestFlights.has(requestKey))return;
@@ -4312,20 +4312,22 @@ async function openException(id, options = {}) {
     const button = event.currentTarget;
     button.disabled = true;
     try {
+      const previousStatus=e.status;
+      let confirmedRequest;
       const requestedAt = new Date().toISOString();
       const requestedBy = state.dataset === "production" ? Sb.authUser()?.id : null;
       if (state.dataset === "production") {
         if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
-        await Sb.requestClarification(e.dbId, e.status, {
+        confirmedRequest=await Sb.requestClarification(e.dbId, e.status, {
           status: "clarifying", requested_at: requestedAt, requested_by: requestedBy, updated_at: requestedAt,
         });
       }
       e.status = "clarifying";
-      e.requestedAt = requestedAt;
-      e.requestedBy = requestedBy;
+      e.requestedAt = confirmedRequest?.requested_at || requestedAt;
+      e.requestedBy = confirmedRequest?.requested_by || requestedBy;
       recordCaseUiResult(e, 'ส่งเข้าชีทรอชี้แจงสำเร็จ — รอผู้มีสิทธิ์ตอบพร้อมหลักฐาน');
       saveOverride(e, false);
-      logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
+      if(previousStatus!=='pending_next_day' || state.dataset!=="production") logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
       toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
       showClarificationRequestReceipt(e,context);
     } catch (err) {
