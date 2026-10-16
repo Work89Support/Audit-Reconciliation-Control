@@ -40,6 +40,8 @@ jobs:
           node tests/cross-day-workbench.test.cjs
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
           node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-primary.test.cjs
+          node tests/manual-primary-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/account-review-holds-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-bo-source-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-actions-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"

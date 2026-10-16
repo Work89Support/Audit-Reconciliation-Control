@@ -16,6 +16,8 @@ create table test_manifest(files jsonb);
 create function effective_audit_source_files(text,date) returns jsonb language sql stable security definer as $$select files from test_manifest$$;
 grant usage on schema auth to authenticated;grant execute on all functions in schema auth to authenticated;`);
 await db.exec(fs.readFileSync('supabase/20261013_manual_primary_result.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/20261016_manual_primary_review_annotations.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/20261016_manual_primary_review_annotations.sql','utf8')); // idempotent patch
 const files=[{id:id(10),physical_source_file_id:id(10),kind:'bo_main',company:'TEST',business_date:'2026-10-12',checksum:'BO-v1',revision:1},{id:id(11),physical_source_file_id:id(11),kind:'pm_statement',company:'TEST',business_date:'2026-10-12',checksum:'PM-v1',revision:1}];
 const pair=row=>({company:'TEST',account:'A',direction:'deposit',amount:100,bo:{fileId:id(10),row,date:'2026-10-12',sec:row*100},stm:{fileId:id(11),row,date:'2026-10-12',sec:row*100}});
 const report={quality:'passed',company:'TEST',date:'2026-10-12',account:'ALL',direction:'all',stm_count:2,bo_count:3,matched:2,match_evidence:[pair(1),pair(2)],exceptions:[],summary:{waiting_bo:[{account:'A',direction:'deposit',amount:100,boSource:{fileId:id(10),row:3,date:'2026-10-12',sec:300}}]}};
@@ -33,6 +35,28 @@ await actor(2);await assert.rejects(preview(),/หัวหน้า/);await ass
 await db.exec('reset role');await db.query('delete from user_company_access where user_id=$1',[id(1)]);await actor(1);await assert.rejects(preview(),/สิทธิ์/);
 await db.exec('reset role');await db.query("insert into user_company_access values($1,'TEST')",[id(1)]);
 await actor(1);let p=await preview();assert.equal(p.allowed,true);assert.equal(p.before.bo_count,10);assert.equal(p.after.bo_count,3);
+// The warning is not another transaction: it must agree with the exact flagged pair.
+const annotated=structuredClone(report);Object.assign(annotated.match_evidence[0],{manualReview:true,boAmount:100,stmAmount:100});
+const warning={company:'TEST',account:'A',direction:'ฝาก',ex_type:'manual_review',system_amount:100,bank_amount:100,
+ customer_details:{source_rows:{bo:{fileId:id(10),row:1},stm:{fileId:id(11),row:1}}}};
+annotated.exceptions=[warning];
+async function testReport(value){await db.exec('reset role');await db.query('update account_recheck_jobs set result=$2 where id=$1',[id(40),JSON.stringify(value)]);await actor(1);return preview();}
+p=await testReport(annotated);assert.equal(p.allowed,true);assert.equal(p.review_annotation_count,1);assert.equal(p.after.exception_count,2,'warning and waiting BO remain visible');
+for(const [name,change] of [
+ ['different STM partner',r=>r.exceptions[0].customer_details.source_rows.stm.row=2],
+ ['wrong BO amount',r=>r.exceptions[0].system_amount=999],['wrong STM amount',r=>r.exceptions[0].bank_amount=999],
+ ['wrong company',r=>r.exceptions[0].company='OTHER'],['wrong account',r=>r.exceptions[0].account='B'],
+ ['wrong direction',r=>r.exceptions[0].direction='ถอน'],['wrong currency',r=>r.exceptions[0].currency='USD'],
+ ['unflagged match',r=>r.match_evidence[0].manualReview=false],['unknown exception type',r=>r.exceptions[0].ex_type='duplicate'],
+ ['missing STM pointer',r=>r.exceptions[0].customer_details.source_rows.stm=null],
+ ['repeated annotation',r=>r.exceptions.push(structuredClone(r.exceptions[0]))],
+ ['reused BO in another match',r=>r.match_evidence[1].bo.row=1],
+ ['reused STM in another match',r=>r.match_evidence[1].stm.row=1],
+ ['repeated exact match',r=>{r.match_evidence.push(structuredClone(r.match_evidence[0]));r.matched=3;}],
+ ['waiting BO reuses matched row',r=>r.summary.waiting_bo[0].boSource.row=1],
+ ['unknown physical source',r=>{r.match_evidence[0].bo.fileId=id(99);r.exceptions[0].customer_details.source_rows.bo.fileId=id(99);}],
+]){const value=structuredClone(annotated);change(value);assert.equal((await testReport(value)).allowed,false,name+' remains blocked');}
+await testReport(report);
 await assert.rejects(db.query('insert into manual_primary_results(company) values($1)',['TEST']),/permission denied/);
 await assert.rejects(db.query("select accept_manual_primary($1,$2,'Dummy QA approval reason',false)",[id(40),p.token]),/ทบทวน/);
 await db.exec('reset role');await db.query("update account_recheck_jobs set direction='deposit' where id=$1",[id(40)]);await actor(1);assert.equal((await preview()).allowed,false);

@@ -3,6 +3,10 @@ const v={id:'qa-version',company:'MR9',business_date:'2026-10-12',base_run_id:'q
 const run=primary.run(v),rows=live.rowsOf({run,cases:primary.cases(v),primaryResult:v},'MR9');assert.equal(rows.length,2);assert.deepEqual(rows.map(r=>r.boSource.row),[1,2]);
 const sheets=live.buildAuditExportSheets(rows,'MR9','2026-10-12',true,schema);assert.equal(sheets[0].rows.length,2);assert.equal(sheets[0].rows.reduce((n,r)=>n+Number(r[sheets[0].headers.indexOf('BO · ยอด')]),0),200);assert.equal(primary.sheets(v)[0].rows[0][2],v.id);
 assert.equal(primary.allowed('monitor'),false);assert.equal(primary.allowed('lead'),true);assert.match(primary.html({company:'MR9',date:'2026-10-12',allowed:false,problems:['ไฟล์เปลี่ยน'],after:{}}),/ไฟล์เปลี่ยน/);
+assert.match(primary.annotationNotice({review_annotation_count:2}),/คำเตือนประกอบคู่เดิม 2 รายการ/);
+assert.match(primary.annotationNotice({review_annotation_count:2}),/หลายคู่ยังถูกบล็อก/);
+assert.equal(primary.annotationNotice({review_annotation_count:'<script>'}),'');
+assert.equal(primary.annotationNotice({review_annotation_count:0}),'');
 const sql=fs.readFileSync('supabase/20261013_manual_primary_result.sql','utf8');assert.doesNotMatch(sql,/update public\.(recon_runs|exceptions|daily_recon_jobs)|insert into public\.exceptions/i);assert.match(sql,/source_amounts_changed',0/);
 assert.equal(primary.formatTime('2026-10-13T06:42:43.011756+00:00'),'13 ต.ค. 2026 เวลา 13:42 น. (เวลาไทย)');
 assert.equal(primary.formatTime('2026-10-12T18:05:00Z'),'13 ต.ค. 2026 เวลา 01:05 น. (เวลาไทย)');
