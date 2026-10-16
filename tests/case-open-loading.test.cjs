@@ -30,6 +30,7 @@ function fixture(){
  f.setForm();f.fields['#noteText'].value='ข้อความใหม่ระหว่างบันทึก';f.ctx.captureCaseOpenDraft();f.ctx.clearSavedCaseDraft(f.e,'note','ร่าง Audit <เดิม>');
  assert.equal(f.fields['#noteText'].value,'ข้อความใหม่ระหว่างบันทึก','late save cannot erase newer typing');
  const cancelled=fixture();const p=cancelled.ctx.openException('EX-1');cancelled.ctx.cancel();cancelled.finish();assert.equal(await p,undefined,'closing while loading cannot resurrect a case');
+ const responder=fixture();responder.ctx.state.role='shift_lead';const rp=responder.ctx.openException('EX-1');assert.equal(responder.calls.includes('notes'),false,'company responder never reads full internal note log');responder.finish();await rp;
  const changed=fixture();const q=changed.ctx.openException('EX-1');changed.setActor('other-user');changed.finish();assert.equal(await q,undefined,'late response is ignored after identity switch');
  assert.equal(changed.ctx.drafts.get(changed.ctx.caseOpenDraftKey(changed.e)),undefined,'drafts isolated by user');
  const failed=fixture();const z=failed.ctx.openException('EX-1');failed.pending.find(p=>p.name==='hold').reject(Error('hold timeout'));failed.pending.splice(failed.pending.findIndex(p=>p.name==='hold'),1);failed.finish();await z;
