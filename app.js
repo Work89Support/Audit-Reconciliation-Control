@@ -1248,6 +1248,9 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
 function showLoginGate(message) {
   $('#accessWaitNotice')?.remove?.();
   $('#appShell').inert = false;
+  for (const id of ['#drawer', '#modal', '#drawerOverlay', '#modalOverlay']) {
+    const node = $(id); if (node) { node.inert = false; node.hidden = true; }
+  }
   $('#connectionGate').hidden = true;
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
@@ -1268,6 +1271,7 @@ function showConnectingGate(message, retryAction, preserveWork = false) {
   if (preserveWork) {
     // Keep the authenticated DOM/drafts, but never admit writes on stale access.
     shell.inert = true;
+    for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) node.inert = true; }
     const notice = document.createElement('aside');
     notice.id = 'accessWaitNotice';
     notice.className = 'alert warn';
@@ -1286,6 +1290,7 @@ function showConnectingGate(message, retryAction, preserveWork = false) {
     return;
   }
   shell.inert = false;
+  for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) { node.inert = false; node.hidden = true; } }
   $('#loginGate').hidden = true;
   $('#appShell').hidden = true;
   $('#connectionGate').hidden = false;
@@ -8941,6 +8946,7 @@ async function performProductionEntry() {
   try {
     if(await Sb.passwordChangeRequired()){
       $('#accessWaitNotice')?.remove?.();
+      for (const id of ['#drawer', '#modal', '#drawerOverlay', '#modalOverlay']) { const node = $(id); if (node) node.hidden = true; }
       $('#connectionGate').hidden=true;$('#appShell').hidden=true;$('#loginGate').hidden=false;
       $('#loginForm').hidden=true;$('#resetForm').hidden=false;
       $('#resetForm').dataset.firstPassword='true';$('#resetError').hidden=true;
@@ -8960,6 +8966,7 @@ async function performProductionEntry() {
   } finally { clearTimeout(accessWaitTimer); }
   $('#accessWaitNotice')?.remove?.();
   $('#appShell').inert = false;
+  for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) node.inert = false; }
   if (preserveWork && priorScope === JSON.stringify([state.access.role, state.access.companies])) return true;
   prepareProductionData();
   $('#connectionGate').hidden = true;
