@@ -233,17 +233,13 @@ const CaseClosure=(()=>{
   }
   async function mountQueue(host,options={}){
     if(host&&!auditable()){host.textContent='คิวนี้สำหรับ Audit และหัวหน้าเท่านั้น ผู้ชี้แจงติดตามคำตอบของตนในเมนูติดตามและอนุมัติ';return;}
-    if(!host)return;await loadPending(options.force===true);if(!host.isConnected)return;
+    if(!host)return;if(queueState.rows===null)host.textContent='กำลังโหลดคำขอปิดเอกสาร… ยังไม่สรุปเป็นศูนย์';await loadPending(options.force===true);if(!host.isConnected)return;
     if(queueState.rows===null){host.textContent='ยังโหลดยอดรอหัวหน้าไม่ครบ: '+queueState.error;return;}
     let rows=queueState.rows;
     if(queueFilters.status!=='pending'){rows=(await readQueueHistory(options.force)).filter(q=>queueFilters.status==='ALL'||q.status===queueFilters.status);if(!host.isConnected)return;}
     const {selected,opened}=await restoreBulkSelection(rows);if(!host.isConnected)return;
     let recentHistory=[];
-    if(!rows.length){
-      try{recentHistory=(await readQueueHistory(options.force)).filter(q=>q.status!=='pending').slice(0,6);}
-      catch(err){queueState.error='อ่านประวัติไม่สำเร็จ: '+err.message;}
-      if(!host.isConnected)return;
-    }
+    if(!rows.length&&historyCache?.key===queueState.scopeKey&&Date.now()-historyCache.at<30000)recentHistory=historyCache.rows.filter(q=>q.status!=='pending').slice(0,6);
     const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>canAccessCompany(c));
     if(options.scope&&queueFilters.globalKey!==JSON.stringify(options.scope))Object.assign(queueFilters,options.scope,{globalKey:JSON.stringify(options.scope)});
     host.classList.add('closure-hub');
@@ -252,9 +248,9 @@ const CaseClosure=(()=>{
     const retry=document.createElement('button');retry.className='ghost-button sm';retry.textContent='รีเฟรชคิวจากฐานข้อมูล';
     retry.onclick=async()=>{retry.disabled=true;try{await mountQueue(host,{...options,force:true});}finally{retry.disabled=false;}};
     queueActions.append(retry);host.querySelector('.closure-hub-heading').append(queueActions);
-    if(recentHistory.length){
+    if(!rows.length||recentHistory.length){
       const info=document.createElement('p');info.setAttribute('role','status');
-      info.textContent='ไม่มีคำขอรอในฐานข้อมูลขณะตรวจ ประวัติคำขอล่าสุด: '+recentHistory.map(q=>(q.company||'')+' '+(q.snapshot?.code||q.exception_id)+' ('+(q.status==='approved'?'อนุมัติแล้ว':'ส่งกลับ Audit')+')').join(' · ');
+      info.textContent=recentHistory.length?'ไม่มีคำขอรอในฐานข้อมูลขณะตรวจ ประวัติคำขอล่าสุด: '+recentHistory.map(q=>(q.company||'')+' '+(q.snapshot?.code||q.exception_id)+' ('+(q.status==='approved'?'อนุมัติแล้ว':'ส่งกลับ Audit')+')').join(' · '):'ไม่มีคำขอรอในข้อมูลล่าสุด · เลือกดูประวัติเมื่อต้องการ ไม่โหลดประวัติซ้ำตอนสลับบริษัท';
       const historyButton=document.createElement('button');historyButton.className='ghost-button sm';historyButton.textContent='ดูคำขอที่อนุมัติแล้วและประวัติ';
       historyButton.onclick=()=>{const select=$('#closureQueueStatus');select.value='ALL';select.onchange({target:select});};
       host.querySelector('.closure-list-heading').before(info,historyButton);

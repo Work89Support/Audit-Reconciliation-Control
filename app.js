@@ -94,7 +94,7 @@ const ROUTES = [
     items: [
       { id: "clarify", label: "ติดตามคำชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ส่งและติดตามเอกสารจากผู้ชี้แจงตาม SLA บริษัท เมื่อส่งกลับให้ Audit ตรวจในหน้า Audit รอตรวจ", filters: true },
       { id: "audit-review", label: "Audit รอตรวจ", icon: "exceptions", title: "Audit รอตรวจเอกสาร", desc: "เอกสารหรือคำตอบจากผู้ชี้แจงกลับมาแล้ว ตรวจในเคสเดิมก่อนส่งหัวหน้าอนุมัติปิด", filters: true },
-      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: false },
+      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: true },
       { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
     ],
   },
@@ -1106,6 +1106,10 @@ function renderFilters() {
     $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · คิวคำขอที่ Audit ส่งมา <b>${num(scoped.length)}</b> เคสในบริษัทที่เลือก · ไม่ใช่ยอดกระทบยอดหรือความเสียหาย`;
     return;
   }
+  if (typeof fastReviewQueueMode === 'function' && fastReviewQueueMode()) {
+    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · รายการเคสที่โหลดในบริษัทที่เลือก <b>${num(scoped.length)}</b> · ไม่ใช่ยอดรวมการเงินหรือความเสียหาย`;
+    return;
+  }
   $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · กำลังดู <b>${num(scoped.length)}</b> exception · เกิน SLA <b>${num(scoped.filter((e) => e.overSla).length)}</b> รายการ · ความเสียหายในช่วงนี้ <b>${money0(DB.damages.filter((d) => inRange(d.date)).reduce((a, c) => a + c.amount, 0))}</b> บาท`;
 }
 
@@ -1644,7 +1648,7 @@ function applyLiveQueueUpdate(force=false) {
   const root=$('#viewRoot'),x=window.scrollX,y=window.scrollY;
   if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
     const updated=root.auditQueueUpdateInPlace();
-    if(updated){liveQueueUpdatePending=false;$('#liveUpdateAvailable')?.remove();root.querySelector('.live-background-notice')?.remove();renderNav();renderAuditFlow();}
+    if(updated){liveQueueUpdatePending=false;$('#liveUpdateAvailable')?.remove();root.querySelector('.live-background-notice')?.remove();renderNav();renderAuditFlow();if(typeof renderFilters==='function')renderFilters();}
     return updated;
   }
   const scrolls=Array.from(root?.querySelectorAll('*')||[]).filter(el=>el.scrollTop||el.scrollLeft).map(el=>{
