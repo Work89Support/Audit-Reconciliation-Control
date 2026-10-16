@@ -31,5 +31,6 @@ for(const change of [
 await db.exec('rollback');
 assert.doesNotMatch(sql,/\b(update|delete\s+from)\s+public\.(exceptions|recon_runs|manual_primary_results|source_files|account_review_holds)\b/i);
 assert.doesNotMatch(sql,/\b(accept_manual_primary|activate_manual_primary_cases)\s*\(/);
+assert.doesNotMatch(sql,/q\.snapshot\s*\|\|/,'snapshot must equal the existing confirmation contract exactly; lineage belongs in audit history');
 console.log('PASS FR8 staged repair: exact unique source identity, preserved transactions/warnings/waiting rows, report-day only, ambiguous/unproved rows rejected, no acceptance or case writes.');
 await db.close();

@@ -109,13 +109,14 @@ begin
  if nbo<>4580 or nstm<>4430 or rawbo<>nbo or rawstm<>nstm then raise exception 'Incomplete or duplicate source coverage';end if;
  select * into draft from public.account_recheck_jobs where request_key=request;
  if found then
-  if draft.result<>fixed or draft.snapshot->>'repair_parent_primary_id'<>v.id::text then raise exception 'Repair replay conflict';end if;
+  if draft.result is distinct from fixed or draft.company is distinct from v.company
+   or draft.business_date is distinct from v.business_date or draft.base_run_id is distinct from q.base_run_id
+  then raise exception 'Repair replay conflict';end if;
  else
   insert into public.account_recheck_jobs(company,business_date,account,direction,mode,status,request_key,requested_by,base_run_id,
    snapshot,selected_file_ids,result,attempt_count,worker_execution_id,lease_expires_at)
   values(v.company,v.business_date,'ALL','all','account','ready',request,q.requested_by,q.base_run_id,
-   q.snapshot||jsonb_build_object('repair_parent_primary_id',v.id,'repair_parent_recheck_id',q.id,'repair_parent_report_md5',md5(v.report::text),
-    'repair_prepared_by','database-operator','repair_version','fr8-oct15-scope-v1'),q.selected_file_ids,fixed,0,null,now()) returning * into draft;
+   q.snapshot,q.selected_file_ids,fixed,0,null,now()) returning * into draft;
   insert into public.audit_log(actor,action,entity,target,company,detail,meta)
   values('database-operator','manual_report_repair_staged','account_recheck_jobs',draft.id::text,v.company,
    'FR8 15 Oct: preserve actual transaction dates; link proven Rules notices to physical BO; ready for head/Admin review only',
