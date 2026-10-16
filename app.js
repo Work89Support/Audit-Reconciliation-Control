@@ -1098,6 +1098,10 @@ function renderFilters() {
     return;
   }
   const scoped = scopedExceptions();
+  if (state.dataset === 'production' && Sb.signedIn() && (!liveOverviewState.exceptionsReady || liveOverviewState.key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`)) {
+    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · รายการเคส <b>—</b> · SLA <b>—</b> · ยอด <b>—</b> · กำลังรอข้อมูลจริง ไม่ใช่ศูนย์`;
+    return;
+  }
   $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · กำลังดู <b>${num(scoped.length)}</b> exception · เกิน SLA <b>${num(scoped.filter((e) => e.overSla).length)}</b> รายการ · ความเสียหายในช่วงนี้ <b>${money0(DB.damages.filter((d) => inRange(d.date)).reduce((a, c) => a + c.amount, 0))}</b> บาท`;
 }
 
@@ -1242,6 +1246,8 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   },
 });
 function showLoginGate(message) {
+  $('#accessWaitNotice')?.remove?.();
+  $('#appShell').inert = false;
   $('#connectionGate').hidden = true;
   $("#appShell").hidden = true;
   $("#loginGate").hidden = false;
@@ -1256,7 +1262,30 @@ function showLoginGate(message) {
   }
 }
 
-function showConnectingGate(message, retryAction) {
+function showConnectingGate(message, retryAction, preserveWork = false) {
+  const shell = $('#appShell');
+  $('#accessWaitNotice')?.remove?.();
+  if (preserveWork) {
+    // Keep the authenticated DOM/drafts, but never admit writes on stale access.
+    shell.inert = true;
+    const notice = document.createElement('aside');
+    notice.id = 'accessWaitNotice';
+    notice.className = 'alert warn';
+    notice.setAttribute('role', 'status');
+    const text = document.createElement('span');
+    text.textContent = message;
+    notice.append(text);
+    if (retryAction) {
+      const retry = document.createElement('button');
+      retry.textContent = 'ตรวจสิทธิ์อีกครั้ง';
+      retry.onclick = async () => { retry.disabled = true; try { await retryAction(); } finally { retry.disabled = false; } };
+      notice.append(retry);
+    }
+    shell.before(notice);
+    $('#connectionGate').hidden = true;
+    return;
+  }
+  shell.inert = false;
   $('#loginGate').hidden = true;
   $('#appShell').hidden = true;
   $('#connectionGate').hidden = false;
@@ -1585,9 +1614,10 @@ for (const eventName of ["pointerdown", "keydown", "input", "wheel", "touchmove"
 let liveQueueUpdatePending = false;
 let liveQueueLastPoll = 0;
 function liveQueueRoute() {
-  return ['audit-review','approvals'].includes(state.route) && state.dataset==='production' && Sb.signedIn();
+  return ['dashboard','clarify','audit-review','approvals'].includes(state.route) && state.dataset==='production' && Sb.signedIn();
 }
 function liveQueueProtected() {
+  if ($('#appShell')?.inert) return true;
   if(document.visibilityState==='hidden')return true;
   if(['#drawer','#modal'].some(selector=>$(selector)&&!$(selector).hidden))return true;
   const root=$('#viewRoot');
@@ -1597,7 +1627,7 @@ function liveQueueProtected() {
 }
 function applyLiveQueueUpdate(force=false) {
   if(!liveQueueRoute() || liveOverviewState.loading || liveOverviewState.auxiliaryLoading
-    || !liveOverviewState.exceptionsReady || liveOverviewState.error || liveOverviewState.auxiliaryError
+    || (!liveOverviewState.exceptionsReady && !(state.route === 'clarify' && liveOverviewState.auxiliaryError)) || (['audit-review','approvals'].includes(state.route) && (liveOverviewState.error || liveOverviewState.auxiliaryError))
     || (!force && liveQueueProtected()))return false;
   const root=$('#viewRoot'),x=window.scrollX,y=window.scrollY;
   if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
@@ -1647,7 +1677,7 @@ function offerLiveOverviewUpdate() {
     button.textContent = "แสดงข้อมูลล่าสุด";
     button.onclick = () => {
       // Applying is explicit; never discard a form or open case silently.
-      if ($("#modal") && !$("#modal").hidden) {
+      if (($('#drawer') && !$('#drawer').hidden) || (typeof liveQueueRoute === 'function' && liveQueueRoute() && liveQueueProtected()) || ($("#modal") && !$("#modal").hidden)) {
         toast("กรุณาบันทึกและปิดหน้ารายละเอียดที่เปิดอยู่ก่อน — ยังไม่ได้เปลี่ยนหน้าหรือทิ้งข้อความ", "warn");
         return;
       }
@@ -1665,7 +1695,7 @@ function offerLiveOverviewUpdate() {
       apply.className = "primary-button sm";
       apply.textContent = "ยืนยันแสดงข้อมูลล่าสุด";
       apply.onclick = () => {
-        if ($("#modal") && !$("#modal").hidden) return;
+        if (($('#drawer') && !$('#drawer').hidden) || (typeof liveQueueRoute === 'function' && liveQueueRoute() && liveQueueProtected()) || ($("#modal") && !$("#modal").hidden)) return;
         const x = window.scrollX, y = window.scrollY;
         render();
         window.scrollTo(x, y);
@@ -1691,7 +1721,8 @@ function offerLiveOverviewUpdate() {
 }
 async function loadLiveOverview(force = false) {
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  if (liveOverviewState.loading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
+  const caseReadLimit = state.route === 'clarify' ? 5000 : 250;
+  if (liveOverviewState.loading || liveOverviewState.auxiliaryLoading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
   const requestId = ++liveOverviewState.requestId;
   const changedFilter = liveOverviewState.key !== key;
   const firstDashboardLoad = state.route === "dashboard" && !liveOverviewState.quality;
@@ -1759,7 +1790,8 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.updatedAt = new Date();
     liveOverviewState.loading = false;
     liveOverviewState.auxiliaryLoading = true;
-    hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], [], [], []);
+    // Phase 1 must not erase the last loaded case objects/drafts while the
+    // independent case read is pending. Hydrate raw rows only after phase 2.
     if (firstDashboardLoad && state.route === "dashboard" && liveInteractionVersion === interactionAtStart && liveOverviewState.quality) {
       const x = window.scrollX, y = window.scrollY;
       render();
@@ -1769,7 +1801,7 @@ async function loadLiveOverview(force = false) {
     // Phase 2: เติมรายละเอียดหนักด้านหลัง โดยไม่บล็อกแดชบอร์ดหลัก
     const aux = await Promise.allSettled([
       // โหลดเฉพาะชุดแรกให้หน้าขึ้นไว; ค้นหา/Export ค่อยดึงเพิ่มเติมเมื่อผู้ใช้ร้องขอ
-      Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 250 }),
+      Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: caseReadLimit }),
       Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 }),
       Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
       Sb.notifications(200, VISIBLE_DATE_FROM),
@@ -1783,18 +1815,22 @@ async function loadLiveOverview(force = false) {
       return loadLiveOverview(true);
     }
     const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
-    const rawExceptionRows = value(0, DB.exceptions || []);
+    const previousCases = DB.exceptions;
+    const previousDamages = DB.damages;
+    const previousLogs = DB.auditLog;
+    const rawExceptionRows = value(0, []);
     const matchEvidence = value(5, []);
     const exceptionRows = actionableAuditRows(rawExceptionRows,matchEvidence);
     const damageRows = value(1, liveOverviewState.damages || []);
     const logRows = value(2, liveOverviewState.logs || []);
-    liveOverviewState.exceptionsReady = aux[0].status === "fulfilled";
-    if (liveOverviewState.exceptionsReady) {
+    const casesSucceeded = aux[0].status === "fulfilled";
+    liveOverviewState.exceptionsReady = casesSucceeded || liveOverviewState.exceptionsReady;
+    if (casesSucceeded) {
       liveOverviewState.informationalExceptions = informationalAuditRows(rawExceptionRows);
       liveOverviewState.matchEvidence = matchEvidence;
       liveOverviewState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptionRows,matchEvidence);
       moreCaseState.offset = rawExceptionRows.length;
-      moreCaseState.hasMore = rawExceptionRows.length === 250;
+      moreCaseState.hasMore = rawExceptionRows.length === caseReadLimit;
       moreCaseState.error = "";
     }
     liveOverviewState.damagesReady = aux[1].status === "fulfilled";
@@ -1810,6 +1846,9 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.auxiliaryLoading = false;
     liveOverviewState.updatedAt = new Date();
     hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], exceptionRows, damageRows, logRows);
+    if (!casesSucceeded) DB.exceptions = previousCases;
+    if (aux[1].status !== 'fulfilled') DB.damages = previousDamages;
+    if (aux[2].status !== 'fulfilled') DB.auditLog = previousLogs;
     updateBell();
   } catch (e) {
     if (requestId === liveOverviewState.requestId) liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
@@ -8200,12 +8239,19 @@ function issueClarificationDoc(e, narrative) {
 VIEWS.clarify = (root) => {
   if (!ensureLiveOverview(root)) return;
   if (state.dataset === "production" && Sb.signedIn()) {
+    if (!liveOverviewState.exceptionsReady) {
+      root.innerHTML = `<section class="panel" role="status" aria-busy="${liveOverviewState.loading || liveOverviewState.auxiliaryLoading}"><h2>${liveOverviewState.auxiliaryError ? 'ยังโหลดรายการเคสไม่สำเร็จ' : 'กำลังโหลดรายการเคสจริง…'}</h2><p>— ยังไม่สรุปว่าไม่มีเคสหรือยอดเป็นศูนย์ · คงบริษัทและช่วงวันที่ที่เลือก</p><p>${h(liveOverviewState.auxiliaryError || '')}</p><button class="ghost-button" id="clarifyLoadRetry">ลองโหลดรายการอีกครั้ง</button></section>`;
+      $('#clarifyLoadRetry').onclick = () => loadLiveOverview(true);
+      return;
+    }
     const rows = scopedExceptions().filter((e) => !e.closureRequestId&&["open", "clarifying", "answered"].includes(e.status)&&(state.role!=='shift_lead'||!!e.requestedAt));
     const newRows = rows.filter((e) => e.status === "open");
     const waitingRows = rows.filter((e) => e.status === "clarifying");
     const answeredRows = rows.filter((e) => e.status === "answered");
     const groups = [...new Set(rows.map((e) => e.company || "ไม่ระบุ"))].sort((a, b) => a.localeCompare(b, "th"));
     root.innerHTML = `
+      ${liveOverviewState.auxiliaryError ? `<section class="alert warn" role="status">ข้อมูลล่าสุดยังมาไม่ครบ · แสดงข้อมูลที่โหลดได้ครั้งก่อน ไม่ใช่ยอดศูนย์: ${h(liveOverviewState.auxiliaryError)}</section>` : ''}
+      ${moreCaseState.hasMore ? '<section class="alert warn">รายการที่โหลดอาจยังไม่ครบ กรุณากรองบริษัทหรือช่วงวันที่ให้แคบลงก่อนสรุปจำนวนรวม</section>' : ''}
       <section class="status-strip four">
         <article class="warn"><span>เคสใหม่ ยังไม่ได้ส่งชี้แจง</span><strong>${num(newRows.length)}</strong><small>ต้องตรวจและส่งให้ทีม</small></article>
         <article><span>บริษัทที่เกี่ยวข้อง</span><strong>${num(groups.length)}</strong><small>ไม่แบ่งกะ</small></article>
@@ -8879,20 +8925,22 @@ async function enterProductionApp() {
 }
 
 async function performProductionEntry() {
-  showConnectingGate('กำลังตรวจสิทธิ์และกลับหน้าทำงานเดิม กรุณารอสักครู่');
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
+  const preserveWork = typeof state !== 'undefined' && state.access?.loaded && state.access.email?.toLowerCase() === email && $('#appShell').hidden === false;
+  const priorScope = preserveWork ? JSON.stringify([state.access.role, state.access.companies]) : null;
+  showConnectingGate('กำลังตรวจสิทธิ์ · เก็บหน้าทำงานและข้อความร่างไว้ ยังบันทึกไม่ได้จนกว่าจะตรวจสำเร็จ', null, preserveWork);
   if (!email) {
     Sb.signOut();
     showLoginGate("ไม่พบอีเมลของบัญชี กรุณาเข้าสู่ระบบใหม่");
     return false;
   }
-  prepareProductionData();
   const accessWaitTimer = setTimeout(() => {
     if (!$('#connectionGate').hidden) $('#connectionMessage').textContent = 'ฐานข้อมูลตรวจสิทธิ์ตอบกลับช้า กำลังรอแบบจำกัดเวลา — ยังไม่ได้ออกจากระบบ ไม่ต้องรีเฟรชหรือเข้าสู่ระบบซ้ำ';
   }, 10000);
   try {
     if(await Sb.passwordChangeRequired()){
+      $('#accessWaitNotice')?.remove?.();
       $('#connectionGate').hidden=true;$('#appShell').hidden=true;$('#loginGate').hidden=false;
       $('#loginForm').hidden=true;$('#resetForm').hidden=false;
       $('#resetForm').dataset.firstPassword='true';$('#resetError').hidden=true;
@@ -8906,10 +8954,14 @@ async function performProductionEntry() {
       Sb.signOut();
       showLoginGate(error.message);
     } else {
-      showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp());
+      showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp(), preserveWork);
     }
     return false;
   } finally { clearTimeout(accessWaitTimer); }
+  $('#accessWaitNotice')?.remove?.();
+  $('#appShell').inert = false;
+  if (preserveWork && priorScope === JSON.stringify([state.access.role, state.access.companies])) return true;
+  prepareProductionData();
   $('#connectionGate').hidden = true;
   $("#loginGate").hidden = true;
   $("#appShell").hidden = false;

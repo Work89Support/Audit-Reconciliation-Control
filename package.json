@@ -4,6 +4,8 @@
   "private": true,
   "description": "ศูนย์ควบคุมงานออดิทกระทบยอด STM/BO (เว็บแอปฝั่ง client ล้วน)",
   "scripts": {
+    "posttest": "npm run test:live-refresh",
+    "test:live-refresh": "node tests/live-refresh-preservation.test.cjs && node tests/live-queue-auto.test.cjs && node tests/auth-access-outage.test.mjs && node tests/live-background-update.test.mjs",
     "test:manual-primary": "node tests/manual-primary.test.cjs",
     "test:monthly-audit": "node tests/monthly-scoped-users.test.cjs",
     "test:source-archive": "node tests/audit-source-archive.test.cjs",
