@@ -24,7 +24,7 @@
     const final=root.document.createElement('dialog');final.className='manual-final-dialog';final.innerHTML=`<header><h2>ยืนยันขั้นสุดท้าย</h2></header><div class="manual-final-content"><p>${esc(p.company)} · ${esc(p.date)}</p><p>${esc(note)}</p><p>จะเปลี่ยนรายงานหลักที่เว็บและ Excel ใช้เท่านั้น เก็บผลเดิม ไม่แก้ยอดหรือเปิด/ปิดเคส</p></div><footer><button data-back>ยกเลิก</button><button data-accept class="primary">ยืนยันใช้ผลตรวจมือเป็นผลหลัก</button></footer>`;root.document.body.appendChild(final);
     const accepted=await new Promise(resolve=>{const finish=v=>{final.close();final.remove();resolve(v);};final.querySelector('[data-back]').onclick=()=>finish(false);final.querySelector('[data-accept]').onclick=()=>finish(true);final.addEventListener('cancel',e=>{e.preventDefault();finish(false);});final.showModal();});
     if(!accepted)return;if(!same())throw Error('ผู้ใช้หรือสิทธิ์เปลี่ยน');
-    await opts.accept({p_id:id,p_token:p.token,p_reason:note,p_reviewed:true});close();opts.onAccepted?.();
+    const saved=await opts.accept({p_id:id,p_token:p.token,p_reason:note,p_reviewed:true});close();await opts.onAccepted?.(saved);
    }catch(e){d.querySelector('[data-error]').textContent=e.message;}finally{busy=false;if(d.isConnected)enable();}
   };d.showModal();d.querySelector('[data-cancel]').focus({preventScroll:true});d.scrollTop=0;enable();return d;
  }

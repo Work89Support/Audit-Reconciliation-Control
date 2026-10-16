@@ -1082,7 +1082,11 @@ function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=nul
     finalConfirmation:AccountRecheck.finalConfirmation,
     onPrimary:id=>ManualPrimary.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,
       preview:Sb.manualPrimaryPreview,accept:Sb.acceptManualPrimary,
-      onAccepted:()=>toast('ใช้ผลตรวจมือเป็นผลหลักแล้ว กรุณาโหลดผลล่าสุด','ok')}),
+      onAccepted:async value=>{
+        toast('ใช้ผลตรวจมือเป็นผลหลักแล้ว — ทบทวนเปิดเคสจริงจากผลชุดนี้ต่อ','ok');
+        dispose();closeModal();
+        if(value?.id)await openManualPrimaryCaseSet(value.id,()=>loadLiveOverview(true));
+      }}),
   });
   $('#modal')._contentCleanup=dispose;
   $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};
@@ -3328,6 +3332,7 @@ VIEWS.exceptions = (root) => {
         onRecheck: openAccountRecheck,
         onManageFiles: openFileRunManagement,
         exportBoWaitingCases: downloadBoWaitingCaseRequest,
+        onNewCaseSet: ['lead','admin'].includes(state.role)?openManualPrimaryCaseSet:null,
         isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
         onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
         onCase: async row => {
