@@ -28,6 +28,7 @@ const entry=app.slice(app.indexOf('async function enterProductionApp()'),app.ind
  let prepared=0,retry,transient=true,signouts=0;
  const context={state,setTimeout,clearTimeout,$:s=>nodes[s]||{},Sb:{authUser:()=>({email:'audit@example.invalid'}),passwordChangeRequired:async()=>false,signOut(){signouts++;}},
   showConnectingGate:(message,action,preserve)=>{assert(preserve);retry=action;nodes['#appShell'].inert=true;},prepareProductionData:()=>prepared++,applyAuthenticatedRole:async()=>{if(transient)throw Error('timeout');}};
+ context.Sb.myAccess=async()=>({});
  vm.createContext(context);vm.runInContext(entry,context);
  assert.equal(await context.enterProductionApp(),false);assert.equal(prepared,0);assert.equal(nodes['#appShell'].hidden,false);assert.equal(nodes['#appShell'].inert,true);assert.equal(signouts,0);
  transient=false;assert.equal(await retry(),true);assert.equal(prepared,0);assert.equal(nodes['#appShell'].inert,false);assert.equal(state.filters.company,'3XB');

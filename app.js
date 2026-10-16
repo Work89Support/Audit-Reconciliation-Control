@@ -1784,6 +1784,14 @@ function applyResponderQueue(snapshot) {
 }
 async function loadResponderQueue(force = false) {
   if (!fastCaseQueueMode() || !Sb.authUser()?.id) return;
+  // Independent authenticated reads: do not wait for jobs/case summaries before
+  // warming the three approval queues. Their existing single flights/cache own
+  // error and actor isolation; this does not submit or decide any request.
+  if (state.route === 'approvals') {
+    for (const module of [ManualPairing, CrossDayWorkbench, CaseClosure]) {
+      module.loadPending().catch(() => {});
+    }
+  }
   const key = responderQueueKey();
   if (!liveOverviewState.responderOnly) ++liveOverviewState.requestId;
   if (responderQueueCache?.key !== key) {
@@ -9008,13 +9016,14 @@ function prepareProductionData() {
   state.dataset = "production";
 }
 
-async function applyAuthenticatedRole() {
+async function applyAuthenticatedRole(entryAccess) {
   const user = Sb.authUser() || {};
   const email = String(user.email || "").toLowerCase();
   const app = window.APP_CONFIG || {};
   let access = null;
   try {
-    access = await Sb.myAccess();
+    if (entryAccess?.status === 'rejected') throw entryAccess.reason;
+    access = entryAccess?.status === 'fulfilled' ? entryAccess.value : await Sb.myAccess();
     if (Array.isArray(access)) access = access[0] || null;
   } catch (error) {
     /* ช่วง deploy migration ให้บัญชี bootstrap เดิมยังเข้าไปติดตั้ง schema ได้
@@ -9051,6 +9060,16 @@ async function enterProductionApp() {
   finally { if (enterProductionApp.pending === pending) enterProductionApp.pending = null; }
 }
 
+async function readProductionEntryChecks() {
+  // Both checks must finish before admission. Settle access errors immediately
+  // even when the password gate is slower; no data prefetch before admission.
+  const [password, access] = await Promise.allSettled([
+    Sb.passwordChangeRequired(), Sb.myAccess(),
+  ]);
+  if (password.status === 'rejected') throw password.reason;
+  return { passwordRequired: password.value, access };
+}
+
 async function performProductionEntry() {
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
@@ -9066,7 +9085,8 @@ async function performProductionEntry() {
     if (!$('#connectionGate').hidden) $('#connectionMessage').textContent = 'ฐานข้อมูลตรวจสิทธิ์ตอบกลับช้า กำลังรอแบบจำกัดเวลา — ยังไม่ได้ออกจากระบบ ไม่ต้องรีเฟรชหรือเข้าสู่ระบบซ้ำ';
   }, 10000);
   try {
-    if(await Sb.passwordChangeRequired()){
+    const entryChecks = await readProductionEntryChecks();
+    if(entryChecks.passwordRequired){
       $('#accessWaitNotice')?.remove?.();
       for (const id of ['#drawer', '#modal', '#drawerOverlay', '#modalOverlay']) { const node = $(id); if (node) node.hidden = true; }
       $('#connectionGate').hidden=true;$('#appShell').hidden=true;$('#loginGate').hidden=false;
@@ -9076,7 +9096,7 @@ async function performProductionEntry() {
       $('#resetForm .login-lead').textContent='ตั้งรหัสใหม่อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเริ่มต้นเดิม ยังไม่เปิดข้อมูลจนกว่าจะบันทึกสำเร็จ';
       return false;
     }
-    await applyAuthenticatedRole();
+    await applyAuthenticatedRole(entryChecks.access);
   } catch (error) {
     if (error.code === 'APP_ACCESS_DENIED') {
       Sb.signOut();

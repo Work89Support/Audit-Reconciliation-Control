@@ -5,6 +5,7 @@ const source=app.slice(app.indexOf('// Read-only responder model.'),app.indexOf(
  for(const role of ['monitor','audit_assistant','lead','admin']){
   let reads=0;const ctx={state:{dataset:'production',role,route:'audit-review',access:{companies:['*']},filters:{from:'2026-10-15',to:'2026-10-15',company:'ALL'}},DB:{exceptions:[]},liveOverviewState:{requestId:0},moreCaseState:{},Date,
    Sb:{signedIn:()=>true,authUser:()=>({id:role}),currentExceptionsSummary:async scope=>{reads++;assert.equal(scope.company,'ALL');return companies.flatMap(company=>[{id:company+'-audit',company,status:'answered'},{id:company+'-damage',company,status:'damage'},{id:company+'-file',company,status:'open',clarification_file_id:'file'}]);}},canAccessCompany:()=>true,mapLiveException:r=>r,renderFilters(){},offerLiveOverviewUpdate(){}};
+  for(const name of ['ManualPairing','CrossDayWorkbench','CaseClosure'])ctx[name]={loadPending:async()=>{}};
   vm.createContext(ctx);vm.runInContext(source,ctx);await ctx.loadResponderQueue();
   for(const route of ['audit-review','approvals'])for(const company of companies){ctx.state.route=route;ctx.state.filters.company=company;await ctx.loadResponderQueue();assert.equal(ctx.DB.exceptions.filter(r=>r.company===company).length,3);}
   assert.equal(reads,1,'both review pages share one case read across all companies');assert.equal(ctx.DB.exceptions.length,27,'review model must retain damage and source-document cases, not only responder requests');

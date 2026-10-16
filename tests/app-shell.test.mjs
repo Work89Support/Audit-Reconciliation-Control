@@ -199,7 +199,8 @@ assert.match(app, /admin: Object\.keys\(ROUTE_MAP\)/, "ผู้ดูแลร�
 assert.match(app, /!it\.hidden \|\| state\.role === "admin"/, "ผู้ดูแลระบบต้องเห็นหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป");
 assert.match(app, /id="newAccessUser">\+ เพิ่มผู้ใช้/, "หน้าระบบต้องเพิ่มผู้ใช้ใหม่ได้โดยตรง");
 assert.match(app, /Sb\.adminInviteUser\(/, "ผู้ใช้ใหม่ต้องถูกเชิญผ่าน Edge Function ที่ปลอดภัย");
-assert.match(app, /async function applyAuthenticatedRole\(\)[\s\S]+await Sb\.myAccess\(\)/, "บทบาทต้องอ่านจาก Supabase ไม่ใช่ metadata ฝั่ง browser");
+assert.match(app, /async function applyAuthenticatedRole\(entryAccess\)[\s\S]+await Sb\.myAccess\(\)/, "บทบาทต้องอ่านจาก Supabase ไม่ใช่ metadata ฝั่ง browser");
+assert.match(app, /Sb\.passwordChangeRequired\(\), Sb\.myAccess\(\)/, "ผลสิทธิ์ที่อ่านพร้อมกันต้องมาจาก Supabase");
 assert.doesNotMatch(app, /user\.user_metadata\?\.role/, "ห้ามเชื่อ role จาก user_metadata");
 assert.match(app, /function enterProductionApp|async function enterProductionApp/, "ต้องมีทางเข้าระบบหลังตรวจสิทธิ์");
 assert.match(app, /async function enterProductionApp\(\)[\s\S]+startCloudWorker\(\)[\s\S]+loadLiveOverview/, "เมื่อกู้ session หรือกลับจาก Google ระบบต้องเริ่ม worker อัตโนมัติ");

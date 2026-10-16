@@ -1,0 +1,23 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const app=fs.readFileSync('app.js','utf8');
+const checks=app.slice(app.indexOf('async function readProductionEntryChecks()'),app.indexOf('async function performProductionEntry()'));
+const queue=app.slice(app.indexOf('// Read-only responder model.'),app.indexOf('async function loadLiveOverview('));
+(async()=>{
+ let passwordDone,accessDone,calls=[];
+ const ctx={Sb:{passwordChangeRequired:()=>{calls.push('password');return new Promise(r=>passwordDone=r)},myAccess:()=>{calls.push('access');return new Promise(r=>accessDone=r)}}};
+ vm.createContext(ctx);vm.runInContext(checks,ctx);
+ let admitted=false;const pending=ctx.readProductionEntryChecks().then(v=>{admitted=true;return v});
+ assert.deepEqual(calls,['password','access'],'both required reads start before either finishes');
+ passwordDone(false);await Promise.resolve();assert.equal(admitted,false,'password success alone never admits access');
+ accessDone({active:true});const result=await pending;assert.equal(result.passwordRequired,false);assert.equal(result.access.value.active,true);
+ ctx.Sb.passwordChangeRequired=async()=>{throw Error('password gate timeout')};ctx.Sb.myAccess=async()=>{throw Error('access timeout')};
+ await assert.rejects(ctx.readProductionEntryChecks(),/password gate timeout/);
+ let finishCases,reads=[];
+ const q={state:{dataset:'production',route:'approvals',role:'lead',access:{companies:['FR8']},filters:{company:'FR8',from:'2026-10-15',to:'2026-10-15'}},Sb:{signedIn:()=>true,authUser:()=>({id:'A'}),currentExceptionsSummary:()=>{reads.push('cases');return new Promise(r=>finishCases=r)}},DB:{exceptions:[]},liveOverviewState:{requestId:0},moreCaseState:{},canAccessCompany:()=>true,mapLiveException:r=>r,offerLiveOverviewUpdate(){},renderFilters(){}};
+ for(const name of ['ManualPairing','CrossDayWorkbench','CaseClosure'])q[name]={loadPending:()=>{reads.push(name);return Promise.resolve()}};
+ vm.createContext(q);vm.runInContext(queue,q);const loading=q.loadResponderQueue();
+ assert.deepEqual(reads,['ManualPairing','CrossDayWorkbench','CaseClosure','cases'],'approval reads overlap the cold case load');
+ assert.equal(q.liveOverviewState.exceptionsReady,false,'pending cases are not displayed as zero');
+ finishCases([]);await loading;assert.equal(q.liveOverviewState.exceptionsReady,true);
+ console.log('PASS cold queue load: parallel mandatory auth reads, fail-closed admission, independently prefetched approval queues, no false zero. Mock reads only.');
+})().catch(e=>{console.error(e);process.exit(1)});

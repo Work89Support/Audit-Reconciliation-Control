@@ -9,7 +9,7 @@
  const src=await(await fetch('../app.js')).text(),$=s=>document.querySelector(s);
  const state={dataset:'production',route:'clarify',access:{loaded:true,email:'qa@example.invalid',role:'admin',companies:['FR8']}};
  let transient=false,rows=3,paints=0,prepared=0;
- const Sb={signedIn:()=>true,authUser:()=>({email:'qa@example.invalid'}),passwordChangeRequired:async()=>false,signOut(){throw Error('Unexpected sign out')}};
+ const Sb={signedIn:()=>true,authUser:()=>({email:'qa@example.invalid'}),passwordChangeRequired:async()=>false,myAccess:async()=>({}),signOut(){throw Error('Unexpected sign out')}};
  const gate=new Function('$',src.slice(src.indexOf('function showLoginGate('),src.indexOf('function render()'))+';return showConnectingGate;')($);
  const entry=new Function('state','Sb','$','showConnectingGate','prepareProductionData','applyAuthenticatedRole',src.slice(src.indexOf('async function enterProductionApp()'),src.indexOf('async function boot()'))+';return enterProductionApp;')(state,Sb,$,gate,()=>prepared++,async()=>{if(transient)throw Error('Supabase ใช้เวลาตอบกลับนานเกิน 30 วินาที (จำลอง)')});
  const liveOverviewState={exceptionsReady:true,loading:false,auxiliaryLoading:false};
