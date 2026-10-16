@@ -1102,6 +1102,10 @@ function renderFilters() {
     $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · รายการเคส <b>—</b> · SLA <b>—</b> · ยอด <b>—</b> · กำลังรอข้อมูลจริง ไม่ใช่ศูนย์`;
     return;
   }
+  if (state.dataset === 'production' && state.route === 'clarify' && state.role === 'shift_lead') {
+    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · คิวคำขอที่ Audit ส่งมา <b>${num(scoped.length)}</b> เคสในบริษัทที่เลือก · ไม่ใช่ยอดกระทบยอดหรือความเสียหาย`;
+    return;
+  }
   $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · กำลังดู <b>${num(scoped.length)}</b> exception · เกิน SLA <b>${num(scoped.filter((e) => e.overSla).length)}</b> รายการ · ความเสียหายในช่วงนี้ <b>${money0(DB.damages.filter((d) => inRange(d.date)).reduce((a, c) => a + c.amount, 0))}</b> บาท`;
 }
 
@@ -1724,7 +1728,89 @@ function offerLiveOverviewUpdate() {
     ? "ข้อมูลบางส่วนโหลดไม่สำเร็จ: " + errors.join(" · ") + " — ไม่ใช่ยอดค้างเป็นศูนย์; กดลองโหลดใหม่โดยไม่ทิ้งงานที่เปิดอยู่"
     : "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
 }
+// Read-only responder model. One authorized date-range snapshot serves all
+// company filters; never persist it or share it across actors/access scopes.
+let responderQueueCache = null;
+let responderQueueFailure = null;
+const responderQueueFlights = new Map();
+function responderQueueMode() {
+  return state.dataset === 'production' && state.route === 'clarify' && state.role === 'shift_lead' && Sb.signedIn();
+}
+function responderQueueKey() {
+  return JSON.stringify([Sb.authUser()?.id, state.access?.email, state.role,
+    [...(state.access?.companies || [])].sort(), state.filters.from, state.filters.to]);
+}
+function applyResponderQueue(snapshot) {
+  DB.exceptions = snapshot.rows.filter(row => canAccessCompany(row.company)).map(mapLiveException);
+  liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  liveOverviewState.responderOnly = true;
+  liveOverviewState.exceptionsReady = true;
+  liveOverviewState.error = null;
+  liveOverviewState.coreErrors = [];
+  liveOverviewState.updatedAt = new Date(snapshot.at);
+  moreCaseState.hasMore = snapshot.truncated;
+  moreCaseState.offset = snapshot.total;
+  moreCaseState.error = '';
+}
+async function loadResponderQueue(force = false) {
+  if (!responderQueueMode() || !Sb.authUser()?.id) return;
+  const key = responderQueueKey();
+  if (!liveOverviewState.responderOnly) ++liveOverviewState.requestId;
+  if (responderQueueCache?.key !== key) {
+    responderQueueCache = null;
+    DB.exceptions = [];
+    liveOverviewState.exceptionsReady = false;
+  }
+  if (responderQueueCache) applyResponderQueue(responderQueueCache);
+  if (!force && responderQueueCache && Date.now() - responderQueueCache.at < 30000) {
+    renderFilters();
+    return;
+  }
+  if (responderQueueFlights.has(key)) return responderQueueFlights.get(key);
+  if (!force && responderQueueFailure?.key === key && Date.now() < responderQueueFailure.retryAt) return;
+  const scope = {from: state.filters.from, to: state.filters.to, company: 'ALL', limit: 5000};
+  liveOverviewState.responderOnly = true;
+  liveOverviewState.key = `${scope.from}|${scope.to}|${state.filters.company}`;
+  liveOverviewState.loading = true;
+  liveOverviewState.auxiliaryLoading = false;
+  liveOverviewState.auxiliaryError = null;
+  const flight = (async () => {
+    // Existing authenticated transport + server-side RLS/current-primary model.
+    // No dashboard, history, finance, notifications or reconciliation reads.
+    try {
+      const rows = await Sb.currentExceptionsSummary(scope);
+      if (!responderQueueMode() || responderQueueKey() !== key) return;
+      responderQueueCache = {key, at: Date.now(), total: rows.length, truncated: rows.length === scope.limit,
+        rows: rows.filter(row => row.requested_at && !row.case_closure_request_id && ['open','clarifying','answered'].includes(row.status))};
+      applyResponderQueue(responderQueueCache);
+      responderQueueFailure = null;
+    } catch (error) {
+      if (responderQueueMode() && responderQueueKey() === key) {
+        responderQueueFailure = {key, retryAt: Date.now() + 30000};
+        liveOverviewState.auxiliaryError = 'รายการเคส: ' + (error.message || 'โหลดไม่สำเร็จ') + ' · คงร่างและข้อมูลที่โหลดได้ครั้งก่อน';
+      }
+    } finally {
+      responderQueueFlights.delete(key);
+      if (responderQueueMode() && responderQueueKey() === key) {
+        liveOverviewState.loading = false;
+        liveOverviewState.auxiliaryLoading = false;
+        offerLiveOverviewUpdate();
+      }
+    }
+  })();
+  responderQueueFlights.set(key, flight);
+  return flight;
+}
 async function loadLiveOverview(force = false) {
+  if (state.route === 'clarify' && state.role === 'shift_lead') return loadResponderQueue(force);
+  if (liveOverviewState.responderOnly) {
+    liveOverviewState.responderOnly = false;
+    liveOverviewState.loading = false;
+    liveOverviewState.auxiliaryLoading = false;
+    ++liveOverviewState.requestId;
+    liveOverviewState.quality = null;
+    liveOverviewState.key = '';
+  }
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   const caseReadLimit = state.route === 'clarify' ? 5000 : 250;
   if (liveOverviewState.loading || liveOverviewState.auxiliaryLoading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
@@ -1867,9 +1953,10 @@ async function loadLiveOverview(force = false) {
 
 function ensureLiveOverview(root) {
   if (state.dataset !== "production" || !Sb.signedIn()) return true;
+  if (responderQueueMode()) { loadResponderQueue().catch(() => {}); return true; }
   const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
   const stale = liveOverviewState.key !== key;
-  if ((!liveOverviewState.quality || stale) && !liveOverviewState.loading) loadLiveOverview(stale);
+  if (liveOverviewState.responderOnly || ((!liveOverviewState.quality || stale) && !liveOverviewState.loading)) loadLiveOverview(stale);
   // อย่าปิดทั้งหน้าระหว่างรอข้อมูลกลาง แต่ละหน้าจะแสดงข้อมูลที่มีอยู่ก่อน
   // และ render() จะเติมแถบแจ้งสถานะด้านบนจนกว่าการอัปเดตจะเสร็จ
   return true;
