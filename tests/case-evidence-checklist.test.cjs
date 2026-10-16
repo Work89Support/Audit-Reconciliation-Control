@@ -1,12 +1,13 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const source=fs.readFileSync('app.js','utf8');
-const start=source.indexOf('      const fresh=await Sb.exceptionDetail(e.dbId);',source.indexOf('async function openException('));
-const block=source.slice(start,source.indexOf('    } catch(err)',start));
+const start=source.indexOf('function applyCaseOpenSnapshot(');
+const block=source.slice(start,source.indexOf('async function openException(',start));
 async function read(role,loaded,files,linked=false){
  const e={id:'case-1',dbId:'case-1',company:'FR8',status:'answered',notes:['original note'],evidence:files,_caseEvidenceLoaded:loaded,bankAmount:81900,systemAmount:null};
  const fresh={id:'case-1',hasEvidence:linked,evidence:[],notes:[],bankAmount:81900,systemAmount:null,status:'answered'};
- const ctx={e,id:e.id,state:{selected:e.id,role},Sb:{exceptionDetail:async()=>fresh,reviewHoldForCase:async()=>null},mapLiveException:x=>x};
- vm.createContext(ctx);await vm.runInContext(`(async()=>{${block}})()`,ctx);
+ const results=[fresh,null,['original note'],[],[]].map(value=>({status:'fulfilled',value}));
+ const ctx={e,results,mapLiveException:x=>x};
+ vm.createContext(ctx);vm.runInContext(block+'\napplyCaseOpenSnapshot(e,results);',ctx);
  assert.equal(e.bankAmount,81900);assert.equal(e.systemAmount,null);assert.equal(e.status,'answered');assert.deepEqual(e.notes,['original note']);assert.equal(e.evidence,files);
  return e.hasEvidence;
 }

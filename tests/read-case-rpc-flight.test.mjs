@@ -1,0 +1,20 @@
+import fs from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const source=fs.readFileSync('supabase.js','utf8');
+const saved=new Map([['audit-sb-session',JSON.stringify({access_token:'dummy',refresh_token:'dummy-refresh',expires_at:Date.now()/1000+3600,user:{id:'test-user'}})]]);
+const calls=[],releases=[];let delayed=false;
+const ctx={window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://dummy.invalid',anonKey:'test-only'}},persist(){}},localStorage:{getItem:k=>saved.get(k)??null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},
+ fetch:async(url,opts)=>{assert.equal(opts.readOnly,undefined,'internal hint never sent to fetch');calls.push([url,opts]);if(delayed)await new Promise(r=>releases.push(r));else await new Promise(r=>setTimeout(r,1));return new Response(url.includes('/exceptions?')?'[{"id":"one"}]':'[]');},AbortController,setTimeout,clearTimeout,Date,console,navigator:{}};
+vm.runInNewContext(source,ctx);const api=ctx.window.Sb;await api.restore();
+await Promise.all(Array.from({length:12},()=>api.reviewHoldForCase('one')));assert.equal(calls.length,1,'same read RPC coalesces');
+await api.reviewHoldForCase('one');assert.equal(calls.length,2,'completed results not cached');
+await Promise.all([api.reviewHoldForCase('one'),api.reviewHoldForCase('two')]);assert.equal(calls.length,4,'case IDs remain isolated in POST body');
+delayed=true;
+const read=api.exceptionDetail('one'),history=api.clarificationHistory('one');await new Promise(r=>setTimeout(r,0));
+const sameRead=api.exceptionDetail('one');await new Promise(r=>setTimeout(r,0));assert.equal(calls.length,6,'read-only RPC does not invalidate unrelated in-flight GET');
+releases.splice(0).forEach(r=>r());await Promise.all([read,history,sameRead]);
+const old=api.clarificationHistory('one');await new Promise(r=>setTimeout(r,0));
+const write1=api.post('dummy-write',[]),write2=api.post('dummy-write',[]);await new Promise(r=>setTimeout(r,0));
+const newer=api.clarificationHistory('one');await new Promise(r=>setTimeout(r,0));
+assert.equal(calls.length,10,'two writes stay separate and invalidate earlier read flights');releases.splice(0).forEach(r=>r());await Promise.all([old,write1,write2,newer]);
+const last=api.clarificationHistory('one'),denied=assert.rejects(last,/ผู้ใช้งานเปลี่ยน/);await new Promise(r=>setTimeout(r,0));api.signOut();releases.splice(0).forEach(r=>r());await denied;
+console.log('PASS case read RPCs: in-flight-only dedup, POST-body isolation, GET reuse, write invalidation, never coalesce writes, identity guard. Mock transport only.');

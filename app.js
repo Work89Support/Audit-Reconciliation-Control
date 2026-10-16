@@ -557,6 +557,11 @@ function isQuickCloseEligible(e) {
 async function refreshQuickCloseEvidence(e) {
   e._quickSourceEvidence = false;
   if (state.dataset !== "production" || !e.dbId || !e._detailLoaded) return;
+  // Only open/closed complete pairs can pass the existing source-evidence
+  // check (closed is display-only). Skip whole-day reads for other cases.
+  if(!['open','closed'].includes(e.status) || e.bankAmount==null || e.systemAmount==null
+    || e.bankAmount==='' || e.systemAmount==='' || !Number.isFinite(Number(e.bankAmount))
+    || !Number.isFinite(Number(e.systemAmount)) || Math.abs(Number(e.bankAmount)-Number(e.systemAmount))>=0.01)return;
   const [data, links] = await Promise.all([
     Sb.reconciliationOverview(e.company, e.date),
     Sb.evidenceCaseRecommendations({caseId:e.dbId}),
@@ -3951,43 +3956,88 @@ async function openClosedEvidenceCorrection(e) {
   };
 }
 
+const caseOpenDrafts = new Map();
+let caseOpenTicket = null;
+function caseOpenActor() { return `${state.dataset}|${typeof Sb!=='undefined'?Sb.authUser()?.id||'':''}|${state.role}`; }
+function caseOpenDraftKey(e) { return `${caseOpenActor()}|${caseUiKey(e)}`; }
+function captureCaseOpenDraft() {
+  const drawer=$('#drawer'),key=drawer?.dataset.caseDraftKey;
+  if(!key || !key.startsWith(caseOpenActor()+'|'))return;
+  const note=$('#noteText'),response=$('#responseText');
+  if(!note && !response)return;
+  caseOpenDrafts.set(key,{note:note?.value||'',response:response?.value||''});
+}
+function clearSavedCaseDraft(e,field,submitted) {
+  const key=caseOpenDraftKey(e),draft=caseOpenDrafts.get(key);
+  const input=$('#drawer')?.dataset.caseDraftKey===key?$(field==='note'?'#noteText':'#responseText'):null;
+  if(input && input.value.trim()===submitted.trim())input.value='';
+  if(draft && draft[field]?.trim()===submitted.trim())draft[field]='';
+}
+function showCaseOpenLoading(e,error) {
+  const drawer=$('#drawer'),overlay=$('#drawerOverlay');
+  clearTimeout(drawer._hideTimer);drawer._hideTimer=null;
+  delete drawer.dataset.caseDraftKey;
+  drawer.innerHTML=`<header class="drawer-head"><h2>${h(e.company)} · ${h(e.code||e.id)}</h2><button id="drawerClose" aria-label="ปิด">✕</button></header><div class="drawer-body"><div role="${error?'alert':'status'}" aria-live="polite" aria-busy="${!error}"><h3>${error?'ยังเปิดเคสไม่ได้':'กำลังโหลดรายละเอียดเคส…'}</h3><p>${h(error||'กำลังตรวจสถานะล่าสุด หลักฐาน และประวัติพร้อมกัน · ยังไม่มีการส่งคำขอหรือเปลี่ยนข้อมูล')}</p>${error?'<button id="caseOpenRetry" class="ghost-button">ลองโหลดเคสอีกครั้ง</button>':''}</div></div>`;
+  drawer.hidden=false;overlay.hidden=false;drawer.classList.add('on');AuditUi.open(drawer);
+  $('#drawerClose').onclick=closeDrawer;
+  overlay.onclick=closeDrawer;
+  if(error)$('#caseOpenRetry').onclick=()=>openException(e.id);
+}
+function loadCaseOpenSnapshot(e) {
+  // Start independent reads together. No completed-result cache; writes still
+  // validate current state at the server and invalidate transport flights.
+  return Promise.allSettled([
+    Sb.exceptionDetail(e.dbId),Sb.reviewHoldForCase(e.dbId),
+    state.role==='shift_lead'?Promise.resolve([]):Sb.caseNotes(e.dbId),
+    Sb.clarificationInstructions(e.dbId),Sb.clarificationHistory(e.dbId),Sb.caseEvidence(e.dbId),
+  ]);
+}
+function applyCaseOpenSnapshot(e,results) {
+  const [detail,hold,notes,instructions,history]=results;
+  if(detail.status==='rejected')throw detail.reason;
+  if(!detail.value)throw Error('ไม่พบเคสล่าสุด');
+  if(hold.status==='rejected')throw hold.reason;
+  const register=results[5];
+  if(register?.status==='rejected')throw register.reason;
+  Object.assign(e,mapLiveException(detail.value),{notes:e.notes||[],evidence:e.evidence||[],_detailLoaded:true});
+  e.reviewHold=hold.value;
+  if(register){
+    if(!Array.isArray(register.value))throw Error('อ่านทะเบียนหลักฐานไม่ครบ');
+    e.evidence=register.value.map(f=>({id:f.id,name:f.file_name,size:f.size_bytes,at:f.created_at,storagePath:f.storage_path,correctionReason:f.correction_reason,replacesEvidenceId:f.replaces_evidence_id,replacesSourceFileId:f.replaces_source_file_id,uploadedBy:f.uploaded_by,replacedBy:register.value.find(next=>next.replaces_evidence_id===f.id)?.id}));
+    e._caseEvidenceLoaded=true;
+  }
+  if(e._caseEvidenceLoaded)e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
+  e.notes=notes.status==='fulfilled'?notes.value:[];
+  e.clarificationInstructions=instructions.status==='fulfilled'?instructions.value:[];
+  e.clarificationInstructionsError=instructions.status==='rejected'?instructions.reason.message:null;
+  e.clarificationHistory=history.status==='fulfilled'?history.value:[];
+  e.clarificationHistoryError=history.status==='rejected'?history.reason.message:null;
+  if(notes.status==='rejected')toast('โหลด Note ส่วนกลางไม่สำเร็จ: '+notes.reason.message,'warn');
+}
 async function openException(id, options = {}) {
   const e = DB.exceptions.find((x) => x.id === id);
   if (!e) return toast('ไม่พบรายละเอียดเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
   if (!canAccessCompany(e.company)) return toast('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท ' + e.company, 'warn');
+  captureCaseOpenDraft();
+  const actor=caseOpenActor(),route=state.route;
+  if(caseOpenTicket?.key===caseOpenDraftKey(e))return caseOpenTicket.promise;
+  const ticket={key:caseOpenDraftKey(e),promise:null};caseOpenTicket=ticket;
+  const current=()=>caseOpenTicket===ticket && caseOpenActor()===actor && state.route===route
+    && state.selected===id && canAccessCompany(e.company);
   state.selected = id;
+  ticket.promise=(async()=>{
   if (state.dataset === "production" && e.dbId) {
+    showCaseOpenLoading(e);
     try {
-      const fresh=await Sb.exceptionDetail(e.dbId);
-      if(state.selected!==id) return;
-      if(!fresh) throw new Error('ไม่พบเคสล่าสุด');
-      Object.assign(e,mapLiveException(fresh),{notes:e.notes||[],evidence:e.evidence||[]});
-      e.reviewHold=await Sb.reviewHoldForCase(e.dbId);
-      if(state.selected!==id) return;
-      // Every role's checklist uses the same loaded attachment register as the file list.
-      // Actual closure authority/proof still belongs to the server; never patch the case row here.
-      if(e._caseEvidenceLoaded) e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
-    } catch(err) { return toast('ตรวจสถานะล่าสุดไม่ได้: '+err.message,'warn'); }
-    try {
-      e.notes = state.role==='shift_lead' ? [] : await Sb.caseNotes(e.dbId);
-    } catch (err) {
-      e.notes = [];
-      toast("โหลด Note ส่วนกลางไม่สำเร็จ: " + err.message, "warn");
-    }
-    if (state.selected !== id) return;
-    e.clarificationInstructions=[];
-    e.clarificationInstructionsError=null;
-    try { e.clarificationInstructions=await Sb.clarificationInstructions(e.dbId); }
-    catch(err) { e.clarificationInstructionsError=err.message; }
-    if (state.selected !== id) return;
-    e.clarificationHistory=[];e.clarificationHistoryError=null;
-    try { e.clarificationHistory=await Sb.clarificationHistory(e.dbId); }
-    catch(err) { e.clarificationHistoryError=err.message; }
-    if (state.selected !== id) return;
-    try { await refreshQuickCloseEvidence(e); }
-    catch (err) { e._quickSourceEvidence = false; toast("ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: " + err.message, "warn"); }
-    if (state.selected !== id) return;
+      const results=await loadCaseOpenSnapshot(e);
+      if(!current())return;
+      applyCaseOpenSnapshot(e,results);
+      try { await refreshQuickCloseEvidence(e); }
+      catch(err){e._quickSourceEvidence=false;toast('ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: '+err.message,'warn');}
+      if(!current())return;
+    }catch(err){if(current()){caseOpenTicket=null;showCaseOpenLoading(e,err.message);}return;}
   }
+  if(!current())return;
   const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
   const queueIndex = queue.indexOf(id);
   state.selected = id;
@@ -4102,7 +4152,7 @@ async function openException(id, options = {}) {
       <h3 class="drawer-h3" ${state.role==='shift_lead'?'hidden':''}>รายละเอียดที่ Audit ขอให้บริษัทชี้แจง</h3>
       <p class="hint" ${state.role==='shift_lead'?'hidden':''}>ข้อความที่บันทึกจะแสดงแก่ผู้ชี้แจงของบริษัทนี้ เก็บประวัติเดิม ไม่ส่งคำตอบและไม่ปิดเคส หากยังไม่ส่งเคส ให้กดส่งขอชี้แจงต่อ</p>
       <div class="note-form" ${state.role==='shift_lead'?'hidden':''}>
-        <textarea id="noteText" rows="3" maxlength="2000" placeholder="ระบุสิ่งที่ต้องชี้แจงและหลักฐานที่ต้องการ..." ${closed?'disabled':''}></textarea>
+        <textarea id="noteText" rows="3" maxlength="2000" placeholder="ระบุสิ่งที่ต้องชี้แจงและหลักฐานที่ต้องการ..." ${closed?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.note||'')}</textarea>
         <button class="ghost-button" id="btnNote" ${closed?'disabled':''}>บันทึกรายละเอียดคำขอชี้แจง</button>
       </div>
       <section class="case-response-section" id="caseResponseSection">
@@ -4110,7 +4160,7 @@ async function openException(id, options = {}) {
         ${ClarificationFlow.draftMarkup(e._clarificationDraftFile)}
         ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(displayTime(e.respondedAt))}</small></div>` : ''}
         ${e.clarificationHistoryError?`<p role="alert">ยังอ่านข้อความเดิมไม่สำเร็จ: ${h(e.clarificationHistoryError)} กรุณาเปิดเคสใหม่ก่อนส่ง</p>`:ClarificationFlow.historyMarkup(e.clarificationHistory,displayTime)}
-        <label ${!ClarificationFlow.canRespond(e.status,state.role)?'hidden':''}>ต้องการชี้แจงเคสนี้ โดยสาเหตุ…<textarea id="responseText" rows="4" maxlength="2000" placeholder="ระบุสาเหตุ ข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และสิ่งที่หลักฐานยืนยัน" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>${h(e._clarificationDraftText||'')}</textarea></label>
+        <label ${!ClarificationFlow.canRespond(e.status,state.role)?'hidden':''}>ต้องการชี้แจงเคสนี้ โดยสาเหตุ…<textarea id="responseText" rows="4" maxlength="2000" placeholder="ระบุสาเหตุ ข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และสิ่งที่หลักฐานยืนยัน" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.response??e._clarificationDraftText??'')}</textarea></label>
         <button class="primary-button" id="btnRespond" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
         <small>ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบและหลักฐานพร้อมกัน เก็บข้อความเดิมและไฟล์เดิมครบ ยังไม่ปิดเคส</small>
       </section>
@@ -4126,6 +4176,9 @@ async function openException(id, options = {}) {
     </footer>
     </div>`;
 
+  drawer.dataset.caseDraftKey=caseOpenDraftKey(e);
+  $('#noteText').addEventListener('input',captureCaseOpenDraft);
+  $('#responseText').addEventListener('input',captureCaseOpenDraft);
   drawer.hidden = false;
   overlay.hidden = false;
   requestAnimationFrame(() => drawer.classList.add("on"));
@@ -4145,7 +4198,7 @@ async function openException(id, options = {}) {
   };
   $('#reviewPrevious')?.addEventListener('click', () => moveReview(-1));
   $('#reviewNext')?.addEventListener('click', () => moveReview(1));
-  overlay.addEventListener("click", closeDrawer, { once: true });
+  overlay.onclick=closeDrawer;
   $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   $("#btnAttachQuick").addEventListener("click", () => closed?toast('เคสปิดแล้ว ต้องใช้ปุ่มแก้ไขหลักฐานสำหรับหัวหน้า/ผู้ดูแล','warn'):$("#evInput")?.click());
   $('#btnCorrectClosedEvidence')?.addEventListener('click',()=>openClosedEvidenceCorrection(e).catch(err=>toast(err.message,'warn')));
@@ -4276,6 +4329,7 @@ async function openException(id, options = {}) {
         saveOverride(e);
       }
       recordCaseUiResult(e, 'บันทึกรายละเอียดคำขอแล้ว — ผู้ชี้แจงเห็นในเคสที่ส่งแล้ว ยังไม่ปิดเคส');
+      clearSavedCaseDraft(e,'note',txt);
       toast("บันทึกรายละเอียดคำขอชี้แจงแล้ว");
       if (state.selected === id) await openException(id);
     } catch (err) {
@@ -4363,6 +4417,7 @@ async function openException(id, options = {}) {
         e.clarificationFileId=saved.clarification_file_id;
       }
       delete e._clarificationDraftFile;delete e._clarificationDraftText;
+      clearSavedCaseDraft(e,'response',answerText);
       e.status = "answered";
       e.responseText = response;
       e.respondedAt = stamp;
@@ -4475,6 +4530,9 @@ async function openException(id, options = {}) {
       el.title = `ต้องมีสิทธิ์: ${cap} (บทบาทปัจจุบัน ${DB.roles[state.role].name} ไม่มีสิทธิ์นี้)`;
     }
   });
+  if(caseOpenTicket===ticket)caseOpenTicket=null;
+  })();
+  return ticket.promise;
 }
 async function openApprovalReview(exceptionId, kind, requestId) {
   if (!can('approve')) return toast('เฉพาะหัวหน้าทีม / ผู้ดูแลระบบอนุมัติได้', 'warn');
@@ -4539,6 +4597,8 @@ async function finishApprovalReview() {
   catch (err) { toast('บันทึกอนุมัติแล้ว แต่โหลดภาพรวมใหม่ไม่ได้ กรุณารีเฟรชคิว: ' + err.message, 'warn'); return false; }
 }
 function closeDrawer() {
+  captureCaseOpenDraft();
+  caseOpenTicket=null;
   const d = $("#drawer");
   if (!d || d.hidden) return;
   d.classList.remove("on");

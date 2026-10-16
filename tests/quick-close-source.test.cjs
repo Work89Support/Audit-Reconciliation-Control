@@ -7,7 +7,7 @@ let data,links;
 const ctx={state:{dataset:'production'},PreliminaryReview:P,Sb:{reconciliationOverview:async()=>data,evidenceCaseRecommendations:async()=>links}};
 vm.createContext(ctx);
 vm.runInContext(source.slice(source.indexOf('function isQuickCloseEligible('),source.indexOf('// Completion is a positive assertion')),ctx);
-const reset=()=>{data={complete:true,run:{id:'r',jobStatus:'completed',matched:0,summary:{match_evidence:[]}},cases:[{...row}]};links=[];return {dbId:'c',company:'MC8',date:'2026-09-15',status:'open',_detailLoaded:true};};
+const reset=()=>{data={complete:true,run:{id:'r',jobStatus:'completed',matched:0,summary:{match_evidence:[]}},cases:[{...row}]};links=[];return {dbId:'c',company:'MC8',date:'2026-09-15',status:'open',systemAmount:3300,bankAmount:3300,_detailLoaded:true};};
 (async()=>{
  let e=reset();await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),true);
  for(const change of [{time_diff_sec:3601},{stm_date:'2026-09-16'}]) {e=reset();Object.assign(data.cases[0],change);await ctx.refreshQuickCloseEvidence(e);assert.equal(ctx.isQuickCloseEligible(e),true);}

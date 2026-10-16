@@ -259,7 +259,7 @@ const Sb = (() => {
   let readGeneration = 0;
   async function req(path, opts = {}) {
     // Invalidate before writes, including uncertain/timeout outcomes.
-    if (opts.method && opts.method.toUpperCase() !== 'GET' && !path.startsWith('/storage/v1/object/sign/')) {
+    if (opts.method && opts.method.toUpperCase() !== 'GET' && !opts.readOnly && !path.startsWith('/storage/v1/object/sign/')) {
       clearFileSnapshots();
       readGeneration++;
       pendingJsonReads.clear();
@@ -269,6 +269,7 @@ const Sb = (() => {
     const timeout = controller ? setTimeout(() => controller.abort(), Number(opts.timeoutMs || 30000)) : null;
     const fetchOpts = { ...opts, signal: opts.signal || controller.signal, headers: headers(opts.headers) };
     delete fetchOpts.timeoutMs;
+    delete fetchOpts.readOnly;
     try {
       let res = await fetch(base() + path, fetchOpts);
       /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
@@ -305,8 +306,8 @@ const Sb = (() => {
         if(path.startsWith('/rest/v1/'+name+'?')&&/[?&]status=eq.pending(?:&|$)/.test(path))path=path.replace('/rest/v1/'+name+'?','/rest/v1/active_'+name+'?');
     }
     const actor = session?.user?.id || '';
-    const read = (!opts.method || opts.method.toUpperCase() === 'GET') && !opts.signal;
-    const key = read ? JSON.stringify([base(), session?.access_token || '', actor, readGeneration, path, opts.headers || {}, opts.timeoutMs || 30000]) : null;
+    const read = (!opts.method || opts.method.toUpperCase() === 'GET' || opts.readOnly === true) && !opts.signal;
+    const key = read ? JSON.stringify([base(), session?.access_token || '', actor, readGeneration, path, opts.headers || {}, opts.timeoutMs || 30000, opts.body || null]) : null;
     if (key && pendingJsonReads.has(key)) return pendingJsonReads.get(key);
     const pending = (async () => {
       const res = await req(path, opts);
@@ -821,9 +822,11 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
   }
 
+  const readOnlyCaseRpcs = new Set(['account_review_hold_for_case','case_clarification_instructions','case_clarification_history']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
+      readOnly: readOnlyCaseRpcs.has(name),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
