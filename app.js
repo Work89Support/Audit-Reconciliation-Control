@@ -2417,11 +2417,11 @@ function dailyAuditSheetRows(date) {
     const run = qualityByCompany.get(company) || {};
     const resultStatus = dailyResultStatus(row,run);
     const primary=resultStatus.primary;
-    const generatedExceptionCount = Number(run.exception_count ?? row.exception_count ?? 0);
-    const hasCurrentCounts = row.open_count != null && row.resolved_count != null;
+    const generatedExceptionCount = primary ? (primary.report?.exceptions?.length || 0) + (primary.report?.summary?.waiting_bo?.length || 0) : Number(run.exception_count ?? row.exception_count ?? 0);
+    const hasCurrentCounts = (!primary || !!primary.case_set) && row.open_count != null && row.resolved_count != null;
     const resolvedCount = hasCurrentCounts ? Number(row.resolved_count || 0) : 0;
     const openCount = hasCurrentCounts ? Number(row.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
-    const exceptionCount = hasCurrentCounts ? openCount + resolvedCount : generatedExceptionCount;
+    const exceptionCount = generatedExceptionCount;
     const runStatus = row.job_status || run.status || "waiting_files";
     return {
       ...row,
@@ -2440,6 +2440,8 @@ function dailyAuditSheetRows(date) {
       matched: Number(run.matched ?? row.matched_count ?? 0),
       exceptionCount,
       generatedExceptionCount,
+      caseSetPending: !!primary && !primary.case_set,
+      historicalOpenCount: primary && !primary.case_set ? row.open_count ?? null : null,
       openCount,
       resolvedCount,
       missing: Array.isArray(row.missing_items) ? row.missing_items : [],
@@ -2817,7 +2819,7 @@ function renderDailyCompanySummary(root) {
               : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
             const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
             const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
-return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td><b class="${row.openCount ? "danger" : ""}">${num(row.openCount || row.exceptionCount)}</b><small class="sub">ปิดแล้ว ${num(row.resolvedCount)}</small></td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
+return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td><b class="${row.openCount ? "danger" : ""}">ผลตรวจ ${num(row.generatedExceptionCount)}</b><small class="sub">${row.caseSetPending?'รอสร้างชุดเคสใหม่ · เคสเดิมเป็นประวัติ':`เคสปัจจุบันค้าง ${num(row.openCount)} · ปิดแล้ว ${num(row.resolvedCount)}`}</small></td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
           }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
         </tbody></table></div>
       </section>`;

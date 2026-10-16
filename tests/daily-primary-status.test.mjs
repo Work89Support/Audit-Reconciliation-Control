@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const fn=app.match(/function dailyResultStatus\([^]*?\n}/)[0];
 const status=new Function('LIVE_STATUS',`${fn};return dailyResultStatus;`)({queued:{label:'เข้าคิว'},completed:{label:'เสร็จ'}});
-const primary={id:'v1',recheck_id:'q1',source_stamp:{file_count:8}};
+const primary={id:'v1',recheck_id:'q1',source_stamp:{file_count:8},case_set:{},report:{exceptions:Array(10).fill({})}};
 const row={job_status:'queued',autoPaused:true,latestRecheck:{id:'q1',status:'confirmed'}};
 const before=JSON.stringify(row);
 assert.equal(status(row,{primaryResult:primary}).label,'ใช้ผลรันมือเป็นผลหลักแล้ว');
