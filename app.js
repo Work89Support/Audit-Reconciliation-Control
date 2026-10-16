@@ -530,7 +530,7 @@ function evidenceTimeDiffLabel(e) {
 const sumRisk = (list) => list.reduce((a, c) => a + (c.riskAmount || 0), 0);
 const severityColor = (s) => Charts.STATUS[s] || "#7c8ea2";
 const statusMeta = (code) => DB.statuses.find((s) => s.code === code) || { name: code, tone: "grey" };
-const caseStatusMeta = (e) => e.closureRequestId && e.status === 'answered' ? {name:'รอหัวหน้าปิดเคส',tone:'grey'} : statusMeta(e.status);
+const caseStatusMeta = (e) => (e.reviewHold || window.AccountReviewHolds?.match(e)) ? {name:AccountReviewHolds.label,tone:'amber'} : e.closureRequestId && e.status === 'answered' ? {name:'รอหัวหน้าปิดเคส',tone:'grey'} : statusMeta(e.status);
 const sevMeta = (code) => DB.severities.find((s) => s.code === code) || { name: code };
 const isEmptyPmFile = (file) => file?.parsed && !file?.parse_error && file?.kind === "pm_statement" && Number(file?.row_count || 0) === 0 && Number(file?.size_bytes || 0) <= 16;
 const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรายการ (0)" : "พร้อมใช้งาน";
@@ -1070,7 +1070,7 @@ VIEWS.finance=root=>{
   boManifest:Sb.financeBoReportManifest,acceptBoReport:Sb.acceptFinanceBoReport,boHistory:Sb.financeBoReportHistory,
   boDownload:async file=>{if(state.route!=='finance'||!['lead','admin'].includes(state.role)||!canAccessCompany(file.company))throw Error('ไม่มีสิทธิ์อ่าน BO รายงาน');return Sb.download(file.storage_path,{force:true});},
   boReadXlsx:async bytes=>{const sheets=(await XlsxReader.readWorkbook(bytes,{includeMetadata:true})).filter(s=>s.rows.some(r=>r.some(v=>String(v??'').trim())));if(sheets.length!==1)throw Error('BO หลายชีต/ไม่มีชีตข้อมูล ต้องทบทวนขอบเขตรายงานก่อน ไม่อ่านแค่ชีตแรก');return sheets[0];},boParse:Formats.parse,boSha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
-  actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
+  holds:Sb.reviewHoldReport,actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
 };
 function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
@@ -1657,9 +1657,11 @@ async function loadLiveOverview(force = false) {
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.boFirstCoverage({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
+      Sb.reviewHoldScopes(),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
-    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ"];
+    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ", "ทะเบียนพักตรวจ"];
+    AccountReviewHolds.set(core[6].status==='fulfilled'?core[6].value:[]);
     if (key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
       liveOverviewState.loading = false;
       return loadLiveOverview(true);
@@ -3951,6 +3953,8 @@ async function openException(id, options = {}) {
       if(state.selected!==id) return;
       if(!fresh) throw new Error('ไม่พบเคสล่าสุด');
       Object.assign(e,mapLiveException(fresh),{notes:e.notes||[],evidence:e.evidence||[]});
+      e.reviewHold=await Sb.reviewHoldForCase(e.dbId);
+      if(state.selected!==id) return;
       // Every role's checklist uses the same loaded attachment register as the file list.
       // Actual closure authority/proof still belongs to the server; never patch the case row here.
       if(e._caseEvidenceLoaded) e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
@@ -3991,7 +3995,7 @@ async function openException(id, options = {}) {
     { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : "ยืนยันผลตรวจยอด: ยอดตรง / ยอมรับยอดต่างจากหลักฐาน / ความเสียหายจริง", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const ready = !closed && !e.closureRequestId && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
+  const ready = !e.reviewHold && !closed && !e.closureRequestId && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
   const missingChecks = ready || closed || e.closureRequestId || e.status==='pair_pending' || (state.dataset==='production' && e.hasEvidence && ['monitor','audit_assistant','lead','admin'].includes(state.role)) ? [] : checklist.filter(item=>!item.ok);
   const lastUiResult = caseUiResults.get(caseUiKey(e));
   const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
@@ -4006,6 +4010,7 @@ async function openException(id, options = {}) {
     </header>
 
     <div class="drawer-body">
+      ${AccountReviewHolds.banner(e.reviewHold)}
       <section class="case-work-status" aria-label="สถานะและหน้าที่ของผู้ใช้งาน">
         <div><span>ผลระบบ</span><b>${e.status==='damage' ? 'ยืนยันความเสียหายแล้ว — ดูทะเบียนและหลักฐาน' : closed ? 'ดูผลและหลักฐานต้นทาง' : 'มีข้อผิดปกติให้ตรวจ — ยังไม่ยืนยันความเสียหาย'}</b></div>
         <div><span>คำชี้แจง</span><b>${e.status==='answered' ? 'ตอบแล้ว — รอ Audit ตรวจคำตอบ' : e.status==='clarifying' ? 'รอผู้มีสิทธิ์ตอบชี้แจง' : e.responseText ? 'มีคำชี้แจงให้ตรวจ' : e.clarificationFileId ? 'มีเอกสารผูกแล้ว — ต้องอ่านและตรวจ' : 'ยังไม่มีคำชี้แจง'}</b></div>
@@ -4450,6 +4455,7 @@ async function openException(id, options = {}) {
   });
 
   const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve", btnDocReq: "request_clarify" };
+  if(e.reviewHold) for(const id of ['btnApprove','btnDamage']) {const button=$('#'+id);if(button){button.disabled=true;button.title=AccountReviewHolds.label;}}
   Object.entries(gate).forEach(([btn, cap]) => {
     const el = $("#" + btn);
     if (!can(cap)) {
