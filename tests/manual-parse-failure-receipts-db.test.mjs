@@ -1,0 +1,35 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const {PGlite}=await import(process.argv[2]);
+const db=new PGlite();
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+await db.exec(`create schema auth; create role anon; create role authenticated; create role service_role;
+create function auth.role() returns text language sql stable as $$select current_setting('test.role',true)$$;
+create table account_recheck_jobs(id uuid primary key, company text,business_date date,status text,revision integer,selected_file_ids uuid[],worker_execution_id text);
+create table audit_log(id bigint generated always as identity,at timestamptz default now(),actor text,action text,entity text,target text,company text,detail text,meta jsonb);
+create function finish_account_recheck(p_id uuid,p_revision integer,p_result jsonb,p_error text) returns account_recheck_jobs language plpgsql as $$
+declare q account_recheck_jobs;begin
+select * into strict q from account_recheck_jobs where id=p_id for update;
+if q.status<>'running' or q.revision<>p_revision then raise exception 'stale request';end if;
+update account_recheck_jobs set status=case when p_error is null then 'ready' else 'failed' end,revision=revision+1 where id=p_id returning * into q;return q;end$$;
+create function account_recheck_worker_envelope(q account_recheck_jobs) returns jsonb language sql as $$select to_jsonb(q)$$;
+create function worker_failure_context(p_company text,p_date date) returns jsonb language sql as $$select meta from audit_log where company=p_company and action='worker_failure_verified' and meta->>'business_date'=p_date::text order by at desc,id desc limit 1$$;
+insert into account_recheck_jobs values('${id(1)}','UR9','2026-10-16','running',2,array['${id(2)}'::uuid],'test-only');
+select set_config('test.role','authenticated',false);`);
+const patch=fs.readFileSync('supabase/20261017_manual_parse_failure_receipts.sql','utf8');
+await db.exec(patch);await db.exec(patch);
+await assert.rejects(db.query("select finish_account_recheck_compact($1,2,'{}','failed')",[id(1)]),/Worker only/);
+assert.equal((await db.query('select count(*) n from audit_log')).rows[0].n,0);
+await db.exec("select set_config('test.role','service_role',false)");
+const payload={source_files:[{id:id(2),file_name:'statement-test.pdf',parsed:false,row_count:71,parse_error:'24 unread lines',records:[{private:'must not persist'}]},{id:id(3),file_name:'out-of-scope.csv',parsed:true}]};
+await db.query("select finish_account_recheck_compact($1,2,$2,'statement-test.pdf: 24 unread lines')",[id(1),JSON.stringify(payload)]);
+const row=(await db.query('select * from audit_log')).rows[0];
+assert.equal(row.meta.source_receipts.length,1);assert.equal(row.meta.source_receipts[0].row_count,71);
+assert.equal(row.meta.source_receipts[0].parsed,false);assert.equal(row.meta.source_receipts[0].records,undefined);
+assert.equal(row.meta.cases_changed,0);assert.equal(row.meta.source_amounts_changed,0);
+assert.equal((await db.query("select worker_failure_context('UR9','2026-10-16') v")).rows[0].v.message,'statement-test.pdf: 24 unread lines');
+await assert.rejects(db.query("select finish_account_recheck_compact($1,2,$2,'failed')",[id(1),JSON.stringify(payload)]),/stale request/);
+assert.equal((await db.query('select count(*) n from audit_log')).rows[0].n,1,'no duplicate receipt on stale retries');
+assert.equal((await db.query("select worker_failure_context('OTHER','2026-10-16') v")).rows[0].v,null);
+console.log('PASS manual parse receipts: service-only, original revision gates, immutable history, scoped metadata, no raw rows, stale retry rejected.');
+await db.close();
