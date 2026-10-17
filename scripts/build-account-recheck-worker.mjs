@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {patchScbReview} from './patch-scb-visual-review-worker.mjs';
 const require=createRequire(import.meta.url);
 const {qualityFailureMessage}=require('./worker-parse-receipt.cjs');
 const base=JSON.parse(await fs.readFile(new URL('../n8n/audit-headless-worker.json',import.meta.url),'utf8'));
@@ -53,7 +54,8 @@ connections[webhook.name]={main:[[{node:claim.name,type:'main',index:0}]]};
 connections[claim.name]={main:[[{node:nodes[0].name,type:'main',index:0}]]};
 connections[calculate.name]={main:[[{node:finish.name,type:'main',index:0}]]};
 const workflow={name:'Audit — Manual account recheck (no case closure)',active:false,nodes:[webhook,claim,...nodes,finish],connections,settings:{executionOrder:'v1',executionTimeout:1500,saveDataSuccessExecution:'none',saveDataErrorExecution:'none',...(process.env.ACCOUNT_RECHECK_ERROR_WORKFLOW_ID?{errorWorkflow:process.env.ACCOUNT_RECHECK_ERROR_WORKFLOW_ID}:{})}};
-await fs.writeFile(new URL('../n8n/audit-account-recheck.json',import.meta.url),JSON.stringify(workflow,null,2)+'\n');
+const reviewedWorkflow=patchScbReview(workflow,await fs.readFile(new URL('../scb-visual-review.js',import.meta.url),'utf8'));
+await fs.writeFile(new URL('../n8n/audit-account-recheck.json',import.meta.url),JSON.stringify(reviewedWorkflow,null,2)+'\n');
 const failure=structuredClone(claim);failure.id='fail-manual-recheck';failure.name='Supabase: จบงานตรวจซ้ำที่ล้มเหลว';
 failure.parameters.url='={{ $vars.SUPABASE_URL }}/rest/v1/rpc/fail_account_recheck_execution';
 failure.parameters.jsonBody='={{ JSON.stringify({p_execution_id:String($json.execution?.id||""),p_error:"Worker ล้มเหลว กรุณาตรวจ execution ID ใน n8n ก่อนลองใหม่"}) }}';
