@@ -5,7 +5,7 @@
 let calls=0;
 document.querySelector('#open').onclick=()=>ManualPrimary.open('synthetic-only',{
 actor:()=> 'test-only',role:()=> 'lead',withCases:true,
-preview:async()=>{if(calls++)await new Promise(r=>setTimeout(r,2200));return {company:'FR8',date:'2026-10-16',account:'ALL',direction:'all',allowed:true,file_count:10,after:{stm_count:4951,bo_count:4957,matched:4937,exception_count:34},token:'synthetic-only'}},
+preview:async()=>{if(calls++)await new Promise(r=>setTimeout(r,2200));return {company:'FR8',date:'2026-10-16',account:'ALL',direction:'all',allowed:true,file_count:2,after:{stm_count:5,bo_count:6,matched:4,exception_count:2},token:'synthetic-only'}},
 accept:async()=>{document.querySelector('#status').textContent='บันทึกเฉพาะตัวจำลอง';},onAccepted:()=>{}
 });
 </script></body></html>
