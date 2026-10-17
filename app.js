@@ -3612,17 +3612,18 @@ VIEWS.exceptions = (root) => {
         }
         if (action === 'clarify') {
           if (!can('request_clarify')) return deny('ส่งชี้แจง');
-          if (!['open', 'answered'].includes(row.status)) return toast('สถานะนี้ส่งชี้แจงไม่ได้ หรือส่งแล้ว กรุณารีเฟรช', 'warn');
+          if (!['open', 'answered', 'pending_next_day'].includes(row.status)) return toast('สถานะนี้ส่งชี้แจงไม่ได้ หรือส่งแล้ว กรุณารีเฟรช', 'warn');
           openModal('ส่งขอชี้แจง', `<p>${h(row.code)} · ${h(row.company)} · ${h(row.business_date)}</p><p>ส่งเข้าเป็นงานในชีทของผู้ชี้แจงบริษัท ${h(row.company)} โดยใช้เคสเดิม ไม่ส่งข้อความภายนอก</p><p id="inlineClarifyResult" role="status"></p>`, '<button id="inlineClarifyCancel" class="ghost-button">ยกเลิก</button><button id="inlineClarifyConfirm" class="primary-button">ยืนยันส่งขอชี้แจง</button>');
           $('#inlineClarifyCancel').onclick = closeModal;
           $('#inlineClarifyConfirm').onclick = async (event) => {
             const button = event.currentTarget;
             button.disabled = true;
+            $('#inlineClarifyResult').textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
             try {
               const requestedAt = new Date().toISOString();
               await Sb.requestClarification(row.id, row.status, {requested_at: requestedAt, requested_by: Sb.authUser()?.id, updated_at: requestedAt});
             } catch (error) {
-              $('#inlineClarifyResult').textContent = 'ยังยืนยันการส่งไม่ได้ กรุณารีเฟรชสถานะก่อนลองใหม่: ' + error.message;
+              $('#inlineClarifyResult').textContent = error.message;
               return;
             }
             closeModal();
@@ -4599,6 +4600,11 @@ async function openException(id, options = {}) {
   $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
   if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
   $("#btnClarify").disabled = !["open", "answered", "pending_next_day"].includes(e.status);
+  const clarificationSendStatus = document.createElement('p');
+  clarificationSendStatus.id = 'clarificationSendStatus';
+  clarificationSendStatus.setAttribute('role','status');
+  clarificationSendStatus.setAttribute('aria-live','polite');
+  $('#btnClarify').parentElement.after(clarificationSendStatus);
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
@@ -4610,6 +4616,8 @@ async function openException(id, options = {}) {
     clarificationRequestFlights.add(requestKey);
     const button = event.currentTarget;
     button.disabled = true;
+    const sendStatus = $('#clarificationSendStatus');
+    if(sendStatus)sendStatus.textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
     try {
       const previousStatus=e.status;
       let confirmedRequest;
@@ -4630,8 +4638,11 @@ async function openException(id, options = {}) {
       toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
       await showClarificationRequestReceipt(e,context);
     } catch (err) {
-      toast("ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนลองใหม่: " + err.message, "warn");
-      button.disabled = false;
+      const message = err.message.startsWith('ยังยืนยันการส่งไม่ได้') ? err.message : 'ยังยืนยันการส่งไม่ได้ — กรุณาเปิดเคสล่าสุดก่อนลองใหม่: ' + err.message;
+      if(sendStatus)sendStatus.textContent = message;
+      toast(message, "warn");
+      // Keep this attempt locked until a fresh case is loaded. A timeout can
+      // happen after commit, so an automatic or immediate retry is unsafe.
     } finally {
       clarificationRequestFlights.delete(requestKey);
     }

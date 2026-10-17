@@ -1148,19 +1148,37 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     });
 
   async function requestClarification(id, previousStatus, body) {
+    // A linked evidence file is not a request receipt. Never replay this write
+    // after an ambiguous network outcome; only the user can choose to retry.
+    const verify = row => row && row.id === id && row.status === 'clarifying'
+      && Number.isFinite(Date.parse(row.requested_at)) && !!row.requested_by;
+    let saved;
+    try {
     if (previousStatus === 'pending_next_day') {
       const result = await rpc('request_waiting_cross_day_clarification', {p_case:id});
-      if (!result || result.id !== id || result.status !== 'clarifying') throw new Error('ยังยืนยันคำขอไม่ได้ กรุณาเปิดเคสล่าสุด');
-      return result;
-    }
+      if (!verify(result)) throw new Error('ผลตอบกลับไม่มีหลักฐานการส่งครบถ้วน');
+      saved = result;
+    } else {
     if (!["open", "answered"].includes(previousStatus)) throw new Error("สถานะนี้ส่งรอผู้ชี้แจงไม่ได้");
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify({ ...body, status: "clarifying" }),
     });
-    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].status !== "clarifying") throw new Error("สถานะเปลี่ยนแล้วหรือไม่มีสิทธิ์แก้เคส กรุณาโหลดใหม่");
-    return rows[0];
+    if (!Array.isArray(rows) || rows.length !== 1 || !verify(rows[0])) throw new Error("สถานะเปลี่ยนแล้ว ไม่มีสิทธิ์ หรือผลตอบกลับไม่มีหลักฐานการส่งครบถ้วน");
+    saved = rows[0];
+    }
+    // Read through the authenticated, ID-scoped endpoint, not local overrides.
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&select=id,status,company,requested_at,requested_by&limit=1`, {recoverRead:true});
+    const receipt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    if (!verify(receipt) || receipt.requested_by !== saved.requested_by
+        || Date.parse(receipt.requested_at) !== Date.parse(saved.requested_at)) {
+      throw new Error('อ่านกลับไม่ตรงกับคำขอที่บันทึก หรือสถานะเคสเปลี่ยนระหว่างส่ง');
+    }
+    return {...saved, ...receipt};
+    } catch (error) {
+      throw new Error('ยังยืนยันการส่งไม่ได้ — อย่ากดส่งซ้ำ ให้โหลดเคสล่าสุดเพื่อตรวจสถานะก่อน: ' + error.message);
+    }
   }
 
   async function manualPairCandidates(company,date,type) {

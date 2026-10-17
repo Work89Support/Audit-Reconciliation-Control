@@ -1,0 +1,30 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ส่งชี้แจง · ทดสอบจำลอง</title><link rel="stylesheet" href="../fonts/kanit.css"><link rel="stylesheet" href="../styles.css"><body style="padding:30px;background:#edf4fc"><main style="max-width:1100px;margin:auto"><h1>ส่งชี้แจงส่วนกลาง · ทั้ง 9 บริษัท</h1><p>ทดสอบจำลองบนเครื่อง · ไม่เชื่อมฐานข้อมูล ไม่ส่งคำขอหรือเปลี่ยนเคสจริง</p><section class="panel" style="padding:24px"><table><thead><tr><th>บริษัท</th><th>รันมือ / ระบบ · เคสเปิด / ตอบแล้ว / ข้ามวัน</th><th>ผลตรวจ</th></tr></thead><tbody id="matrix"></tbody></table></section><section class="panel" style="padding:24px;margin-top:18px"><h2>ทดสอบข้อผิดพลาดและการคงร่าง</h2><p>FR8 · AUTOPEER · 16 ต.ค. 2026 · หน้า 3</p><select id="mode"><option value="timeout">เชื่อมต่อหมดเวลา (จำลอง)</option><option value="missing">อ่านกลับไม่พบคำขอ</option><option value="ok">อ่านกลับยืนยันครบ</option></select><textarea id="responseText">ร่างคำตอบเดิม — ต้องไม่หาย</textarea><textarea id="noteText" hidden></textarea><p><button class="primary-button" id="btnClarify">ทดลองส่ง (จำลอง)</button> <button id="reset" class="ghost-button">โหลดเคสจำลองล่าสุด</button></p><p id="clarificationSendStatus" role="status"></p><p id="result"></p></section><div id="viewRoot"></div><div id="modal"></div></main><script>
+const $=s=>document.querySelector(s),h=String,caseUiKey=e=>e.dbId,can=()=>true,canAccessCompany=()=>true;
+const e={id:'fixture',dbId:'fixture',company:'FR8',date:'2026-10-16',status:'pending_next_day',hasEvidence:true},id=e.id,DB={exceptions:[e]};
+const state={dataset:'production',route:'exceptions',page:3,filters:{company:'FR8',date:'2026-10-16'},exFilter:{status:'open'}};
+const filteredExceptions=()=>[],recordCaseUiResult=()=>{},saveOverride=()=>{},logAction=()=>{},deny=()=>{},closeDrawer=()=>{},render=()=>{},openException=()=>{};
+const CaseClosure={openSubmit:()=>{throw Error('ห้ามปิดเคส');}},toast=t=>$('#result').textContent=t;
+let mode='ok',receipt;
+function write(){if(mode==='timeout')throw Error('Supabase timeout (จำลอง)');return receipt;}
+async function rpc(){return write();}
+async function json(path,opts){if(opts?.method==='PATCH')return [write()];return mode==='missing'?[]:[receipt];}
+const Sb={signedIn:()=>true,authUser:()=>({id:'fixture-actor'})};
+function closeModal(){$('#modal').innerHTML='';}
+function openModal(title){$('#modal').innerHTML=`<h2>${title}</h2><button id="requestReceiptReturn">กลับ</button><button id="requestReceiptNext">ถัดไป</button><p id="requestReceiptStatus"></p>`;}
+(async()=>{
+ const source=await(await fetch('../supabase.js')).text();
+ eval(source.slice(source.indexOf('async function requestClarification('),source.indexOf('async function manualPairCandidates('))+';Sb.requestClarification=requestClarification;');
+ for(const company of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9']){
+ let checks=0;
+ for(const origin of ['manual','system'])for(const status of ['open','answered','pending_next_day'])for(const scenario of ['ok','timeout','missing']){
+ mode=scenario;receipt={id:'fixture',company,status:'clarifying',requested_at:'2026-10-17T03:00:00Z',requested_by:'fixture-actor'};
+ try{await Sb.requestClarification('fixture',status,receipt);if(mode!=='ok')throw Error('false success');}catch(error){if(mode==='ok'||!error.message.includes('ยังยืนยันการส่งไม่ได้'))throw error;}checks++;
+ }
+ $('#matrix').insertAdjacentHTML('beforeend',`<tr><td>${company}</td><td>${checks} เงื่อนไข · สำเร็จ / timeout / ไม่พบคำขอ</td><td>ผ่าน ✓</td></tr>`);
+ }
+ const app=await(await fetch('../app.js')).text(),start=app.indexOf('$("#btnClarify").addEventListener("click", async (event) => {');
+ eval(app.slice(app.indexOf('const clarificationRequestFlights'),app.indexOf('function showCaseSubmissionReceipt('))+app.slice(start,app.indexOf("  $('#responseText').addEventListener",start)));
+ const send=Sb.requestClarification;Sb.requestClarification=async(...args)=>{mode=$('#mode').value;receipt={id:e.dbId,company:e.company,status:'clarifying',requested_at:'2026-10-17T03:00:00Z',requested_by:'fixture-actor'};return send(...args);};
+ $('#reset').onclick=()=>{Object.assign(e,{status:'pending_next_day',requestedAt:null,respondedAt:null});$('#btnClarify').disabled=false;$('#clarificationSendStatus').textContent='โหลดเคสจำลองล่าสุดแล้ว — ยังไม่ส่ง';$('#result').textContent='';};
+})().catch(err=>$('#result').textContent='ไม่ผ่าน: '+err.message);
+</script></body></html>
