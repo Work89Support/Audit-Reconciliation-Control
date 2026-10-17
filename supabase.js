@@ -1244,6 +1244,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
       rows.push(...page);if(page.length<200)return rows;
     }
   }
+  const pendingDocumentClosurePreview=id=>rpc('pending_document_closure_preview',{p_case:id});
   const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideCaseClosure=body=>verifyDecision('/rest/v1/rpc/decide_case_closure',body,caseClosureRequest);
   const approveOwnDocumentClosure=async body=>{
@@ -1630,7 +1631,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
-    pendingCaseClosures,caseClosureRequest,caseClosureHistory,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
+    pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,

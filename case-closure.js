@@ -172,14 +172,28 @@ const CaseClosure=(()=>{
   async function openSubmit(e,initialOutcome='no_loss'){
     if(state.dataset!=='production'||!auditable())return toast('เฉพาะ Audit ในระบบจริงส่งผลตรวจให้หัวหน้าได้','warn');
     const fresh=await Sb.exceptionDetail(e.dbId);
-    if(!fresh||!['open','clarifying','answered'].includes(fresh.status)||fresh.manual_pair_id||fresh.case_closure_request_id)return toast('มีคำขออยู่แล้วหรือสถานะเปลี่ยน กรุณาโหลดเคสใหม่','warn');
+    if(!fresh)return toast('ไม่พบเคสหรือไม่มีสิทธิ์อ่านข้อมูลล่าสุด','warn');
+    if(fresh.manual_pair_id||fresh.case_closure_request_id)return toast('เคสมีคำขอปิดหรือจับคู่ค้างอยู่ ให้ตรวจคำขอเดิมก่อน','warn');
+    const pendingCrossDay=fresh.status==='pending_next_day'&&fresh.ex_type==='cross_day';
+    if(pendingCrossDay){
+      if(!['lead','admin'].includes(state.role))return toast('เคสรอข้ามวันต้องให้หัวหน้า/Admin ตรวจหลักฐานและผลยอดก่อนปิด','warn');
+      if(initialOutcome!=='no_loss')return toast('เคสรอข้ามวันยังไม่สรุปเป็นความเสียหาย ต้องตรวจผลยอดและหลักฐานก่อน','warn');
+      const preview=await Sb.pendingDocumentClosurePreview(e.dbId);
+      if(!preview?.allowed)return toast('ยังทบทวนปิดเคสข้ามวันไม่ได้: '+(preview?.problems||['โหลดเกณฑ์ล่าสุดไม่สำเร็จ']).join(' · '),'warn');
+    }else if(!['open','clarifying','answered'].includes(fresh.status))return toast('สถานะล่าสุดคือ '+fresh.status+' — ไม่ใช่เคสที่เปิดทบทวนปิดได้','warn');
     const blockedReason=assistantCloseBlock(fresh),direct=directCloser()&&!blockedReason;
     const id=crypto.randomUUID();let sent=false;
-    openModal(direct?'ปิดเคส':'Audit ตรวจผลและส่งหัวหน้ารอปิดเคส',`<p>${h(caseLabel(e))}</p><p>${direct?'ตรวจหลักฐานและยืนยันผลเพื่อปิดเคสทันที ไม่ส่งเข้าคิวต่อ':'มีเอกสารแล้ว: ตรวจและส่งหัวหน้า ไม่ส่งงานให้ผู้ชี้แจงบริษัทซ้ำ'}</p><label>ผลตรวจ<select id="closureOutcome"><option value="no_loss">ไม่มีความเสียหาย — ปิด 0 บาท</option><option value="damage">ยืนยันความเสียหายจริง</option></select></label><div id="closureLossFields" hidden><label>ยอดเสียหายจริง (บาท)<input type="number" step="0.01" min="0.01" id="closureLossAmount"></label><label>ประเภทความเสียหาย<select id="closureLossCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([k])=>!['unclassified','system'].includes(k)).map(([k,v])=>`<option value="${h(k)}">${h(v)}</option>`).join('')}</select></label><p>ไม่มีเอกสาร: ต้องส่งขอชี้แจงและครบ SLA ตามบริษัทก่อนเสนอ แต่หมด SLA อย่างเดียวไม่ได้แปลว่าพิสูจน์ความเสียหายแล้ว</p></div><label>${direct?'เหตุผลปิดเคส / หลักฐานอ้างอิง (ไม่บังคับ ไม่เกิน 2,000 ตัวอักษร)':'ผลตรวจ Audit / หลักฐานอ้างอิง (10–2,000 ตัวอักษร)'}<textarea id="closureAuditReason" maxlength="2000">${h((e.notes||[]).map(n=>n.text).filter(Boolean).join('\n')||e.resolutionNote||'')}</textarea></label><label><input type="checkbox" id="closureAuditChecked">ตรวจเอกสารที่เกี่ยวกับเคสนี้ และยืนยันผลยอดจริงแล้ว ไม่ได้สรุปจากยอดต่างหรือหมด SLA อย่างเดียว</label>`, `<button class="ghost-button" id="closureCancel">ยกเลิก</button><button class="primary-button" id="closureSend">${direct?'ปิดเคส':'ส่งหัวหน้ารอปิดเคส'}</button>`);
+    openModal(direct?'ปิดเคส':'Audit ตรวจผลและส่งหัวหน้ารอปิดเคส',`<p>${h(caseLabel(e))}</p><p>${direct?'ตรวจหลักฐานและยืนยันผลเพื่อปิดเคสทันที ไม่ส่งเข้าคิวต่อ':'มีเอกสารแล้ว: ตรวจและส่งหัวหน้า ไม่ส่งงานให้ผู้ชี้แจงบริษัทซ้ำ'}</p><label>ผลตรวจ<select id="closureOutcome"><option value="no_loss">ไม่มีความเสียหาย — ปิด 0 บาท</option><option value="damage">ยืนยันความเสียหายจริง</option></select></label><div id="closureLossFields" hidden><label>ยอดเสียหายจริง (บาท)<input type="number" step="0.01" min="0.01" id="closureLossAmount"></label><label>ประเภทความเสียหาย<select id="closureLossCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([k])=>!['unclassified','system'].includes(k)).map(([k,v])=>`<option value="${h(k)}">${h(v)}</option>`).join('')}</select></label><p>ไม่มีเอกสาร: ต้องส่งขอชี้แจงและครบ SLA ตามบริษัทก่อนเสนอ แต่หมด SLA อย่างเดียวไม่ได้แปลว่าพิสูจน์ความเสียหายแล้ว</p></div><label>${direct&&!pendingCrossDay?'เหตุผลปิดเคส / หลักฐานอ้างอิง (ไม่บังคับ ไม่เกิน 2,000 ตัวอักษร)':'ผลตรวจ Audit / หลักฐานอ้างอิง (10–2,000 ตัวอักษร)'}<textarea id="closureAuditReason" maxlength="2000">${h((e.notes||[]).map(n=>n.text).filter(Boolean).join('\n')||e.resolutionNote||'')}</textarea></label><label><input type="checkbox" id="closureAuditChecked">ตรวจเอกสารที่เกี่ยวกับเคสนี้ และยืนยันผลยอดจริงแล้ว ไม่ได้สรุปจากยอดต่างหรือหมด SLA อย่างเดียว</label>`, `<button class="ghost-button" id="closureCancel">ยกเลิก</button><button class="primary-button" id="closureSend">${direct?'ปิดเคส':'ส่งหัวหน้ารอปิดเคส'}</button>`);
     $('#closureCancel').onclick=closeModal;
     if(blockedReason){
       const hint=document.createElement('p');hint.setAttribute('role','status');
       hint.textContent='ผู้ช่วย Audit ปิดเคสนี้เองไม่ได้: '+blockedReason+' — ตรวจเอกสารแล้วส่งหัวหน้าอนุมัติ หากยังไม่มีเอกสารให้ส่งผู้ชี้แจงก่อน';
+      $('#closureAuditReason').parentElement.before(hint);
+    }
+    if(pendingCrossDay){
+      $('#closureOutcome').querySelector('option[value="damage"]').disabled=true;
+      const hint=document.createElement('p');hint.setAttribute('role','status');
+      hint.textContent='เคสรอข้ามวัน: การแนบไฟล์ไม่ใช่การยืนยันยอดหรือคู่รายการ ต้องอ่านเนื้อหาและแถวอ้างอิง ยืนยันผลว่าไม่มีความเสียหาย และระบุเหตุผลอย่างน้อย 10 ตัวอักษร ก่อนกดยืนยันปิดจริง';
       $('#closureAuditReason').parentElement.before(hint);
     }
     if(state.role==='audit_assistant')$('#closureOutcome').querySelector('option[value="damage"]').disabled=true;
@@ -192,7 +206,7 @@ const CaseClosure=(()=>{
     if(initialOutcome==='damage'){$('#closureOutcome').value='damage';$('#closureOutcome').onchange();}
     $('#closureSend').onclick=async event=>{
       const outcome=$('#closureOutcome').value,raw=$('#closureLossAmount').value,enteredReason=$('#closureAuditReason').value.trim();
-      const reason=direct&&enteredReason.length<10?'ผู้มีสิทธิ์ตรวจหลักฐานและยืนยันผลปิดเคส'+(enteredReason?' — '+enteredReason:''):enteredReason;
+      const reason=direct&&!pendingCrossDay&&enteredReason.length<10?'ผู้มีสิทธิ์ตรวจหลักฐานและยืนยันผลปิดเคส'+(enteredReason?' — '+enteredReason:''):enteredReason;
       const amount=outcome==='no_loss'?0:Number(raw),category=outcome==='no_loss'?null:$('#closureLossCategory').value;
       if(!$('#closureAuditChecked').checked||reason.length<10||reason.length>2000||!Number.isFinite(amount)||(outcome==='damage'&&(!/^\d+(\.\d{1,2})?$/.test(raw)||amount<=0||!category)))return toast('ตรวจและกรอกผลยอด/เหตุผลให้ครบก่อนส่ง','warn');
       event.target.disabled=true;
@@ -207,7 +221,7 @@ const CaseClosure=(()=>{
   }
   async function mountReview(e,host){
     if(!host)return;
-    if(!e.closureRequestId){host.textContent='เคสนี้ไม่มีคำขอรออนุมัติที่เชื่อมอยู่ กรุณารีเฟรชคิวหรือดูประวัติคำขอ ไม่ใช่ผลอนุมัติล้มเหลว';return;}
+    if(!e.closureRequestId){host.textContent='';return;}
     host.textContent='กำลังโหลดผลตรวจรอหัวหน้า…';
     try{
       const q=await Sb.caseClosureRequest(e.closureRequestId);if(!q)throw Error('ไม่พบคำขอหรือไม่มีสิทธิ์');if(!host.isConnected)return;
