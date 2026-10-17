@@ -20,6 +20,7 @@ for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','
  assert.equal(projected.summary.report_scope_correction_count,3);
  assert.equal(projected.exceptions[0].business_date,date);assert.equal(projected.exceptions[0].customer_details.original_business_date,'2026-10-15');
  assert.equal(projected.exceptions[0].customer_details.bo_timing_annotations[0].original_warning.bank_amount,100,'original warning retained separately');
+ assert.deepEqual(projected.exceptions[0].customer_details.bo_timing_annotations[0].source_rows,records[0].customer_details.source_rows,'annotation links to the genuine physical row, not the empty original warning');
  assert.deepEqual((await db.query('select manual_primary_report_projection($1) p',[JSON.stringify(projected)])).rows[0].p,projected,'projection idempotent');
  await db.query('insert into test_manifest values($1,$2)',[company,JSON.stringify(files)]);
  await db.query("insert into daily_recon_jobs(id,company,business_date,status) values($1,$2,$3,'error')",[run,company,date]);

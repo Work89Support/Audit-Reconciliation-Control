@@ -36,7 +36,7 @@ returns jsonb language sql immutable set search_path=public,pg_temp as $$
  select idx,case when exists(select 1 from links where source_index=idx)
  then jsonb_set(r,'{customer_details}',coalesce(r->'customer_details','{}')||jsonb_build_object('bo_timing_annotations',
  (select jsonb_agg(jsonb_build_object('original_index',w.idx,'original_warning',w.r,
- 'source_rows',r#>'{customer_details,source_rows}') order by w.idx) from links l join rows w on w.idx=l.warning_index where l.source_index=rows.idx)))
+ 'source_rows',rows.r#>'{customer_details,source_rows}') order by w.idx) from links l join rows w on w.idx=l.warning_index where l.source_index=rows.idx)))
  else r end r from rows where not exists(select 1 from links where warning_index=idx)
  ), scoped as (
  select *,coalesce(r->>'ex_type'='cross_day' and r->>'company'=p_report->>'company'
