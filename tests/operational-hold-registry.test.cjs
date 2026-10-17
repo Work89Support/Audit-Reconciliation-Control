@@ -6,7 +6,7 @@ for(const role of ['lead','monitor','audit_assistant','shift_lead','exec','admin
  let access={role,active:true,companies:[company]},calls=[];
  const h={id:'hold-id',company,business_date:'2026-10-15',account:'TEST',reason:'รอ STM',responsible_role:'Audit'},item={hold_id:h.id,source_ref:'row-1',item_kind:'case',exception_id:'case-id',bo_amount:49};
  const before=JSON.stringify([h,item]);
- const ctx={rpc:async name=>{assert.equal(name,'get_my_access');return access;},json:async(path,options)=>{calls.push(path);assert.equal(options.recoverRead,true);assert.ok(!options.method,'GET only');return path.includes('account_review_hold_items?')?[item]:[h];}};
+ const ctx={rpc:async name=>{if(name==='account_review_hold_continuation_report')return {company,scopes:[],items:[]};assert.equal(name,'get_my_access');return access;},json:async(path,options)=>{calls.push(path);assert.equal(options.recoverRead,true);assert.ok(!options.method,'GET only');return path.includes('account_review_hold_items?')?[item]:[h];}};
  vm.createContext(ctx);vm.runInContext(fn,ctx);
  assert.ok((await ctx.reviewHoldRegistryCompanies()).includes(company));
  const r=await ctx.reviewHoldRegistryReport(company,'2026-10-14','2026-10-31');assert.equal(r.items.length,1);assert.equal(r.items[0].company,company);assert.equal(r.items[0].loss_amount,null);assert.equal(r.items[0].bo_amount,49);assert.equal(JSON.stringify([h,item]),before);
@@ -15,9 +15,9 @@ for(const role of ['lead','monitor','audit_assistant','shift_lead','exec','admin
  access={...access,active:false};await assert.rejects(()=>ctx.reviewHoldRegistryReport(company,'2026-10-14','2026-10-31'),/ไม่มีสิทธิ์/);
 }
 let access={role:'shift_lead',active:true,companies:['FR8']},scopeReads=0;
-const ctx={rpc:async()=>{scopeReads++;return scopeReads>1?{...access,companies:[]}:access;},json:async()=>[]};vm.createContext(ctx);vm.runInContext(fn,ctx);
+const ctx={rpc:async name=>{if(name==='account_review_hold_continuation_report')return {company:'FR8',scopes:[],items:[]};scopeReads++;return scopeReads>1?{...access,companies:[]}:access;},json:async()=>[]};vm.createContext(ctx);vm.runInContext(fn,ctx);
 await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31'),/สิทธิ์บริษัทเปลี่ยน/);
-ctx.rpc=async()=>access;ctx.json=async()=>{throw Error('timeout');};await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31'),/timeout/);
+ctx.rpc=async name=>name==='account_review_hold_continuation_report'?{company:'FR8',scopes:[],items:[]}:access;ctx.json=async()=>{throw Error('timeout');};await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31'),/timeout/);
 ctx.json=async()=>[{id:'foreign',company:'MR9',business_date:'2026-10-15'}];await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31'),/ขอบเขต/);
 let itemPages=0;ctx.json=async(path)=>{if(path.includes('account_review_holds?'))return[{id:'hold',company:'FR8',business_date:'2026-10-15'}];itemPages++;return path.includes('offset=0')?Array.from({length:500},(_,i)=>({hold_id:'hold',source_ref:String(i)})):[{hold_id:'hold',source_ref:'last'}];};
 assert.equal((await ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31')).items.length,501);assert.equal(itemPages,2);

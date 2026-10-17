@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const Hold=require('../account-review-holds.js');
+const scope={id:'continuous',company:'FR8',account:'4311918665',business_date:'2026-10-16',time_from:'00:00:00',time_to:'23:59:59',continuous:true,reason:'รอ STM'};
+Hold.set([scope]);
+for(const date of ['2026-10-16','2026-10-17','2026-10-31','2030-01-01'])assert.equal(Hold.match({company:'FR8',account:'431-191866-5',date}),scope);
+for(const row of [{company:'FR8',account:scope.account,date:'2026-10-15'},{company:'MR9',account:scope.account,date:'2026-10-17'},{company:'FR8',account:'1981674096',date:'2026-10-17'},{company:'FR8',account:scope.account}])assert.equal(Hold.match(row),null);
+Hold.set([{...scope,continuous:false}]);assert.equal(Hold.match({company:'FR8',account:scope.account,date:'2026-10-17'}),null);
+assert.match(Hold.banner(scope),/ไม่มีกำหนดสิ้นสุด/);assert.match(Hold.banner(scope),/มี STM แล้วไม่ปลดพักอัตโนมัติ/);
+assert.doesNotMatch(Hold.banner({...scope,continuous:false}),/ไม่มีกำหนดสิ้นสุด/);
+const source=fs.readFileSync('supabase.js','utf8'),fn=source.slice(source.indexOf('async function reviewHoldRegistryCompanies('),source.indexOf('  const financeActionReport=',source.indexOf('async function reviewHoldRegistryCompanies(')));
+(async()=>{
+ const item={hold_id:scope.id,source_ref:'case-id',company:'FR8',date:'2026-10-17',continuous:true,loss_amount:null,bo_amount:80};
+ let response={company:'FR8',scopes:[scope],items:[item,item]};
+ const ctx={rpc:async name=>name==='get_my_access'?{active:true,role:'shift_lead',companies:['FR8']}:response,json:async()=>[]};vm.createContext(ctx);vm.runInContext(fn,ctx);
+ const report=await ctx.reviewHoldRegistryReport('FR8','2026-10-17','2026-10-31');assert.equal(report.items.length,1);assert.equal(report.items[0].date,'2026-10-17');assert.equal(report.scopes[0].business_date,'2026-10-16');
+ response={...response,items:[{...item,company:'MR9'}]};await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-17','2026-10-31'),/ขอบเขต/);
+ response={...response,items:[{...item,date:'2026-10-16'}]};await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-17','2026-10-31'),/ขอบเขต/);
+ response={...response,items:[{...item,loss_amount:0}]};await assert.rejects(()=>ctx.reviewHoldRegistryReport('FR8','2026-10-17','2026-10-31'),/ขอบเขต/);
+ assert.match(source,/readOnlyCaseRpcs = new Set\([^\n]*account_review_hold_continuation_report/);
+ console.log('PASS continuous hold UI: open-ended account scope, exact boundaries, no automatic release message, future-date report, deduplication, invalid/foreign/loss-zero rejection, read-only recovery.');
+})().catch(e=>{console.error(e);process.exit(1);});

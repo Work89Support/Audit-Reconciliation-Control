@@ -820,7 +820,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
   }
 
-  const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','case_clarification_instructions','case_clarification_history']);
+  const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
@@ -868,8 +868,16 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
         if(page.length<500)break;
       }
     }
+    // Continuous scopes may begin before the selected report range. Read their
+    // current case projection separately, never persist duplicate ledger rows.
+    const continuous=await rpc('account_review_hold_continuation_report',{p_company:company,p_from:from,p_to:to});
+    if(!continuous||continuous.company!==company||!Array.isArray(continuous.items)||!Array.isArray(continuous.scopes)
+      ||continuous.scopes.some(h=>h.company!==company||h.continuous!==true||h.business_date>to)
+      ||continuous.items.some(i=>i.company!==company||i.date<from||i.date>to||i.continuous!==true||i.loss_amount!==null))throw Error('ขอบเขตทะเบียนต่อเนื่องไม่ตรงบริษัท/วันที่');
+    const byHold=new Map(holds.map(h=>[h.id,h])),byItem=new Map(items.map(i=>[i.hold_id+':'+i.source_ref,i]));
+    continuous.scopes.forEach(h=>byHold.set(h.id,h));continuous.items.forEach(i=>byItem.set(i.hold_id+':'+i.source_ref,i));
     if(!(await reviewHoldRegistryCompanies()).includes(company))throw Error('สิทธิ์บริษัทเปลี่ยน กรุณาเปิดทะเบียนใหม่');
-    return {company,scopes:holds,items};
+    return {company,scopes:[...byHold.values()],items:[...byItem.values()].sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.occurred_at).localeCompare(String(b.occurred_at))||String(a.source_ref).localeCompare(String(b.source_ref)))};
   }
   const financeActionReport=(company,to)=>rpc('finance_action_report',{p_company:company,p_to:to});
   const financeActionCase=(company,id)=>rpc('finance_action_case',{p_company:company,p_case:id});

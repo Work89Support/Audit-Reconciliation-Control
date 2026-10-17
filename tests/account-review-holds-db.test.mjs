@@ -47,4 +47,54 @@ assert.equal((await query('select account_review_hold_scopes() r')).r.length,2);
 await db.exec(`reset role;set test.active='false';set role authenticated;`);
 assert.equal((await query('select account_review_hold_scopes() r')).r.length,0);
 console.log('PASS isolated DB: exact scope, 13+143, idempotence, closure/damage guards, RLS/company isolation, report exclusion, original cases unchanged.');
+// Continuous scope: no expiry or automatic release; original rows remain intact.
+await db.exec(`reset role;set test.active='true';set test.uid='${admin}';
+insert into exceptions(company,account,business_date,occurred_at,bo_time,status,code,direction,system_amount,risk_amount) values
+('FR8','4311918665','2026-10-16','08:07:00','08:07:00','open','MANUAL-030','ฝาก',80,80),
+('FR8','431-191866-5','2026-10-17','09:00:00','09:00:00','pending_next_day','SYSTEM-017','ถอน',165,165),
+('MR9','4311918665','2026-10-17','09:00:00','09:00:00','open','OTHER-COMPANY','ถอน',40,40),
+('FR8','1981674096','2026-10-17','09:00:00','09:00:00','open','OTHER-ACCOUNT','ฝาก',20,20);
+create table source_files(id uuid primary key default gen_random_uuid(),company text,parsed boolean,kind text);
+`);
+const fingerprints=async()=>await query(`select
+(select md5(jsonb_agg(to_jsonb(e) order by id)::text) from exceptions e) cases,
+(select md5(jsonb_agg(to_jsonb(i) order by hold_id,source_ref)::text) from account_review_hold_items i) items,
+(select md5(jsonb_agg(to_jsonb(h) order by id)::text) from account_review_holds h where business_date<'2026-10-16') scopes`);
+const protectedBefore=await fingerprints(),continuousSql=await fs.readFile(new URL('../supabase/20261017_continuous_account_review_hold.sql',import.meta.url),'utf8');
+await db.exec(continuousSql);await db.exec(continuousSql);
+assert.deepEqual(await fingerprints(),protectedBefore);
+assert.equal((await query('select count(*)::int n from account_review_holds')).n,3);
+assert.equal((await query('select count(*)::int n from account_review_hold_continuations')).n,1);
+for(const date of ['2026-10-16','2026-10-17','2026-10-31','2030-01-01'])assert.equal((await query(`select account_review_hold_id('FR8','${date}','431-191866-5',null) is not null ok`)).ok,true);
+assert.equal((await query(`select account_review_hold_id('FR8','2026-10-13','4311918665','23:30:00') is null ok`)).ok,true);
+assert.equal((await query(`select account_review_hold_id('FR8','2026-10-14','4311918665','22:59:59') is null ok`)).ok,true);
+assert.equal((await query(`select account_review_hold_id('MR9','2026-10-17','4311918665',null) is null ok`)).ok,true);
+assert.equal((await query(`select account_review_hold_id('FR8','2026-10-17','1981674096',null) is null ok`)).ok,true);
+const manual=(await query(`select id from exceptions where code='MANUAL-030'`)).id;
+for(const code of ['MANUAL-030','SYSTEM-017'])for(const status of ['closed','approved','damage'])await assert.rejects(db.query('update exceptions set status=$1 where code=$2',[status,code]),/พักตรวจ/);
+await assert.rejects(db.query('insert into damages(exception_id) values($1)',[manual]),/ไม่ใช่ความเสียหาย/);
+assert.equal((await query(`select account_review_hold_for_case('${manual}') r`)).r.continuous,true);
+const later=(await query(`select account_review_hold_continuation_report('FR8','2026-10-17','2026-10-31') r`)).r;
+assert.equal(later.scopes.length,1);assert.equal(later.items.length,1);assert.equal(later.items[0].date,'2026-10-17');assert.equal(later.items[0].loss_amount,null);
+assert.equal((await query(`select account_review_hold_report('FR8','2026-10-14','2026-10-17') r`)).r.items.length,158);
+assert.equal((await query(`select finance_case_report('FR8','2026-10-16','2026-10-17') r`)).r.length,1,'continuous cases excluded, other account retained');
+await db.exec(`insert into source_files(company,parsed,kind) values('FR8',true,'stm_pdf');`);
+assert.equal((await query(`select account_review_hold_for_case('${manual}') r`)).r.continuous,true,'STM receipt must never automatically release hold');
+await db.exec(`create or replace function current_app_role() returns text language sql as $$select coalesce(nullif(current_setting('test.role',true),''),case when auth.uid()='${admin}' then 'admin' else 'lead' end)$$;`);
+await db.exec(`insert into user_company_access values('${admin}','FR8');`);
+for(const role of ['lead','monitor','audit_assistant','shift_lead','exec','admin']){
+ await db.exec(`set test.role='${role}';set role authenticated;`);
+ assert.equal((await query(`select account_review_hold_continuation_report('FR8','2026-10-16','2026-10-31') r`)).r.items.length,2);
+ await assert.rejects(db.query(`delete from account_review_hold_continuations`),/permission denied/);
+ await assert.rejects(db.query(`update account_review_holds set time_to='00:00:00'`),/permission denied/);
+ await db.exec('reset role;');
+}
+await db.exec(`set test.role='lead';set test.uid='${lead}';set role authenticated;`);
+assert.equal((await query('select count(*)::int n from account_review_hold_continuations')).n,0);
+await assert.rejects(db.query(`select account_review_hold_continuation_report('FR8','2026-10-16','2026-10-17')`),/ไม่มีสิทธิ์/);
+await db.exec(`reset role;set test.uid='${admin}';set test.active='false';set role authenticated;`);
+await assert.rejects(db.query(`select account_review_hold_continuation_report('FR8','2026-10-16','2026-10-17')`),/ไม่มีสิทธิ์/);
+await db.exec(`reset role;set test.active='true';`);
+assert.deepEqual(await fingerprints(),protectedBefore);
+console.log('PASS continuous hold: retry-safe one scope; all future dates/manual/system/pending cases; exact account/company; original ledger/cases/amounts unchanged; no damage/closure; no automatic STM release; six-role read isolation and no release/write grants.');
 await db.close();

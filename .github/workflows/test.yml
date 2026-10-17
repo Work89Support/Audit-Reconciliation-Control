@@ -30,7 +30,7 @@ jobs:
       - name: Verify all-role evidence checklist
         run: node tests/case-evidence-checklist.test.cjs
       - name: Verify suspended-account hold scope and report distinction
-        run: node --test tests/account-review-holds.test.cjs
+        run: node --test tests/account-review-holds.test.cjs && node tests/continuous-account-review-hold.test.cjs
       - name: Verify AZPAY source time and cross-day display
         run: node tests/azpay-source-cross-day.test.cjs
       - name: Verify queue auto refresh and draft protection
