@@ -33,16 +33,22 @@ await db.exec('alter table manual_primary_case_items enable row level security;c
 const migration=fs.readFileSync('supabase/20261017_manual_primary_scoped_queue.sql','utf8');
 assert.doesNotMatch(migration,/security definer|update public|insert into|delete from|alter policy/i);
 await db.exec(migration);await db.exec(migration);
+await db.exec('alter table exceptions add column code text,add column bank text,add column account text,add column direction text,add column member_code text,add column ex_type text,add column type_name text,add column employee text,add column cause text;');
+const searchMigration=fs.readFileSync('supabase/20261017_manual_current_case_search.sql','utf8');
+await db.exec(searchMigration);await db.exec(searchMigration);
 const fingerprint=async()=>JSON.stringify((await db.query(`select (select jsonb_agg(to_jsonb(e) order by id) from exceptions e) cases,(select jsonb_agg(to_jsonb(p) order by id) from manual_primary_results p) primaries,(select jsonb_agg(to_jsonb(h)) from account_review_holds h) holds`)).rows);
 const before=await fingerprint();
 const actor=async n=>{await db.exec('reset role');await db.query("select set_config('test.actor',$1,false)",[id(n)]);await db.exec('set role authenticated');};
 const read=async(c='ALL',offset=0,limit=1000)=>(await db.query("select * from audit_current_cases_scoped('2026-10-16','2026-10-16',$1,$2,$3)",[c,limit,offset])).rows;
 await actor(1);let rows=await read();assert.equal(rows.length,27);assert.equal(new Set(rows.map(r=>r.id)).size,27);
 assert.equal(rows.filter(r=>r.requested_at&&r.status==='clarifying').length,9,'all nine manual sent cases reach the responder input');
+for(const c of companies){const found=(await db.query("select * from audit_search_current_cases_scoped($1,'2026-10-16','2026-10-16','ALL')",[c])).rows;assert.equal(found.length,3,'manual search '+c);}
+assert.equal((await db.query("select * from audit_search_current_cases_scoped('historical','2026-10-16','2026-10-16','ALL')")).rows.length,0);
 for(const c of companies)assert.equal((await read(c)).length,3,c);
 const pages=[];for(let offset=0;offset<27;offset+=4)pages.push(...await read('ALL',offset,4));assert.deepEqual(pages.map(r=>r.id),rows.map(r=>r.id));
 assert.equal((await db.query("select * from audit_current_cases_scoped('2026-10-15','2026-10-15','ALL')")).rows.length,0);
 await actor(2);assert.equal((await read()).length,3);assert.equal((await read('PS8')).length,0,'no cross-company access');
+assert.equal((await db.query("select * from audit_search_current_cases_scoped('PS8','2026-10-16','2026-10-16','ALL')")).rows.length,0,'search must keep RLS');
 await actor(3);await assert.rejects(read(),/Active authenticated/);
 await db.exec('reset role;set role anon');await assert.rejects(read(),/permission denied/);
 await db.exec('reset role');assert.equal(await fingerprint(),before,'reads preserve cases, amounts, primaries and holds');

@@ -723,21 +723,18 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   async function searchExceptions({ term, from, to, company, limit = 1000 } = {}) {
     const clean = String(term || "").trim().replace(/[,*()]/g, " ").replace(/\s+/g, " ");
     if (!clean) return [];
-    // Keep the server-side search on compact columns. Searching the large raw
-    // JSON/text evidence fields with a leading wildcard regularly exceeds the
-    // database statement timeout. The client still searches those raw fields
-    // in the rows it has already loaded.
-    const fields = ["code", "company", "bank", "account", "direction", "member_code", "ex_type", "type_name", "employee", "cause"];
-    const or = `(${fields.map((field) => `${field}.ilike.*${clean}*`).join(",")})`;
-    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
-    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
-    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
-    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
-    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
-    if (!runIds.length) return [];
-    const filters = ["select=*", `run_id=in.(${runIds.join(",")})`, "superseded_by_exception_id=is.null", "order=business_date.desc,occurred_at.desc", `limit=${limit}`, `or=${encodeURIComponent(or)}`];
-    return json(`/rest/v1/exceptions?${filters.join("&")}`);
+    // Search the same current-primary registry as the list and next-case
+    // queue. No dependency on a successful system run; no history/raw search.
+    const rows = [], pageSize = 1000;
+    for (let offset = 0; offset < limit; offset += pageSize) {
+      const page = await json('/rest/v1/rpc/audit_search_current_cases_scoped?select=*',
+        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          p_term:clean.slice(0,200),p_from:from || null,p_to:to || null,p_company:company || 'ALL',
+          p_limit:Math.min(pageSize,limit-offset),p_offset:offset})});
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
   }
 
   /* โหลดรายละเอียดหนักเฉพาะตอนผู้ตรวจเปิดเคส ไม่ดึง raw evidence ทุกแถวในหน้ารวม */
