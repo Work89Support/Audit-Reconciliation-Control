@@ -52,6 +52,8 @@ jobs:
           node tests/clarify-open-refresh-race.test.cjs
           node tests/clarify-company-navigation.test.cjs
           node tests/manual-primary-scoped-queue-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/clarification-return-ui.test.cjs
+          node tests/clarification-return-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/pending-document-closure-ui.test.cjs
           node tests/pending-document-closure-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/selected-file-primary-case-guard.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
@@ -72,3 +74,4 @@ jobs:
           node tests/password-accounts-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify confirmed damage and PM payout guards
         run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs
+

@@ -1459,6 +1459,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
 
+  const returnClarification=body=>rpc('return_case_for_clarification',body);
   const clarificationHistory=id=>rpc('case_clarification_history',{p_case:id});
   const submitClarificationWithFile=(id,response,fileId,status,previousFile)=>rpc('submit_case_clarification',{
     p_case:id,p_response:response,p_file:fileId||null,p_previous_status:status,p_previous_file:previousFile||null,
@@ -1714,6 +1715,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     post,
     patch,
     requestClarification,
+    returnClarification,
     submitClarification,
     clarificationHistory,
     submitClarificationWithFile,
@@ -1731,3 +1733,4 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
 })();
 
 if (typeof window !== "undefined") window.Sb = Sb;
+

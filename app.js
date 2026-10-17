@@ -4143,6 +4143,15 @@ async function loadExceptionSupport(e, options = {}) {
   }
 }
 
+function clarificationReturnCommitted(id) {
+  const e=DB.exceptions.find(row=>row.dbId===id);if(e)e.status='clarifying';
+  if(responderQueueCache){
+    responderQueueCache.rows.forEach(row=>{if(row.id===id)row.status='clarifying';});
+    responderQueueCache.at=0;
+  }
+  $('#viewRoot')?.auditQueueUpdateInPlace?.();
+  renderNav();
+}
 async function openEvidenceRelatedCase(id, options = {}) {
   const actor=Sb.authUser()?.id,role=state.role,route=state.route;
   const row = await Sb.exceptionDetail(id);
@@ -4402,7 +4411,7 @@ async function openException(id, options = {}) {
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
       <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากยอดต่างเล็กน้อยและไม่เสียหาย ให้ใช้ “ตรวจยอดต่าง / จับคู่เอง” ระบุเหตุผลและตรวจหลักฐาน ไม่ต้องบันทึกความเสียหายเพื่อให้ผ่านเช็กลิสต์</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button><button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "ปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "ปิดเคส" : "ยังปิดไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
       <div id="caseClosureReview"></div>
       ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?`<button class="primary-button" id="btnSendClosure">${can('approve')?'ปิดเคส':'Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส'}</button>`:''}
@@ -4419,6 +4428,7 @@ async function openException(id, options = {}) {
   AuditUi.open(drawer);
 
   $("#drawerClose").addEventListener("click", closeDrawer);
+  $('#btnReturnClarification')?.addEventListener('click',()=>ClarificationReturn.open(e).catch(err=>toast(err.message,'warn')));
   $('#caseNextQueue')?.addEventListener('click',()=>showReadOnlyCaseQueue(e));
   $('#btnGoMissing')?.addEventListener('click',()=>{
     const first=missingChecks[0]?.key;
@@ -4994,6 +5004,7 @@ VIEWS['audit-review'] = (root) => {
   if (!ensureLiveOverview(root)) return;
   AuditReview.mount(root, {
     get exceptions(){return DB.exceptions;}, get filters(){return state.filters;}, companies:companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany), canAccessCompany, h, money, caseLabel, openException, toast,
+    canReturn:e=>ClarificationReturn.eligible(e),returnCase:id=>{const e=DB.exceptions.find(x=>x.id===id);if(e)return ClarificationReturn.open(e).catch(err=>toast(err.message,'warn'));},
     isActive:()=>state.route==='audit-review',
     isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&liveOverviewState.key===`${state.filters.from}|${state.filters.to}|${state.filters.company}`),
     loadMessage:()=>liveOverviewState.error||liveOverviewState.auxiliaryError||'กำลังโหลดคิวบริษัทที่เลือก ยังไม่สรุปว่าไม่มีเคส',
@@ -9336,3 +9347,4 @@ function statementReviewLabel(file) {
     ? "ได้รับไฟล์แล้ว — ไม่พบรายการในวันตรวจ รอเทียบ BO"
     : "อ่านไฟล์ไม่สำเร็จ";
 }
+
