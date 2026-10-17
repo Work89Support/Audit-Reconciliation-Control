@@ -23,5 +23,7 @@ let itemPages=0;ctx.json=async(path)=>{if(path.includes('account_review_holds?')
 assert.equal((await ctx.reviewHoldRegistryReport('FR8','2026-10-14','2026-10-31')).items.length,501);assert.equal(itemPages,2);
 assert.doesNotMatch(fn,/finance_reporting_companies|account_review_hold_report|PATCH|INSERT|DELETE|UPDATE|service_role/);
 const app=fs.readFileSync('app.js','utf8');assert.match(app,/companies:Sb.reviewHoldRegistryCompanies/);assert.match(app,/report:Sb.reviewHoldRegistryReport/);
+assert.match(app,/from:state.dailySummary.date,to:state.dailySummary.date/,'registry defaults use actual report day, never unbounded visibility sentinel');
+assert.doesNotMatch(app,/saveBlob:Exporter.saveBlob,from:VISIBLE_DATE_FROM,to:VISIBLE_DATE_TO/);
 console.log('PASS operational hold registry: six existing roles x nine companies; authenticated read-only RLS tables; foreign/inactive/revoked/timeout guards; full pagination; no finance-report access expansion or production writes.');
 })().catch(e=>{console.error(e);process.exit(1);});

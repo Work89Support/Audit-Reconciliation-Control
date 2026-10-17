@@ -3178,7 +3178,7 @@ ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result
     AccountReviewHolds.mountReadOnly($('#dailyHoldRegistry'),{
       actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.reviewHoldRegistryCompanies,
       scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldRegistryReport,view:AccountReviewHolds.view,
-      csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:VISIBLE_DATE_FROM,to:VISIBLE_DATE_TO,
+      csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:state.dailySummary.date,to:state.dailySummary.date,
     });
   });
   const matchedButton = document.createElement("button");
