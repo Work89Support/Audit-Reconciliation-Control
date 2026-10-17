@@ -2683,6 +2683,7 @@ function dailyAuditSheetRows(date) {
       matched: Number(run.matched ?? row.matched_count ?? 0),
       exceptionCount,
       generatedExceptionCount,
+      currentCountsReady: hasCurrentCounts && [row.open_count,row.resolved_count].every(v=>Number.isFinite(Number(v))&&Number(v)>=0),
       caseSetPending: !!primary && !primary.case_set,
       historicalOpenCount: primary && !primary.case_set ? row.open_count ?? null : null,
       openCount,
@@ -2779,7 +2780,7 @@ function renderDailyCompanySummary(root) {
   const companies = dailyCompanyOptions();
   const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
   state.dailySummary.company = company;
-  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="ghost-button" id="dailySummaryHolds">พักบัญชี / ทะเบียนพักตรวจ (อ่านอย่างเดียว)</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
   const rulesPanel = auditRuleBookMarkup(company);
   if (dailyCompanyState.loading && !dailyCompanyState.batches) {
     root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
@@ -3052,17 +3053,22 @@ function renderDailyCompanySummary(root) {
               ? { route: "cloud", tone: "warn", title: "ยังยืนยันปิดงานไม่ได้", detail: completionBlockers.join(" · "), button: "ตรวจสิ่งที่ค้าง" }
             : { route: "reports", tone: "ok", title: "ตรวจครบแล้ว พร้อมออกรายงาน", detail: "ตรวจยอดสรุปอีกครั้งแล้ว Export เก็บเป็นหลักฐาน", button: "ดูรายงาน" };
     const sheetRows = dailyAuditSheetRows(state.dailySummary.date);
+    const selectedCaseSummary=sheetRows.find(row=>row.company===company);
+    const currentCaseCountsReady=selectedCaseSummary?.currentCountsReady&&!selectedCaseSummary.caseSetPending;
+    const currentCaseCount=currentCaseCountsReady?num(selectedCaseSummary.openCount):'รอข้อมูล';
+    const closedCaseCount=currentCaseCountsReady?num(selectedCaseSummary.resolvedCount):'รอข้อมูล';
     const auditSheetHtml = `
       <section class="panel audit-sheet-panel">
         <div class="panel-heading"><div><p class="eyebrow">Audit Sheet · ภาพรวมทุกบริษัท</p><h2>สถานะงานวันที่ ${h(state.dailySummary.date)}</h2><small class="head-sub">สรุปขึ้นก่อนทันที ส่วนรายละเอียดแต่ละรายงานจะโหลดเมื่อกดเปิด</small></div><span class="badge blue">${num(sheetRows.length)} บริษัท</span></div>
-        <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>รายการผิดปกติ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
+        <p class="hint">จำนวนเด่นคือเคสค้างปัจจุบัน · ปิดแล้วนับจากชุดเคสปัจจุบัน · ผลตรวจตอนรันเป็นประวัติคนละจำนวน ไม่ใช่เคสค้างหรือยอดความเสียหาย</p>
+        <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>เคสค้างปัจจุบัน / ประวัติผลตรวจ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
           ${sheetRows.map((row) => {
             const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.resultStatus.manual ? {label:row.resultStatus.manual,tone:'blue'} : row.status === "completed_review"
               ? { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" }
               : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
             const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
             const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
-return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td><b class="${row.openCount ? "danger" : ""}">ผลตรวจ ${num(row.generatedExceptionCount)}</b><small class="sub">${row.caseSetPending?'รอสร้างชุดเคสใหม่ · เคสเดิมเป็นประวัติ':`เคสปัจจุบันค้าง ${num(row.openCount)} · ปิดแล้ว ${num(row.resolvedCount)}`}</small></td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
+return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td>${DailyCaseSummary.markup(row)}</td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
           }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
         </tbody></table></div>
       </section>`;
@@ -3081,10 +3087,11 @@ ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result
           <article data-action-route="cloud"><span>รายการ STM / PM</span><strong>${num(stm)}</strong><small>${num(stmFiles + pmFiles)} ไฟล์ต้นทาง</small></article>
           <article data-action-route="cloud"><span>รายการ BO</span><strong>${num(bo)}</strong><small>${num(boFiles)} ไฟล์ต้นทาง</small></article>
           <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่ผ่าน 3 จุด</span><strong>${num(matched)}</strong><small>${matchRate.toFixed(2)}% ของ STM / PM</small></article>
-          <article data-action-route="exceptions" class="${data.exceptionTotal ? "warn" : "ok"}"><span>ต้องตรวจสอบ</span><strong>${num(data.exceptionTotal)}</strong><small>${riskIsPartial ? `ยอดที่ตรวจพบใน ${num(data.exceptions.length)} เคสแรก อย่างน้อย ${money0(risk)} บาท` : `ยอดเสี่ยง ${money0(risk)} บาท`}</small></article>
-          <article data-action-route="clarify" class="${data.stillOpen ? "bad" : "ok"}"><span>ยังไม่ปิด</span><strong>${num(data.stillOpen)}</strong><small>ปิดแล้ว ${num(data.resolvedTotal)} เคส</small></article>
+          <article data-action-route="exceptions" class="${data.stillOpen ? "warn" : "ok"}"><span>เคสค้างปัจจุบัน</span><strong>${h(currentCaseCount)}</strong><small>ไม่รวมเคสปิดแล้ว · ไม่ใช่จำนวนผลตรวจตอนรัน</small></article>
+          <article data-action-route="clarify" class="ok"><span>เคสปิดแล้ว</span><strong>${h(closedCaseCount)}</strong><small>เฉพาะชุดเคสปัจจุบัน · ไม่รวมเคสรุ่นเก่าที่ถูกแทน</small></article>
         </div>
-        <div class="daily-difference-strip"><div class="${stm === bo ? "ok" : "warn"}"><span>จำนวนรายการ STM/PM เทียบ BO</span><b>${num(stm - bo)}</b></div><div class="${data.exceptionTotal ? "bad" : "ok"}"><span>รายการที่ต้องตรวจต่อ</span><b>${num(data.exceptionTotal)}</b></div><div class="${damageTotal ? "bad" : evidenceFiles ? "warn" : "ok"}"><span>ความเสียหายที่ยืนยันแล้ว</span><b>${h(damageDisplay)}</b></div></div>
+        ${riskIsPartial?`<p class="hint">ยอดที่ตรวจพบใน ${num(data.exceptions.length)} เคสแรก อย่างน้อย ${money0(risk)} บาท · เป็นรายละเอียดบางส่วนรวมเคสปิดแล้ว ไม่ใช่ยอดเคสค้างหรือความเสียหายยืนยัน</p>`:''}
+        <div class="daily-difference-strip"><div class="${stm === bo ? "ok" : "warn"}"><span>จำนวนรายการ STM/PM เทียบ BO</span><b>${num(stm - bo)}</b></div><div class="${data.stillOpen ? "bad" : "ok"}"><span>เคสค้างที่ต้องติดตาม</span><b>${h(currentCaseCount)}</b></div><div class="${damageTotal ? "bad" : evidenceFiles ? "warn" : "ok"}"><span>ความเสียหายที่ยืนยันแล้ว</span><b>${h(damageDisplay)}</b></div></div>
         <button type="button" class="daily-next-work ${nextWork.tone}" data-action-route="${nextWork.route}"><span><small>ขั้นถัดไปที่แนะนำ</small><b>${h(nextWork.title)}</b><em>${h(nextWork.detail)}</em></span><strong>${h(nextWork.button)} →</strong></button>
       </section>
       <section class="daily-source-summary" aria-label="ไฟล์ที่ได้รับ"><article><span>อีเมลที่ได้รับ</span><b>${num(data.batches.length)} ฉบับ</b><small>เอกสารแนบทั้งหมด ${num(data.files.length)} ไฟล์</small></article><article><span>STM ธนาคาร</span><b>${num(stmFiles)} ไฟล์</b></article><article><span>BO หลังบ้าน</span><b>${num(boFiles)} ไฟล์</b></article><article><span>PM ฝาก/ถอน</span><b>${num(pmFiles)} ไฟล์</b></article><article><span>หลักฐานชี้แจง</span><b>${num(evidenceFiles)} ไฟล์</b><small>${evidenceFiles ? "รอผู้ตรวจยืนยันก่อนบันทึกความเสียหาย" : "ยังไม่มีหลักฐานชี้แจง"}</small></article><article class="${fileErrors ? "bad" : reconciliationReady ? "ok" : "warn"}"><span>ไฟล์กระทบยอดที่อ่านสำเร็จ</span><b>${num(parsed)}/${num(data.reconciliationFiles.length)}</b></article>
@@ -3165,6 +3172,15 @@ ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result
     loadDailyCompanySummary(true);
   });
   $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
+  $('#dailySummaryHolds')?.addEventListener('click',()=>{
+    openModal('พักบัญชี / ทะเบียนพักตรวจ — อ่านอย่างเดียว','<div id="dailyHoldRegistry"></div>','<button id="dailyHoldRegistryClose">ปิด</button>');
+    $('#dailyHoldRegistryClose').onclick=closeModal;
+    AccountReviewHolds.mountReadOnly($('#dailyHoldRegistry'),{
+      actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.financeReportingCompanies,
+      scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldReport,view:AccountReviewHolds.view,
+      csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:VISIBLE_DATE_FROM,to:VISIBLE_DATE_TO,
+    });
+  });
   const matchedButton = document.createElement("button");
   matchedButton.className = "primary-button";
   matchedButton.textContent = "ดูรายการจับคู่สำเร็จ";

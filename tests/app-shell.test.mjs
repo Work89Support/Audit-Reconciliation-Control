@@ -159,7 +159,7 @@ assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/
 assert.match(app, /function dailyAuditSheetRows\(date\)[\s\S]+dailyCompanyState\.checklist[\s\S]+dailyCompanyState\.quality/, "ตารางทุกบริษัทต้องใช้ snapshot วันที่เดียวกับรายละเอียดรายบริษัท");
 assert.match(app, /const hasCurrentCounts = \(!primary \|\| !!primary\.case_set\) && row\.open_count != null && row\.resolved_count != null/, "lifecycle ต้องมาจากชุดเคสของผลหลักเดียวกัน ไม่ใช้เคสประวัติ");
 assert.match(app, /const exceptionCount = generatedExceptionCount/, "จำนวนผลตรวจต้องแยกจากจำนวนเคสค้างและปิด ไม่ใช้ยอดคนละรอบ");
-assert.match(app, /รอสร้างชุดเคสใหม่ · เคสเดิมเป็นประวัติ/, "ผลหลักที่ยังไม่มีชุดเคสต้องระบุสถานะอย่างชัดเจน");
+assert.match(readFileSync(new URL('../daily-case-summary.js',import.meta.url),'utf8'), /รอสร้างชุดเคสปัจจุบัน/, "ผลหลักที่ยังไม่มีชุดเคสต้องระบุสถานะอย่างชัดเจน");
 assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\.open_count[\s\S]+lifecycle\.resolved_count/, "รายการล่าสุดบนแดชบอร์ดต้องใช้ยอด lifecycle ชุดเดียวกับรายละเอียดรายบริษัท");
 assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสรวมชุดปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสรวมชุดปัจจุบัน พร้อมแยกค้างและปิดแล้ว");
 assert.match(app, /completed_review: \{ label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" \}/, "สถานะเคสคงค้างต้องแสดงภาษาไทย ไม่หลุดชื่อสถานะภายใน");
