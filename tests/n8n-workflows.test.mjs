@@ -493,7 +493,8 @@ assert.match(supabaseSource, /ระบบแทนที่ไฟล์ยั�
 assert.match(supabaseSource, /function rangedView/, "summary views must support server-side date and company filters");
 assert.doesNotMatch(supabaseSource, /Promise\.all\(offsets\.map\(fetchPage\)\)/, "exception pages must not fan out under database load");
 assert.match(supabaseSource, /daily_recon_jobs\?\$\{jobFilters\.join\("&"\)\}/, "exception summary must resolve current run ids without materializing the slow current-exceptions view");
-assert.match(supabaseSource, /rest\/v1\/exceptions\?\$\{filters\.join\("&"\)\}/, "exception summary must read current-run rows directly from the indexed table");
+assert.match(supabaseSource, /rest\/v1\/rpc\/audit_current_cases_scoped/, "current queues must include exact manual primaries even without a system run");
+assert.match(supabaseSource, /rest\/v1\/rpc\/audit_search_current_cases_scoped/, "case search must use the same scoped current-primary contract");
 assert.match(appSource, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "daily summary must load the selected day for every company in the audit sheet");
 assert.match(appSource, /const core = await Promise\.allSettled/, "a slow daily-summary section must not blank the whole report");
 assert.match(appSource, /Sb\.currentExceptionsSummary\(\{ from: date, to: date, company, limit: 250 \}\)/, "daily summary must load only a fast first page for the selected company");
