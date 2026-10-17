@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ui=require('../file-run-management.js');
+const evidence={execution_id:'14474',detail:'อ่านและคำนวณแล้ว บันทึก Exception ถูก guard กันไว้',message:'พักงาน/ตรวจเฉพาะบัญชีอยู่'};
+const n=ui.runNotice({job:{status:'error',attempt_count:3,last_error:'ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง'},workerFailure:evidence});
+assert.match(n.reason,/14474/);assert.match(n.reason,/หลักฐานรันเดิม/);assert.match(n.reason,/guard/);assert.doesNotMatch(n.reason,/ตรวจรูปแบบไฟล์/);
+const unknown=ui.runNotice({job:{status:'error',attempt_count:3,last_error:'หยุดลองอัตโนมัติหลังล้มเหลว 3 ครั้ง: ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง'}});
+assert.match(unknown.reason,/ไม่ได้ยืนยันว่าไฟล์เสีย/);
+assert.equal(ui.runNotice({job:{status:'running'},workerFailure:evidence}).blocked,true,'historical evidence cannot override a live running gate');
+const sql=fs.readFileSync('supabase/20261017_worker_failure_context.sql','utf8');
+assert.match(sql,/current_user_active\(\)/);assert.match(sql,/has_company_access\(p_company\)/);
+assert.match(sql,/not public.audit_run_blocked/);assert.match(sql,/สาเหตุระหว่างบันทึก/);
+assert.doesNotMatch(sql,/update public\.(daily_recon_jobs|exceptions|recon_runs)|delete from public\./i);
+console.log('PASS worker evidence: stage-specific verified historical cause, no false file-error claim, running gate unchanged, scoped reads, no live job/case writes.');

@@ -7,9 +7,10 @@
  function runNotice(s){
   if(!s)return {title:'ยังตรวจสถานะรันไม่ได้',reason:'โหลดสถานะไม่สำเร็จ ไม่ถือว่างานพร้อมรัน',next:'โหลดสถานะล่าสุดก่อนสั่งงาน',blocked:true};
   const j=s.job||s;
+  if(s.workerFailure&&j.status==='error')return {title:'รอบหลักบันทึกผลไม่สำเร็จ',reason:`หลักฐานรันเดิม ${s.workerFailure.execution_id||'—'} · ${s.workerFailure.detail} · ข้อความ worker: ${s.workerFailure.message}`,next:'เก็บคำขอและประวัติเดิม · ตรวจผลรันมือและแถวอ้างอิงก่อนให้หัวหน้า/Admin ยืนยัน ไม่ลองรันซ้ำอัตโนมัติ',blocked:false};
   if(j.status==='running')return {title:'บอทรอบหลักกำลังรัน',reason:'ยังไม่รับงานตรวจมือซ้อนกับบริษัทและวันนี้',next:'รอรอบหลักจบ แล้วโหลดสถานะล่าสุด',blocked:true};
   if(s.hold?.paused||s.manualOnly)return {title:'พักบอทรอบหลัก'+(s.manualOnly?' · มีไฟล์แก้ไข':''),reason:s.hold?.reason||'ล็อกผลรอบหลักเพื่อรักษาประวัติเคสเดิมและป้องกันเคสซ้ำ',next:'เลือกไฟล์แล้วรันตรวจมือเป็นรายงานแยกได้ แม้ยังไม่มีผลเดิม · หัวหน้า/ผู้ดูแลยืนยันผลเท่านั้น',blocked:false};
-  if(Number(j.attempt_count)>=3&&['queued','error'].includes(j.status))return {title:'รอบหลักลองครบ 3 ครั้ง',reason:j.last_error||'ต้องตรวจสาเหตุเดิมก่อนส่งรอบหลักซ้ำ',next:'ตรวจไฟล์และเหตุผลล้มเหลว · ใช้รันตรวจมือเพื่อทบทวนผลแยกได้',blocked:false};
+  if(Number(j.attempt_count)>=3&&['queued','error'].includes(j.status))return {title:'รอบหลักลองครบ 3 ครั้ง',reason:j.last_error?.includes('ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง')?'หยุดหลังลองครบ 3 ครั้ง · ยังไม่ทราบสาเหตุจากข้อความนี้ ต้องตรวจบันทึก worker ไม่ได้ยืนยันว่าไฟล์เสีย':j.last_error||'ต้องตรวจสาเหตุเดิมก่อนส่งรอบหลักซ้ำ',next:'ตรวจไฟล์และเหตุผลล้มเหลว · ใช้รันตรวจมือเพื่อทบทวนผลแยกได้',blocked:false};
   if(j.status==='error')return {title:'รอบหลักล้มเหลว',reason:j.last_error||'ยังไม่มีรายละเอียดข้อผิดพลาด',next:'ตรวจไฟล์และโหลดสถานะล่าสุดก่อนสั่งตรวจมือ',blocked:false};
   return {title:j.status==='queued'?'คิวหลักรอรอบบอท':'สถานะรอบหลัก',reason:j.last_run_id?'มีผลเดิมอ้างอิง':'ยังไม่มีผลเดิม ไม่ใช่ยอดศูนย์',next:j.status?'รันตรวจมือได้ทันทีเป็นรายงานแยก · ไม่เปลี่ยนคิวหลัก ยอด หรือเคส':'ยังไม่มีคิวบริษัท/วันที่นี้ กรุณาตรวจการรับไฟล์',blocked:!j.status};
  }
