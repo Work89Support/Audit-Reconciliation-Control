@@ -11,20 +11,24 @@ create function auth.uid() returns uuid language sql as $$select nullif(current_
 create function current_user_active() returns boolean language sql as $$select coalesce(current_setting('test.active',true),'true')='true'$$;
 create function current_app_role() returns text language sql as $$select current_setting('test.role',true)$$;
 create function has_company_access(c text) returns boolean language sql as $$select c<>'NO_ACCESS'$$;
-create table exceptions(id uuid primary key,status text,manual_pair_id uuid,case_closure_request_id uuid,superseded_by_exception_id uuid,company text,business_date date,run_id uuid,clarification_file_id uuid,customer_details jsonb);
-create table source_files(id uuid primary key,storage_path text,company text,batch_id uuid,is_archived boolean default false);
+create table exceptions(id uuid primary key,status text,manual_pair_id uuid,case_closure_request_id uuid,superseded_by_exception_id uuid,company text,business_date date,run_id uuid,clarification_file_id uuid,customer_details jsonb,ex_type text default 'cross_day',cross_day_request_id uuid,cross_day_image_request_id uuid);
+create table source_files(id uuid primary key,storage_path text,company text,batch_id uuid,is_archived boolean default false,kind text);
 create table mail_batches(id uuid primary key,company text);
 create table daily_recon_jobs(id uuid primary key,last_run_id uuid,company text,business_date date,is_archived boolean default false,status text,error_count int default 0);
 create table recon_runs(id uuid primary key,company text,business_date date);
-create table manual_primary_results(id uuid primary key,company text,business_date date,base_run_id uuid,accepted_at timestamptz);
+create table manual_primary_results(id uuid primary key,company text,business_date date,base_run_id uuid,accepted_at timestamptz,recheck_id uuid,report jsonb,source_stamp jsonb);
 create table manual_primary_case_items(primary_id uuid,exception_id uuid);
+create table account_recheck_jobs(id uuid primary key,status text,result jsonb,account text,direction text);
 create table storage.objects(bucket_id text,name text);
 create table audit_log(actor text,actor_user_id uuid,action text,entity text,target text,detail text,meta jsonb);
-create function can_attach_waiting_cross_day_evidence(p uuid) returns boolean language sql as $$select exists(select 1 from exceptions where id=p and status='pending_next_day' and primary_case_is_current(id))$$;
-` .replace(/create function can_attach_waiting[\s\S]*$/,''));
+create function manual_primary_report_projection(j jsonb) returns jsonb language sql as $$select j-'timing_warning'$$;
+create function effective_audit_source_files(c text,d date) returns jsonb language sql as $$select coalesce(jsonb_agg(jsonb_build_object('id',id::text) order by id),'[]') from source_files where company=c and kind='bo_main' and not is_archived$$;
+create function manual_primary_sources(j jsonb) returns jsonb language sql as $$select j$$;
+`);
 const handoff=await fs.readFile(root+'/supabase/20261016_all_company_primary_case_handoff.sql','utf8');
 await db.exec(handoff.slice(handoff.indexOf('create or replace function public.primary_case_is_current'),handoff.indexOf('revoke all on function public.read_manual_primary')));
-await db.exec(`create function can_attach_waiting_cross_day_evidence(p uuid) returns boolean language sql as $$select exists(select 1 from exceptions where id=p and status='pending_next_day' and primary_case_is_current(id))$$;`);
+const pending=await fs.readFile(root+'/supabase/20261014_pending_cross_day_actions.sql','utf8');
+await db.exec(pending.slice(pending.indexOf('create or replace function public.cross_day_current_manual_case'),pending.indexOf('-- Patch exact reviewed anchors')));
 let baseline=await fs.readFile(root+'/supabase/20261009_head_selected_case_file.sql','utf8');
 baseline=baseline.replace('f.is_archived',"coalesce((to_jsonb(f)->>'is_archived')::boolean,false)")
  .replace("e.status not in ('open','clarifying','answered')","(e.status not in ('open','clarifying','answered') and not public.can_attach_waiting_cross_day_evidence(e.id))");
@@ -37,12 +41,18 @@ const companies=['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'];
 for(let n=0;n<9;n++){
  const c=companies[n],k=100+n*10;
  await db.query(`insert into daily_recon_jobs(id,last_run_id,company,business_date,status) values($1,null,$2,'2026-10-16','error');`,[id(k),c]);
- await db.query(`insert into manual_primary_results values($1,$2,'2026-10-16',null,'2026-10-17');`,[id(k+1),c]);
+ await db.query(`insert into manual_primary_results(id,company,business_date,base_run_id,accepted_at,recheck_id,report) values($1,$2,'2026-10-16',null,'2026-10-17',$3,'{"quality":"passed"}');`,[id(k+1),c,id(k+4)]);
+ await db.query(`insert into account_recheck_jobs values($1,'confirmed','{"quality":"passed","timing_warning":true}','ALL','all');`,[id(k+4)]);
+ await db.query(`insert into source_files(id,storage_path,company,kind) values($1,$2,$3,'bo_main');`,[id(k+5),c+'-bo.xlsx',c]);
+ await db.query(`insert into storage.objects values('audit-files',$1);`,[c+'-bo.xlsx']);
  await db.query(`insert into exceptions(id,status,company,business_date) values($1,'open',$2,'2026-10-16'),($3,'pending_next_day',$2,'2026-10-16');`,[id(k+2),c,id(k+3)]);
  await db.query(`insert into manual_primary_case_items values($1,$2),($1,$3);`,[id(k+1),id(k+2),id(k+3)]);
+ await db.query(`update exceptions set customer_details=jsonb_build_object('manual_primary_id',$1::text,'source_rows',jsonb_build_object('bo',jsonb_build_object('fileId',$2::text,'row',10))) where company=$3;`,[id(k+1),id(k+5),c]);
+ await db.query(`update manual_primary_results set source_stamp=effective_audit_source_files(company,business_date) where company=$1;`,[c]);
 }
 const call=e=>db.query('select link_selected_case_file($1,$2,$3) result',[id(e),id(3),'ตรวจหลักฐานจำลองก่อนผูกไฟล์']);
 await assert.rejects(()=>call(122),/ผลรอบปัจจุบัน/);
+await assert.rejects(()=>call(123),/เคสปิดแล้ว/); // Real pre-patch pending helper also fails on NULL base IDs.
 const patch=await fs.readFile(new URL('../supabase/20261017_selected_file_primary_case_guard.sql',import.meta.url),'utf8');
 await db.exec(patch);await db.exec(patch);
 for(let n=0;n<9;n++)for(const off of [2,3]){
@@ -50,6 +60,20 @@ for(let n=0;n<9;n++)for(const off of [2,3]){
  assert.equal((await call(e)).rows[0].result.status,status);await call(e);
 }
 assert.equal((await db.query('select count(*)::int n from audit_log')).rows[0].n,18);
+// Preserve every accepted-report/source-row gate, not just the general membership test.
+const pendingRejected=()=>assert.rejects(()=>call(123),/เคสปิดแล้ว/);
+await db.exec(`update exceptions set customer_details=jsonb_set(customer_details,'{source_rows,bo,row}','0') where id='${id(123)}'`);await pendingRejected();
+await db.exec(`update exceptions set customer_details=jsonb_set(customer_details,'{source_rows,bo,row}','10') where id='${id(123)}';update account_recheck_jobs set status='ready' where id='${id(124)}'`);await pendingRejected();
+await db.exec(`update account_recheck_jobs set status='confirmed',result='{"quality":"failed"}' where id='${id(124)}'`);await pendingRejected();
+await db.exec(`update account_recheck_jobs set result='{"quality":"passed","timing_warning":true}' where id='${id(124)}';update daily_recon_jobs set status='running' where company='FR8'`);await pendingRejected();
+await db.exec(`update daily_recon_jobs set status='error' where company='FR8';update source_files set is_archived=true where id='${id(125)}'`);await pendingRejected();
+await db.exec(`update source_files set is_archived=false where id='${id(125)}';delete from storage.objects where name='FR8-bo.xlsx'`);await pendingRejected();
+await db.exec(`insert into storage.objects values('audit-files','FR8-bo.xlsx');update exceptions set customer_details=jsonb_set(customer_details,'{manual_primary_id}','"${id(999)}"') where id='${id(123)}'`);await pendingRejected();
+await db.exec(`update exceptions set customer_details=jsonb_set(customer_details,'{manual_primary_id}','"${id(121)}"') where id='${id(123)}'`);
+assert.equal((await call(123)).rows[0].result.status,'pending_next_day');
+// A non-null matching base run is still supported.
+await db.exec(`update manual_primary_results set base_run_id='${id(900)}' where company='UR9';update daily_recon_jobs set last_run_id='${id(900)}' where company='UR9';update exceptions set run_id='${id(900)}' where company='UR9'`);
+assert.equal((await call(183)).rows[0].result.status,'pending_next_day');
 // Reject historic, wrong-role, inactive, out-of-scope, closed and replaced cases.
 await db.exec("set test.role='monitor'");await assert.rejects(()=>call(122),/เฉพาะหัวหน้า/);
 await db.exec("set test.role='lead';set test.active='false'");await assert.rejects(()=>call(122),/เฉพาะหัวหน้า/);
@@ -57,7 +81,7 @@ await db.exec("set test.active='true';set test.uid=''");await assert.rejects(()=
 await db.exec(`set test.uid='${id(1)}';update exceptions set company='NO_ACCESS' where id='${id(122)}'`);await assert.rejects(()=>call(122),/ไม่มีสิทธิ์บริษัทของเคส/);
 await db.exec(`update exceptions set company='FR8',status='closed' where id='${id(122)}'`);await assert.rejects(()=>call(122),/เคสปิดแล้ว/);
 await db.exec(`update exceptions set status='open',superseded_by_exception_id='${id(123)}' where id='${id(122)}'`);await assert.rejects(()=>call(122),/เคสปิดแล้ว/);
-await db.exec(`update exceptions set superseded_by_exception_id=null where id='${id(122)}';insert into manual_primary_results values('${id(999)}','FR8','2026-10-16',null,'2026-10-18')`);await assert.rejects(()=>call(122),/ผลรอบปัจจุบัน/);
+await db.exec(`update exceptions set superseded_by_exception_id=null where id='${id(122)}';insert into manual_primary_results(id,company,business_date,base_run_id,accepted_at) values('${id(999)}','FR8','2026-10-16',null,'2026-10-18')`);await assert.rejects(()=>call(122),/ผลรอบปัจจุบัน/);
 await db.exec(`delete from manual_primary_results where id='${id(999)}';update source_files set is_archived=true`);await assert.rejects(()=>call(122),/ไม่พบไฟล์ที่พร้อมเปิดตรวจ/);
 await db.exec(`update source_files set is_archived=false;delete from storage.objects`);await assert.rejects(()=>call(122),/ไฟล์ต้นฉบับ/);
 await db.exec(`insert into storage.objects values('audit-files','synthetic.docx');update source_files set company='NO_ACCESS'`);await assert.rejects(()=>call(122),/เจ้าของไฟล์/);

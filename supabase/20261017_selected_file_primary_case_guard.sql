@@ -37,5 +37,28 @@ begin
  then raise exception 'Unexpected selected-file definition; stop without overwriting';end if;
  execute replace(d,needle,replacement);
 end $patch$;
+-- Accepted manual reports can have no original system run, and their stored
+-- primary report is the reviewed projection, not the unprojected worker JSON.
+do $manual$
+declare d text; a text; b text; item record;
+begin
+ d:=pg_get_functiondef('public.cross_day_current_manual_case(public.exceptions)'::regprocedure);
+ for item in select * from (values
+ ('v.base_run_id=e.run_id','v.base_run_id is not distinct from e.run_id'),
+ ('j.last_run_id=v.base_run_id','j.last_run_id is not distinct from v.base_run_id'),
+ ('q.result=v.report','public.manual_primary_report_projection(q.result)=v.report')
+ ) x(old_anchor,new_anchor) loop
+  a:=item.old_anchor;b:=item.new_anchor;
+  if position(b in d)>0 then continue;end if;
+  if (length(d)-length(replace(d,a,'')))<>length(a)
+  or position('public.primary_case_is_current(e.id)' in d)=0
+  or position('v.source_stamp=public.manual_primary_sources' in d)=0
+  or position('storage.objects' in d)=0
+  or position('q.status=''confirmed''' in d)=0
+  then raise exception 'Unexpected pending manual-case guard; stop without overwriting';end if;
+  d:=replace(d,a,b);
+ end loop;
+ execute d;
+end $manual$;
 notify pgrst,'reload schema';
 commit;
