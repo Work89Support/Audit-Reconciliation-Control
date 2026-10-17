@@ -46,16 +46,16 @@
     const tasks=selected.flatMap(c=>[{kind:'cases',company:c,from:range.from,to:range.to},{kind:'actions',company:c,from:range.from,to:range.to},...(ctx.holds?[{kind:'holds',company:c,from:range.from,to:range.to}]:[])]);
     if(boLoaded)for(const c of selected)for(const r of mode==='trend'?[range]:[range,range.previous]){const ds=F.dates(r.from,r.to);for(let i=0;i<ds.length;i+=2)tasks.push({kind:'bo',company:c,from:ds[i],to:ds[Math.min(i+1,ds.length-1)]});}
     if(boLoaded&&(mode==='trend'||F.shift(range.from,-1)<range.previous.from||F.shift(range.from,-1)>range.previous.to))for(const c of selected)tasks.push({kind:'bo',company:c,from:F.shift(range.from,-1),to:F.shift(range.from,-1)});
-    const reports=[],boRows=[],actionRows=[],holdRows=[];let index=0,done=0;
+    const reports=[],boRows=[],actionRows=[],holdRows=[],holdScopes=[];let index=0,done=0;
     const worker=async()=>{while(index<tasks.length){if(!active()||token!==generation)return;const task=tasks[index++];let r;try{r=await (task.kind==='bo'?ctx.bo(task.company,task.from,task.to):task.kind==='holds'?ctx.holds(task.company,task.from,task.to):task.kind==='actions'?ctx.actions(task.company,task.to):ctx.cases(task.company,task.from,task.to));}catch(e){throw Error(`${task.company} · ${task.kind==='bo'?'BO':'ทะเบียนเคส'} · ${task.from} ถึง ${task.to}: ${e.message}`);}
      if(!active()||token!==generation)return;if(!r||r.company!==task.company)throw Error('ผลตอบกลับไม่ตรงบริษัท');
-     if(task.kind==='holds'){for(const h of r.items||[]){if(h.company!==task.company||h.date<task.from||h.date>task.to)throw Error('ขอบเขตพักตรวจไม่ตรงสิทธิ์');holdRows.push(h);}}
+     if(task.kind==='holds'){for(const h of r.items||[]){if(h.company!==task.company||h.date<task.from||h.date>task.to)throw Error('ขอบเขตพักตรวจไม่ตรงสิทธิ์');holdRows.push(h);}for(const h of r.scopes||[]){if(h.company!==task.company||h.business_date>task.to||h.continuous!==true&&h.business_date<task.from)throw Error('ขอบเขตพักตรวจไม่ตรงสิทธิ์');holdScopes.push(h);}}
      else if(task.kind==='cases')reports.push(r);else if(task.kind==='actions'){for(const a of r.items||[]){if(a.company!==task.company||!a.exception_id)throw Error('ขอบเขต Action ไม่ตรงสิทธิ์');actionRows.push(a);}}else for(const d of r.days||[]){if(d.company!==task.company||!F.dates(task.from,task.to).includes(d.date))throw Error('ขอบเขต BO ไม่ตรงคำขอ');boRows.push({...d,scopeKey:d.company+'|'+d.date});}
      done++;showBusy(`อ่านแล้ว ${done}/${tasks.length} ชุด · อ่านพร้อมกันไม่เกิน 2 คำขอ`);
     }};
     await Promise.all([worker(),worker()]);if(!active()||token!==generation)return;
     const uniqueBo=F.unique(boRows,'scopeKey'),cases=F.caseData(reports,selected),inPeriod=cases.losses.filter(d=>d.date>=range.from&&d.date<=range.to);
-    data={...range,analysisMode:mode,boRows:uniqueBo,companies:selected,holds:holdRows,actions:A.latest(F.unique(actionRows)),boLoaded,bo:F.boSummary(uniqueBo,selected,range.from,range.to),previous:F.boSummary(uniqueBo,selected,range.previous.from,range.previous.to),
+    data={...range,analysisMode:mode,boRows:uniqueBo,companies:selected,holds:holdRows,holdScopes,actions:A.latest(F.unique(actionRows)),boLoaded,bo:F.boSummary(uniqueBo,selected,range.from,range.to),previous:F.boSummary(uniqueBo,selected,range.previous.from,range.previous.to),
      allLosses:cases.losses,losses:inPeriod,risks:cases.risks,reports,updatedAt:new Date().toISOString()};
     showBusy(`ข้อมูลล่าสุด ${ctx.formatTime(data.updatedAt)} · ผลประเมิน / ยอดรับคืน / งานติดตาม เป็นสถานะปัจจุบันของเคสที่เกิดในช่วง ไม่ใช่ภาพย้อนหลัง`);renderBody();
    }catch(e){if(active()&&token===generation)clear(e.message);}finally{busy=false;host.querySelectorAll('[data-fin-form] input,[data-fin-form] select,[data-fin-form] button,[data-fin-refresh]').forEach(b=>b.disabled=false);}
@@ -73,7 +73,7 @@
    if(['overview','companies','daily','monthly','users'].includes(tab)){
     boView=B.view(d,tab);html=boView.html;charts=boView.charts;lines=boView.lines;
    }else if(tab==='holds'){
-    const v=root.AccountReviewHolds.view(d.holds,page);page=v.page;html=v.html;lines=v.lines;
+    const v=root.AccountReviewHolds.view(d.holds,page,{scopes:d.holdScopes});page=v.page;html=v.html;lines=v.lines;
     charts=[{title:'รายการพักตรวจ — ยังประเมินความเสียหายไม่ได้',unit:'จำนวนรายการ แยกเคสเดิมกับ BO รอ STM ไม่ใช่มูลค่าความเสียหาย',items:[{label:'เคสเดิม',value:d.holds.filter(r=>r.item_kind==='case').length},{label:'BO รอ STM',value:d.holds.filter(r=>r.item_kind==='waiting_bo').length}]}];
    }else if(tab==='risk'){
     const risk=d.risks.reduce((s,r)=>s+Number(r.amount||0),0),rows=[...d.allLosses.map(r=>({...r,kind:'loss'})),...d.risks.map(r=>({...r,kind:'risk'}))],p=F.pagination(rows,page);page=p.page;
