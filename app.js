@@ -8405,10 +8405,19 @@ VIEWS.clarify = (root) => {
       </section>
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
     root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
-    const openCompanyCases = (company) => go(state.role==='shift_lead'?"clarify":"exceptions", {
-      filters: { company },
-      exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
-    });
+    const openCompanyCases = (company) => {
+      if (state.role === 'shift_lead') {
+        // Same-route hash assignment emits no hashchange. Repaint the already
+        // scoped read-only snapshot, keeping dates, drafts and case state.
+        state.filters.company = company;
+        render();
+        return;
+      }
+      go("exceptions", {
+        filters: { company },
+        exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
+      });
+    };
     root.querySelectorAll("[data-clarify-company]").forEach((card) => {
       card.addEventListener("click", () => openCompanyCases(card.dataset.clarifyCompany));
       card.addEventListener("keydown", (event) => {
