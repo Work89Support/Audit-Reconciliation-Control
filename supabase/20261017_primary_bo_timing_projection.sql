@@ -38,9 +38,22 @@ returns jsonb language sql immutable set search_path=public,pg_temp as $$
  (select jsonb_agg(jsonb_build_object('original_index',w.idx,'original_warning',w.r,
  'source_rows',r#>'{customer_details,source_rows}') order by w.idx) from links l join rows w on w.idx=l.warning_index where l.source_index=rows.idx)))
  else r end r from rows where not exists(select 1 from links where warning_index=idx)
- ) select case when not exists(select 1 from links) then p_report else
- jsonb_set(jsonb_set(p_report,'{exceptions}',(select coalesce(jsonb_agg(r order by idx),'[]') from projected)),
- '{summary}',coalesce(p_report->'summary','{}')||jsonb_build_object('bo_timing_annotation_count',(select count(*) from links),
+ ), scoped as (
+ select *,coalesce(r->>'ex_type'='cross_day' and r->>'company'=p_report->>'company'
+ and r->>'business_date'<>coalesce(p_report->>'business_date',p_report->>'date')
+ and r->>'business_date'=left(trim(split_part(r->>'bo_raw','|',2)),10)
+ and coalesce(p_report->>'business_date',p_report->>'date')=left(trim(split_part(r->>'bo_raw','|',3)),10)
+ and trim(split_part(r->>'bo_raw','|',4)) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+ and r#>>'{customer_details,source_rows,bo,fileId}' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+ and r#>>'{customer_details,source_rows,bo,row}' ~ '^[0-9]+$',false) corrected from projected
+ ), normalized as (
+ select idx,case when corrected then jsonb_set(jsonb_set(r,'{business_date}',to_jsonb(coalesce(p_report->>'business_date',p_report->>'date'))),
+ '{customer_details}',coalesce(r->'customer_details','{}')||jsonb_build_object('original_business_date',r->'business_date',
+ 'report_scope_date',coalesce(p_report->>'business_date',p_report->>'date'),'report_scope_proof','BO requested date and bank date from exact original row; physical file/row checked by primary source gate')) else r end r from scoped
+ ) select case when not exists(select 1 from links) and not exists(select 1 from scoped where corrected) then p_report else
+ jsonb_set(jsonb_set(p_report,'{exceptions}',(select coalesce(jsonb_agg(r order by idx),'[]') from normalized)),
+ '{summary}',coalesce(p_report->'summary','{}')||jsonb_build_object('bo_timing_annotation_count',coalesce((p_report#>>'{summary,bo_timing_annotation_count}')::integer,0)+(select count(*) from links),
+ 'report_scope_correction_count',coalesce((p_report#>>'{summary,report_scope_correction_count}')::integer,0)+(select count(*) from scoped where corrected),
  'original_exception_count',jsonb_array_length(p_report->'exceptions'),'bo_timing_projection_version',1)) end
 $$;
 revoke all on function public.manual_primary_bo_timing_links(jsonb),public.manual_primary_report_projection(jsonb) from public,anon,authenticated;
@@ -64,11 +77,28 @@ begin
  $patch$if exists(select 1 from jsonb_array_elements(coalesce(q.result->'exceptions','[]')) e
  where coalesce(e#>>'{customer_details,source_rows,bo,fileId}',e#>>'{customer_details,source_rows,stm,fileId}') is null)
  then problems:=array_append(problems,'เคสไม่มีแถว BO/STM จริงที่พิสูจน์ได้ ห้ามยืนยันผลหลัก');end if;
+ if exists(select 1 from jsonb_array_elements(coalesce(q.result->'exceptions','[]')) e where e->>'business_date' is distinct from q.business_date::text
+ or e->>'company' is distinct from q.company or coalesce(e->>'direction','') not in ('deposit','withdraw','ฝาก','ถอน') or nullif(e->>'account','') is null)
+ then problems:=array_append(problems,'ขอบเขตเคสไม่ตรงรายงาน ต้องพิสูจน์วันและแถวต้นทางก่อนยืนยัน');end if;
  files:=public.effective_audit_source_files$patch$);
  d:=replace(d,$needle$'file_count',jsonb_array_length(stamp)$needle$,
- $patch$'bo_timing_annotation_count',coalesce((q.result#>>'{summary,bo_timing_annotation_count}')::integer,0),
+ $patch$'report_scope_correction_count',coalesce((q.result#>>'{summary,report_scope_correction_count}')::integer,0),
+ 'bo_timing_annotation_count',coalesce((q.result#>>'{summary,bo_timing_annotation_count}')::integer,0),
  'file_count',jsonb_array_length(stamp)$patch$);
  end if;
+ execute d;
+ end if;
+ -- Upgrade installations that already have the initial provenance patch.
+ d:=pg_get_functiondef(signature::regprocedure);
+ if signature='public.manual_primary_preview(uuid)' and position('ขอบเขตเคสไม่ตรงรายงาน' in d)=0 then
+ d:=replace(d,'files:=public.effective_audit_source_files',
+ $patch$if exists(select 1 from jsonb_array_elements(coalesce(q.result->'exceptions','[]')) e where e->>'business_date' is distinct from q.business_date::text
+ or e->>'company' is distinct from q.company or coalesce(e->>'direction','') not in ('deposit','withdraw','ฝาก','ถอน') or nullif(e->>'account','') is null)
+ then problems:=array_append(problems,'ขอบเขตเคสไม่ตรงรายงาน ต้องพิสูจน์วันและแถวต้นทางก่อนยืนยัน');end if;
+ files:=public.effective_audit_source_files$patch$);
+ d:=replace(d,$needle$'bo_timing_annotation_count',coalesce($needle$,
+ $patch$'report_scope_correction_count',coalesce((q.result#>>'{summary,report_scope_correction_count}')::integer,0),
+ 'bo_timing_annotation_count',coalesce($patch$);
  execute d;
  end if;
  end loop;

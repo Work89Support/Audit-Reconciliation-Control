@@ -12,10 +12,13 @@ for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','
  bo_raw:`${i} | 2026-10-15 23:58:00 | 2026-10-16 00:01:00 | ${id(500+i)} | TEST`,bo_date:date,bo_time:'00:01:00',
  customer_details:{source_rows:{bo:{fileId:bo,row:i+1},stm:null}}});
  const records=Array.from({length:9},(_,i)=>actual(i+1));
+ for(const r of records.slice(0,3))r.business_date='2026-10-15';
  const exceptions=records.flatMap(r=>[r,{...structuredClone(r),bank_amount:100,stm_raw:'— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —',customer_details:{source_rows:{bo:null,stm:null}}}]);
  const report={quality:'passed',company,date,account:'ALL',direction:'all',bo_count:9,stm_count:0,matched:0,match_evidence:[],exceptions,summary:{waiting_bo:[]}};
  const projected=(await db.query('select manual_primary_report_projection($1) p',[JSON.stringify(report)])).rows[0].p;
  assert.equal(projected.exceptions.length,9);assert.equal(projected.summary.bo_timing_annotation_count,9);assert.equal(projected.exceptions[0].bank_amount,null,'never fabricate STM from a BO-only warning');
+ assert.equal(projected.summary.report_scope_correction_count,3);
+ assert.equal(projected.exceptions[0].business_date,date);assert.equal(projected.exceptions[0].customer_details.original_business_date,'2026-10-15');
  assert.equal(projected.exceptions[0].customer_details.bo_timing_annotations[0].original_warning.bank_amount,100,'original warning retained separately');
  assert.deepEqual((await db.query('select manual_primary_report_projection($1) p',[JSON.stringify(projected)])).rows[0].p,projected,'projection idempotent');
  await db.query('insert into test_manifest values($1,$2)',[company,JSON.stringify(files)]);
@@ -23,7 +26,7 @@ for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','
  await db.query("insert into account_recheck_jobs values($1,$2,$3,'ALL','all','account','confirmed',1,null,$4,$5,$6)",[request,company,date,JSON.stringify({effective_files:files}),[bo],JSON.stringify(report)]);
  await db.exec('set role authenticated');
  let p=(await db.query('select manual_primary_preview($1) p',[request])).rows[0].p;
- assert.equal(p.allowed,true,JSON.stringify(p));assert.equal(p.after.exception_count,9);assert.equal(p.bo_timing_annotation_count,9);
+ assert.equal(p.allowed,true,JSON.stringify(p));assert.equal(p.after.exception_count,9);assert.equal(p.bo_timing_annotation_count,9);assert.equal(p.report_scope_correction_count,3);
  await assert.rejects(db.query("select accept_manual_primary_with_cases($1,'stale','Read-only QA reason unchanged',true)",[request]),/เปลี่ยน/);
  // All writes below are isolated PGlite fixtures, never production.
  const applied=(await db.query("select accept_manual_primary_with_cases($1,$2,'Fixture explicit head confirmation',true) r",[request,p.token])).rows[0].r;

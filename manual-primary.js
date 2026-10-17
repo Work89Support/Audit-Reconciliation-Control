@@ -16,6 +16,7 @@
    d.querySelector('.manual-final-content').insertAdjacentHTML('beforeend',`<p class="manual-final-safety" data-case-handoff>การยืนยันจะใช้ผลหลักและสร้างชุดเคสพร้อมดำเนินการ ${esc(p.after?.exception_count??0)} เคสพร้อมกัน · เก็บเคสเดิมเป็นประวัติ ไม่เปลี่ยนยอดหรือปิดเคส · ถ้าสร้างเคสไม่สำเร็จจะไม่รับรองผลหลักค้างไว้</p>`);
   }
   d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',annotationNotice(p));
+  if(p.report_scope_correction_count>0)d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',`<p class="manual-final-safety" data-source-dates>แยกวันรายงานจากวันต้นทาง ${esc(p.report_scope_correction_count)} รายการตามเวลาเข้าธนาคารในแถว BO จริง · เก็บวันและเวลาทำรายการเดิมไว้ ไม่แก้ยอดต้นทาง</p>`);
   const close=()=>{d.close();d.remove();};d.querySelectorAll('[data-cancel]').forEach(x=>x.onclick=close);d.addEventListener('cancel',e=>{e.preventDefault();close();});
   const reason=()=>root.AccountRecheck.confirmationReason(d.querySelector('[data-reason]').value,d.querySelector('[data-other]').value);
   let busy=false;const enable=()=>{d.querySelector('[data-next]').disabled=busy||!same()||!p.allowed||!!p.already_applied||!d.querySelector('[data-reviewed]').checked||reason().length<10;};
