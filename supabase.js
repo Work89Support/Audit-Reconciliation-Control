@@ -703,26 +703,15 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
       "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id", "case_closure_request_id", "document_due_at",
       "bo_date", "bo_time", "stm_date", "stm_time", "customer_details", "superseded_by_exception_id",
     ].join(",");
-    /* อ่าน run ล่าสุดจากคิวก่อน แล้วค่อยอ่าน exceptions โดย run_id โดยตรง
-       เพื่อไม่ให้ Postgres ต้อง materialize v_current_exceptions หลายพันแถวทุกครั้ง
-       (View เดิม timeout บ่อยเมื่อเครื่องฐานข้อมูลมีโหลดสูง) */
-    // needs_review ยังเป็นผลรันล่าสุดที่ Audit ต้องเห็น ห้ามซ่อนเคสเพียงเพราะ
-    // quality gate รอเอกสารบางไฟล์อยู่
-    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
-    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
-    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
-    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
-    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
-    if (!runIds.length) return [];
-    const fetchPage = async (offset) => {
-      /* finish_daily_recon_job keeps unresolved history as explicit carry rows
-         with a -C<uuid> code.  They remain auditable in exceptions/audit_log,
-         but are not exceptions computed by the latest run and must not inflate
-         the current queue or its totals. */
-      return json(`/rest/v1/rpc/audit_current_cases?select=${columns}`, {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({p_run_ids:runIds,p_limit:Math.min(pageSize,limit-offset),p_offset:startOffset+offset})});
-    };
+    // Company/day scope includes accepted manual primaries even when both the
+    // failed system job and its manual base have no run_id. Resolve exact case
+    // membership server-side under the caller's existing RLS; never infer it
+    // from a nullable system-run list or broaden to historical exceptions.
+    const fetchPage = async (offset) => json(
+      `/rest/v1/rpc/audit_current_cases_scoped?select=${columns}`,
+      {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({p_from:from || null,p_to:to || null,p_company:company || 'ALL',
+          p_limit:Math.min(pageSize,limit-offset),p_offset:startOffset+offset})});
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
     const offsets = [];

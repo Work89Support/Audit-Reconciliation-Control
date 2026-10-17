@@ -19,17 +19,17 @@ const context={window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test.i
  await new Promise(resolve=>setTimeout(resolve,1));
  let rows=[];
  if(url.includes('/daily_recon_jobs?')) rows=Array.from({length:23},(_,i)=>({last_run_id:'run-'+i}));
- if(url.includes('/rpc/audit_current_cases?')) rows=Array.from({length:JSON.parse(opts.body).p_offset===0?1000:3},(_,i)=>({id:'case-'+i}));
+ if(url.includes('/rpc/audit_current_cases_scoped?')) rows=Array.from({length:JSON.parse(opts.body).p_offset===0?1000:3},(_,i)=>({id:'case-'+i,run_id:null}));
  if(url.includes('/recon_runs?')) rows=[{id:'run',match_evidence:[{id:'pair'}]}];
  active--;return {ok:true,status:200,text:async()=>JSON.stringify(rows)};
 }};
 vm.runInNewContext(source,context);
 const rows=await context.window.Sb.currentExceptionsSummary({from:'2026-10-07',to:'2026-10-07',company:'FR8',limit:5000});
 assert.equal(rows.length,1003);assert.equal(maxActive,1,'pages are serialized and stop at first short page');
-const pages=calls.filter(c=>c.url.includes('/rpc/audit_current_cases?'));
+const pages=calls.filter(c=>c.url.includes('/rpc/audit_current_cases_scoped?'));
 assert.equal(pages.length,2);
-const scope=urls.find(u=>u.includes('/daily_recon_jobs?'));assert.match(scope,/business_date=gte.2026-10-07/);assert.match(scope,/business_date=lte.2026-10-07/);assert.match(scope,/company=eq.FR8/);
-for(const {url,opts} of pages){assert.equal(opts.method,'POST');const body=JSON.parse(opts.body);assert.equal(body.p_run_ids.length,23);assert.equal(body.p_limit,1000);assert.doesNotMatch(url,/bo_raw|stm_raw/);}
+assert.equal(urls.filter(u=>u.includes('/daily_recon_jobs?')).length,0,'manual null-base scopes must not require a system run');
+for(const {url,opts} of pages){assert.equal(opts.method,'POST');const body=JSON.parse(opts.body);assert.equal(body.p_from,'2026-10-07');assert.equal(body.p_to,'2026-10-07');assert.equal(body.p_company,'FR8');assert.equal(body.p_limit,1000);assert.doesNotMatch(url,/bo_raw|stm_raw/);}
 assert.deepEqual(pages.map(c=>JSON.parse(c.opts.body).p_offset),[0,1000]);
 urls.length=0;
 const evidence=await context.window.Sb.reconciliationEvidence({from:'2026-10-07',to:'2026-10-07',company:'FR8'});
