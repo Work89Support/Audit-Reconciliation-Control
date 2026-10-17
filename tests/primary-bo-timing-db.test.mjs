@@ -5,6 +5,8 @@ const setup=baseline.slice(baseline.indexOf('const db='),baseline.indexOf('const
 const {db,id}=await new (Object.getPrototypeOf(async function(){}).constructor)('PGlite','fs',setup+';return {db,id};')(PGlite,fs);
 const patch=fs.readFileSync('supabase/20261017_primary_bo_timing_projection.sql','utf8');
 await db.exec(patch);await db.exec(patch);
+const countsPatch=fs.readFileSync('supabase/20261017_primary_count_breakdown.sql','utf8');
+await db.exec(countsPatch);await db.exec(countsPatch);
 for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'].entries()){
  const date='2026-10-16',bo=id(100+c),request=id(200+c),run=id(300+c);
  const files=[{id:bo,physical_source_file_id:bo,company,business_date:date,kind:'bo_main',checksum:'immutable'}];
@@ -28,6 +30,7 @@ for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','
  await db.exec('set role authenticated');
  let p=(await db.query('select manual_primary_preview($1) p',[request])).rows[0].p;
  assert.equal(p.allowed,true,JSON.stringify(p));assert.equal(p.after.exception_count,9);assert.equal(p.bo_timing_annotation_count,9);assert.equal(p.report_scope_correction_count,3);
+ assert.equal(p.raw_exception_count,18);assert.equal(p.actionable_exception_count,9);assert.equal(p.waiting_bo_count,0);
  await assert.rejects(db.query("select accept_manual_primary_with_cases($1,'stale','Read-only QA reason unchanged',true)",[request]),/เปลี่ยน/);
  // All writes below are isolated PGlite fixtures, never production.
  const applied=(await db.query("select accept_manual_primary_with_cases($1,$2,'Fixture explicit head confirmation',true) r",[request,p.token])).rows[0].r;

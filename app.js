@@ -793,7 +793,7 @@ function confirmAuditStatusBatch(items, {company,date,onComplete}) {
           }else if(action==='clarify'){
             if(!can('request_clarify'))throw new Error('ไม่มีสิทธิ์ส่งชี้แจง');
             const fresh=await Sb.exceptionDetail(row.id);
-            if(!fresh||fresh.company!==company||fresh.business_date!==date||fresh.run_id!==row.run_id||fresh.status!==row.status||!['open','answered'].includes(fresh.status))throw new Error('ข้อมูลเคสเปลี่ยนแล้ว กรุณาตรวจใหม่');
+            if(!fresh||fresh.company!==company||fresh.business_date!==date||fresh.run_id!==row.run_id||fresh.status!==row.status||!['open','answered','pending_next_day'].includes(fresh.status))throw new Error('ข้อมูลเคสเปลี่ยนแล้ว กรุณาตรวจใหม่');
             if(cancelled)break;
             const at=new Date().toISOString();
             await Sb.requestClarification(row.id,fresh.status,{requested_at:at,requested_by:Sb.authUser()?.id,updated_at:at});

@@ -270,6 +270,7 @@ const Sb = (() => {
     const fetchOpts = { ...opts, signal: opts.signal || controller.signal, headers: headers(opts.headers) };
     delete fetchOpts.timeoutMs;
     delete fetchOpts.readOnly;
+    delete fetchOpts.recoverRead;
     try {
       let res = await fetch(base() + path, fetchOpts);
       /* token อาจถูกเพิกถอนก่อนเวลาที่บันทึกไว้ ลองต่ออายุอีกครั้งหนึ่งก่อนแจ้งผู้ใช้ */
@@ -288,11 +289,16 @@ const Sb = (() => {
           const j = await readResponseBody(res,'json');
           msg = j.message || j.error_description || j.error || msg;
         } catch (e) {}
-        throw new Error(msg);
+        const failure=new Error(msg);
+        failure.retryableRead=[502,503,504].includes(res.status);
+        throw failure;
       }
       return res;
     } catch (error) {
-      if (error?.name === "AbortError") throw new Error(`Supabase ใช้เวลาตอบกลับนานเกิน ${Math.ceil(Number(opts.timeoutMs || 30000) / 1000)} วินาที`);
+      if (error?.name === "AbortError") {
+        const failure=new Error(`Supabase ใช้เวลาตอบกลับนานเกิน ${Math.ceil(Number(opts.timeoutMs || 30000) / 1000)} วินาที`);
+        failure.retryableRead=true;throw failure;
+      }
       throw error;
     } finally {
       if (timeout) clearTimeout(timeout);
@@ -309,8 +315,19 @@ const Sb = (() => {
     const read = (!opts.method || opts.method.toUpperCase() === 'GET' || opts.readOnly === true) && !opts.signal;
     const key = read ? JSON.stringify([base(), session?.access_token || '', actor, readGeneration, path, opts.headers || {}, opts.timeoutMs || 30000, opts.body || null]) : null;
     if (key && pendingJsonReads.has(key)) return pendingJsonReads.get(key);
+    const generation=readGeneration;
     const pending = (async () => {
-      const res = await req(path, opts);
+      // One bounded recovery for opted-in idempotent case reads only. Writes,
+      // approvals, uploads and auth errors must never be replayed here.
+      const recover=read&&(opts.recoverRead||opts.readOnly===true);
+      let res;
+      for(let attempt=0;attempt<2;attempt++){
+        try {res=await req(path,recover?{...opts,timeoutMs:12000}:opts);break;}
+        catch(error){
+          const transient=error?.retryableRead||error?.name==='TypeError';
+          if(!recover||attempt||!transient||actor!==(session?.user?.id||'')||generation!==readGeneration)throw error;
+        }
+      }
       const body = await readResponseBody(res,'text',Number(opts.timeoutMs || 15000));
       if (actor !== (session?.user?.id || '')) throw new Error('ผู้ใช้งานเปลี่ยนระหว่างโหลดข้อมูล กรุณาเปิดหน้าทำงานใหม่');
       return body ? JSON.parse(body) : null;
@@ -742,7 +759,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   /* โหลดรายละเอียดหนักเฉพาะตอนผู้ตรวจเปิดเคส ไม่ดึง raw evidence ทุกแถวในหน้ารวม */
   async function exceptionDetail(exceptionId) {
     if (!exceptionId) return null;
-    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=*&limit=1`);
+    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(exceptionId)}&select=*&limit=1`,{recoverRead:true});
     return rows[0] || null;
   }
 
@@ -1267,7 +1284,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
 
   async function caseEvidence(id) {
     if (!id) return [];
-    return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`) || [];
+    return await json(`/rest/v1/case_evidence?exception_id=eq.${encodeURIComponent(id)}&select=*&order=created_at.asc`,{recoverRead:true}) || [];
   }
 
   // Queue display only: read attachment presence under existing case_evidence
@@ -1312,7 +1329,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     if (!id) return [];
     const rows = [];
     for (let offset = 0; ; offset += 500) {
-      const page = await json(`/rest/v1/audit_log?entity=eq.exception&action=eq.case_note&target=eq.${encodeURIComponent(id)}&select=id,actor,at,detail&order=at.asc,id.asc&limit=500&offset=${offset}`);
+      const page = await json(`/rest/v1/audit_log?entity=eq.exception&action=eq.case_note&target=eq.${encodeURIComponent(id)}&select=id,actor,at,detail&order=at.asc,id.asc&limit=500&offset=${offset}`,{recoverRead:true});
       if (!Array.isArray(page)) throw new Error("อ่าน Note จากฐานข้อมูลไม่สำเร็จ");
       rows.push(...page.map((row) => ({ id: row.id, by: row.actor, at: row.at, text: row.detail })));
       if (page.length < 500) return rows;

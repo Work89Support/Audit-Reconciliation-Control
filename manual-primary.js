@@ -2,6 +2,11 @@
  'use strict';
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const allowed=role=>['lead','admin'].includes(role);
+ function countBreakdown(p){
+  const raw=p.raw_exception_count,annotations=p.bo_timing_annotation_count||0,actual=p.actionable_exception_count,waiting=p.waiting_bo_count,total=p.after?.exception_count;
+  if(![raw,annotations,actual,waiting,total].every(Number.isSafeInteger)||raw-annotations!==actual||actual+waiting!==total)return '';
+  return `<p class="manual-final-safety" data-count-breakdown>จำนวนรายการ: รายงานดิบ ${esc(raw)} − คำเตือนประกอบแถวเดิม ${esc(annotations)} = เคสจากผลตรวจ ${esc(actual)} + BO รอ STM/PM ${esc(waiting)} = ชุดเคส ${esc(total)} · เก็บคำเตือนและรายงานเดิมครบ ไม่ใช่การลบข้อมูลหรือปิดเคส</p>`;
+ }
  function annotationNotice(p){const n=p.review_annotation_count,t=p.bo_timing_annotation_count;return (Number.isInteger(n)&&n>0?`<p class="manual-final-safety" data-review-annotations>คำเตือนประกอบคู่เดิม ${esc(n)} รายการ: ยืนยันว่าเป็นคู่ BO–STM เดิมทั้งสองฝั่งและยอดตรงกัน ไม่นับแถวต้นทางซ้ำ แต่ยังเก็บคำเตือนให้ตรวจเอกสารก่อนปิดเคส · การใช้แถวเดียวจับหลายคู่ยังถูกบล็อก</p>`:'')+(Number.isInteger(t)&&t>0?`<p class="manual-final-safety" data-bo-timing-annotations>เก็บคำเตือนเวลา BO ข้ามวัน ${esc(t)} รายการไว้กับเคสต้นทางเดิมที่มีไฟล์และเลขแถวจริง · ไม่สร้างเคสซ้ำจากคำเตือน ไม่เติมยอด STM ที่ไม่มีจริง · รายงานดิบและประวัติเดิมคงอยู่</p>`:'');}
  function formatTime(value){return (root.AuditDisplay||(typeof require==='function'?require('./audit-display.js'):null)).dateTime(value);}
  function noticeInfo(v){return `<p class="primary-result-time">ยืนยันเมื่อ ${esc(formatTime(v.accepted_at))}</p><p>หน้าเว็บและ Excel ใช้ผลหลักชุดเดียวกัน</p><p>${v.case_set?`ใช้เคสชุดใหม่ ${esc(v.case_set.case_count)} เคส · เคสเดิมเก็บเป็นประวัติ ไม่รวมงานปัจจุบัน`:'เก็บยอดต้นฉบับและประวัติเคสเดิมไว้ ไม่เปิดหรือปิดเคสจากผลนี้'}</p><details class="primary-result-metadata"><summary>ดูรายละเอียดเวอร์ชันและเหตุผลยืนยัน</summary><dl><dt>รหัสเวอร์ชัน</dt><dd>${esc(v.id)}</dd><dt>เวลาต้นฉบับ (UTC)</dt><dd>${esc(v.accepted_at||'—')}</dd><dt>เหตุผลยืนยัน</dt><dd>${esc(v.reason||'—')}</dd></dl></details>`;}
@@ -15,7 +20,7 @@
    d.querySelector('.manual-final-safety:not([role])')?.remove();
    d.querySelector('.manual-final-content').insertAdjacentHTML('beforeend',`<p class="manual-final-safety" data-case-handoff>การยืนยันจะใช้ผลหลักและสร้างชุดเคสพร้อมดำเนินการ ${esc(p.after?.exception_count??0)} เคสพร้อมกัน · เก็บเคสเดิมเป็นประวัติ ไม่เปลี่ยนยอดหรือปิดเคส · ถ้าสร้างเคสไม่สำเร็จจะไม่รับรองผลหลักค้างไว้</p>`);
   }
-  d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',annotationNotice(p));
+  d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',annotationNotice(p)+countBreakdown(p));
   if(p.report_scope_correction_count>0)d.querySelector('.primary-comparison').insertAdjacentHTML('afterend',`<p class="manual-final-safety" data-source-dates>แยกวันรายงานจากวันต้นทาง ${esc(p.report_scope_correction_count)} รายการตามเวลาเข้าธนาคารในแถว BO จริง · เก็บวันและเวลาทำรายการเดิมไว้ ไม่แก้ยอดต้นทาง</p>`);
   const close=()=>{d.close();d.remove();};d.querySelectorAll('[data-cancel]').forEach(x=>x.onclick=close);d.addEventListener('cancel',e=>{e.preventDefault();close();});
   const reason=()=>root.AccountRecheck.confirmationReason(d.querySelector('[data-reason]').value,d.querySelector('[data-other]').value);
@@ -37,5 +42,5 @@
  function run(v){const r=v.report;return {id:v.base_run_id,company:v.company,business_date:v.business_date,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),summary:{...r.summary,match_evidence:r.match_evidence||[],manual_primary:{id:v.id,recheck_id:v.recheck_id,accepted_at:v.accepted_at,reason:v.reason}},primaryResult:v,jobStatus:'completed',boWaitingSnapshot:null};}
  function cases(v,current=[]){return (v.report.exceptions||[]).map((e,i)=>{const matches=current.filter(c=>c.customer_details?.manual_primary_id===v.id&&c.customer_details?.manual_primary_row_kind==='exception'&&c.customer_details?.manual_primary_row_index===i),real=matches.length===1?matches[0]:null;return {...e,id:real?.id||null,code:real?.code||`ผลตรวจมือ ${i+1}`,company:v.company,business_date:v.business_date,status:real?.status||'open',resolution_note:real?.resolution_note||null,resolved_by:real?.resolved_by||null,primaryRowKey:`primary-${v.id}-${i}`};});}
  function sheets(v){return [{name:'เวอร์ชันผลหลัก',title:'ผลตรวจมือที่ใช้เป็นผลหลัก · ประวัติเคสไม่เปลี่ยน',headers:['บริษัท','วันที่','เวอร์ชันผลหลัก','รายงานตรวจมือ','ผลรอบเดิม','ผู้ยืนยัน','ยืนยันเมื่อ','เหตุผล'],rows:[[v.company,v.business_date,v.id,v.recheck_id,v.base_run_id||'',v.accepted_by,v.accepted_at,v.reason]],widths:[14,14,42,42,42,42,26,60]}];}
- root.ManualPrimary={allowed,formatTime,noticeInfo,annotationNotice,html,open,run,cases,sheets};if(typeof module!=='undefined')module.exports=root.ManualPrimary;
+ root.ManualPrimary={allowed,formatTime,noticeInfo,annotationNotice,countBreakdown,html,open,run,cases,sheets};if(typeof module!=='undefined')module.exports=root.ManualPrimary;
 })(typeof window==='undefined'?globalThis:window);

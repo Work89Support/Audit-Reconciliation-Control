@@ -7,8 +7,10 @@ const ReviewOverview = (() => {
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
   const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
+  const canClarifyCase=row=>!holdFor(row)&&['open','answered','pending_next_day'].includes(row.status);
   function closureReviewAction(row) {
     if(holdFor(row))return {action:'review',label:'พักตรวจ / รอ STM',enabled:false};
+    if(row.status==='pending_next_day')return {action:'review',label:'ตรวจหลักฐานข้ามวัน',enabled:true};
     if (row.status === 'open') return {action:'close',label:'ยืนยันปิดเคส',enabled:true};
     if (['answered','clarifying','pair_pending'].includes(row.status)) return {
       action:'review', enabled:true,
@@ -68,7 +70,7 @@ const ReviewOverview = (() => {
   function auditLabel(row) {
     if (!row.case) return row.confirmation?'Audit ยืนยันแล้ว':'ยังไม่ยืนยันโดย Audit';
     if(holdFor(row.case))return AccountReviewHolds.label;
-    return ({open:'รอตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',closed:'ยืนยันแล้ว ปิดเคส',approved:'อนุมัติแล้ว',damage:'ความเสียหาย'})[row.case.status] || row.case.status;
+    return ({open:'รอตรวจ',pending:'รอตรวจ',pending_next_day:'ค้างรอข้อมูลข้ามวัน',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',closed:'ยืนยันแล้ว ปิดเคส',approved:'อนุมัติแล้ว',damage:'ความเสียหาย'})[row.case.status] || row.case.status;
   }
   function xbPayoutNote(row) {
     if(row.direction!=='withdraw'||!['AUTOPEER','MYPAY'].includes(row.account))return '';
@@ -225,7 +227,7 @@ const ReviewOverview = (() => {
         const batch=document.createElement('section');batch.className='audit-sheet-tools';
         batch.innerHTML=`<label>ทำกับรายการที่ติ๊ก <select id="auditBatchAction"><option value="clarify">ส่งขอชี้แจง</option><option value="close">ยืนยันปิดเคสที่ผ่านเกณฑ์</option></select></label><button id="auditStageSelected" class="ghost-button">เตรียมสถานะที่เลือก (${statusSelected.size})</button><button id="auditSaveStatuses" class="primary-button" ${pendingActions.size?'':'disabled'}>บันทึกสถานะ (${pendingActions.size})</button><button id="auditDiscardStatuses" class="ghost-button">ล้างที่เตรียมไว้</button><span role="status">ยังไม่บันทึกจนกดบันทึกสถานะและยืนยัน</span>`;
         toolbar.before(batch);
-        const selectAll=document.createElement('button');selectAll.type='button';selectAll.className='ghost-button';selectAll.textContent='เลือกเคสตามตัวกรอง (ทุกหน้า)';selectAll.onclick=()=>{for(const r of rows)if(r.case&&['open','answered'].includes(r.case.status))statusSelected.add(r.case.id);draw();};batch.prepend(selectAll);
+        const selectAll=document.createElement('button');selectAll.type='button';selectAll.className='ghost-button';selectAll.textContent='เลือกเคสตามตัวกรอง (ทุกหน้า)';selectAll.onclick=()=>{for(const r of rows)if(r.case&&canClarifyCase(r.case))statusSelected.add(r.case.id);draw();};batch.prepend(selectAll);
         batch.querySelector('#auditStageSelected').onclick=()=>{const action=batch.querySelector('select').value;for(const id of statusSelected)pendingActions.set(id,action);draw();};
         batch.querySelector('#auditDiscardStatuses').onclick=()=>{pendingActions.clear();statusSelected.clear();draw();};
         batch.querySelector('#auditSaveStatuses').onclick=()=>onBatchStatus([...pendingActions].map(([id,action])=>({row:data.cases.find(e=>e.id===id),action})),{company,date,onComplete:async()=>{pendingActions.clear();statusSelected.clear();await refreshInPlace();}});
@@ -333,13 +335,13 @@ const ReviewOverview = (() => {
       root.querySelectorAll('[data-audit-action]').forEach(el=>{
         const row=data.cases.find(e=>e.id===el.dataset.auditAction);
         if(onBatchStatus){
-          const label=document.createElement('label'), check=document.createElement('input');check.type='checkbox';check.checked=statusSelected.has(row.id);check.disabled=!['open','answered'].includes(row.status);check.setAttribute('aria-label','เลือกเปลี่ยนสถานะ '+row.code);
+          const label=document.createElement('label'), check=document.createElement('input');check.type='checkbox';check.checked=statusSelected.has(row.id);check.disabled=!canClarifyCase(row);check.setAttribute('aria-label','เลือกเปลี่ยนสถานะ '+row.code);
           check.onchange=()=>{if(check.checked)statusSelected.add(row.id);else statusSelected.delete(row.id);draw();};label.append(check,document.createTextNode(' เลือก'));el.before(label);
           if(pendingActions.has(row.id)){const hint=document.createElement('small');hint.textContent='เตรียม'+(pendingActions.get(row.id)==='close'?'ปิดเคส':'ส่งชี้แจง')+' · ยังไม่บันทึก';el.after(hint);}
         }
         const clarify=el.querySelector('option[value="clarify"]');
         clarify.textContent='ส่งขอชี้แจง…';
-        clarify.disabled=!['open','answered'].includes(row.status);
+        clarify.disabled=!canClarifyCase(row);
         const closure = closureReviewAction(row);
         const closeOption=el.querySelector('option[value="close"]');
         closeOption.disabled=!closure.enabled;
@@ -385,6 +387,6 @@ const ReviewOverview = (() => {
     await refresh();
     return ()=>{generation++;};
   }
-  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue,splitRows,splitHtml,splitHeaders,closureReviewAction};
+  return {model,filter,caseState,mount,sheetRow,sheetHeaders,auditLabel,normalizeHidden,filterColumns,columnValue,splitRows,splitHtml,splitHeaders,closureReviewAction,canClarifyCase};
 })();
 if (typeof module !== 'undefined') module.exports = ReviewOverview;
