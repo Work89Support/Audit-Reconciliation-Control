@@ -23,6 +23,8 @@ jobs:
         run: node tests/clarification-send-confirmation.test.cjs
       - name: Verify current case counts and persistent read-only account registry
         run: node tests/daily-current-case-summary.test.cjs && node tests/daily-hold-registry.test.cjs && node tests/manual-result-counts.test.cjs
+      - name: Verify operational registry roles without expanding finance access
+        run: node tests/operational-hold-registry.test.cjs
       - name: Verify clarification request receipt and preserved navigation
         run: npm run test:ui-qa
       - name: Verify all-role evidence checklist

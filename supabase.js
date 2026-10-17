@@ -820,7 +820,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
   }
 
-  const readOnlyCaseRpcs = new Set(['account_review_hold_for_case','case_clarification_instructions','case_clarification_history']);
+  const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','case_clarification_instructions','case_clarification_history']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",
@@ -838,6 +838,39 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const reviewHoldScopes=()=>rpc('account_review_hold_scopes');
   const reviewHoldForCase=id=>rpc('account_review_hold_for_case',{p_case:id});
   const reviewHoldReport=(company,from,to)=>rpc('account_review_hold_report',{p_company:company,p_from:from,p_to:to});
+  // Operational ledger, not the restricted finance dashboard. These tables
+  // already grant authenticated SELECT with account_review_hold_access RLS.
+  // No policies/grants are changed, and no privileged credential is used.
+  async function reviewHoldRegistryCompanies(){
+    const raw=await rpc('get_my_access'),access=Array.isArray(raw)?raw[0]:raw;
+    if(!access?.active||!['lead','monitor','audit_assistant','shift_lead','exec','admin'].includes(access.role))throw Error('ไม่มีสิทธิ์อ่านทะเบียนพักตรวจ');
+    if(!Array.isArray(access.companies))throw Error('ยังอ่านสิทธิ์บริษัทไม่ครบ');
+    const all=['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'];
+    const allowed=access.companies.map(c=>String(c).toUpperCase());
+    return all.filter(c=>access.role==='admin'||allowed.includes('*')||allowed.includes(c));
+  }
+  async function reviewHoldRegistryReport(company,from,to){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||!Number.isFinite(Date.parse(from))||!Number.isFinite(Date.parse(to))||from>to||(Date.parse(to)-Date.parse(from))/86400000>365)throw Error('เลือกช่วงทะเบียนไม่เกิน 366 วัน');
+    if(!(await reviewHoldRegistryCompanies()).includes(company))throw Error('ไม่มีสิทธิ์อ่านทะเบียนบริษัทนี้');
+    const holds=[];
+    for(let offset=0;;offset+=200){
+      const page=await json(`/rest/v1/account_review_holds?company=eq.${encodeURIComponent(company)}&business_date=gte.${from}&business_date=lte.${to}&select=*&order=business_date.asc,id.asc&limit=200&offset=${offset}`,{recoverRead:true});
+      if(!Array.isArray(page)||page.some(h=>h.company!==company||h.business_date<from||h.business_date>to||!h.id))throw Error('ขอบเขตทะเบียนไม่ตรงบริษัท/วันที่');
+      holds.push(...page);if(page.length<200)break;
+    }
+    const items=[];
+    for(let index=0;index<holds.length;index+=50){
+      const batch=holds.slice(index,index+50),byId=new Map(batch.map(h=>[h.id,h]));
+      for(let offset=0;;offset+=500){
+        const page=await json(`/rest/v1/account_review_hold_items?hold_id=in.(${batch.map(h=>encodeURIComponent(h.id)).join(',')})&select=*&order=hold_id.asc,source_ref.asc&limit=500&offset=${offset}`,{recoverRead:true});
+        if(!Array.isArray(page))throw Error('ยังอ่านรายการพักตรวจไม่ครบ');
+        for(const i of page){const h=byId.get(i.hold_id);if(!h)throw Error('รายการพักตรวจเป็นของบริษัทอื่น');items.push({...i,company:h.company,date:h.business_date,account:h.account,reason:h.reason,responsible_role:h.responsible_role,registered_at:h.created_at,registered_by:h.created_by,assessment:'ยังประเมินไม่ได้ — ขาด STM',loss_amount:null});}
+        if(page.length<500)break;
+      }
+    }
+    if(!(await reviewHoldRegistryCompanies()).includes(company))throw Error('สิทธิ์บริษัทเปลี่ยน กรุณาเปิดทะเบียนใหม่');
+    return {company,scopes:holds,items};
+  }
   const financeActionReport=(company,to)=>rpc('finance_action_report',{p_company:company,p_to:to});
   const financeActionCase=(company,id)=>rpc('finance_action_case',{p_company:company,p_case:id});
   const findFinanceActionCase=(company,date,code)=>rpc('find_finance_action_case',{p_company:company,p_date:date,p_code:code});
@@ -1643,7 +1676,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
   return {
-    financeReportingCompanies,financeBoWindow,financeReportBoWindow,financeBoReportManifest,acceptFinanceBoReport,financeBoReportHistory,financeCaseReport,reviewHoldScopes,reviewHoldForCase,reviewHoldReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
+    financeReportingCompanies,financeBoWindow,financeReportBoWindow,financeBoReportManifest,acceptFinanceBoReport,financeBoReportHistory,financeCaseReport,reviewHoldScopes,reviewHoldForCase,reviewHoldReport,reviewHoldRegistryCompanies,reviewHoldRegistryReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,

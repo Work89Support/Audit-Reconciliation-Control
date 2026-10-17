@@ -3176,8 +3176,8 @@ ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result
     openModal('พักบัญชี / ทะเบียนพักตรวจ — อ่านอย่างเดียว','<div id="dailyHoldRegistry"></div>','<button id="dailyHoldRegistryClose">ปิด</button>');
     $('#dailyHoldRegistryClose').onclick=closeModal;
     AccountReviewHolds.mountReadOnly($('#dailyHoldRegistry'),{
-      actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.financeReportingCompanies,
-      scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldReport,view:AccountReviewHolds.view,
+      actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.reviewHoldRegistryCompanies,
+      scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldRegistryReport,view:AccountReviewHolds.view,
       csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:VISIBLE_DATE_FROM,to:VISIBLE_DATE_TO,
     });
   });
