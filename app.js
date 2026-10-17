@@ -4144,7 +4144,9 @@ async function loadExceptionSupport(e, options = {}) {
 }
 
 async function openEvidenceRelatedCase(id, options = {}) {
+  const actor=Sb.authUser()?.id,role=state.role,route=state.route;
   const row = await Sb.exceptionDetail(id);
+  if(actor!==Sb.authUser()?.id||role!==state.role||route!==state.route)return;
   if (!row || !canAccessCompany(row.company)) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์เข้าถึงบริษัทนี้');
   const item = mapLiveException(row);
   item.id = row.id;
@@ -8404,7 +8406,16 @@ VIEWS.clarify = (root) => {
         }).join("") || `<p class="empty-box">ไม่มีงานชี้แจงในช่วงที่เลือก</p>`}</div>
       </section>
       <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
-    root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.openEx)));
+    root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", async () => {
+      const id=button.dataset.openEx;
+      // A company refresh may clear the row cache while its preserved DOM is
+      // still visible. Re-read the selected UUID under RLS instead of claiming
+      // the persisted case is missing. No extra read on the normal path.
+      try {
+        if(DB.exceptions.some(row=>row.id===id))await openException(id);
+        else await openEvidenceRelatedCase(id);
+      } catch(error) { toast('เปิดรายละเอียดเคสไม่ได้: '+error.message,'warn'); }
+    }));
     const openCompanyCases = (company) => {
       if (state.role === 'shift_lead') {
         // Same-route hash assignment emits no hashchange. Repaint the already
