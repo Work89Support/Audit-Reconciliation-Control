@@ -1,4 +1,7 @@
 import fs from 'node:fs/promises';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {qualityFailureMessage}=require('./worker-parse-receipt.cjs');
 const base=JSON.parse(await fs.readFile(new URL('../n8n/audit-headless-worker.json',import.meta.url),'utf8'));
 // Reuse the proven parsers/quality gates; omit every daily-run write/close node.
 const start=base.nodes.findIndex(n=>n.name==='Supabase: อ่านรายการไฟล์ของวัน');
@@ -40,6 +43,7 @@ finish.parameters.url='={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_account_rech
 // Keep nested object closers separated: n8n's expression delimiter is also "}}".
 finish.parameters.jsonBody=`={{ JSON.stringify({p_id:$json.job.id,p_revision:$json.job.revision,p_error:$json.quality_errors?.length?'ไม่ผ่าน Quality Gate ตรวจแหล่งข้อมูล/รูปแบบไฟล์ก่อนลองใหม่':null,p_result:{quality:'passed',company:$json.job.company,business_date:$json.job.business_date,account:$json.job.account,direction:$json.job.direction,stm_count:$json.result?.stm_count||0,bo_count:$json.result?.bo_count||0,matched:$json.result?.matched||0,match_evidence:$json.result?.summary?.match_evidence||[],summary:$json.result?.summary||{},exceptions:$json.exceptions||[],source_files:$json.files||[],worker_version:$json.result?.summary?.worker_version} }) }}`;
 const names=new Set(nodes.map(n=>n.name));names.add(claim.name);names.add(finish.name);names.add(webhook.name);
+finish.parameters.jsonBody=finish.parameters.jsonBody.replace("$json.quality_errors?.length?'ไม่ผ่าน Quality Gate ตรวจแหล่งข้อมูล/รูปแบบไฟล์ก่อนลองใหม่':null",`(${qualityFailureMessage.toString()})($json.quality_errors)`);
 const connections={};
 for(const [name,connection] of Object.entries(base.connections)){
  if(!names.has(name))continue;

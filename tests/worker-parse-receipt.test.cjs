@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const {parseReceiptPayload,qualityFailureMessage}=require('../scripts/worker-parse-receipt.cjs');
+const source={job:{id:'test-only',company:'PS8',business_date:'2026-10-16'},result:null,quality_errors:[{file_name:'test.pdf',parse_error:'19 unread rows'}],files:[{id:'a',parsed:false,parse_error:'19 unread rows'},{id:'b',parsed:true,row_count:10}]};
+const original=JSON.stringify(source),failed=parseReceiptPayload(source);
+assert.deepEqual(JSON.parse(JSON.stringify(failed)).p_results,source.files);
+assert.equal('bo_waiting_snapshot' in failed.p_results[0],false);
+assert.match(qualityFailureMessage(source.quality_errors),/test.pdf: 19 unread rows/);
+assert.equal(qualityFailureMessage([]),null);
+assert.equal(JSON.stringify(source),original);
+const ok=parseReceiptPayload({...source,quality_errors:[],result:{summary:{waiting_bo:[{id:'draft-only'}],worker_version:'test'}}});
+assert.deepEqual(ok.p_results[0].bo_waiting_snapshot.waiting_bo,[{id:'draft-only'}]);
+assert.equal('bo_waiting_snapshot' in ok.p_results[1],false);
+assert.throws(()=>parseReceiptPayload({job:{id:'x'}}),/scope/);
+console.log('PASS null-result receipts preserve failures, no fake zero snapshot, scoped diagnostics');

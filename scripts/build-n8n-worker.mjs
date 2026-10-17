@@ -1,6 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import {receiptExpression} from './patch-parse-receipt-worker.mjs';
+import {patchPdfParser} from './patch-scb-ocr-columns.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
@@ -15,7 +17,7 @@ const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await P
   read("tmn-visual-review.js"),
 ]);
 
-const pdf = pdfOriginal;
+const pdf = patchPdfParser(pdfOriginal);
 
 const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,providerNearTimeTolerance:600,sys123DuplicateTimeTolerance:3600,sys123FallbackTimeTolerance:3600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
@@ -536,7 +538,7 @@ const nodes = [
   http("record-parse-results", "Supabase: บันทึกผลอ่านไฟล์", [1200, 80], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/record_source_file_parse_results", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;const snapshot={company:x.job.company,business_date:x.job.business_date,waiting_bo:x.result.summary.waiting_bo||[],waiting_bo_version:1,worker_version:x.result.summary.worker_version};return JSON.stringify({p_job_id:x.job.id,p_results:x.files.map((f,i)=>i===0?{...f,bo_waiting_snapshot:snapshot}:f)});})() }}", options: { response: { response: {} } },
+    jsonBody: receiptExpression, options: { response: { response: {} } },
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "loose", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return x.quality_errors.length === 0 && Array.isArray(x.job.missing_groups) && x.job.missing_groups.length === 0;})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
   { parameters: { jsCode: "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{p_run:{business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:x.exceptions.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary:x.result.summary}},pairedItem:{item:0}}];" }, id: "prepare-run-payload", name: "เตรียมข้อมูลผลการรัน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1640, 20] },

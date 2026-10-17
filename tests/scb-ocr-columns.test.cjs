@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');
+const {reconstructScbOcrColumns:recover}=require('../scripts/scb-ocr-columns.cjs');
+const header='ธนาคารไทยพาณิชย์\nTHE SIAM COMMERCIAL BANK PUBLIC COMPANY LIMITED\nAccount No. 123-123456-7\nBALANCE BROUGHT FORWARD\n';
+const first=header+'รายละเอียด\n100.00\n15/10/26 23:59 X1 ENET 10.00\n16/10/26 00:01 X2 ENET 5.00\n110.00 รับโอนจาก BANK\n105.00 โอนไป BANK\n';
+const second=header+'16/10/26 12:00 X1 ENET 20.00\nรายละเอียด\n105.00\n125.00 รับโอนจาก BANK\nTOTAL AMOUNTS (Credit)\n999.00';
+const source=first+second,out=recover(source);assert.equal(out.proof.length,3);assert.equal(out.proof[2].page,2);assert.match(out.text,/16\/10\/26 00:01 X2 ENET 5.00 105.00/);
+for(const broken of [source.replace('20.00','21.00'),source.replace('125.00','126.00'),source.replace('X2','X1'),source.replace('105.00\n125','104.00\n125'),source.replace('ENET','MOBILE'),source.replace('TOTAL AMOUNTS','1.00\nTOTAL AMOUNTS'),source.replace('16/10/26 00:01','14/10/26 00:01'),source.replace('โอนไป','รับโอนจาก'),source.replace('00:01 X2 ENET 5.00','00:01 X2 ENET'),source.replace('00:01','25:01')])assert.equal(recover(broken),null);
+assert.equal(recover(source.replace(/SIAM COMMERCIAL/g,'OTHER BANK')),null);
+assert.equal(source,first+second);
+console.log('PASS SCB column recovery rejects missing amounts, balance gaps, direction conflicts, dates, channels and unknown bank');

@@ -1,0 +1,11 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบปุ่ม FR8 — ข้อมูลจำลองเท่านั้น</title>
+<link rel="stylesheet" href="../styles.css">
+<body><h1>ทดสอบปุ่ม FR8 — ข้อมูลจำลองเท่านั้น</h1><p>ไม่มีการเชื่อมต่อฐานข้อมูล ไม่มีการยืนยันผลจริง</p><button id="open">เปิดทบทวนจำลอง</button><p id="status">ยังไม่บันทึก</p>
+<script src="../account-recheck.js"></script><script src="../manual-primary.js"></script><script>
+let calls=0;
+document.querySelector('#open').onclick=()=>ManualPrimary.open('synthetic-only',{
+actor:()=> 'test-only',role:()=> 'lead',withCases:true,
+preview:async()=>{if(calls++)await new Promise(r=>setTimeout(r,2200));return {company:'FR8',date:'2026-10-16',account:'ALL',direction:'all',allowed:true,file_count:10,after:{stm_count:4951,bo_count:4957,matched:4937,exception_count:34},token:'synthetic-only'}},
+accept:async()=>{document.querySelector('#status').textContent='บันทึกเฉพาะตัวจำลอง';},onAccepted:()=>{}
+});
+</script></body></html>
