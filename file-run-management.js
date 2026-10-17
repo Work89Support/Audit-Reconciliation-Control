@@ -7,6 +7,7 @@
  function runNotice(s){
   if(!s)return {title:'ยังตรวจสถานะรันไม่ได้',reason:'โหลดสถานะไม่สำเร็จ ไม่ถือว่างานพร้อมรัน',next:'โหลดสถานะล่าสุดก่อนสั่งงาน',blocked:true};
   const j=s.job||s;
+  if(s.workerFailure?.source_kind==='manual'&&j.status==='error')return {title:s.workerFailure.diagnostic_only?'ผลตรวจไฟล์ในเครื่อง · ยังไม่รันใหม่':'ประวัติรอบตรวจมือที่ไม่ผ่าน',reason:`หลักฐานตรวจมือ ${s.workerFailure.execution_id||'—'} · ${s.workerFailure.detail} · รายละเอียด: ${s.workerFailure.message}`,next:'เก็บคำขอและประวัติเดิม · ตรวจ OCR และแถวต้นทางให้ครบก่อนสั่งงานใหม่ ไม่ใช้ผลที่อ่านไม่ครบเป็นยอดศูนย์',blocked:false};
   if(s.workerFailure&&j.status==='error')return {title:'รอบหลักบันทึกผลไม่สำเร็จ',reason:`หลักฐานรันเดิม ${s.workerFailure.execution_id||'—'} · ${s.workerFailure.detail} · ข้อความ worker: ${s.workerFailure.message}`,next:'เก็บคำขอและประวัติเดิม · ตรวจผลรันมือและแถวอ้างอิงก่อนให้หัวหน้า/Admin ยืนยัน ไม่ลองรันซ้ำอัตโนมัติ',blocked:false};
   if(j.status==='running')return {title:'บอทรอบหลักกำลังรัน',reason:'ยังไม่รับงานตรวจมือซ้อนกับบริษัทและวันนี้',next:'รอรอบหลักจบ แล้วโหลดสถานะล่าสุด',blocked:true};
   if(s.hold?.paused||s.manualOnly)return {title:'พักบอทรอบหลัก'+(s.manualOnly?' · มีไฟล์แก้ไข':''),reason:s.hold?.reason||'ล็อกผลรอบหลักเพื่อรักษาประวัติเคสเดิมและป้องกันเคสซ้ำ',next:'เลือกไฟล์แล้วรันตรวจมือเป็นรายงานแยกได้ แม้ยังไม่มีผลเดิม · หัวหน้า/ผู้ดูแลยืนยันผลเท่านั้น',blocked:false};

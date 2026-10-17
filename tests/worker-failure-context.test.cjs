@@ -5,6 +5,9 @@ assert.match(n.reason,/14474/);assert.match(n.reason,/หลักฐานร�
 const unknown=ui.runNotice({job:{status:'error',attempt_count:3,last_error:'หยุดลองอัตโนมัติหลังล้มเหลว 3 ครั้ง: ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง'}});
 assert.match(unknown.reason,/ไม่ได้ยืนยันว่าไฟล์เสีย/);
 assert.equal(ui.runNotice({job:{status:'running'},workerFailure:evidence}).blocked,true,'historical evidence cannot override a live running gate');
+const manual=ui.runNotice({job:{status:'error'},workerFailure:{...evidence,source_kind:'manual',diagnostic_only:true}});
+assert.match(manual.title,/ในเครื่อง/);assert.doesNotMatch(manual.title,/รอบหลัก/);assert.match(manual.next,/OCR/);
+assert.equal(ui.runNotice({job:{status:'running'},workerFailure:{...evidence,source_kind:'manual'}}).blocked,true);
 const sql=fs.readFileSync('supabase/20261017_worker_failure_context.sql','utf8');
 assert.match(sql,/current_user_active\(\)/);assert.match(sql,/has_company_access\(p_company\)/);
 assert.match(sql,/not public.audit_run_blocked/);assert.match(sql,/สาเหตุระหว่างบันทึก/);

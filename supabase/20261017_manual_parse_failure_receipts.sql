@@ -34,13 +34,20 @@ grant execute on function public.finish_account_recheck_compact(uuid,integer,jso
 do $$declare d text;
 begin
  d:=pg_get_functiondef('public.worker_failure_context(text,date)'::regprocedure);
+ if position($needle$'source_kind'$needle$ in d)=0 then
+  if position($needle$'historical_evidence',true$needle$ in d)=0 then raise exception 'Unreviewed diagnostic context';end if;
+  d:=replace(d,$needle$'historical_evidence',true$needle$,
+   $patch$'historical_evidence',true,'source_kind',case when entity='account_recheck_jobs' then 'manual' else 'main' end,
+   'diagnostic_only',coalesce((meta->>'diagnostic_only')::boolean,false)$patch$);
+ end if;
  if position('account_recheck_parse_failed' in d)=0 then
   if position($needle$action='worker_failure_verified'$needle$ in d)=0 then
    raise exception 'Unreviewed failure context definition';
   end if;
-  execute replace(d,$needle$action='worker_failure_verified'$needle$,
+  d:=replace(d,$needle$action='worker_failure_verified'$needle$,
    $patch$action in ('worker_failure_verified','account_recheck_parse_failed')$patch$);
  end if;
+ execute d;
 end$$;
 notify pgrst,'reload schema';
 commit;

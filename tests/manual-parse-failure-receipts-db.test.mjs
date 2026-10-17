@@ -13,7 +13,7 @@ select * into strict q from account_recheck_jobs where id=p_id for update;
 if q.status<>'running' or q.revision<>p_revision then raise exception 'stale request';end if;
 update account_recheck_jobs set status=case when p_error is null then 'ready' else 'failed' end,revision=revision+1 where id=p_id returning * into q;return q;end$$;
 create function account_recheck_worker_envelope(q account_recheck_jobs) returns jsonb language sql as $$select to_jsonb(q)$$;
-create function worker_failure_context(p_company text,p_date date) returns jsonb language sql as $$select meta from audit_log where company=p_company and action='worker_failure_verified' and meta->>'business_date'=p_date::text order by at desc,id desc limit 1$$;
+create function worker_failure_context(p_company text,p_date date) returns jsonb language sql as $$select meta||jsonb_build_object('historical_evidence',true) from audit_log where company=p_company and action='worker_failure_verified' and meta->>'business_date'=p_date::text order by at desc,id desc limit 1$$;
 insert into account_recheck_jobs values('${id(1)}','UR9','2026-10-16','running',2,array['${id(2)}'::uuid],'test-only');
 select set_config('test.role','authenticated',false);`);
 const patch=fs.readFileSync('supabase/20261017_manual_parse_failure_receipts.sql','utf8');
