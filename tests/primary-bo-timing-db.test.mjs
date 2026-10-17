@@ -7,6 +7,11 @@ const patch=fs.readFileSync('supabase/20261017_primary_bo_timing_projection.sql'
 await db.exec(patch);await db.exec(patch);
 const countsPatch=fs.readFileSync('supabase/20261017_primary_count_breakdown.sql','utf8');
 await db.exec(countsPatch);await db.exec(countsPatch);
+const payloadPatch=fs.readFileSync('supabase/20261017_primary_projection_bounded_payload.sql','utf8');
+await db.exec(payloadPatch);await db.exec(payloadPatch);
+const settings=(await db.query("select proconfig from pg_proc where oid='accept_manual_primary_with_cases(uuid,text,text,boolean)'::regprocedure")).rows[0].proconfig;
+assert(settings.includes('statement_timeout=30s'));
+assert(settings.includes('lock_timeout=5s'));
 for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'].entries()){
  const date='2026-10-16',bo=id(100+c),request=id(200+c),run=id(300+c);
  const files=[{id:bo,physical_source_file_id:bo,company,business_date:date,kind:'bo_main',checksum:'immutable'}];
@@ -17,7 +22,17 @@ for(const [c,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','
  for(const r of records.slice(0,3))r.business_date='2026-10-15';
  const exceptions=records.flatMap(r=>[r,{...structuredClone(r),bank_amount:100,stm_raw:'— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —',customer_details:{source_rows:{bo:null,stm:null}}}]);
  const report={quality:'passed',company,date,account:'ALL',direction:'all',bo_count:9,stm_count:0,matched:0,match_evidence:[],exceptions,summary:{waiting_bo:[]}};
+ const legacy=(await db.query('select manual_primary_report_projection_rows($1) p',[JSON.stringify(report)])).rows[0].p;
  const projected=(await db.query('select manual_primary_report_projection($1) p',[JSON.stringify(report)])).rows[0].p;
+ assert.deepEqual(projected,legacy,'bounded projection must be byte-for-byte JSON equivalent');
+ if(company==='FR8'){
+  const large={...structuredClone(report),match_evidence:Array.from({length:5000},(_,i)=>({bo:{fileId:bo,row:i+1},stm:{fileId:bo,row:i+5001},raw:'evidence'.repeat(200)})),summary:{...report.summary,full_evidence:'preserved'.repeat(1000000)},unknown_future_field:{preserved:true}};
+  const expected=(await db.query('select manual_primary_report_projection_rows($1) p',[JSON.stringify(large)])).rows[0].p;
+  const actual=(await db.query('select manual_primary_report_projection($1) p',[JSON.stringify(large)])).rows[0].p;
+  assert.deepEqual(actual,expected,'large evidence, summary and future keys preserved exactly');
+  assert.deepEqual(actual.match_evidence,large.match_evidence);
+  assert.equal(actual.summary.full_evidence,large.summary.full_evidence);
+ }
  assert.equal(projected.exceptions.length,9);assert.equal(projected.summary.bo_timing_annotation_count,9);assert.equal(projected.exceptions[0].bank_amount,null,'never fabricate STM from a BO-only warning');
  assert.equal(projected.summary.report_scope_correction_count,3);
  assert.equal(projected.exceptions[0].business_date,date);assert.equal(projected.exceptions[0].customer_details.original_business_date,'2026-10-15');
