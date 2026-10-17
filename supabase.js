@@ -665,18 +665,13 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   }
 
   async function currentExceptions({ from, to, company, limit = 5000 } = {}) {
-    const jobFilters = ["select=last_run_id", "last_run_id=not.is.null", "is_archived=eq.false", "limit=1000"];
-    if (from) jobFilters.push(`business_date=gte.${encodeURIComponent(from)}`);
-    if (to) jobFilters.push(`business_date=lte.${encodeURIComponent(to)}`);
-    if (company && company !== "ALL") jobFilters.push(`company=eq.${encodeURIComponent(company)}`);
-    const jobs = await json(`/rest/v1/daily_recon_jobs?${jobFilters.join("&")}`);
-    const runIds = [...new Set((jobs || []).map((row) => row.last_run_id).filter(Boolean))];
-    if (!runIds.length) return [];
+    // The read-only next-case queue must resolve the same exact primary
+    // membership as the summary/responder queue, including a null system base.
     const pageSize = 1000;
-    const fetchPage = async (offset) => {
-      return json('/rest/v1/rpc/audit_current_cases?select=*', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({p_run_ids:runIds,p_limit:Math.min(pageSize,limit-offset),p_offset:offset})});
-    };
+    const fetchPage = async (offset) => json('/rest/v1/rpc/audit_current_cases_scoped?select=*',
+      {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({p_from:from || null,p_to:to || null,p_company:company || 'ALL',
+          p_limit:Math.min(pageSize,limit-offset),p_offset:offset})});
     const first = await fetchPage(0);
     if (!first || first.length < pageSize || limit <= pageSize) return first || [];
     const offsets = [];
