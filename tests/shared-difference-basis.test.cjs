@@ -27,7 +27,9 @@ for(const company of api.COMPANIES){
  assert.equal(total.waitingBoCents,10000000);assert.equal(total.closedWaitingBoCount,3);
  assert.equal(total.diffAfterCents,-30200);assert.equal(total.boCents,10130200);
  const display=api.tableView(rows,company,'2026-10-17',true,'all',schema);
- for(const r of display.rows.filter(r=>String(r[display.headers.indexOf('เลขเคส')]).startsWith('wait-')))
+ const missingStmRows=display.rows.filter(r=>[20000,40000].includes(r[display.headers.indexOf('BO · ยอด')]));
+ assert.equal(missingStmRows.length,3,'exercise every closed waiting-source row');
+ for(const r of missingStmRows)
   assert.equal(r[display.headers.indexOf('ผลต่างยอด')],'','never invent a per-row STM difference');
  assert.equal(JSON.stringify(rows),before,'never change sources, amounts, states, history or hold markers');
 }
