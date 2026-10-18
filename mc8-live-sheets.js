@@ -573,7 +573,12 @@
     byAccount.forEach(group=>{if(duplicates.get(group.base)>1)group.label=`${group.base} ${group.account.slice(-4)}`;group.label=group.label.slice(0,31);});
     return [...byAccount.values()].sort((a,b)=>a.label.localeCompare(b.label,'th',{numeric:true}));
   }
-  function displayKind(row){return row.kind==='review'&&row.exType==='cross_day'?'pending_next_day':row.kind;}
+  function displayKind(row){
+    // Use the same waiting-source evidence as the row label and totals, not
+    // the underlying workflow state. Closed cases must remain in history.
+    if(row.waiting&&row.kind!=='closed')return 'waiting_source';
+    return row.kind==='review'&&row.exType==='cross_day'?'pending_next_day':row.kind;
+  }
   function filter(rows,pm,direction,status,sheet='all'){
     const statementParts=sheet.startsWith('statement:')?sheet.slice('statement:'.length).split(':'):[],statementAccount=statementParts[0]||'',statementDirection=statementParts[1]||'';
     const accountRows=/^(bo-account:|unassigned-pm:)/.test(sheet)?new Set(accountReviewGroups(rows).find(group=>group.key===sheet)?.rows||[]):null;
