@@ -70,7 +70,7 @@ function setup(mode='same',amountDifference=false) {
   assert.doesNotMatch(complete.node('pairCandidate').innerHTML,/bo-1249/);
   assert.equal(complete.node('pairReason').value,'เก็บร่างเดิม');assert.equal(complete.node('pairFile').files[0].name,'keep-original.pdf');
   assert.equal(complete.requests.length,0);
-  for(const company of ['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M'])for(const origin of ['manual','system'])for(const statuses of [['clarifying','clarifying'],['open','clarifying'],['clarifying','open']]){
+  for(const company of ['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M'])for(const origin of ['manual','system'])for(const statuses of [['clarifying','clarifying'],['open','clarifying'],['clarifying','open'],['answered','answered'],['open','answered'],['answered','open'],['clarifying','answered'],['answered','clarifying']]){
     const prep=setup();prep.context.DB.companies=[company];prep.context.state.role='lead';
     Object.assign(prep.source,{company,status:statuses[0],currency:'THB',response_text:'คำตอบเดิม',clarification_file_id:'original-file',customer_details:origin==='manual'?{manual_primary_id:'accepted-primary',account_review_hold_id:'keep-hold'}:{account_review_hold_id:'keep-hold'}});
     Object.assign(prep.other,{company,status:statuses[1],currency:'THB',response_text:'คู่เดิม',clarification_file_id:'other-original-file'});
@@ -82,7 +82,7 @@ function setup(mode='same',amountDifference=false) {
     assert.match(prep.node('pairSearchStatus').textContent,/พบ 1 เคส/);
     prep.node('pairCandidate').value='bo';prep.node('pairCandidate').onchange();
     assert.match(prep.node('pairCompare').innerHTML,/0.02 บาท/);
-    assert.match(prep.node('pairCompare').innerHTML,/เตรียมคู่รอผู้ชี้แจงเท่านั้น/);
+    assert.match(prep.node('pairCompare').innerHTML,/เตรียมคู่โดยคงสถานะเดิมเท่านั้น/);
     assert.equal(prep.node('pairSubmit').disabled,true);assert.match(prep.node('pairSubmit').textContent,/เตรียมคู่เท่านั้น/);
     prep.node('pairReason').value='ร่างเตรียมคู่';prep.node('pairReasonType').value='posting_time';prep.node('pairChecked').checked=true;prep.node('pairFile').files=[{name:'selected-not-uploaded.pdf'}];
     // Even a forced handler call must not reach writes or re-enable the button.

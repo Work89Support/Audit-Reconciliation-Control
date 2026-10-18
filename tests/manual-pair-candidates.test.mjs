@@ -20,9 +20,9 @@ vm.runInNewContext(source,context);const client=context.window.Sb;await client.r
 for(const company of companies)for(const origin of ['manual','system'])for(const type of ['missing_bo','missing_stm'])for(const direction of ['ฝาก','ถอน']){
   const base={company,business_date:'2026-10-17',status:'open',ex_type:type,direction,system_amount:100,bank_amount:null,manual_pair_id:null,superseded_by_exception_id:null,
     run_id:origin==='manual'?null:'accepted-system-run',customer_details:{...(origin==='manual'?{manual_primary_id:'accepted-primary'}:{}),account_review_hold_id:'keep-original'},history:['original']};
-  fixture=Array.from({length:1250},(_,i)=>({...base,status:i%2?'clarifying':'open',id:`${origin}-${i}`}));
+  fixture=Array.from({length:1250},(_,i)=>({...base,status:['open','clarifying','answered'][i%3],id:`${origin}-${i}`}));
   fixture.push({...base,id:'closed',status:'closed'},{...base,id:'reserved',manual_pair_id:'pending-request'},
-    {...base,id:'closure-pending',status:'clarifying',case_closure_request_id:'keep-request'},{...base,id:'answered',status:'answered'},
+    {...base,id:'closure-pending',status:'answered',case_closure_request_id:'keep-request'},{...base,id:'approved',status:'approved'},
     {...base,id:'superseded',superseded_by_exception_id:'new-case'},{...base,id:'foreign',company:'FOREIGN'},
     {...base,id:'other-date',business_date:'2026-10-16'},{...base,id:'other-direction',direction:direction==='ฝาก'?'ถอน':'ฝาก'},
     {...base,id:'other-type',ex_type:type==='missing_bo'?'missing_stm':'missing_bo'});

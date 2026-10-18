@@ -1237,7 +1237,7 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
       for(const row of page){
         if(!row?.id||seen.has(row.id))throw new Error('ข้อมูลผลหลักเปลี่ยนระหว่างค้นหา กรุณาค้นหาใหม่ — ยังไม่ส่งคำขอ');
         seen.add(row.id);
-        if(row.company===company&&row.business_date===date&&['open','clarifying'].includes(row.status)
+        if(row.company===company&&row.business_date===date&&['open','clarifying','answered'].includes(row.status)
           &&row.ex_type===type&&!row.manual_pair_id&&!row.case_closure_request_id&&!row.superseded_by_exception_id
           &&(!direction||row.direction===direction))candidates.push(row);
       }
