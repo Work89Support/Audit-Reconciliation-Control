@@ -161,12 +161,12 @@ const ManualPairing=(()=>{
       resetChoice();const version=searchVersion;
       event.target.disabled=true;$('#pairSearchStatus').textContent='กำลังค้นหาเคสคู่…';
       try{
-        const found=await Sb.manualPairCandidates($('#pairCompany').value,$('#pairDate').value,e.type==='missing_stm'?'missing_bo':'missing_stm');
+        const found=await Sb.manualPairCandidates($('#pairCompany').value,$('#pairDate').value,e.type==='missing_stm'?'missing_bo':'missing_stm',e.direction);
         if(version!==searchVersion)return;
         candidates=found;
         candidates=candidates.filter(c=>c.id!==e.dbId&&c.direction===e.direction);
-        $('#pairSearchStatus').textContent=candidates.length>200?'พบเกิน 200 เคส แสดง 200 รายการแรกเท่านั้น ไม่ใช่ข้อมูลครบ':'พบ '+candidates.length+' เคสเปิด';
-        $('#pairCandidate').innerHTML='<option value="">เลือกเคส</option>'+candidates.slice(0,200).map(c=>`<option value="${h(c.id)}">${h(c.code||c.id)} · ${money(c.ex_type==='missing_stm'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')}</option>`).join('');
+        $('#pairSearchStatus').textContent='พบ '+candidates.length+' เคสเปิดจากผลหลักปัจจุบัน · แสดงครบทุกหน้าที่ค้นหา';
+        $('#pairCandidate').innerHTML='<option value="">เลือกเคส</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.code||c.id)} · ${money(c.ex_type==='missing_stm'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')}</option>`).join('');
       }catch(err){if(version===searchVersion){candidates=[];$('#pairCandidate').innerHTML='<option value="">โหลดไม่สำเร็จ</option>';$('#pairSearchStatus').textContent=err.message;}}
       finally{event.target.disabled=false;}
     };

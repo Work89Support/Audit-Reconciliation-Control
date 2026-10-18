@@ -54,5 +54,21 @@ function setup(mode='same',amountDifference=false) {
   failUpload=false;await uploadButton.onclick();assert.match(uploadStatus.textContent,/บันทึกเอกสารแล้ว/);assert.equal(upload.requests.length,0);
   await uploadButton.onclick();assert.equal(uploads,2);assert.match(uploadStatus.textContent,/ไม่อัปโหลดซ้ำ/);
   const centsHigh=setup('same',true);centsHigh.source.bank_amount=29.01;await centsHigh.open();centsHigh.node('pairReasonType').value='small_difference';centsHigh.node('pairChecked').checked=true;await centsHigh.node('pairSubmit').onclick({target:centsHigh.node('pairSubmit')});assert.equal(centsHigh.requests.length,0);assert.match(centsHigh.notices.at(-1),/เกิน 5 บาท/);
-  console.log('Pairing UI: three steps, collapsed source, amount comparison, reset, 5-baht cap and cross-company evidence guards passed');
+  const complete=setup();complete.context.Sb.manualPairCandidates=async(company,date,type,direction)=>{
+    assert.equal(company,'FR8');assert.equal(date,complete.item.date);assert.equal(type,'missing_stm');assert.equal(direction,'ฝาก');
+    return Array.from({length:1250},(_,i)=>({...complete.other,id:'bo-'+i,code:'EX-'+i}));
+  };
+  await complete.open();await complete.node('pairSearch').onclick({target:complete.node('pairSearch')});
+  assert.equal((complete.node('pairCandidate').innerHTML.match(/<option value="bo-/g)||[]).length,1250);
+  assert.match(complete.node('pairSearchStatus').textContent,/1250.*แสดงครบ/);
+  complete.node('pairCandidate').value='bo-1249';complete.node('pairCandidate').onchange();
+  assert.match(complete.node('pairCompare').innerHTML,/EX-1249/);assert.equal(complete.requests.length,0);
+  complete.node('pairReason').value='เก็บร่างเดิม';complete.node('pairFile').files=[{name:'keep-original.pdf'}];
+  complete.context.Sb.manualPairCandidates=async()=>{throw new Error('page two unavailable');};
+  await complete.node('pairSearch').onclick({target:complete.node('pairSearch')});
+  assert.match(complete.node('pairSearchStatus').textContent,/page two unavailable/);
+  assert.doesNotMatch(complete.node('pairCandidate').innerHTML,/bo-1249/);
+  assert.equal(complete.node('pairReason').value,'เก็บร่างเดิม');assert.equal(complete.node('pairFile').files[0].name,'keep-original.pdf');
+  assert.equal(complete.requests.length,0);
+  console.log('Pairing UI: three steps, complete 1250-candidate selection, comparison, reset, 5-baht cap and cross-company evidence guards passed');
 })().catch(err=>{console.error(err);process.exitCode=1;});

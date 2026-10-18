@@ -21,6 +21,8 @@ jobs:
         run: npm test && node tests/physical-bo-row-count.test.cjs && node tests/shared-difference-basis.test.cjs && node tests/waiting-source-filter.test.cjs
       - name: Verify clarification send receipts without production writes
         run: node tests/clarification-send-confirmation.test.cjs
+      - name: Verify current-primary manual pairing search without writes
+        run: node tests/manual-pair-candidates.test.mjs && node tests/manual-pairing-ui.test.cjs
       - name: Verify current case counts and persistent read-only account registry
         run: node tests/daily-current-case-summary.test.cjs && node tests/daily-hold-registry.test.cjs && node tests/manual-result-counts.test.cjs
       - name: Verify operational registry roles without expanding finance access

@@ -1222,13 +1222,27 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     }
   }
 
-  async function manualPairCandidates(company,date,type) {
+  async function manualPairCandidates(company,date,type,direction=null) {
     if(!company || !date || !['missing_stm','missing_bo'].includes(type)) throw new Error('เลือกบริษัท วันที่ และฝั่งรายการ');
-    const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status&limit=1`);
-    // Review results still contain cases to inspect. Submission/approval remains
-    // guarded by the RPC's current-run and source-completeness checks.
-    if(!jobs[0]?.last_run_id || !['completed','needs_review'].includes(jobs[0].status)) throw new Error('ยังไม่มีผลรันล่าสุดที่พร้อมให้ตรวจ หรือกำลังรันอยู่ — ลองค้นหาอีกครั้งเมื่อรันจบ');
-    return json(`/rest/v1/exceptions?run_id=eq.${jobs[0].last_run_id}&status=eq.open&manual_pair_id=is.null&superseded_by_exception_id=is.null&ex_type=eq.${type}&select=*&order=occurred_at.asc,id.asc&limit=201`);
+    // Resolve the same accepted primary as the live lists, including manual
+    // case sets with a null system run. Never fall back to historical cases.
+    // Page the unfiltered resolver output to completion BEFORE filtering: an
+    // early page can contain no eligible opposite-side/direction candidates.
+    const candidates=[],seen=new Set(),pageSize=1000;
+    for(let offset=0;;offset+=pageSize){
+      const page=await json('/rest/v1/rpc/audit_current_cases_scoped?select=*',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({p_from:date,p_to:date,p_company:company,p_limit:pageSize,p_offset:offset})});
+      if(!Array.isArray(page))throw new Error('ค้นหาเคสคู่ไม่สำเร็จ: รูปแบบผลหลักไม่ถูกต้อง');
+      for(const row of page){
+        if(!row?.id||seen.has(row.id))throw new Error('ข้อมูลผลหลักเปลี่ยนระหว่างค้นหา กรุณาค้นหาใหม่ — ยังไม่ส่งคำขอ');
+        seen.add(row.id);
+        if(row.company===company&&row.business_date===date&&row.status==='open'
+          &&row.ex_type===type&&!row.manual_pair_id&&!row.superseded_by_exception_id
+          &&(!direction||row.direction===direction))candidates.push(row);
+      }
+      if(page.length<pageSize)return candidates;
+    }
   }
   async function manualPair(id) {
     const rows=await json(`/rest/v1/manual_case_pairs?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);
