@@ -18,7 +18,7 @@ jobs:
 
       # เทสใช้เฉพาะโมดูลในตัวของ Node ไม่มี dependency ภายนอก จึงไม่ต้อง npm install
       - name: Run unit tests
-        run: npm test
+        run: npm test && node tests/physical-bo-row-count.test.cjs
       - name: Verify clarification send receipts without production writes
         run: node tests/clarification-send-confirmation.test.cjs
       - name: Verify current case counts and persistent read-only account registry

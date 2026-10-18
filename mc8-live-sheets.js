@@ -481,6 +481,12 @@
     if(!hasSide(row,side))return '';
     const detail=row[side]||{},amount=cents(row[`${side}Amount`]);
     const source=row[`${side}Source`]||{};
+    // Count physical BO rows before display references or operator notes.
+    // Shared by all companies, summaries, footers and exports; no pair writes.
+    const boOrigin=source.fileId?source:row.case?.customer_details?.source_rows?.bo||source;
+    if(side==='bo'&&String(boOrigin.fileId||'').trim()
+      &&/^[1-9][0-9]*$/.test(String(boOrigin.row??'')))
+      return `src:${boOrigin.fileId}:${Number(boOrigin.row)}`;
     // The verified 7M KB/TMN sources save operator notes in the reference column. These
     // descriptions are not transaction IDs: equal amounts at different
     // times/users/source rows must remain separate in summaries and exports.
