@@ -957,6 +957,11 @@
     return filtered;
   }
 
+  function resultComplete(data){
+    const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0;
+    return !!data?.complete&&['completed','needs_review'].includes(data?.run?.resultStatus||data?.run?.jobStatus)
+      &&evidence>=Number(data?.run?.matched||0);
+  }
   function mount(container,opts){
     const token={};slots.set(container,token);const alive=()=>slots.get(container)===token&&(opts.isActive?.()??true);
     const companies=(opts.companies||COMPANIES).filter(c=>COMPANIES.includes(c));
@@ -969,9 +974,7 @@
     const saveHidden=()=>{try{root.localStorage?.setItem('audit-live-hidden-columns-v1',JSON.stringify(hiddenBySheet));}catch(_){/* private browsing or tests */}};
     const labels={matched:'ระบบจับคู่แล้ว',waiting_source:'อ่าน BO แล้ว · รอ STM/PM',advisory:'แจ้งข้อมูล · ไม่ต้องยืนยัน',pending_next_day:'ค้างรอข้อมูลข้ามวัน',review:'รอตรวจ / ชี้แจง',closed:'ปิดเคสแล้ว'};
     function isComplete(all){
-      const evidence=Array.isArray(data?.run?.summary?.match_evidence)?data.run.summary.match_evidence.length:0;
-      if(!data?.complete||!['completed','needs_review'].includes(data?.run?.jobStatus)||evidence<Number(data?.run?.matched||0))return false;
-      return true;
+      return resultComplete(data);
     }
     function draw(){
       if(!alive())return;
@@ -1011,7 +1014,7 @@
         ${root.AccountRecheck?.reportPanel(data?.confirmedRechecks||[])||''}
 ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผลตรวจมือเป็นผลหลักแล้ว</strong>${root.ManualPrimary.noticeInfo(data.primaryResult)}<p>เคสเดิม ${(data.caseHistory||[]).length} เคส — คงสถานะเดิมทุกเคส</p>${!data.primaryResult.case_set&&opts.onNewCaseSet?`<button id="mc8-new-primary-cases">ทบทวนสร้างเคสชุดใหม่จากผลหลักนี้</button>`:''}<details><summary>ประวัติเคสเดิม — ไม่รวมยอดซ้ำในผลหลักใหม่</summary>${(data.caseHistory||[]).map(e=>`<p>${esc(e.code||e.id)} · ${esc(e.status)} · ${esc(e.account)} <button data-live-case="${esc(e.id)}">ดูเคสเดิม</button></p>`).join('')}</details></section>`:''}
         ${data?.recheckReportError?'<p role="alert">ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้ · ผลรอบบริษัทด้านล่างยังเป็นผลเดิม</p>':''}
-        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${esc(data.run.jobStatus)}</p><p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · ยังรอตรวจ ${all.filter(row=>!row.isPair&&row.case?.status!=='closed').length} เคส</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status">${esc(waitingCaseNotice(all))}</p>`:''}
+        ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${data.run.retainedCompletedResult?'ผลเดิมจบแล้ว · พักรันซ้ำ':esc(data.run.jobStatus)}</p>${data.run.retainedCompletedResult?'<p role="status">พักเฉพาะบอทรันซ้ำ · ใช้ผลเดิมที่จบแล้วดำเนินเคสตามสิทธิ์ปกติ ไฟล์ที่มาเพิ่มยังไม่รวมในผลนี้ · เคสรอ STM/PM หรือหลักฐานขาดจริงยังคงต้องตรวจ</p>':''}${data.run.retainedResultError?'<p role="alert">ยังตรวจสถานะพักรันและผลเดิมไม่สำเร็จ กรุณาโหลดใหม่ · ไม่ถือว่าผลครบ</p>':''}<p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · ยังรอตรวจ ${all.filter(row=>!row.isPair&&row.case?.status!=='closed').length} เคส</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status">${esc(waitingCaseNotice(all))}</p>`:''}
         <section class="mc8-summary" id="mc8-live-summary"><h3>สรุปยอดแยกตามบัญชี BO</h3><div class="mc8-summary-scroll"><table><thead><tr><th>บัญชี</th><th>STM / PM<br>รายการ / ยอด</th><th>BO<br>รายการ / ยอด</th><th>จับคู่แล้ว</th><th>ไม่จับคู่ PM</th><th>ไม่จับคู่ BO</th><th>ข้ามวัน</th><th>ซ้ำ / กำกวม</th><th>ต่างก่อนข้ามวัน</th><th>ต่างหลังข้ามวัน</th><th>สถานะ</th></tr></thead><tbody>${accountGroups.map(group=>summaryRow(group.label,summarize(group.rows),complete,group.key)).join('')}</tbody>${summaryFooter(supported,complete,accountGroups.length)}</table></div><p>จำนวนและยอดคั่นด้วย / · แถวรวมไม่นับซ้ำ${excludedAccountRows.length?` · ไม่สร้างชีตบัญชีว่าง - ฝาก (${excludedAccountRows.length} รายการ) · แถวรวมยังคงยอดต้นทางเดิม รวมรายการที่ไม่สร้างชีต · ตรวจย้อนหลังได้ในข้อมูลทั้งหมด`:' · รายการที่ระบุบัญชี BO ไม่ได้ยังแสดงแยกไว้ ไม่ซ่อนหลักฐาน'}</p></section>
         <div class="mc8-tabs" role="tablist" aria-label="หน้า Audit">${viewTabs.map(([value,label])=>`<button type="button" role="tab" aria-selected="${sheet===value}" data-live-sheet="${esc(value)}">${esc(label)}<small>${value==='all'?'ทุกสถานะ':value==='summary'?'ภาพรวม':value.startsWith('xb-info:')?'ไม่เข้ากระทบยอด':value.startsWith('bo-account:')?'STM/PM ↔ BO':'STM/PM รอ BO'}</small></button>`).join('')}</div>
         <div class="mc8-filters"><label>PM<select id="mc8-live-pm"><option value="all">ทุก PM</option>${[...new Set(all.map(r=>r.account))].sort().map(a=>`<option ${pm===a?'selected':''} value="${esc(a)}">${esc(a)}</option>`).join('')}</select></label><label>ประเภท<select id="mc8-live-direction">${[['all','ฝากและถอน'],['deposit','ฝาก'],['withdraw','ถอน']].map(([v,t])=>`<option value="${v}" ${direction===v?'selected':''}>${t}</option>`).join('')}</select></label><label>ผลตรวจ<select id="mc8-live-status">${[['all','ทั้งหมด'],...Object.entries(labels)].map(([v,t])=>`<option value="${v}" ${status===v?'selected':''}>${t}</option>`).join('')}</select></label></div>${rulePanel(company)}${columnTools}
@@ -1100,6 +1103,6 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
     };
     load();
   }
-  root.MC8LiveSheets={mount,hydrateBoOperators,informationSheets,rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
+  root.MC8LiveSheets={mount,resultComplete,hydrateBoOperators,informationSheets,rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
   if(typeof module!=='undefined')module.exports=root.MC8LiveSheets;
 })(typeof window==='undefined'?globalThis:window);

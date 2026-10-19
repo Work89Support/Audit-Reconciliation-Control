@@ -750,11 +750,29 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     const primary=await readManualPrimary(company,date);
     if(primary?.stale)throw new Error(primary.message);
     if(primary)return ManualPrimary.run(primary);
-    const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status,error_count,bo_waiting_snapshot&limit=1`);
+    const jobs = await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=company,business_date,last_run_id,status,completed_at,error_count,bo_waiting_snapshot&limit=1`);
     const snapshot=jobs[0]?.error_count===0?jobs[0]?.bo_waiting_snapshot:null;
     if (!jobs[0]?.last_run_id) return snapshot?{id:null,company,business_date:date,summary:{},jobStatus:jobs[0].status,boWaitingSnapshot:snapshot,isSnapshotOnly:true}:null;
-    const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,company,business_date,stm_count,bo_count,exception_count,matched,summary&limit=1`);
-    return runs[0] ? { ...runs[0], jobStatus: jobs[0].status, boWaitingSnapshot:snapshot } : null;
+    const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,company,business_date,created_at,stm_count,bo_count,exception_count,matched,summary&limit=1`);
+    if(!runs[0])return null;
+    let state=null,retainedResultError='';
+    if(!['completed','needs_review','running'].includes(jobs[0].status)){
+      try{state=await fileRunManagement(company,date);}catch(e){retainedResultError=e.message;}
+    }
+    return { ...runs[0],jobStatus:jobs[0].status,...retainedRunState(jobs[0],runs[0],state),retainedResultError,boWaitingSnapshot:snapshot };
+  }
+
+  // A paused future queue does not revoke a committed previous result. Never
+  // infer completion from the pause alone or reuse a result after source edits.
+  function retainedRunState(job,run,state){
+    const current=state?.job,finished=Date.parse(job?.completed_at),created=Date.parse(run?.created_at);
+    const retained=!!(state?.hold?.paused&&state.manualOnly===false&&current
+      &&job.company===run.company&&job.business_date===run.business_date
+      &&current.last_run_id===run.id&&job.last_run_id===run.id
+      &&current.status===job.status&&['queued','error','waiting_files'].includes(job.status)
+      &&job.error_count===0&&Number.isFinite(finished)&&Number.isFinite(created)&&finished>=created);
+    return {automaticPaused:!!state?.hold?.paused,retainedCompletedResult:retained,
+      resultStatus:retained?'completed':job?.status};
   }
 
   async function reconciliationEvidence({ from, to, company } = {}) {
