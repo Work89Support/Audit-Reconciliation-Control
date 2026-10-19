@@ -60,6 +60,8 @@ jobs:
           node tests/worker-failure-context.test.cjs
           node tests/fr8-staged-report-repair-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/all-company-primary-handoff-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-primary-reuse-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-primary-reuse-ui.test.cjs
           node tests/manual-next-case-transport.test.mjs
           node tests/clarify-open-refresh-race.test.cjs
           node tests/clarify-company-navigation.test.cjs

@@ -803,7 +803,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     if(run.primaryResult){
       const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true});history.push(...page);if(page.length<500)break;}
       const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id)),current=history.filter(e=>ids.has(e.id));
-      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>e.customer_details?.manual_primary_row_kind==='waiting'),complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
+      const waitingIds=new Set((run.primaryResult.case_set?.items||[]).filter(i=>i.row_kind==='waiting').map(i=>i.exception_id));
+      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>waitingIds.has(e.id)),complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
     }
     if (!run.id) return {run,cases:[],complete:false};
     let confirmedRechecks=[],recheckReportError='';
