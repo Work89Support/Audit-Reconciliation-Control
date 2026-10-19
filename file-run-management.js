@@ -40,7 +40,7 @@
    host.innerHTML=`<section class="manual-tools"><div class="manual-scope"><strong>${esc(opts.company)} · ${esc(opts.date)}</strong><span>เลือกไฟล์ → ตรวจซ้ำ → หัวหน้ายืนยันผล</span></div><h3>เลือกไฟล์และจัดการรอบตรวจ</h3>
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
     ${noticeHtml(runState)}${preflightHtml(runState)}
-    <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):'ยังไม่ได้พักรัน'}</p>
+    <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):runState?.preflight?.blocked?'พักรันอัตโนมัติจากคำเตือน · ไม่ลองรันซ้ำเอง':'ยังไม่ได้พักรัน'}</p>
     <label>เหตุผลพัก/เปิดงาน <input data-hold-reason maxlength="2000" value="${esc(holdReason)}"></label>
     <button data-hold ${busy||!canManage(opts.role())||(hold?.paused&&manualOnly)?'disabled':''}>${hold?.paused?'เปิดให้รันต่อ':'พักรันบริษัท–วันที่นี้'}</button>
     ${manualOnly?'<p class="manual-note">ไฟล์มีเวอร์ชันแก้ไข: ตรวจมือและยืนยันรายงานแยกได้ แต่ยังล็อกบอทรอบหลักไว้จนตรวจการเชื่อมเคสเดิมครบ เพื่อไม่เปิดเคสซ้ำหรือย้ายประวัติอนุมัติผิดรายการ</p>':''}
