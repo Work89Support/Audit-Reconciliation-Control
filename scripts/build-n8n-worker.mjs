@@ -698,6 +698,8 @@ const connections = {
 };
 
 const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
+const {patchWorkerPreflightGate}=await import('./worker-preflight-gate.mjs');
+patchWorkerPreflightGate(workflow);
 // Read append-only source corrections without mutating original file receipts.
 const managedFileReader=nodes.find(node=>node.name==='Supabase: อ่านรายการไฟล์ของวัน');
 Object.assign(managedFileReader.parameters,{method:'POST',url:'={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches',sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify({p_company:$json.company,p_date:$json.business_date}) }}'});

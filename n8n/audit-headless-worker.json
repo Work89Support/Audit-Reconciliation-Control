@@ -1291,6 +1291,85 @@
         -140,
         40
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/stage_daily_recon_preflight",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_result:x.result,p_exceptions:x.exceptions});})() }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "preflight-report-before-case-writes",
+      "name": "Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1550,
+        -220
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "preflight-report-proceed",
+      "name": "ไม่มีคำเตือนและเขียนผลต่อได้?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1770,
+        -220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "preflight-proceed",
+              "leftValue": "={{ $json.proceed === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
     }
   ],
   "connections": {
@@ -1721,7 +1800,7 @@
       "main": [
         [
           {
-            "node": "เตรียมข้อมูลผลการรัน",
+            "node": "Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส",
             "type": "main",
             "index": 0
           }
@@ -1876,6 +1955,35 @@
     },
     "บันทึกว่าอ่านแล้วและรอไฟล์": {
       "main": [
+        [
+          {
+            "node": "จบรอบ Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส": {
+      "main": [
+        [
+          {
+            "node": "ไม่มีคำเตือนและเขียนผลต่อได้?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ไม่มีคำเตือนและเขียนผลต่อได้?": {
+      "main": [
+        [
+          {
+            "node": "เตรียมข้อมูลผลการรัน",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "จบรอบ Worker",

@@ -16,6 +16,15 @@
   return {title:j.status==='queued'?'คิวหลักรอรอบบอท':'สถานะรอบหลัก',reason:j.last_run_id?'มีผลเดิมอ้างอิง':'ยังไม่มีผลเดิม ไม่ใช่ยอดศูนย์',next:j.status?'รันตรวจมือได้ทันทีเป็นรายงานแยก · ไม่เปลี่ยนคิวหลัก ยอด หรือเคส':'ยังไม่มีคิวบริษัท/วันที่นี้ กรุณาตรวจการรับไฟล์',blocked:!j.status};
  }
  function noticeHtml(s){const n=runNotice(s);return `<aside class="manual-note" role="status"><strong>${esc(n.title)}</strong><p>สาเหตุ: ${esc(n.reason)}</p><p>ทำต่อ: ${esc(n.next)}</p></aside>`;}
+ function preflightHtml(s){
+  const p=s?.preflight;if(!p)return '';
+  const labels={file_day_mismatch:'วันในชื่อไฟล์ไม่ตรงรอบ',parse_error:'ไฟล์อ่านไม่ผ่าน',files_after_run:'มีไฟล์ใหม่หลังผลเดิม',cross_day_scope:'รายการข้ามวันรอทบทวน',source_held:'รอบนี้พักรันหรือมีไฟล์แก้ไข'};
+  const warnings=Array.isArray(p.warnings)?p.warnings:[],queue=Array.isArray(p.cross_day_queue)?p.cross_day_queue:[];
+  return `<aside class="manual-note" role="${p.blocked?'alert':'status'}"><strong>${p.blocked?'พักอัตโนมัติเมื่อพบคำเตือน — รอคนตัดสินใจ':'ตรวจคำเตือนก่อนรันแล้ว — รอบปกติทำงานอัตโนมัติได้'}</strong>
+   <p>รับและเก็บไฟล์เดิมได้ แต่ไม่ลองรันซ้ำเองเมื่อมีคำเตือน การดูหน้านี้ยังไม่รัน ไม่ยืนยันผลหลัก ไม่ส่งชี้แจง และไม่เปลี่ยนเคส</p>
+   ${warnings.length?`<ul>${warnings.map(w=>`<li>${esc(labels[w.code]||w.code)}${w.file_name?' · '+esc(w.file_name):''} · ${esc(w.detail||'')}</li>`).join('')}</ul>`:''}
+   ${queue.length?`<details open><summary>คิวข้ามวันรอทบทวน (${queue.length}) — อ่านอย่างเดียว</summary><p>คงวันและสถานะเคสเดิม ไม่รวมเป็นเคสวันที่ใหม่และไม่เปิดเคสซ้ำ หัวหน้าตรวจแถวต้นทางและคิวเดิมก่อนนำไปชี้แจง</p><table><thead><tr><th>เคสเดิม</th><th>วันรายการ / รอบที่อ่านพบ</th><th>บัญชี / ทิศทาง</th><th>ยอดเดิม</th><th>แถวต้นทาง</th></tr></thead><tbody>${queue.map(e=>`<tr><td>${esc(e.code)}</td><td>${esc(e.source_date)} / ${esc(e.report_date)}</td><td>${esc(e.account)} · ${esc(e.direction)}</td><td>${esc(e.amount)}</td><td>${esc(e.source_rows?.bo?.fileId||e.source_rows?.stm?.fileId||'ขาดอ้างอิง')} · แถว ${esc(e.source_rows?.bo?.row??e.source_rows?.stm?.row??'—')}</td></tr>`).join('')}</tbody></table></details>`:''}</aside>`;
+ }
  function validateCorrection(b){
   if(!b?.fileId||!b.expectedRevision||!String(b.reason||'').trim()||b.reason.trim().length<10)throw Error('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
   if(!/^[A-Z0-9]+$/.test(b.company)||!/^\d{4}-\d{2}-\d{2}$/.test(b.date)||!kinds.includes(b.kind))throw Error('บริษัท วันที่ หรือประเภทไฟล์ไม่ถูกต้อง');
@@ -30,7 +39,7 @@
    if(!sameActor()){host.innerHTML='<p role="alert">ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่</p>';return;}
    host.innerHTML=`<section class="manual-tools"><div class="manual-scope"><strong>${esc(opts.company)} · ${esc(opts.date)}</strong><span>เลือกไฟล์ → ตรวจซ้ำ → หัวหน้ายืนยันผล</span></div><h3>เลือกไฟล์และจัดการรอบตรวจ</h3>
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
-    ${noticeHtml(runState)}
+    ${noticeHtml(runState)}${preflightHtml(runState)}
     <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):'ยังไม่ได้พักรัน'}</p>
     <label>เหตุผลพัก/เปิดงาน <input data-hold-reason maxlength="2000" value="${esc(holdReason)}"></label>
     <button data-hold ${busy||!canManage(opts.role())||(hold?.paused&&manualOnly)?'disabled':''}>${hold?.paused?'เปิดให้รันต่อ':'พักรันบริษัท–วันที่นี้'}</button>
@@ -49,7 +58,19 @@
     el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);
     const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size||runNotice(runState).blocked;run.textContent=`รันตรวจมือด้วยไฟล์ที่เลือก (${selected.size})`;
    });
-   host.querySelector('[data-run]').onclick=()=>{if(sameActor()&&!runNotice(runState).blocked)opts.onRun([...selected]);};
+   host.querySelector('[data-run]').onclick=async()=>{
+    if(!sameActor()||busy||runNotice(runState).blocked)return;
+    const warnings=runState?.preflight?.warnings||[];
+    if(warnings.length){
+     busy=true;draw();
+     let confirmed=false;try{confirmed=await opts.confirmRunWarnings?.({company:opts.company,date:opts.date,warnings});}
+     finally{busy=false;draw();}
+     if(!confirmed||!sameActor())return;
+    }
+    // This only opens the existing manual-run review. It does not approve a
+    // primary result, resume the automatic worker or submit a clarification.
+    opts.onRun([...selected]);
+   };
    host.querySelector('[data-hold]').onclick=async()=>{
     const reason=host.querySelector('[data-hold-reason]').value.trim();
     if(!sameActor()||!canManage(opts.role()))return;
@@ -94,5 +115,5 @@
   async function load(){try{const result=await opts.load(opts.company,opts.date);runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);

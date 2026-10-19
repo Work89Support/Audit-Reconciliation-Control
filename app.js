@@ -1180,6 +1180,7 @@ function openFileRunManagement({company,date,accounts}) {
     uploadCorrection:Sb.uploadAuditSourceCorrection,
     onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
     confirmCorrection:async b=>window.confirm(`เก็บต้นฉบับไว้ เพิ่มเวอร์ชันใหม่ และพักงานบริษัท/วันที่ที่เกี่ยวข้อง?\n${b.name}\n${b.reason}`),
+    confirmRunWarnings:async b=>window.confirm(`พบคำเตือน ${b.warnings.length} รายการใน ${b.company} ${b.date}\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nต้องการไปทบทวนขอบเขตรันตรวจมือหรือไม่? ยังไม่รันจนยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`),
     onRun:async fileIds=>{
       try{let choices=accounts;
         if(!choices.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}

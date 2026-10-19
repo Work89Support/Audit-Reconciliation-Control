@@ -1,0 +1,12 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+import {patchWorkerPreflightGate} from '../scripts/worker-preflight-gate.mjs';
+const worker=JSON.parse(fs.readFileSync('n8n/audit-headless-worker.json','utf8'));
+const before=structuredClone(worker),patched=patchWorkerPreflightGate(worker);
+const stage=patched.nodes.find(n=>n.name==='Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส');
+assert.match(stage.parameters.url,/stage_daily_recon_preflight$/);assert.match(stage.parameters.jsonBody,/p_exceptions:x.exceptions/);assert.equal(stage.retryOnFail,false);
+const gate=patched.nodes.find(n=>n.name==='ไม่มีคำเตือนและเขียนผลต่อได้?');assert.match(gate.parameters.conditions.conditions[0].leftValue,/proceed === true/);
+assert.equal(patched.connections[gate.name].main[1][0].node,'จบรอบ Worker');assert.equal(patched.connections[gate.name].main[0][0].node,'เตรียมข้อมูลผลการรัน');
+for(const node of before.nodes)assert.deepEqual(patched.nodes.find(n=>n.id===node.id),node,'original node/parser preserved');
+const twice=structuredClone(patched);assert.deepEqual(patchWorkerPreflightGate(patched),twice);
+assert(!patched.connections[gate.name].main[1].some(e=>/บันทึก Exception|สร้างผลการรัน|ปิด/.test(e.node)));
+console.log('PASS worker preflight: existing parsers/credentials retained, warnings branch ends before run/case writes, normal branch unchanged, exact true required, idempotent patch');
