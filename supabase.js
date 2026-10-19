@@ -305,6 +305,10 @@ const Sb = (() => {
     }
   }
   const json = async (path, opts = {}) => {
+    // These POST endpoints only read. Treating them as writes used to clear an
+    // in-flight source-file snapshot while the daily summary was loading it.
+    const readRpc=path.match(/^\/rest\/v1\/rpc\/([^?]+)(?:\?|$)/)?.[1];
+    if(opts.method?.toUpperCase()==='POST'&&readOnlyCaseRpcs.has(readRpc))opts={...opts,readOnly:true};
     // Collections use the active case set; explicit detail/evidence/history reads stay intact.
     if((!opts.method||opts.method.toUpperCase()==='GET')&&!opts.includeHistorical){
       if(path.startsWith('/rest/v1/exceptions?')&&!/[?&]id=eq\./.test(path))path=path.replace('/rest/v1/exceptions?','/rest/v1/active_audit_exceptions?');
@@ -852,7 +856,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history',
-    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices']);
+    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices',
+    'audit_current_cases_scoped','audit_search_current_cases_scoped']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",

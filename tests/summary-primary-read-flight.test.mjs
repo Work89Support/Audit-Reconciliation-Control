@@ -18,4 +18,10 @@ delay=false;await api.readManualPrimary('SK8','2026-10-17');assert.equal(calls.l
 await Promise.all([api.readManualPrimary('FR8','2026-10-17'),api.readManualPrimary('SK8','2026-10-18')]);
 assert.equal(calls.length,8,'different companies/dates stay isolated');
 assert(calls.every(c=>/read_manual_primary/.test(c.url)),'no run, acceptance or case mutation requests');
+delay=true;
+const files=api.batches({from:'2026-10-17',to:'2026-10-17'});await tick();
+const queue=api.currentExceptionsSummary({company:'SK8',from:'2026-10-17',to:'2026-10-17'});await tick();
+releases.splice(0).forEach(r=>r());await Promise.all([files,queue]);
+const count=calls.length;await api.batches({from:'2026-10-17',to:'2026-10-17'});
+assert.equal(calls.length,count,'read-only case RPC cannot invalidate concurrent file snapshot');
 console.log('PASS summary primary reads: 12 simultaneous readers use two RPCs, fresh subsequent read, company/date isolation and no business writes. Mock transport only.');
