@@ -3,6 +3,7 @@ const {PGlite}=await import(process.argv[2]);const db=new PGlite();const fixture
 await db.exec('alter table daily_recon_jobs add constraint test_unique_company_day unique(business_date,company)');
 for(const f of ['20261012_account_recheck.sql','20261012_file_run_management.sql','20261013_manual_run_readiness.sql','20261019_manual_source_addition.sql','20261019_source_workspace.sql'])await db.exec(fs.readFileSync('supabase/'+f,'utf8'));
 await db.exec(fs.readFileSync('supabase/20261019_source_workspace.sql','utf8'));
+assert.doesNotMatch(fs.readFileSync('supabase/20261019_source_workspace.sql','utf8'),/s:=public\.file_run_management_state/,'File listing must not execute full round preflight');
 const companies=['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'],id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 await db.query('insert into auth.users values($1)',[id(1)]);
 async function actor(role='admin',scope=companies){await db.exec('reset role');await db.query("select set_config('test.actor',$1,false),set_config('test.role',$2,false),set_config('test.companies',$3,false),set_config('test.active','true',false),set_config('test.api_role','authenticated',false)",[id(1),role,scope.join(',')]);await db.exec('set role authenticated');}

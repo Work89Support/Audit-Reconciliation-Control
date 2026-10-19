@@ -7,7 +7,11 @@ declare s jsonb;
 begin
  if not coalesce(public.current_user_active(),false) or not coalesce(public.has_company_access(p_company),false)
  or coalesce(public.current_app_role(),'') not in('monitor','audit_assistant','lead','admin') then raise exception 'ไม่มีสิทธิ์อ่านรอบไฟล์บริษัทนี้';end if;
- s:=public.file_run_management_state(p_company,p_date);
+ -- Preparation reads metadata only. Full preflight still runs at the existing
+ -- manual request/worker/acceptance boundaries; never invoke it for a file list.
+ s:=jsonb_build_object('files',public.effective_audit_source_files(p_company,p_date),
+ 'hold',(select to_jsonb(h) from public.audit_run_holds h where company=p_company and business_date=p_date),
+ 'manualOnly',public.audit_source_scope_managed(p_company,p_date));
  return s||jsonb_build_object('files',(select coalesce(jsonb_agg(x||jsonb_build_object(
  'source_origin',case when b.gmail_message_id like 'manual-source:%' then 'upload' else 'mail' end,
  'original_mail_date',b.business_date,'source_subject',b.subject)),'[]')
