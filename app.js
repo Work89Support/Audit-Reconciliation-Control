@@ -6290,7 +6290,7 @@ VIEWS["audit-log"] = (root) => {
 /* =============================================================
    VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
    ============================================================= */
-const cloudState = { batches: null, caseAttachments: null, evidenceError: null, daily: null, operations: null, loading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
+const cloudState = { batches: null, caseAttachments: null, evidenceError: null, daily: null, operations: null, loading: false, auxiliaryLoading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
 
 const cloudQueryKey = () => `${Sb.authUser()?.id || ''}|${state.role}|${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
 
@@ -6769,12 +6769,15 @@ function cloudMissingGroupsText(groups) {
 
 async function cloudLoad(force = false) {
   const key = cloudQueryKey();
-  if (cloudState.loading && !force) return;
+  // A new filter owns a new request even while the previous scope is pending.
+  // Otherwise its stale response returns without ever releasing the spinner.
+  if (cloudState.key === key && (cloudState.loading || cloudState.auxiliaryLoading) && !force) return;
   if (!force && cloudState.key === key && cloudState.batches !== null) return;
   const requestId = ++cloudState.requestId;
   const changedFilter = cloudState.key !== key;
   cloudState.key = key;
   cloudState.loading = true;
+  cloudState.auxiliaryLoading = true;
   cloudState.error = null;
   cloudState.partialError = null;
   cloudState.evidenceError = null;
@@ -6788,25 +6791,42 @@ async function cloudLoad(force = false) {
   render();
   const to = state.filters.to || DB.BUSINESS_DATE;
   const from = state.filters.from || to;
-  const result = await Promise.allSettled([
-    Sb.batches({ from, to, company: state.filters.company, force }),
-    Sb.dailyStatus({ from, to, company: state.filters.company, limit: 100 }),
-    Sb.operations({ from, to, company: state.filters.company, limit: 200 }),
-    Sb.caseEvidenceLibrary({ from, to, company: state.filters.company }),
+  const company = state.filters.company;
+  const current = () => !(requestId !== cloudState.requestId || key !== cloudQueryKey());
+  const failed = new Map();
+  const names = ["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด", "หลักฐานจากเคส"];
+  // Bound each read group, including multi-request primary overlays. No writes
+  // or reconciliation are retried here. Late responses cannot replace a scope.
+  const read = async (index, load, apply) => {
+    let timer;
+    try {
+      const value = await Promise.race([
+        Promise.resolve().then(load),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('หมดเวลารอข้อมูล กรุณารีเฟรช')), 35000); }),
+      ]);
+      if (current()) apply(value);
+    } catch (error) {
+      if (current()) failed.set(index, `${names[index]} (${error?.message || 'อ่านไม่สำเร็จ'})`);
+    } finally {
+      clearTimeout(timer);
+      if (current()) {
+        cloudState.partialError = failed.size ? `โหลดไม่สำเร็จ: ${[...failed.values()].join(", ")}` : null;
+        cloudState.error = failed.has(0) ? `${failed.get(0)} — ยังไม่แสดงจำนวนไฟล์เพื่อป้องกันยอดศูนย์ปลอม` : null;
+        if (index === 0) cloudState.loading = false;
+        if (index === 3 && failed.has(3)) cloudState.evidenceError = 'โหลดหลักฐานจากเคสไม่สำเร็จ กรุณารีเฟรช ไม่ใช่การยืนยันว่าไม่มีหลักฐาน';
+        if (state.route === 'cloud') render();
+      }
+    }
+  };
+  await Promise.all([
+    read(0, () => Sb.batches({from, to, company, force}), value => { cloudState.batches = value || []; }),
+    read(1, () => Sb.dailyStatus({from, to, company, limit:100}), value => { cloudState.daily = value || []; }),
+    read(2, () => Sb.operations({from, to, company, limit:200}), value => { cloudState.operations = value || []; }),
+    read(3, () => Sb.caseEvidenceLibrary({from, to, company}), value => { cloudState.caseAttachments = value; }),
   ]);
-  if (requestId !== cloudState.requestId || key !== cloudQueryKey()) return;
-  if (result[0].status === "fulfilled") cloudState.batches = result[0].value || [];
-  if (result[1].status === "fulfilled") cloudState.daily = result[1].value || [];
-  if (result[2].status === "fulfilled") cloudState.operations = result[2].value || [];
-  if (result[3].status === "fulfilled") cloudState.caseAttachments = result[3].value;
-  else cloudState.evidenceError = 'โหลดหลักฐานจากเคสไม่สำเร็จ กรุณารีเฟรช ไม่ใช่การยืนยันว่าไม่มีหลักฐาน';
-  const failed = result.flatMap((item, index) => item.status === "rejected" ? [["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด", "หลักฐานจากเคส"][index]] : []);
-  if (failed.length) {
-    cloudState.partialError = `โหลดไม่สำเร็จ: ${failed.join(", ")}`;
-    cloudState.error = result[0].status === "rejected" ? `${cloudState.partialError} — ยังไม่แสดงจำนวนไฟล์เพื่อป้องกันยอดศูนย์ปลอม` : null;
-  }
-  cloudState.loading = false;
-  render();
+  if (!current()) return;
+  cloudState.auxiliaryLoading = false;
+  if (state.route === 'cloud') render();
 }
 
 /* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
@@ -6918,7 +6938,7 @@ VIEWS.cloud = (root) => {
     return;
   }
 
-  if ((cloudState.batches === null || cloudState.key !== cloudQueryKey()) && !cloudState.loading) {
+  if (cloudState.key !== cloudQueryKey() || (cloudState.batches === null && !cloudState.loading && !cloudState.error)) {
     cloudLoad();
   }
 
@@ -7030,6 +7050,7 @@ VIEWS.cloud = (root) => {
         </div>
       </div>
       <p class="hint" role="status">สแนปช็อตทะเบียนไฟล์ในแท็บนี้${fileSnapshot ? ' · บันทึกเมื่อ ' + h(displayTime(fileSnapshot.updatedAt)) : ''} · เปลี่ยนหน้าใช้ข้อมูลเดิม · ตัวอย่างต้นฉบับพักในหน่วยความจำไม่เกิน 5 นาที · กดรีเฟรชเพื่ออ่านทะเบียนล่าสุด · ไม่ใช่การยืนยันสถานะปิดเคส</p>
+      ${cloudState.auxiliaryLoading ? '<p role="status">กำลังโหลดสรุป/คิวและหลักฐานเพิ่มเติม · รายการไฟล์แสดงแยกได้ ไม่รันงาน</p>' : ''}
       <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
         ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["review", "อ่านแล้ว · รอเทียบ BO", reviewFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
       </div>

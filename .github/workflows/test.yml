@@ -33,6 +33,8 @@ jobs:
         run: node tests/case-evidence-checklist.test.cjs
       - name: Verify current-primary read deduplication without business writes
         run: node tests/summary-primary-read-flight.test.mjs
+      - name: Verify cloud filter races and independent bounded reads without writes
+        run: node tests/cloud-load-race.test.mjs
       - name: Verify suspended-account hold scope and report distinction
         run: node --test tests/account-review-holds.test.cjs && node tests/continuous-account-review-hold.test.cjs
       - name: Verify AZPAY source time and cross-day display
