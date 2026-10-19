@@ -469,8 +469,14 @@ const Sb = (() => {
     if(!rows.length)return rows;
     const dates=rows.map(r=>r.business_date).sort(),companies=[...new Set(rows.map(r=>r.company))];
     const versions=await json(`/rest/v1/manual_primary_results?business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})&select=company,business_date&limit=1000`);
-    const scopes=new Set(versions.map(r=>r.company+'|'+r.business_date)),resolved=new Map();
-    for(const row of rows){const key=row.company+'|'+row.business_date;if(scopes.has(key)&&!resolved.has(key)){const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)throw new Error(v.message);if(v)resolved.set(key,v);}}
+    const scopes=new Set(versions.map(r=>r.company+'|'+r.business_date)),resolved=new Map(),unavailable=new Map(),checked=new Set();
+    for(const row of rows){
+      const key=row.company+'|'+row.business_date;
+      if(!scopes.has(key)||checked.has(key))continue;
+      checked.add(key);
+      try{const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)unavailable.set(key,v);else if(v)resolved.set(key,v);}
+      catch(e){unavailable.set(key,{stale:false,message:e.message});}
+    }
     let manual=[],holds=[],workflowStatusError='';
     if(caseCountsOnly){
       const filter=`business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})`;
@@ -482,7 +488,7 @@ const Sb = (() => {
       if(manual.length>=1000)workflowStatusError='สถานะรันมือมีมากกว่าขอบเขตที่โหลด กรุณาเลือกช่วงวันหรือบริษัทให้แคบลง';
       if(extra[1].status==='fulfilled')holds=extra[1].value;else workflowStatusError+=' · สถานะพักรันยังโหลดไม่สำเร็จ';
     }
-return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);const counts=v?.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count,resolved_count:v.case_set.closed_count}:v?{open_count:null,closed_count:null,resolved_count:null}:{};if(caseCountsOnly)return {...row,primaryResult:v||null,primaryFileCount:v?manual.find(q=>q.id===v.recheck_id)?.selected_file_ids?.length??null:null,...counts,rechecks:manual.filter(q=>q.company===row.company&&q.business_date===row.business_date),latestRecheck:manual.find(q=>q.company===row.company&&q.business_date===row.business_date)||null,autoPaused:holds.some(q=>q.company===row.company&&q.business_date===row.business_date&&q.paused),workflowStatusError};if(!v)return row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...counts};});
+return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get(key),problem=unavailable.get(key),scopedError=[workflowStatusError,problem?row.company+' '+row.business_date+' · '+problem.message:''].filter(Boolean).join(' · ');const counts=v?.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count,resolved_count:v.case_set.closed_count}:v?{open_count:null,closed_count:null,resolved_count:null}:{};if(caseCountsOnly)return {...row,primaryResult:v||null,primaryFileCount:v?manual.find(q=>q.id===v.recheck_id)?.selected_file_ids?.length??null:null,...counts,rechecks:manual.filter(q=>q.company===row.company&&q.business_date===row.business_date),latestRecheck:manual.find(q=>q.company===row.company&&q.business_date===row.business_date)||null,autoPaused:holds.some(q=>q.company===row.company&&q.business_date===row.business_date&&q.paused),primaryUnavailable:problem||null,workflowStatusError:scopedError};if(!v)return problem?{...row,primaryResult:null,primaryUnavailable:problem,workflowStatusError:scopedError}:row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...counts};});
   }
   const dailyStatus = async (opts = 30) => primaryOverlays(await rangedView("v_daily_status", "business_date.desc", opts, 30));
   const operations = async (opts = 100) => {

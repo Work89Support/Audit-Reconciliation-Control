@@ -2643,13 +2643,14 @@ function manualFollowupItems(rows) {
 }
 
 function dailyResultStatus(row,run={}) {
-  const primary=run.primaryResult||row.primaryResult;
+  const unavailable=run.primaryUnavailable||row.primaryUnavailable;
+  const primary=unavailable?null:run.primaryResult||row.primaryResult;
   const manual=row.latestRecheck;
   const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
   return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
-    manual:manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
+    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
     automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
-    error:row.workflowStatusError||''};
+    error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};
 }
 
 function dailyAuditSheetRows(date) {
