@@ -54,7 +54,7 @@
   return `เลือกใช้ตรวจ ${chosen.length} ไฟล์ · BO ${count('bo_main')} · STM ${count('stm_pdf')} · PM ${count('pm_statement')} — ยังไม่รัน`;
  }
  function mount(host,opts){
-  let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='',picker=null,addition=null;
+  let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='',picker=null,addition=null,initialOpened=false;
   const actor=opts.actor?.(),sameActor=()=>!actor||opts.actor?.()===actor;
   function draw(){
    if(!alive)return;
@@ -166,8 +166,8 @@
     }catch(e){error=e.message;draw();}
    };
   }
-  async function action(fn){busy=true;error='';draw();try{await fn();await load();}catch(e){error=e.message;}finally{busy=false;draw();}}
-  async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
+  async function action(fn){busy=true;error='';draw();try{await fn();await load();opts.onUpdated?.();}catch(e){error=e.message;}finally{busy=false;draw();}}
+  async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';if(opts.initialFileId&&!initialOpened){initialOpened=true;const file=files.find(f=>f.id===opts.initialFileId);if(file)edit(file);}}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
  root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary};if(typeof module!=='undefined')module.exports=root.FileRunManagement;

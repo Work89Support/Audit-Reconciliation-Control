@@ -1,0 +1,75 @@
+(function(root){
+ 'use strict';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const kinds={bo_main:'BO หลังบ้าน',stm_pdf:'STM ธนาคาร',pm_statement:'PM ผู้ให้บริการ',doc_clarify:'หลักฐานประกอบ'};
+ const canUpload=role=>['lead','admin'].includes(role),canRun=role=>['monitor','lead','admin'].includes(role),drafts=new Map();
+ function warning(f,company,date){
+  if(f.company!==company||f.business_date!==date)return 'อยู่นอกบริษัท/วันที่นี้ ต้องแก้วันอ้างอิงก่อน';
+  if(f.excluded)return 'ยกเว้นจากการรัน';
+  if(f.parse_error)return 'ไฟล์อ่านไม่ผ่าน ต้องตรวจต้นฉบับ/ฉบับแก้ไขก่อนเลือก';
+  const day=String(f.file_name).match(/20\d{2}[-_]\d{2}[-_]\d{2}/)?.[0]?.replaceAll('_','-');
+  let prefix=String(f.file_name).match(/^([A-Z0-9]+)[_-]/)?.[1];if(prefix==='7M')prefix='UFABET7M';
+  if(Number(f.revision||1)===1&&((day&&day!==date)||(['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'].includes(prefix)&&prefix!==company)))return 'ชื่อไฟล์ไม่ตรงรอบ ต้องทบทวนชื่อ/วัน/บริษัท';
+  return '';
+ }
+ function selectable(f,company,date){return ['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&!warning(f,company,date);}
+ function selectedFiles(files,ids,company,date,source){return files.filter(f=>ids.has(f.id)&&selectable(f,company,date)&&(source==='mixed'||f.source_origin===source));}
+ function validateQueued(q){
+  if(!q?.file?.size||q.file.size>50*1024*1024)throw Error('ไฟล์ต้องมีข้อมูลและไม่เกิน 50 MB');
+  if(!Object.hasOwn(kinds,q.kind))throw Error('เลือกประเภทไฟล์');
+  const allowed=q.kind==='stm_pdf'?/\.pdf$/i:q.kind==='doc_clarify'?/\.(pdf|docx|xlsx|xls|xlsm|csv)$/i:/\.(xlsx|xls|xlsm|csv|txt)$/i;
+  if(!allowed.test(q.file.name))throw Error('นามสกุลไฟล์ไม่ตรงประเภทที่เลือก');
+  if(!q.name?.trim()||q.name.length>255||/[\\/\x00-\x1f]/.test(q.name))throw Error('ชื่อที่ใช้ในระบบไม่ถูกต้อง');
+  if(q.name.split('.').pop().toLowerCase()!==q.file.name.split('.').pop().toLowerCase())throw Error('แก้ชื่อได้ แต่ต้องคงนามสกุลต้นฉบับ');
+  if(!q.reviewed||String(q.reason||'').trim().length<10)throw Error('ตรวจบริษัท วันและเนื้อไฟล์ แล้วระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
+ }
+ function mount(host,opts){
+  const actor=opts.actor(),scopeKey=()=>JSON.stringify([actor,company,date]),same=()=>alive&&opts.active()&&actor===opts.actor();
+  let alive=true,company=opts.company,date=opts.date,source='mixed',files=[],info=null,error='',loading=false,busy=false,review=false,ticket=0,message='';
+  const getDraft=()=>{const key=scopeKey();if(!drafts.has(key))drafts.set(key,{queue:[],selected:new Set()});return drafts.get(key);};
+  const chosen=()=>selectedFiles(files,getDraft().selected,company,date,source);
+  function invalidate(){review=false;message='';}
+  function draw(){
+   if(!same())return;
+   const draft=getDraft(),visible=files.filter(f=>(source==='mixed'||f.source_origin===source)),selection=chosen(),ready=selection.some(f=>f.kind==='bo_main')&&selection.some(f=>['stm_pdf','pm_statement'].includes(f.kind));
+   host.innerHTML=`<section class="source-workspace"><div class="sw-tabs"><button data-tab="source-upload" class="${opts.page==='upload'?'primary-button':'ghost-button'}">1 รับและจัดไฟล์</button><button data-tab="source-run" class="${opts.page==='run'?'primary-button':'ghost-button'}">2 เลือกชุดและรันมือ</button><span class="badge blue">3 ผลใหม่รอหัวหน้า/Admin ทบทวน</span></div><section class="sw-panel"><div class="sw-topline">SOURCE WORKSPACE</div><h2>${opts.page==='upload'?'รับไฟล์ให้ถูก ก่อนเริ่มตรวจ':'เลือกเองให้ครบ ก่อนเริ่มรอบใหม่'}</h2><p class="sw-sub">${opts.page==='upload'?'เก็บต้นฉบับ แยกบริษัท วันและประเภทก่อนนำไปตรวจ':'เลือกเฉพาะชุดไฟล์ที่ต้องการ ไม่หยิบไฟล์จากแหล่งอื่นมาปนเอง'}</p><div class="sw-fields"><label>บริษัทที่จะตรวจ<select data-company ${busy?'disabled':''}>${opts.companies.map(c=>`<option ${c===company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันอ้างอิงรอบตรวจ<input data-date type="date" value="${esc(date)}" ${busy?'disabled':''}></label></div><p class="sw-note">การเก็บไฟล์และเลือกชุดยังไม่รัน · เก็บผลหลัก/ประวัติ/พักตรวจเดิม · ไฟล์อัปโหลดใหม่พักบอทรอบที่เกี่ยวข้องให้คนทบทวน ไม่เปิดรันเอง</p><div class="sw-actions"><button data-refresh class="ghost-button" ${busy||loading?'disabled':''}>${loading?'กำลังโหลดทะเบียน…':'โหลดทะเบียนล่าสุด'}</button><button data-manage class="ghost-button" ${busy?'disabled':''}>ค้นไฟล์จากวันอื่น / จัดการชื่อและขอบเขต</button>${info?.hold?.paused?`<span class="badge amber">พักรันอยู่</span>`:info?.manualOnly?'<span class="badge amber">มีเวอร์ชันแก้ไข · ยังไม่เปิดบอท</span>':''}</div>${error?`<p class="sw-error" role="alert">${esc(error)}</p>`:''}${message?`<p role="status">${esc(message)}</p>`:''}</section>
+   ${opts.page==='upload'?`<section class="sw-panel"><h3>อัปโหลดแยกประเภท</h3><p class="sw-sub">หัวหน้า/Admin ตามสิทธิ์บริษัท · รับได้หลายไฟล์ · ไม่เปลี่ยนชื่อหรือไฟล์ต้นฉบับ</p><div class="sw-types">${Object.entries(kinds).map(([k,label])=>`<label class="sw-type"><b>${esc(label)}</b><small>${k==='doc_clarify'?'แนบประกอบเท่านั้น ไม่เข้าตัวอ่านธุรกรรม':k==='stm_pdf'?'Statement PDF สูงสุด 50 MB/ไฟล์':'Excel / CSV / TXT สูงสุด 50 MB/ไฟล์'}</small><input type="file" multiple data-files="${k}" aria-label="เลือกไฟล์ ${esc(label)}" accept="${k==='stm_pdf'?'.pdf':k==='doc_clarify'?'.pdf,.docx,.xlsx,.xls,.xlsm,.csv':'.xlsx,.xls,.xlsm,.csv,.txt'}" ${busy||!canUpload(opts.role())?'disabled':''}></label>`).join('')}</div>${!canUpload(opts.role())?'<p class="sw-warning">บทบาทนี้ดูทะเบียนและเลือกตรวจได้ แต่อัปโหลด/แก้ไฟล์ได้เฉพาะหัวหน้า/Admin</p>':''}</section><section class="sw-panel"><h3>ไฟล์ที่เตรียมอัปโหลด · ${draft.queue.length} ไฟล์</h3><p class="sw-sub">ไฟล์ยังอยู่ในเครื่อง จนกดยืนยันเก็บเข้าคลัง</p>${draft.queue.map((q,i)=>`<div class="sw-queue"><div class="sw-name">ต้นฉบับ: ${esc(q.file.name)}</div><small>${esc(kinds[q.kind])} · ${(q.file.size/1024).toFixed(1)} KB</small><div class="sw-fields"><label>ชื่อที่ใช้ในระบบ<input data-q-name="${i}" value="${esc(q.name)}" ${busy?'disabled':''}></label><label>เหตุผลรับไฟล์/แก้ชื่อ<input data-q-reason="${i}" value="${esc(q.reason)}" placeholder="เช่น รับฉบับแก้ไข ตรวจวันธุรกรรมแล้ว" ${busy?'disabled':''}></label></div><label class="sw-check"><input type="checkbox" data-q-reviewed="${i}" ${q.reviewed?'checked':''} ${busy?'disabled':''}>ตรวจเนื้อไฟล์แล้ว: บริษัท ${esc(company)} วันที่ ${esc(date)} และประเภทถูกต้อง ไม่ได้อาศัยชื่อไฟล์อย่างเดียว</label><span role="status">${esc(q.status||'ยังไม่อัปโหลด')}</span> <button data-q-remove="${i}" class="ghost-button xs" ${busy?'disabled':''}>เอาออกจากรายการเตรียม</button></div>`).join('')||'<p class="sw-empty">เลือกไฟล์ในประเภทด้านบนเพื่อเตรียมอัปโหลด</p>'}<div class="sw-summary"><span>ตรวจ SHA-256 และไฟล์ซ้ำก่อนลงทะเบียน · ไม่เขียนทับต้นฉบับ</span><button data-upload class="primary-button" ${busy||loading||!draft.queue.length||!canUpload(opts.role())?'disabled':''}>ทบทวนเก็บเข้าคลัง · ยังไม่รัน</button></div></section>`:''}
+   <section class="sw-panel"><div class="sw-head"><h3>${opts.page==='upload'?'ทะเบียนไฟล์ที่มีอยู่':'เลือกแหล่งไฟล์และรายการที่จะรัน'}</h3><span class="sw-sub">${loading?'กำลังอ่านข้อมูล':`${files.length} ไฟล์ในขอบเขตรับข้อมูล`}</span></div><div class="sw-tabs" role="group" aria-label="แหล่งไฟล์">${[['upload','ไฟล์อัปโหลด'],['mail','ไฟล์จากเมล'],['mixed','ผสมทั้งสองแหล่ง']].map(([key,label])=>`<button data-source="${key}" aria-pressed="${source===key}" class="ghost-button" ${busy?'disabled':''}>${label}</button>`).join('')}</div>${loading?'<p role="status">กำลังโหลดทะเบียนจริง ยังไม่สรุปว่าไม่มีไฟล์</p>':error?'<p>ทะเบียนยังโหลดไม่ครบ กรุณาโหลดใหม่ก่อนเลือกหรืออัปโหลด</p>':`<div class="sw-files">${visible.map(f=>{const w=warning(f,company,date);return `<article class="sw-file"><div class="sw-choice">${opts.page==='run'?`<input type="checkbox" data-select="${esc(f.id)}" aria-label="เลือก ${esc(f.file_name)}" ${selection.some(x=>x.id===f.id)?'checked':''} ${busy||!selectable(f,company,date)?'disabled':''}>`:''}<div><div class="sw-name">${esc(f.file_name)}</div><small>${esc(kinds[f.kind]||f.kind)} · ${f.source_origin==='upload'?'อัปโหลดผ่านระบบ':'จากเมล'} · ${esc(f.company)} · วันอ้างอิง ${esc(f.business_date)} · v${esc(f.revision||1)}</small><small>ชื่อเดิม: ${esc(f.original_file_name||f.file_name)}</small>${w?`<p class="sw-warning">${esc(w)}</p>`:''}</div></div><div class="sw-file-actions"><button data-preview="${esc(f.id)}" class="ghost-button xs">ดูต้นฉบับ</button><button data-edit="${esc(f.id)}" class="ghost-button xs" ${busy||!canUpload(opts.role())?'disabled':''}>แก้ชื่อ / ขอบเขต</button></div></article>`;}).join('')||'<p class="sw-empty">ยังไม่มีไฟล์จากแหล่งนี้ในขอบเขตที่เลือก</p>'}</div>`}
+   ${opts.page==='run'?`<div class="sw-summary"><div><strong>เลือก ${selection.length} ไฟล์ · BO ${selection.filter(f=>f.kind==='bo_main').length} · STM ${selection.filter(f=>f.kind==='stm_pdf').length} · PM ${selection.filter(f=>f.kind==='pm_statement').length}</strong><div class="sw-sub">หลักฐานประกอบไม่เข้ารัน · ไม่เลือกไฟล์ให้เอง</div></div><button data-review class="primary-button" ${busy||loading||error||!ready||!canRun(opts.role())?'disabled':''}>ตรวจชุดไฟล์ก่อนเริ่ม →</button></div>`:`<div class="sw-actions"><button data-go-run class="primary-button">ไปเลือกชุดไฟล์ →</button></div>`}</section>
+   ${review?`<section class="sw-panel"><h3>ทบทวนชุดรันใหม่ · ${esc(company)} · ${esc(date)}</h3><ul class="sw-review-list">${selection.map(f=>`<li>${esc(f.file_name)} · v${esc(f.revision||1)}</li>`).join('')}</ul><p class="sw-note">ไปหน้าสั่งตรวจมือเดิมโดยใช้เฉพาะ ${selection.length} ไฟล์นี้ ยังไม่ส่งงานจนกด “รันตรวจมือ” ในขั้นถัดไป ผลใหม่รอหัวหน้า/Admin ทบทวน ไม่ลบผลเดิม ไม่ยืนยันผลหลักหรือเปิด/ปิดเคสอัตโนมัติ</p><div class="sw-actions"><button data-run class="primary-button" ${busy||!ready?'disabled':''}>ไปยืนยันสั่งรันมือ</button><button data-back class="ghost-button">กลับไปแก้ชุดไฟล์</button></div></section>`:''}</section>`;
+   bind();
+  }
+  function bind(){
+   const $=s=>host.querySelector(s),all=s=>[...host.querySelectorAll(s)];
+   all('[data-tab]').forEach(b=>b.onclick=()=>{if(!busy)opts.navigate(b.dataset.tab,company,date);});
+   $('[data-company]').onchange=e=>{company=e.target.value;opts.scope?.(company,date);invalidate();load();};$('[data-date]').onchange=e=>{date=e.target.value;opts.scope?.(company,date);invalidate();load();};$('[data-refresh]').onclick=load;
+   $('[data-manage]').onclick=()=>opts.manage(company,date,null,load);
+   $('[data-go-run]')?.addEventListener('click',()=>opts.navigate('source-run',company,date));
+   all('[data-source]').forEach(b=>b.onclick=()=>{source=b.dataset.source;invalidate();draw();});
+   all('[data-select]').forEach(b=>b.onchange=()=>{b.checked?getDraft().selected.add(b.dataset.select):getDraft().selected.delete(b.dataset.select);invalidate();draw();});
+   all('[data-preview]').forEach(b=>b.onclick=()=>opts.preview(files.find(f=>f.id===b.dataset.preview)));
+   all('[data-edit]').forEach(b=>b.onclick=()=>{const f=files.find(f=>f.id===b.dataset.edit);opts.manage(f.company,f.business_date,f.id,load);});
+   all('[data-files]').forEach(b=>b.onchange=()=>{const queue=getDraft().queue;for(const file of [...b.files]){if(queue.length>=30){error='เตรียมได้ไม่เกิน 30 ไฟล์ต่อชุด';break;}if(queue.some(q=>q.file===file&&q.kind===b.dataset.files))continue;queue.push({file,kind:b.dataset.files,name:file.name,reason:'',reviewed:false});}draw();});
+   for(const [attribute,key]of [['q-name','name'],['q-reason','reason']])all(`[data-${attribute}]`).forEach(b=>b.oninput=()=>{getDraft().queue[Number(b.dataset[attribute==='q-name'?'qName':'qReason'])][key]=b.value;});
+   all('[data-q-reviewed]').forEach(b=>b.onchange=()=>{getDraft().queue[Number(b.dataset.qReviewed)].reviewed=b.checked;});
+   all('[data-q-remove]').forEach(b=>b.onclick=()=>{getDraft().queue.splice(Number(b.dataset.qRemove),1);draw();});
+   $('[data-upload]')?.addEventListener('click',upload);
+   $('[data-review]')?.addEventListener('click',()=>{review=true;draw();host.querySelector('.sw-review-list')?.scrollIntoView({block:'center',behavior:'smooth'});});
+   $('[data-back]')?.addEventListener('click',()=>{review=false;draw();});
+   $('[data-run]')?.addEventListener('click',async()=>{if(!same()||busy||!canRun(opts.role()))return;const selected=chosen();if(!selected.some(f=>f.kind==='bo_main')||!selected.some(f=>['stm_pdf','pm_statement'].includes(f.kind)))return;const stamp=rows=>rows.map(f=>[f.id,f.revision,f.physical_source_file_id,f.checksum,f.storage_path]).sort((a,b)=>a[0].localeCompare(b[0])),old=stamp(selected),c=company,d=date;busy=true;draw();try{const latest=await opts.load(c,d);if(!same()||!canRun(opts.role())||c!==company||d!==date)return;const fresh=selectedFiles(latest.files,new Set(selected.map(f=>f.id)),c,d,source);if(JSON.stringify(stamp(fresh))!==JSON.stringify(old))throw Error('ไฟล์หรือเวอร์ชันเปลี่ยนแล้ว ต้องเลือกและทบทวนใหม่');opts.run(c,d,selected.map(f=>f.id));}catch(e){error=e.message;review=false;}finally{busy=false;draw();}});
+  }
+  async function upload(){
+   if(!same()||busy||loading||!info||!canUpload(opts.role()))return;
+   const draft=getDraft(),c=company,d=date;
+   try{draft.queue.forEach(validateQueued);}catch(e){error=e.message;draw();return;}
+   busy=true;error='';draw();
+   try{const yes=await opts.confirm({title:'ยืนยันเก็บไฟล์เข้าคลัง · ยังไม่รัน',message:`${c} · ${d}\n${draft.queue.map(q=>q.name+' · '+kinds[q.kind]).join('\n')}\nเก็บชื่อและไฟล์ต้นฉบับ กันไฟล์ซ้ำ พักบอทรอบนี้ ไม่รันหรือเปลี่ยนผลหลัก/ยอด/เคส`,confirmLabel:'ยืนยันเก็บเข้าคลัง · ไม่รัน',allowed:()=>same()&&canUpload(opts.role())});if(!yes||!same()||!canUpload(opts.role()))return;
+    for(const q of [...draft.queue]){if(!same()||c!==company||d!==date||!canUpload(opts.role()))throw Error('สิทธิ์หรือขอบเขตเปลี่ยน หยุดอัปโหลด');const r=await opts.add({company:c,date:d,kind:q.kind,name:q.name,reason:q.reason},q.file);if(!r?.source_file_id)throw Error('ยังยืนยันการเก็บไฟล์ไม่ได้ กรุณาโหลดประวัติก่อนลองซ้ำ');q.status=r.reused?'ใช้ไฟล์เดิม ไม่เพิ่มซ้ำ':'เก็บต้นฉบับและเวอร์ชันแล้ว';draft.queue.splice(draft.queue.indexOf(q),1);message=r.reused?'พบไฟล์เดิม ใช้รายการเดิม ไม่เปลี่ยนชื่อไฟล์เดิมให้เอง':'เก็บเข้าคลังแล้ว ยังไม่รัน';}
+    await load();
+   }catch(e){error=e.message;}finally{busy=false;draw();}
+  }
+  async function load(){const id=++ticket,c=company,d=date;files=[];info=null;loading=true;error='';draw();try{if(!opts.companies.includes(c)||!/^\d{4}-\d{2}-\d{2}$/.test(d))throw Error('เลือกบริษัทและวันที่ให้ครบ');const value=await opts.load(c,d);if(!same()||id!==ticket)return;if(!Array.isArray(value.files))throw Error('ทะเบียนไฟล์ไม่ครบ');info=value;files=value.files;}catch(e){if(id===ticket)error=e.message;}finally{if(id===ticket){loading=false;draw();}}}
+  draw();load();return {dispose(){alive=false;ticket++;},reload:load};
+ }
+ root.SourceWorkspace={mount,canUpload,canRun,warning,selectable,selectedFiles,validateQueued};if(typeof module!=='undefined')module.exports=root.SourceWorkspace;
+})(typeof window==='undefined'?globalThis:window);

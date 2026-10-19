@@ -84,6 +84,8 @@ const ROUTES = [
       { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
       { id: "mc8-sheets", label: "ชีต AUDIT ทุกบริษัท", icon: "reports", title: "ชีต AUDIT ทุกบริษัท", desc: "ผลกระทบยอด STM / PM กับ BO แยก PM ตาม Provider และแยก STM ธนาคารทีละบัญชี พร้อมยอดรวมท้ายตาราง", filters: false },
       { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
+      { id: "source-upload", label: "รับและจัดไฟล์", icon: "cloud", title: "รับไฟล์ให้ถูก ก่อนเริ่มตรวจ", desc: "อัปโหลดแยกบริษัท วันและประเภท เก็บต้นฉบับและประวัติ โดยยังไม่รัน", filters: false },
+      { id: "source-run", label: "เตรียมรันมือ", icon: "matching", title: "เลือกชุดไฟล์และเตรียมรันมือ", desc: "เลือกจากเมล อัปโหลด หรือผสมกัน ส่งเฉพาะไฟล์ที่เลือกไปทบทวนรันรอบใหม่", filters: false },
       { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
       { id: "exceptions", label: "ผลตรวจและเคส", icon: "exceptions", title: "ภาพรวมผลตรวจและเคส", desc: "ดูคู่สำเร็จและรายการที่ต้องตรวจ แยกบริษัท วันที่ ฝาก–ถอน และสถานะ", filters: true },
       { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true, hidden: true },
@@ -238,6 +240,7 @@ const ROUTE_ROLES = {
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
   admin: Object.keys(ROUTE_MAP),
 };
+for(const role of ['monitor','audit_assistant','lead'])ROUTE_ROLES[role].push('source-upload','source-run');
 
 /* ---------------- state ---------------- */
 const PROD_TODAY = (() => {
@@ -1140,6 +1143,24 @@ window.addEventListener("hashchange", () => {
 
 /* ---------------- main render ---------------- */
 const VIEWS = {};
+const sourceWorkspaceScope={company:null,date:null};
+function renderSourceWorkspace(host,page){
+ if(state.dataset!=='production'||!Sb.signedIn()){host.innerHTML='<section class="panel">หน้านี้ใช้ทะเบียนจริงหลังเข้าสู่ระบบ ไม่มีข้อมูลจำลอง</section>';return;}
+ const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany);if(!companies.length){host.innerHTML='<section class="panel">ไม่มีสิทธิ์บริษัท</section>';return;}
+ if(!companies.includes(sourceWorkspaceScope.company))sourceWorkspaceScope.company=companies.includes(state.filters.company)?state.filters.company:companies.includes(state.dailySummary.company)?state.dailySummary.company:companies[0];
+ sourceWorkspaceScope.date=sourceWorkspaceScope.date||state.dailySummary.date||state.filters.to||PROD_TODAY;
+ const scope=(company,date)=>Object.assign(sourceWorkspaceScope,{company,date});
+ const controller=SourceWorkspace.mount(host,{page,company:sourceWorkspaceScope.company,date:sourceWorkspaceScope.date,companies,
+ role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>Sb.signedIn()&&state.route===`source-${page==='upload'?'upload':'run'}`,
+ load:Sb.sourceWorkspace,add:Sb.addAuditManualSource,confirm:FileRunManagement.confirmAction,scope,
+ navigate:(route,company,date)=>{scope(company,date);go(route);},
+ manage:(company,date,fileId,onUpdated)=>openFileRunManagement({company,date,accounts:[],fileId,onUpdated}),
+ preview:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date:file.business_date,size:file.size_bytes}),
+ run:(company,date,fileIds)=>openAccountRecheck({company,date,accounts:[],fileIds})});
+ host.sourceWorkspaceDispose=()=>controller.dispose();
+}
+VIEWS['source-upload']=host=>renderSourceWorkspace(host,'upload');
+VIEWS['source-run']=host=>renderSourceWorkspace(host,'run');
 VIEWS.finance=root=>{
  if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
  FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
@@ -1174,11 +1195,11 @@ async function openFileExclusion(fileId) {
   return FileExclusion.open({fileId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
     preview:Sb.sourceExclusionPreview,save:Sb.setSourceExcluded,confirm:FileRunManagement.confirmAction});
 }
-function openFileRunManagement({company,date,accounts}) {
+function openFileRunManagement({company,date,accounts,fileId=null,onUpdated=null}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('จัดการไฟล์/พักรัน');
   openModal('เลือกไฟล์ / แก้ข้อมูล / พักรัน','<div id="fileRunManagementPanel"></div>','<button id="fileRunManagementDismiss">ปิด</button>');
   const dispose=FileRunManagement.mount($('#fileRunManagementPanel'),{
-    company,date,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
+    company,date,initialFileId:fileId,onUpdated,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
     companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
     setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
     onExclude:openFileExclusion,
@@ -1353,6 +1374,7 @@ function render() {
   captureFastQueueDrafts();
   $("#viewRoot").dataset.fastQueueDraftKey = fastQueueDraftKey();
   $("#viewRoot").financeDispose?.();
+  $("#viewRoot").sourceWorkspaceDispose?.();
   $("#viewRoot").innerHTML = "";
   VIEWS[route.id]($("#viewRoot"));
   restoreFastQueueDrafts();
@@ -9263,7 +9285,7 @@ async function performProductionEntry() {
   // The company worksheet loads its own committed run. Do not also start
   // thirty days of all-company aggregates/evidence while opening that sheet.
   // Other routes retain their normal overview loaders; unknown badges stay —.
-  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets', 'finance'].includes(state.route)) loadLiveOverview().catch(() => {});
+  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets', 'finance','source-upload','source-run'].includes(state.route)) loadLiveOverview().catch(() => {});
   return true;
 }
 
