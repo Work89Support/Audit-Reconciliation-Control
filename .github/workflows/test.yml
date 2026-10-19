@@ -63,6 +63,7 @@ jobs:
           node tests/manual-primary-reuse-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-primary-reuse-ui.test.cjs
           node tests/recheck-confirmation-source-scope-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/verified-statement-coverage-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-next-case-transport.test.mjs
           node tests/clarify-open-refresh-race.test.cjs
           node tests/clarify-company-navigation.test.cjs
