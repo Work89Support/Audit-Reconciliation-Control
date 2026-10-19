@@ -470,13 +470,19 @@ const Sb = (() => {
     const dates=rows.map(r=>r.business_date).sort(),companies=[...new Set(rows.map(r=>r.company))];
     const versions=await json(`/rest/v1/manual_primary_results?business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})&select=company,business_date&limit=1000`);
     const scopes=new Set(versions.map(r=>r.company+'|'+r.business_date)),resolved=new Map(),unavailable=new Map(),checked=new Set();
-    for(const row of rows){
+    const pendingScopes=rows.filter(row=>{
       const key=row.company+'|'+row.business_date;
-      if(!scopes.has(key)||checked.has(key))continue;
-      checked.add(key);
-      try{const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)unavailable.set(key,v);else if(v)resolved.set(key,v);}
-      catch(e){unavailable.set(key,{stale:false,message:e.message});}
-    }
+      if(!scopes.has(key)||checked.has(key))return false;
+      checked.add(key);return true;
+    });
+    // A slow unrelated company must not serialize every accepted result.
+    // Bound concurrency, and share only identical in-flight authenticated reads.
+    for(let offset=0;offset<pendingScopes.length;offset+=3)await Promise.all(
+      pendingScopes.slice(offset,offset+3).map(async row=>{
+        const key=row.company+'|'+row.business_date;
+        try{const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)unavailable.set(key,v);else if(v)resolved.set(key,v);}
+        catch(e){unavailable.set(key,{stale:false,message:e.message});}
+      }));
     let manual=[],holds=[],workflowStatusError='';
     if(caseCountsOnly){
       const filter=`business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})`;
@@ -845,7 +851,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
   }
 
-  const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history']);
+  const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history',
+    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
       method: "POST",

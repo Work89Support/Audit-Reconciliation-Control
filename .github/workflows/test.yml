@@ -31,6 +31,8 @@ jobs:
         run: npm run test:ui-qa
       - name: Verify all-role evidence checklist
         run: node tests/case-evidence-checklist.test.cjs
+      - name: Verify current-primary read deduplication without business writes
+        run: node tests/summary-primary-read-flight.test.mjs
       - name: Verify suspended-account hold scope and report distinction
         run: node --test tests/account-review-holds.test.cjs && node tests/continuous-account-review-hold.test.cjs
       - name: Verify AZPAY source time and cross-day display
@@ -64,6 +66,7 @@ jobs:
           node tests/manual-primary-reuse-ui.test.cjs
           node tests/recheck-confirmation-source-scope-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/verified-statement-coverage-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/summary-case-read-performance-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-next-case-transport.test.mjs
           node tests/clarify-open-refresh-race.test.cjs
           node tests/clarify-company-navigation.test.cjs
