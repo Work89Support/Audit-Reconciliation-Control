@@ -1,0 +1,6 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>File review confirmation QA</title>
+<link rel="stylesheet" href="../styles.css"><body><main id="appShell"><h1>ทดสอบจำลอง — ไม่มีข้อมูลจริงและไม่เรียกฐานข้อมูล</h1><button id="review">ทบทวนแก้วันตัวอย่าง</button><button id="warning">ทบทวนก่อนรันตัวอย่าง</button><p id="result" role="status">ยังไม่บันทึกหรือรัน</p></main>
+<script src="../ui-accessibility.js"></script><script src="../file-run-management.js"></script><script>
+document.querySelector('#review').onclick=async()=>{const yes=await FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:'FR8_PM_AUTOPEER_D_2026-10-18.xlsx\nวันอ้างอิง 2026-10-18\nเก็บต้นฉบับ เพิ่มเวอร์ชัน และพักบอท ไม่รันงาน',confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่'});document.querySelector('#result').textContent=yes?'ยืนยันเฉพาะข้อมูลจำลอง — ยังไม่รัน':'ยกเลิก — ร่างเดิมยังอยู่';};
+document.querySelector('#warning').onclick=async()=>{const yes=await FileRunManagement.confirmAction({title:'ทบทวนคำเตือน',message:'ไปเลือกขอบเขตเท่านั้น ยังไม่รัน',confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน'});document.querySelector('#result').textContent=yes?'เปิดทบทวนขอบเขตจำลอง — ยังไม่รัน':'ยกเลิก — ยังไม่รัน';};
+</script></body></html>

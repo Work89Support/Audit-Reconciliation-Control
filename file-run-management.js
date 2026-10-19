@@ -4,6 +4,24 @@
  const canManage=role=>['lead','admin'].includes(role);
  const kinds=['bo_main','stm_pdf','pm_statement','doc_clarify','unknown'];
  const kindLabel={bo_main:'BO หลังบ้าน',stm_pdf:'STM ธนาคาร',pm_statement:'Statement PM',doc_clarify:'หลักฐานประกอบ',unknown:'ยังไม่ระบุประเภท'};
+ // An HTML dialog keeps review explicit without a blocking browser confirm.
+ // This helper only returns a decision; it never saves or starts a worker.
+ function confirmAction({title,message,confirmLabel='ยืนยัน',allowed=()=>true}){
+  return new Promise(resolve=>{
+   const doc=root.document,previous=doc.activeElement,dialog=doc.createElement('dialog');
+   dialog.className='modal on file-run-confirm';
+   dialog.setAttribute('aria-labelledby','fileRunConfirmTitle');
+   dialog.innerHTML=`<header class="modal-head"><h2 id="fileRunConfirmTitle">${esc(title)}</h2></header><div class="modal-body"><p class="file-run-confirm-message">${esc(message)}</p></div><footer class="modal-foot"><button data-cancel>ยกเลิก</button><button class="primary" data-accept>${esc(confirmLabel)}</button></footer>`;
+   let settled=false;
+   const finish=value=>{if(settled)return;settled=true;root.AuditUi?.close(dialog);dialog.remove();if(previous?.isConnected)previous.focus();resolve(value);};
+   dialog.querySelector('[data-cancel]').onclick=()=>finish(false);
+   dialog.querySelector('[data-accept]').onclick=()=>finish(!!allowed());
+   dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false);});
+   dialog.addEventListener('close',()=>finish(false));
+   doc.body.appendChild(dialog);
+   try{dialog.showModal();root.AuditUi?.open(dialog);dialog.querySelector('[data-cancel]').focus();}catch(e){finish(false);}
+  });
+ }
  function runNotice(s){
   if(!s)return {title:'ยังตรวจสถานะรันไม่ได้',reason:'โหลดสถานะไม่สำเร็จ ไม่ถือว่างานพร้อมรัน',next:'โหลดสถานะล่าสุดก่อนสั่งงาน',blocked:true};
   const j=s.job||s;
@@ -76,6 +94,7 @@
     if(!sameActor()||!canManage(opts.role()))return;
     if(reason.length<10){error='ระบุเหตุผลอย่างน้อย 10 ตัวอักษร';draw();return;}
     if(!await opts.confirmHold?.({paused:!hold?.paused,reason}))return;
+    if(!sameActor()||!canManage(opts.role()))return;
     await action(()=>opts.setHold({company:opts.company,date:opts.date,paused:!hold?.paused,reason,expectedRevision:hold?.revision||0}));
    };
    host.querySelectorAll('[data-history]').forEach(el=>el.onclick=async()=>{
@@ -107,6 +126,7 @@
      if(upload&&b.replacementId)throw Error('เลือกฉบับแทนจากคลังหรืออัปโหลด อย่างใดอย่างหนึ่ง');
      if(upload&&(!upload.size||upload.size>50*1024*1024))throw Error('ไฟล์ต้องมีข้อมูลและไม่เกิน 50 MB');
      if(!await opts.confirmCorrection(b))return;
+     if(!sameActor()||!canManage(opts.role()))return;
      await action(async()=>{await (upload?opts.uploadCorrection(b,upload):opts.correct(b));editor=null;upload=null;});
     }catch(e){error=e.message;draw();}
    };
@@ -115,5 +135,5 @@
   async function load(){try{const result=await opts.load(opts.company,opts.date);runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);

@@ -1176,11 +1176,11 @@ function openFileRunManagement({company,date,accounts}) {
     company,date,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
     companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
     setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
-    confirmHold:async b=>window.confirm(`${b.paused?'พัก':'เปิด'}รัน ${company} ${date}?\n${b.reason}\nไม่แก้ยอดหรือปิดเคส`),
+    confirmHold:b=>FileRunManagement.confirmAction({title:`${b.paused?'พัก':'เปิด'}บอทรอบหลัก · ${company} · ${date}`,message:`${b.reason}\nไม่แก้ยอดหรือปิดเคส\nการพักบอทไม่เริ่มรันมือให้เอง`,confirmLabel:b.paused?'ยืนยันพักบอท':'ยืนยันเปิดบอท',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     uploadCorrection:Sb.uploadAuditSourceCorrection,
     onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
-    confirmCorrection:async b=>window.confirm(`เก็บต้นฉบับไว้ เพิ่มเวอร์ชันใหม่ และพักงานบริษัท/วันที่ที่เกี่ยวข้อง?\n${b.name}\n${b.reason}`),
-    confirmRunWarnings:async b=>window.confirm(`พบคำเตือน ${b.warnings.length} รายการใน ${b.company} ${b.date}\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nต้องการไปทบทวนขอบเขตรันตรวจมือหรือไม่? ยังไม่รันจนยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`),
+    confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับ เพิ่มเวอร์ชันใหม่ และพักบอทรอบที่เกี่ยวข้อง ไม่รันหรือยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
+    confirmRunWarnings:b=>FileRunManagement.confirmAction({title:`ทบทวนคำเตือน · ${b.company} · ${b.date}`,message:`พบคำเตือน ${b.warnings.length} รายการ\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nไปทบทวนขอบเขตรันตรวจมือเท่านั้น ยังไม่รันจนกดยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`,confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน',allowed:()=>Sb.signedIn()&&canAccessCompany(company)}),
     onRun:async fileIds=>{
       try{let choices=accounts;
         if(!choices.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}
