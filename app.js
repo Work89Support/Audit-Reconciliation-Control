@@ -1184,8 +1184,10 @@ function openFileRunManagement({company,date,accounts}) {
     confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับ เพิ่มเวอร์ชันใหม่ และพักบอทรอบที่เกี่ยวข้อง ไม่รันหรือยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmRunWarnings:b=>FileRunManagement.confirmAction({title:`ทบทวนคำเตือน · ${b.company} · ${b.date}`,message:`พบคำเตือน ${b.warnings.length} รายการ\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nไปทบทวนขอบเขตรันตรวจมือเท่านั้น ยังไม่รันจนกดยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`,confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน',allowed:()=>Sb.signedIn()&&canAccessCompany(company)}),
     onRun:async fileIds=>{
-      try{let choices=accounts;
-        if(!choices.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}
+      try{let choices=accounts||[];
+        // Selected sources are enough to open an ALL-account staged recheck.
+        // A stale primary must block acceptance, not the rerun needed to review it.
+        if(!choices.length&&!fileIds?.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}
         dispose();closeModal();openAccountRecheck({company,date,accounts:choices,fileIds});
       }catch(error){toast(error.message,'bad');}
     },
