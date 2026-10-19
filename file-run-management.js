@@ -49,14 +49,19 @@
   if(!String(b.name||'').trim()||/[\\/\x00-\x1f]/.test(b.name))throw Error('ชื่อไฟล์ไม่ถูกต้อง');
   return b;
  }
+ function selectionSummary(files,selected){
+  const chosen=files.filter(f=>selected.has(f.id)&&!f.excluded),count=kind=>chosen.filter(f=>f.kind===kind).length;
+  return `เลือกใช้ตรวจ ${chosen.length} ไฟล์ · BO ${count('bo_main')} · STM ${count('stm_pdf')} · PM ${count('pm_statement')} — ยังไม่รัน`;
+ }
  function mount(host,opts){
-  let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='';
+  let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='',picker=null,addition=null;
   const actor=opts.actor?.(),sameActor=()=>!actor||opts.actor?.()===actor;
   function draw(){
    if(!alive)return;
    if(!sameActor()){host.innerHTML='<p role="alert">ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่</p>';return;}
    host.innerHTML=`<section class="manual-tools"><div class="manual-scope"><strong>${esc(opts.company)} · ${esc(opts.date)}</strong><span>เลือกไฟล์ → ตรวจซ้ำ → หัวหน้ายืนยันผล</span></div><h3>เลือกไฟล์และจัดการรอบตรวจ</h3>
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
+    <details class="file-run-flow"><summary>ขั้นตอนรอบปกติ / รอบที่ต้องรันใหม่</summary><p>รอบปกติ: บอทรับไฟล์ → อ่านและกระทบยอดตามปกติ</p><p>รอบผิดปกติ: เลือก/เพิ่มไฟล์ → ทบทวนและสั่งรันมือ → หัวหน้า/Admin ยืนยันผลหลักและชุดเคส → ดำเนินการ ส่งชี้แจง และปิดเคสตามสิทธิ์และเงื่อนไขเดิม</p><p>การเลือกไฟล์หรือรันมืออย่างเดียวยังไม่เปลี่ยนผลหลัก ไม่สร้างหรือปิดเคส และไม่ย้ายคำอนุมัติจากเคสเก่า</p></details>
     ${noticeHtml(runState)}${preflightHtml(runState)}
     <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):runState?.preflight?.blocked?'พักรันอัตโนมัติจากคำเตือน · ไม่ลองรันซ้ำเอง':'ยังไม่ได้พักรัน'}</p>
     <label>เหตุผลพัก/เปิดงาน <input data-hold-reason maxlength="2000" value="${esc(holdReason)}"></label>
@@ -64,17 +69,25 @@
     ${manualOnly?'<p class="manual-note">ไฟล์มีเวอร์ชันแก้ไข: ตรวจมือและยืนยันรายงานแยกได้ แต่ยังล็อกบอทรอบหลักไว้จนตรวจการเชื่อมเคสเดิมครบ เพื่อไม่เปิดเคสซ้ำหรือย้ายประวัติอนุมัติผิดรายการ</p>':''}
     <button data-refresh ${busy?'disabled':''}>โหลดไฟล์/สถานะล่าสุด</button>
     <p role="alert">${esc(error)}</p>
-    <table><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
+    <div class="manual-actions"><button data-find ${busy?'disabled':''}>ค้นไฟล์จากวัน/บริษัทอื่น</button><button data-add ${busy||!canManage(opts.role())?'disabled':''}>เพิ่มไฟล์จากเครื่อง</button></div>
+    <p>ไฟล์ที่หัวข้อวัน/บริษัทผิด ต้องทบทวนและแก้วันอ้างอิงก่อนนำเข้ารอบ ห้ามนำยอดคนละบริษัทมาปนกันโดยไม่ตรวจต้นทาง</p>
+    ${picker?pickerHtml():''}${addition?additionHtml():''}
+    <p class="manual-scope" data-selection-summary role="status">${esc(selectionSummary(files,selected))}</p>
+    <div class="file-run-table-scroll"><table class="file-run-table"><colgroup><col class="use-col"><col class="name-col"><col class="kind-col"><col class="version-col"><col class="actions-col"></colgroup><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
      ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
-    </tbody></table>
-    <button data-run ${busy||!selected.size||runNotice(runState).blocked?'disabled':''}>รันตรวจมือด้วยไฟล์ที่เลือก (${selected.size})</button>
+    </tbody></table></div>
+    <button data-run ${busy||!selected.size||runNotice(runState).blocked?'disabled':''}>ถัดไป: ทบทวนรันมือ (${selected.size} ไฟล์) — ยังไม่รัน</button>
     <p>ผลต้องผ่านการทบทวนและยืนยันจากหัวหน้า/ผู้ดูแลก่อนใช้ ไม่เปิดเคสจากการตรวจเปรียบเทียบ</p>
     <div data-detail>${editor?editorHtml():reviewing||''}</div></section>`;
    host.querySelector('[data-hold-reason]').oninput=e=>{holdReason=e.target.value;};
    host.querySelector('[data-refresh]').onclick=load;
+   host.querySelector('[data-find]').onclick=()=>{picker={company:opts.company,date:opts.date,files:[],loaded:false,loading:false,error:''};addition=null;draw();};
+   host.querySelector('[data-add]').onclick=()=>{if(!sameActor()||!canManage(opts.role()))return;addition={kind:'pm_statement',reason:'',file:null};picker=null;draw();};
+   if(picker)bindPicker();if(addition)bindAddition();
    host.querySelectorAll('[data-select]').forEach(el=>el.onchange=()=>{
     el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);
-    const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size||runNotice(runState).blocked;run.textContent=`รันตรวจมือด้วยไฟล์ที่เลือก (${selected.size})`;
+    const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size||runNotice(runState).blocked;run.textContent=`ถัดไป: ทบทวนรันมือ (${selected.size} ไฟล์) — ยังไม่รัน`;
+    host.querySelector('[data-selection-summary]').textContent=selectionSummary(files,selected);
    });
    host.querySelector('[data-run]').onclick=async()=>{
     if(!sameActor()||busy||runNotice(runState).blocked)return;
@@ -103,11 +116,27 @@
    host.querySelectorAll('[data-edit]').forEach(el=>el.onclick=()=>edit(files.find(f=>f.id===el.dataset.edit)));
    if(editor)bindEditor();
   }
-  function edit(f){
+  function edit(f,foreign=false){
    if(!sameActor()||!canManage(opts.role()))return;
-   editor={fileId:f.id,expectedRevision:f.revision,name:f.file_name,company:f.company,date:f.business_date,kind:f.kind,replacementId:null,excluded:!!f.excluded,reason:''};upload=null;draw();
+   editor={fileId:f.id,expectedRevision:f.revision,name:f.file_name,company:foreign?opts.company:f.company,date:foreign?opts.date:f.business_date,kind:f.kind,replacementId:null,excluded:!!f.excluded,reason:'',...(foreign?{originCompany:f.company,originDate:f.business_date}:{})};upload=null;addition=null;draw();
   }
-  function editorHtml(){const f=editor;return `<div class="manual-review"><h4>เพิ่มเวอร์ชันไฟล์ · เก็บต้นฉบับไว้</h4><div class="manual-fields"><label>ชื่อใหม่ <input data-name value="${esc(f.name)}"></label>
+  function pickerHtml(){return `<section class="manual-review"><h4>ค้นไฟล์ในคลัง — อ่านอย่างเดียวจนกดยืนยันแก้ข้อมูล</h4><div class="manual-fields"><label>บริษัทต้นทาง<select data-source-company>${(opts.companies||[opts.company]).map(c=>`<option ${c===picker.company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่ต้นทาง<input type="date" data-source-date value="${esc(picker.date)}"></label></div><button data-source-search ${busy||picker.loading?'disabled':''}>ค้นไฟล์ต้นทาง</button><button data-source-close>ปิดการค้นหา</button><p role="status">${esc(picker.error||(!picker.loaded?'เลือกบริษัทและวันที่แล้วค้นหา':picker.files.length?`พบ ${picker.files.length} ไฟล์`:'ไม่พบไฟล์ที่ใช้ตรวจในขอบเขตนี้'))}</p>${picker.files.map((f,i)=>`<article><strong>${esc(f.file_name)}</strong><p>${esc(f.company)} · วันอ้างอิง ${esc(f.business_date)} · ${esc(kindLabel[f.kind])} · เวอร์ชัน ${esc(f.revision)}</p><button data-source-use="${i}" ${busy||f.excluded||!canManage(opts.role())||files.some(x=>x.id===f.id||x.physical_source_file_id===f.physical_source_file_id&&f.physical_source_file_id)?'disabled':''}>ทบทวนนำไฟล์เข้ารอบ ${esc(opts.company)} · ${esc(opts.date)}</button></article>`).join('')}</section>`;}
+  function bindPicker(){
+   host.querySelector('[data-source-company]').onchange=e=>{picker.company=e.target.value;picker.files=[];picker.loaded=false;draw();};
+   host.querySelector('[data-source-date]').onchange=e=>{picker.date=e.target.value;picker.files=[];picker.loaded=false;draw();};
+   host.querySelector('[data-source-close]').onclick=()=>{picker=null;draw();};
+   host.querySelector('[data-source-search]').onclick=async()=>{if(!sameActor()||busy||picker.loading)return;const search=picker,company=picker.company,date=picker.date;if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;search.loading=true;search.error='';draw();try{const found=await opts.searchSources(company,date);if(!alive||!sameActor()||picker!==search||picker.company!==company||picker.date!==date)return;search.files=found.filter(f=>['bo_main','stm_pdf','pm_statement'].includes(f.kind));search.loaded=true;}catch(e){search.error=e.message;}finally{search.loading=false;draw();}};
+   host.querySelectorAll('[data-source-use]').forEach(b=>b.onclick=()=>{if(!sameActor()||busy)return;const f=picker.files[Number(b.dataset.sourceUse)];if(f&&!f.excluded)edit(f,true);});
+  }
+  function additionHtml(){return `<section class="manual-review"><h4>เพิ่มไฟล์จากเครื่อง · ไม่แทนที่ไฟล์เดิมและยังไม่รัน</h4><p>${esc(opts.company)} · ${esc(opts.date)} · เลือกเฉพาะไฟล์ของรอบนี้ ตรวจวันธุรกรรมก่อนยืนยัน</p><div class="manual-fields"><label>ไฟล์ที่จะเพิ่ม<input type="file" data-add-file accept=".xlsx,.xls,.xlsm,.csv,.pdf,.docx"></label><label>ประเภทไฟล์ใหม่<select data-add-kind>${kinds.filter(k=>['bo_main','stm_pdf','pm_statement'].includes(k)).map(k=>`<option value="${k}" ${addition.kind===k?'selected':''}>${esc(kindLabel[k])}</option>`).join('')}</select></label></div>${addition.file?`<p>เลือกไว้ ${esc(addition.file.name)} · ${esc(addition.file.size)} ไบต์</p>`:''}<label>เหตุผลเพิ่มไฟล์<input data-add-reason maxlength="2000" value="${esc(addition.reason)}"></label><p>ตรวจไฟล์ซ้ำก่อนลงทะเบียน เก็บเป็นหลักฐานรับไฟล์ด้วยมือแยกจากอีเมล และพักบอทรอบนี้ให้คนสั่งรันเอง</p><button data-add-save ${busy?'disabled':''}>ทบทวนเพิ่มไฟล์ · ยังไม่รัน</button><button data-add-cancel ${busy?'disabled':''}>ยกเลิกเพิ่มไฟล์</button></section>`;}
+  function bindAddition(){
+   host.querySelector('[data-add-file]').onchange=e=>{addition.file=e.target.files[0]||null;};
+   host.querySelector('[data-add-kind]').onchange=e=>{addition.kind=e.target.value;};
+   host.querySelector('[data-add-reason]').oninput=e=>{addition.reason=e.target.value;};
+   host.querySelector('[data-add-cancel]').onclick=()=>{addition=null;draw();};
+   host.querySelector('[data-add-save]').onclick=async()=>{try{if(!sameActor()||busy||!canManage(opts.role()))return;const b=addition,file=b.file;if(!file||!file.size||file.size>50*1024*1024)throw Error('เลือกไฟล์ที่มีข้อมูลและไม่เกิน 50 MB');if(b.reason.trim().length<10)throw Error('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร');if(!await opts.confirmAddition({company:opts.company,date:opts.date,kind:b.kind,name:file.name,reason:b.reason}))return;if(!sameActor()||!canManage(opts.role())||addition!==b)return;await action(async()=>{const result=await opts.addSource({company:opts.company,date:opts.date,kind:b.kind,reason:b.reason},file);selected.add(result.source_file_id);addition=null;reviewing=result.reused?'<p role="status">ใช้ไฟล์เดิมที่มีอยู่แล้ว ไม่เพิ่มรายการซ้ำ</p>':'<p role="status">เพิ่มไฟล์แล้ว พักบอทรอบนี้ไว้ ยังไม่รันหรือใช้ผลหลัก</p>';});}catch(e){error=e.message;draw();}};
+  }
+  function editorHtml(){const f=editor;return `<div class="manual-review"><h4>เพิ่มเวอร์ชันไฟล์ · เก็บต้นฉบับไว้</h4>${f.originCompany?`<p class="manual-note">ต้นทาง ${esc(f.originCompany)} · ${esc(f.originDate)} → รอบที่จะใช้ ${esc(opts.company)} · ${esc(opts.date)} ตรวจเนื้อไฟล์และเหตุผลก่อนยืนยัน เก็บรอบเดิมเป็นประวัติและพักบอททั้งสองรอบ ไม่คัดลอกยอดหรือเคส</p>`:''}<div class="manual-fields"><label>ชื่อใหม่ <input data-name value="${esc(f.name)}"></label>
     <label>บริษัท <select data-company>${(opts.companies||[opts.company]).map(c=>`<option value="${esc(c)}" ${c===f.company?'selected':''}>${esc(c)}</option>`).join('')}</select></label><label>วันที่ <input type="date" data-date value="${esc(f.date)}"></label>
     <label>ประเภท <select data-kind>${kinds.map(k=>`<option value="${k}" ${f.kind===k?'selected':''}>${esc(kindLabel[k])}</option>`).join('')}</select></label>
     <label>ฉบับแทน <select data-replacement><option value="">ใช้ไฟล์เดิม</option>${files.filter(x=>x.id!==f.fileId&&!x.excluded).map(x=>`<option value="${esc(x.id)}" ${f.replacementId===x.id?'selected':''}>${esc(x.file_name)}</option>`).join('')}</select></label>
@@ -127,13 +156,13 @@
      if(upload&&(!upload.size||upload.size>50*1024*1024))throw Error('ไฟล์ต้องมีข้อมูลและไม่เกิน 50 MB');
      if(!await opts.confirmCorrection(b))return;
      if(!sameActor()||!canManage(opts.role()))return;
-     await action(async()=>{await (upload?opts.uploadCorrection(b,upload):opts.correct(b));editor=null;upload=null;});
+     await action(async()=>{await (upload?opts.uploadCorrection(b,upload):opts.correct(b));selected.add(b.fileId);editor=null;upload=null;});
     }catch(e){error=e.message;draw();}
    };
   }
   async function action(fn){busy=true;error='';draw();try{await fn();await load();}catch(e){error=e.message;}finally{busy=false;draw();}}
-  async function load(){try{const result=await opts.load(opts.company,opts.date);runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
+  async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);

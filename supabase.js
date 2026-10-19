@@ -984,6 +984,29 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
   const setAuditRunHold=b=>rpc('set_audit_run_hold',{p_company:b.company,p_date:b.date,p_paused:b.paused,p_reason:b.reason,p_expected_revision:b.expectedRevision});
   const correctAuditSource=b=>rpc('correct_audit_source',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_name:b.name,p_company:b.company,p_date:b.date,p_kind:b.kind,p_replacement_id:b.replacementId,p_excluded:b.excluded,p_reason:b.reason});
   const pendingSourceUploads=new Map();
+  const pendingManualSources=new Map();
+  async function addAuditManualSource(b,file){
+    const actor=authUser()?.id;
+    if(!actor||!file?.size||file.size>50*1024*1024||!String(b.reason||'').trim()||b.reason.trim().length<10)throw Error('เข้าสู่ระบบ เลือกไฟล์ไม่เกิน 50 MB และระบุเหตุผลอย่างน้อย 10 ตัวอักษร');
+    const bytes=await file.arrayBuffer(),checksum=await sha256Hex(bytes);
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่');
+    const plan=await effectiveAuditFiles(b.company,b.date);
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่');
+    const same=plan.find(f=>!f.excluded&&f.business_date===b.date&&f.kind===b.kind&&f.checksum===checksum);
+    if(same)return {source_file_id:same.id,reused:true,duplicate:true};
+    const key=JSON.stringify([actor,b.company,b.date,b.kind,b.reason.trim(),file.name,file.size,checksum]);
+    let receipt=pendingManualSources.get(key);
+    if(!receipt){receipt={id:crypto.randomUUID(),uploaded:false};pendingManualSources.set(key,receipt);}
+    const path=`manual-replacements/${actor}/${receipt.id}/${replacementSafeName(file.name)}`;
+    if(!receipt.uploaded){
+      try{await req(`/storage/v1/object/${cfg().bucket}/${encodeURI(path)}`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:bytes,timeoutMs:120000});}
+      catch(error){if(!/already exists|duplicate/i.test(error.message))throw error;}
+      receipt.uploaded=true;
+    }
+    if(authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่');
+    const result=await rpc('add_audit_manual_source',{p_company:b.company,p_date:b.date,p_kind:b.kind,p_reason:b.reason.trim(),p_metadata:{id:receipt.id,storage_path:path,file_name:file.name,mime_type:file.type||'application/octet-stream',size_bytes:file.size,checksum}});
+    pendingManualSources.delete(key);return result;
+  }
   async function uploadAuditSourceCorrection(b,file){
     const bytes=await file.arrayBuffer(),actor=authUser()?.id;
     if(!actor||!file.size||file.size>50*1024*1024)throw Error('เข้าสู่ระบบและเลือกไฟล์ไม่เกิน 50 MB');
@@ -1710,8 +1733,8 @@ return rows.map(row=>{const v=resolved.get(row.company+'|'+row.business_date);co
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
-    fileRunManagement,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
-    uploadAuditSourceCorrection,
+    fileRunManagement,effectiveAuditFiles,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
+    uploadAuditSourceCorrection,addAuditManualSource,
     cfg,
     saveConfig,
     configured,

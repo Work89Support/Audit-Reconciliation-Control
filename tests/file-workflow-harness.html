@@ -1,0 +1,17 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>File workflow QA — synthetic only</title><link rel="stylesheet" href="../styles.css">
+<body><main id="appShell"><h1>ทดสอบจำลองเท่านั้น ไม่เรียกฐานข้อมูลจริง</h1><label>บริษัททดสอบ<select id="company"></select></label><p id="result" role="status">ยังไม่รัน ไม่ส่งคำขอจริง</p></main><div id="modal" class="modal on" role="dialog" aria-labelledby="title"><header class="modal-head"><h2 id="title">เลือกไฟล์ / แก้ข้อมูล / พักรัน (จำลอง)</h2></header><div class="modal-body"><div id="fileRunManagementPanel"></div></div><footer class="modal-foot">ข้อมูลจำลอง ไม่ใช่ผลตรวจจริง</footer></div>
+<script src="../audit-display.js"></script><script src="../ui-accessibility.js"></script><script src="../file-run-management.js"></script><script>
+const companies=['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'];const select=document.querySelector('#company');select.innerHTML=companies.map(c=>`<option ${c==='FR8'?'selected':''}>${c}</option>`).join('');let dispose,files,company='FR8',writes=0;
+function mount(){dispose?.();files=['BO_D','BO_W','STM_KB_จิรภัทร์_DW','PM_COREPAY_W','PM_COREPAY_D','PM_CYBERPAY_D','PM_AUTOPEER_W','PM_CYBERPAY_W','PM_AUTOPEER_D'].map((n,i)=>({id:company+'-'+i,company,business_date:'2026-10-18',file_name:company+'_'+n+'_2026-10-18.'+(i===2?'pdf':'xlsx'),kind:i<2?'bo_main':i===2?'stm_pdf':'pm_statement',revision:i>2?2:1,parsed:i<3,excluded:false}));
+ dispose=FileRunManagement.mount(document.querySelector('#fileRunManagementPanel'),{company,date:'2026-10-18',companies,role:()=> 'lead',actor:()=> 'fixture-user',
+ load:async()=>({files,hold:{paused:true,reason:'จำลองพักให้คนสั่งรันเอง'},manualOnly:true,job:{status:'needs_review'},preflight:{blocked:true,warnings:[{code:'source_held',detail:'จำลองพักรัน'}]}}),
+ history:async()=>[],setHold:async()=>{throw Error('not part of this fixture');},
+ searchSources:async(c,date)=>[{id:'foreign-'+c,physical_source_file_id:'foreign-'+c,company:c,business_date:date,file_name:c+'_PM_หัวข้อผิดวัน_แต่เนื้อหา18_2026-10-18.xlsx',kind:'pm_statement',revision:1,excluded:false}],
+ confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nจาก ${b.originCompany||company} ${b.originDate||'2026-10-18'} ไป ${b.company} ${b.date}\n${b.reason}`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่'}),
+ correct:async b=>{writes++;files=[...files.filter(f=>f.id!==b.fileId),{id:b.fileId,company:b.company,business_date:b.date,file_name:b.name,kind:b.kind,revision:b.expectedRevision+1,excluded:false,parsed:false}];document.querySelector('#result').textContent='บันทึกเฉพาะข้อมูลจำลอง '+writes+' ครั้ง — ยังไม่รัน';},
+ confirmAddition:b=>FileRunManagement.confirmAction({title:'ทบทวนเพิ่มไฟล์ในรอบตรวจ',message:b.name+'\n'+b.reason,confirmLabel:'ยืนยันเพิ่มไฟล์ · ไม่รัน'}),
+ addSource:async(b,file)=>{writes++;const id='upload-'+writes;files.push({id,company,date:b.date,business_date:b.date,file_name:file.name,kind:b.kind,revision:2,excluded:false,parsed:false});return {source_file_id:id,reused:false};},
+ confirmRunWarnings:b=>FileRunManagement.confirmAction({title:'ทบทวนคำเตือน',message:'ไปเลือกขอบเขตเท่านั้น ยังไม่รัน',confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน'}),onRun:ids=>{document.querySelector('#result').textContent='ไปหน้าทบทวนจำลอง '+ids.length+' ไฟล์ — ไม่มีการรัน';}});
+}
+select.onchange=()=>{company=select.value;mount();};mount();
+</script></body></html>

@@ -1176,6 +1176,8 @@ function openFileRunManagement({company,date,accounts}) {
     company,date,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
     companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
     setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
+    searchSources:Sb.effectiveAuditFiles,addSource:Sb.addAuditManualSource,
+    confirmAddition:b=>FileRunManagement.confirmAction({title:'ทบทวนเพิ่มไฟล์ในรอบตรวจ',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเพิ่มไฟล์โดยเก็บต้นฉบับและตรวจไฟล์ซ้ำ พักบอทรอบนี้ ยังไม่รัน ไม่ใช้ผลหลักหรือเปลี่ยนเคส`,confirmLabel:'ยืนยันเพิ่มไฟล์ · ไม่รัน',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmHold:b=>FileRunManagement.confirmAction({title:`${b.paused?'พัก':'เปิด'}บอทรอบหลัก · ${company} · ${date}`,message:`${b.reason}\nไม่แก้ยอดหรือปิดเคส\nการพักบอทไม่เริ่มรันมือให้เอง`,confirmLabel:b.paused?'ยืนยันพักบอท':'ยืนยันเปิดบอท',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     uploadCorrection:Sb.uploadAuditSourceCorrection,
     onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),

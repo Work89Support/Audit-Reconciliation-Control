@@ -47,6 +47,8 @@ jobs:
           node tests/cross-day-bulk-head.test.cjs
           node tests/cross-day-workbench.test.cjs
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+          npm run test:file-run-management
+          node tests/manual-source-addition-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-primary.test.cjs
           node tests/cross-day-rule-warning-view.test.cjs
