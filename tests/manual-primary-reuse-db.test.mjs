@@ -79,8 +79,13 @@ for(const [idx,company] of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M'
  assert.equal((await read('select status from exceptions where id=$1',[systemId]))[0].status,'closed');
  const duplicateId=id(n+11);
  await db.query("insert into exceptions(id,company,business_date,account,direction,status,system_amount,bank_amount,customer_details) values($1,$2,$3,'BBL','ถอน','closed',100,null,$4)",[duplicateId,company,date,JSON.stringify(systemEx.customer_details)]);
- await job(id(n+12),fromSystem);const ambiguousBefore=await counts();
- await assert.rejects(accept(id(n+12)),/หลายเคส/);assert.deepEqual(await counts(),ambiguousBefore);
+ await job(id(n+12),fromSystem);const priorPreferred=await accept(id(n+12));
+ assert.equal(priorPreferred.case_set.created,0,'authoritative prior membership wins over old system duplicates');
+ assert.equal((await read('select exception_id from manual_primary_case_items where primary_id=$1 and row_index=3 and row_kind=\'exception\'',[priorPreferred.id]))[0].exception_id,systemId);
+ const unknown=ex(8);
+ for(const newId of [id(n+13),id(n+14)])await db.query("insert into exceptions(id,company,business_date,account,direction,status,system_amount,bank_amount,customer_details) values($1,$2,$3,'BBL','ถอน','open',100,null,$4)",[newId,company,date,JSON.stringify(unknown.customer_details)]);
+ const ambiguous=structuredClone(fromSystem);ambiguous.exceptions.push(unknown);ambiguous.bo_count=7;await job(id(n+15),ambiguous);const ambiguousBefore=await counts();
+ await assert.rejects(accept(id(n+15)),/หลายเคส/);assert.deepEqual(await counts(),ambiguousBefore);
 }
 await db.exec("set test.actor='00000000-0000-4000-8000-000000000003'");
 await assert.rejects(db.query("select activate_manual_primary_cases($1,'invalid','Unauthorized synthetic acceptance',true)",[id(1)]),/หัวหน้า/);

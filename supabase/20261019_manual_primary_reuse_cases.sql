@@ -27,17 +27,32 @@ create unique index if not exists manual_primary_case_items_version_case on publ
 create index if not exists manual_primary_case_items_case_lookup on public.manual_primary_case_items(exception_id);
 
 do $patch$
-declare d text; a text; b text;
+declare d text; a text; b text; lookup text; preferred text;
 begin
  d:=pg_get_functiondef('public.activate_manual_primary_cases(uuid,text,text,boolean)'::regprocedure);
- if position('manual-primary-exact-case-reuse-v1' in d)>0 then return;end if;
+ if position('manual-primary-exact-case-reuse-v2' in d)>0 then return;end if;
+ lookup:=$lookup$select array_agg(e.id order by e.id) into candidates from public.exceptions e
+ where e.company=v.company and e.business_date=v.business_date
+ and public.manual_case_source_identity(e.customer_details->'source_rows')=lineage;$lookup$;
+ preferred:=$preferred$select array_agg(e.id order by e.id) into candidates from public.exceptions e
+ where e.company=v.company and e.business_date=v.business_date
+ and public.manual_case_source_identity(e.customer_details->'source_rows')=lineage
+ and exists(select 1 from public.manual_primary_case_items prior
+ where prior.primary_id=v.previous_id and prior.exception_id=e.id);
+ if coalesce(cardinality(candidates),0)=0 then
+ $preferred$||lookup||' end if;';
+ if position('manual-primary-exact-case-reuse-v1' in d)>0 then
+  if (length(d)-length(replace(d,lookup,'')))<>length(lookup) then raise exception 'Reuse v1 lookup drift';end if;
+  execute replace(replace(d,lookup,preferred),'manual-primary-exact-case-reuse-v1','manual-primary-exact-case-reuse-v2');
+  return;
+ end if;
  a:='declare v public.manual_primary_results; p jsonb; r jsonb; item record; n integer:=0; eid uuid; k text; b public.manual_primary_case_sets;';
  b:=a||' candidates uuid[]; lineage jsonb; reused integer:=0;';
  if (length(d)-length(replace(d,a,'')))<>length(a) then raise exception 'Case activation declaration drift';end if;
  d:=replace(d,a,b);
  a:='eid:=gen_random_uuid();n:=n+1;';
  b:=$reuse$
- -- manual-primary-exact-case-reuse-v1: never copy approvals or mutate old cases.
+ -- manual-primary-exact-case-reuse-v2: never copy approvals or mutate old cases.
  lineage:=public.manual_case_source_identity(r->'customer_details'->'source_rows');
  if lineage is null then raise exception 'แถวต้นทางไม่สมบูรณ์ ห้ามสร้างหรืออ้างเคส';end if;
  select array_agg(e.id order by e.id) into candidates from public.exceptions e
@@ -59,6 +74,7 @@ begin
  end if;
  eid:=gen_random_uuid();n:=n+1;
  $reuse$;
+ b:=replace(b,lookup,preferred);
  if (length(d)-length(replace(d,a,'')))<>length(a)
  or position('public.manual_primary_cases_preview(p_id)' in d)=0
  or position('ข้อมูลเปลี่ยน ต้องทบทวนใหม่' in d)=0
