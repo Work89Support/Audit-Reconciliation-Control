@@ -856,7 +856,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history',
-    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices',
+    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices','audit_source_exclusion_states','audit_source_exclusion_preview',
     'audit_current_cases_scoped','audit_search_current_cases_scoped']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
@@ -1018,6 +1018,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return rpc('file_run_management_state',{p_company:company,p_date:date});
   }
   const sourceRevisionHistory=id=>json(`/rest/v1/audit_source_revisions?source_file_id=eq.${encodeURIComponent(id)}&select=revision,reason,created_at,effective_name,company,business_date,kind,replacement_file_id,excluded,original&order=revision.desc`);
+  const sourceExclusionPreview=id=>rpc('audit_source_exclusion_preview',{p_file_id:id});
+  const setSourceExcluded=b=>rpc('set_audit_source_excluded',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_excluded:b.excluded,p_reason:b.reason});
   const setAuditRunHold=b=>rpc('set_audit_run_hold',{p_company:b.company,p_date:b.date,p_paused:b.paused,p_reason:b.reason,p_expected_revision:b.expectedRevision});
   const correctAuditSource=b=>rpc('correct_audit_source',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_name:b.name,p_company:b.company,p_date:b.date,p_kind:b.kind,p_replacement_id:b.replacementId,p_excluded:b.excluded,p_reason:b.reason});
   const pendingSourceUploads=new Map();
@@ -1199,8 +1201,15 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     if (from) filters.push(`business_date=gte.${from}`);
     if (to) filters.push(`business_date=lte.${to}`);
     if (company && company !== "ALL") filters.push(`company=eq.${company}`);
-    return fileSnapshotRead('batches', batchSnapshotKey({from, to, company}), force,
-      () => json(`/rest/v1/mail_batches?${filters.join("&")}`));
+    return fileSnapshotRead('batches', batchSnapshotKey({from, to, company}), force, async () => {
+      const rows=await json(`/rest/v1/mail_batches?${filters.join("&")}`),files=rows.flatMap(b=>b.source_files||[]),states=new Map();
+      for(let i=0;i<files.length;i+=500){
+        const page=await rpc('audit_source_exclusion_states',{p_ids:files.slice(i,i+500).map(f=>f.id)});
+        for(const f of page)states.set(f.id,f);
+      }
+      if(files.some(f=>!states.has(f.id)))throw Error('โหลดสถานะยกเว้นไฟล์ไม่ครบ กรุณารีเฟรช ไม่อนุญาตให้เลือกไฟล์จากข้อมูลไม่ครบ');
+      return rows.map(b=>({...b,source_files:(b.source_files||[]).map(f=>({...f,...states.get(f.id)}))}));
+    });
   }
 
   /* ---------------- Storage ---------------- */
@@ -1770,7 +1779,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
-    fileRunManagement,effectiveAuditFiles,sourceRevisionHistory,setAuditRunHold,correctAuditSource,
+    fileRunManagement,effectiveAuditFiles,sourceRevisionHistory,sourceExclusionPreview,setSourceExcluded,setAuditRunHold,correctAuditSource,
     uploadAuditSourceCorrection,addAuditManualSource,
     cfg,
     saveConfig,

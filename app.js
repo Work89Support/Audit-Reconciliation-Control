@@ -1169,6 +1169,11 @@ function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=nul
   $('#modal')._contentCleanup=dispose;
   $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};
 }
+async function openFileExclusion(fileId) {
+  if(state.dataset!=='production'||!Sb.signedIn()||!FileExclusion.canManage(state.role))return deny('ยกเว้นไฟล์จากการรัน');
+  return FileExclusion.open({fileId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
+    preview:Sb.sourceExclusionPreview,save:Sb.setSourceExcluded,confirm:FileRunManagement.confirmAction});
+}
 function openFileRunManagement({company,date,accounts}) {
   if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('จัดการไฟล์/พักรัน');
   openModal('เลือกไฟล์ / แก้ข้อมูล / พักรัน','<div id="fileRunManagementPanel"></div>','<button id="fileRunManagementDismiss">ปิด</button>');
@@ -1176,6 +1181,7 @@ function openFileRunManagement({company,date,accounts}) {
     company,date,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
     companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
     setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
+    onExclude:openFileExclusion,
     searchSources:Sb.effectiveAuditFiles,addSource:Sb.addAuditManualSource,
     confirmAddition:b=>FileRunManagement.confirmAction({title:'ทบทวนเพิ่มไฟล์ในรอบตรวจ',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเพิ่มไฟล์โดยเก็บต้นฉบับและตรวจไฟล์ซ้ำ พักบอทรอบนี้ ยังไม่รัน ไม่ใช้ผลหลักหรือเปลี่ยนเคส`,confirmLabel:'ยืนยันเพิ่มไฟล์ · ไม่รัน',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmHold:b=>FileRunManagement.confirmAction({title:`${b.paused?'พัก':'เปิด'}บอทรอบหลัก · ${company} · ${date}`,message:`${b.reason}\nไม่แก้ยอดหรือปิดเคส\nการพักบอทไม่เริ่มรันมือให้เอง`,confirmLabel:b.paused?'ยืนยันพักบอท':'ยืนยันเปิดบอท',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
@@ -6831,6 +6837,7 @@ async function cloudLoad(force = false) {
 
 /* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
 async function cloudImport(files, opts = {}) {
+  if(files.some(file=>file.excluded))throw Error('มีไฟล์ที่ยกเว้นจากการรัน กรุณาโหลดทะเบียนล่าสุดและเลือกใหม่');
   // Evidence must never enter parsers, markParsed or reconciliation, even if supplied manually.
   files = files.filter(file => file.kind !== 'doc_clarify' && !String(file.storage_path || '').startsWith('case-evidence/'));
   const blocked = files.filter((file) => file.parse_error || file.kind === "unknown");
@@ -6951,7 +6958,7 @@ VIEWS.cloud = (root) => {
   const problemFiles = allFiles
     .filter(isProblemFile)
     .sort((a, b) => String(b.business_date || "").localeCompare(String(a.business_date || "")) || String(a.company || "").localeCompare(String(b.company || ""), "th") || String(a.file_name || "").localeCompare(String(b.file_name || ""), "th"));
-  const readable = allFiles.filter((f) => /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
+  const readable = allFiles.filter((f) => !f.excluded && /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
   const readyFiles = allFiles.filter(isReadyFile);
   const waitingFiles = allFiles.filter(isWaitingFile);
   const queueableFiles = readable.filter((f) => !f.parsed && !f.parse_error && f.kind !== "unknown");
@@ -7080,14 +7087,14 @@ VIEWS.cloud = (root) => {
                 .sort((x, y) => String(x.file_name).localeCompare(String(y.file_name), "th"))
                 .map((f) => {
                   const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
-                  const canQueue = canRead && !f.parsed && !f.parse_error && f.kind !== "unknown";
+                  const canQueue = canRead && !f.excluded && !f.parsed && !f.parse_error && f.kind !== "unknown";
                   return `<tr class="${f.parse_error && !statementNeedsBoReview(f) ? "bad" : ""}">
                   <td>${canQueue ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
                   <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดดูตัวอย่าง ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
-                  <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}</td>
+                  <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}${f.reference_date?`<small class="sub">วันอ้างอิง ${h(f.reference_date)}</small>`:''}${f.excluded?'<small class="sub">ยกเว้นจากการรัน · เก็บต้นฉบับ</small>':''}</td>
                   <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
                   <td>${
-                    f.parse_error
+                    f.excluded ? '<span class="file-state wait"><span><b>ยกเว้นจากการรัน</b><small>ไม่ลบไฟล์และไม่เปลี่ยนเคส</small></span></span>' : f.parse_error
                       ? `<span class="file-state wait" title="${h(f.parse_error)}"><i>!</i><span><b>${h(statementReviewLabel(f))}</b><small>กดตรวจรายละเอียด — ยังไม่ยืนยันผลกระทบยอด</small></span></span>`
                       : f.kind === "unknown"
                         ? `<span class="file-state bad"><i>!</i><span><b>ยังไม่ทราบประเภท</b><small>ต้องเปิด Preview และเลือกประเภท</small></span></span>`
@@ -7140,6 +7147,15 @@ VIEWS.cloud = (root) => {
     }`;
 
   if(cloudState.caseAttachments !== null) CaseEvidenceLibrary.mount($('#caseEvidenceLibrary'), CaseEvidenceLibrary.entries(cloudState.batches, cloudState.caseAttachments), openStoredFilePreview);
+  // Append a distinct metadata action; never reuse preview/import buttons.
+  if(FileExclusion.canManage(state.role)) root.querySelectorAll('tr').forEach(row=>{
+    const preview=row.querySelector('[data-file-id]');if(!preview)return;
+    const file=allFiles.find(f=>f.id===preview.dataset.fileId);if(!file)return;
+    const button=document.createElement('button');button.className='ghost-button xs';button.type='button';
+    button.textContent=file.excluded?'คืนไฟล์ให้เลือกใช้':'ยกเว้นไฟล์จากการรัน';
+    button.dataset.excludeFile=file.id;button.onclick=async()=>{if(await openFileExclusion(file.id))cloudLoad(true);};
+    row.querySelector('.file-actions')?.appendChild(button);
+  });
   $("#cReload").addEventListener("click", () => cloudLoad(true));
   $("#cEvidenceRecommendations").addEventListener("click", () => EvidenceRecommendations.browse(Sb, state.date || DEFAULT_WORK_DATE, openStoredFilePreview));
   $("#cPickNew").addEventListener("click", () => {

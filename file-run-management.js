@@ -114,6 +114,12 @@
     try{const h=await opts.history(el.dataset.history);editor=null;upload=null;reviewing='<h4>ประวัติไฟล์ — เก็บต้นฉบับครบ</h4>'+(h.length?h.map((r,i)=>`<p>${esc(root.AuditDisplay.dateTime(r.created_at))} · ${esc(r.reason)} · เวอร์ชัน ${esc(r.revision)} · ต้นฉบับ ${esc(r.original?.file_name||r.originalName||'')} ${r.original?.storage_path?`<button data-original="${i}">เปิดไฟล์เดิม</button>`:''}</p>`).join(''):'<p>ยังไม่มีการแก้ไข ไฟล์ต้นฉบับยังอยู่ครบ</p>');draw();host.querySelectorAll('[data-original]').forEach(b=>b.onclick=()=>opts.onFile?.(h[Number(b.dataset.original)].original));}catch(e){error=e.message;draw();}
    });
    host.querySelectorAll('[data-edit]').forEach(el=>el.onclick=()=>edit(files.find(f=>f.id===el.dataset.edit)));
+   if(canManage(opts.role())&&opts.onExclude)host.querySelectorAll('[data-edit]').forEach(el=>{
+    const file=files.find(f=>f.id===el.dataset.edit),button=root.document.createElement('button');
+    button.type='button';button.textContent=file.excluded?'คืนไฟล์ให้เลือกใช้':'ยกเว้นไฟล์จากการรัน';button.disabled=busy;
+    button.dataset.excludeFile=file.id;button.onclick=async()=>{if(!sameActor()||busy||!canManage(opts.role()))return;if(await opts.onExclude(file.id))await load();};
+    el.parentElement.appendChild(button);
+   });
    if(editor)bindEditor();
   }
   function edit(f,foreign=false){

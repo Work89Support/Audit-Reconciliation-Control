@@ -9,6 +9,7 @@ const context = {window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test
   localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},
   AbortController,setTimeout,clearTimeout,Date:Clock,console,
   fetch:async (url, options) => {
+    if(url.includes('/rpc/audit_source_exclusion_states'))return new Response(JSON.stringify([{id:'file',excluded:false,reference_date:'2026-10-07'}]));
     calls++;
     if (release) await new Promise(r=>{release=r;});
     if (fail) return new Response('{}',{status:522});
@@ -51,9 +52,9 @@ await sb.restore(); release=true;
 const pending=sb.batches(query);
 await new Promise(r=>setTimeout(r,0));
 sb.signOut(); release(); release=null;
-await assert.rejects(()=>pending,/ผู้ใช้หรือข้อมูลเปลี่ยน/);
+await assert.rejects(()=>pending,/ผู้ใช้หรือข้อมูลเปลี่ยน|ผู้ใช้งานเปลี่ยนระหว่างโหลด/);
 assert.equal(sb.fileSnapshotInfo(query),null);
 const app=fs.readFileSync(new URL('../app.js',import.meta.url),'utf8');
-assert.match(app,/Sb\.batches\(\{ from, to, company: state\.filters\.company, force \}\)/);
+assert.match(app,/Sb\.batches\(\{from, to, company, force\}\)/);
 assert.match(app,/สแนปช็อตทะเบียนไฟล์ในแท็บนี้/);
 console.log('file snapshot tests passed');

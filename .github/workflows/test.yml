@@ -35,6 +35,8 @@ jobs:
         run: node tests/summary-primary-read-flight.test.mjs
       - name: Verify cloud filter races and independent bounded reads without writes
         run: node tests/cloud-load-race.test.mjs
+      - name: Verify exclusion metadata UI without production writes
+        run: node tests/source-exclusion.test.cjs && node tests/file-snapshot.test.mjs
       - name: Verify suspended-account hold scope and report distinction
         run: node --test tests/account-review-holds.test.cjs && node tests/continuous-account-review-hold.test.cjs
       - name: Verify AZPAY source time and cross-day display
@@ -53,6 +55,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/image-review-db" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
           npm run test:file-run-management
           node tests/manual-source-addition-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/source-exclusion-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-primary.test.cjs
           node tests/cross-day-rule-warning-view.test.cjs
