@@ -3,6 +3,7 @@ const {PGlite}=await import(process.argv[2]);
 const baseline=fs.readFileSync('tests/all-company-primary-handoff-db.test.mjs','utf8');
 const setup=baseline.slice(baseline.indexOf('const db='),baseline.indexOf('const companies='));
 const {db,id}=await new (Object.getPrototypeOf(async function(){}).constructor)('PGlite','fs',setup+';return {db,id};')(PGlite,fs);
+await db.exec(`create or replace function manual_primary_report_projection(j jsonb) returns jsonb language sql immutable as $$select j||'{"review_projection":"display-only"}'::jsonb$$;`);
 const patch=fs.readFileSync('supabase/20261019_verified_statement_coverage.sql','utf8');await db.exec(patch);await db.exec(patch);
 const company='SK8',date='2026-10-17',bo=id(10),old=id(11),latest=id(12),run=id(13),prior=id(14),request=id(15);
 const files=[{id:bo,physical_source_file_id:bo,company,business_date:date,kind:'bo_main',checksum:'BO',storage_etag:'b'},
@@ -32,6 +33,10 @@ await makeJob(request);
 const record=async(req,rows=oldRows,newR=newRows)=>db.query("insert into manual_statement_coverage_reviews(recheck_id,prior_primary_id,company,business_date,old_file_id,new_file_id,old_stamp,new_stamp,result_hash,old_sha256,new_sha256,old_rows,new_rows,note) select id,$2,company,business_date,$3,$4,$5,$6,md5(result::text),repeat('a',64),repeat('b',64),$7,$8,'Independently compared complete synthetic statement rows and balances' from account_recheck_jobs where id=$1",[req,prior,old,latest,JSON.stringify(oldStamp),JSON.stringify(newStamp),JSON.stringify(rows),JSON.stringify(newR)]);
 const covered=async(req=request,f=oldStamp,s=stamps)=>(await db.query('select manual_statement_covered(q,$2,$3) yes from account_recheck_jobs q where id=$1',[req,JSON.stringify(f),JSON.stringify(s)])).rows[0].yes;
 assert.equal(await covered(),false);await record(request);assert.equal(await covered(),true);
+const projected=(await db.query(`select manual_statement_covered(jsonb_populate_record(null::account_recheck_jobs,to_jsonb(q)||jsonb_build_object('result',manual_primary_report_projection(q.result))),$2,$3) yes from account_recheck_jobs q where id=$1`,[request,JSON.stringify(oldStamp),JSON.stringify(stamps)])).rows[0].yes;
+assert.equal(projected,true,'normal reviewed display projection still binds the original immutable result hash');
+const tampered=(await db.query(`select manual_statement_covered(jsonb_populate_record(null::account_recheck_jobs,to_jsonb(q)||jsonb_build_object('result',q.result||'{"fake":true}'::jsonb)),$2,$3) yes from account_recheck_jobs q where id=$1`,[request,JSON.stringify(oldStamp),JSON.stringify(stamps)])).rows[0].yes;
+assert.equal(tampered,false,'arbitrary projected report cannot reuse technical verification');
 for(const [i,change]of [x=>x[0].balance++,x=>x.pop(),x=>x[0].direction='deposit',x=>x[0].amount++,x=>x[1].row=1].entries()){
  const req=id(100+i);await makeJob(req);const n=structuredClone(newRows);change(n);await record(req,oldRows,n);assert.equal(await covered(req),false);
 }

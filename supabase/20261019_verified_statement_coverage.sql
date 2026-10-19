@@ -41,8 +41,10 @@ returns boolean language sql stable security definer set search_path=public,pg_t
  select coalesce(exists(
  select 1 from public.manual_statement_coverage_reviews r
  join public.manual_primary_results prior on prior.id=r.prior_primary_id
+ join public.account_recheck_jobs stored on stored.id=q.id
  where q.status='confirmed' and q.result->>'quality'='passed' and q.account='ALL' and q.direction='all'
- and r.recheck_id=q.id and r.result_hash=md5(q.result::text)
+ and r.recheck_id=q.id and r.result_hash=md5(stored.result::text)
+ and (q.result=stored.result or q.result=public.manual_primary_report_projection(stored.result))
  and r.company=q.company and r.business_date=q.business_date
  and prior.company=q.company and prior.business_date=q.business_date
  and r.old_file_id::text=f->>'id' and r.old_stamp=f
