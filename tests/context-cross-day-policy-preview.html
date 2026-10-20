@@ -1,0 +1,16 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบกติกาข้ามวันในเครื่อง — ยังไม่เผยแพร่</title>
+<link rel="stylesheet" href="../styles.css"><link rel="stylesheet" href="../manual-pairing.css">
+<style>body{padding:28px;background:#f1f6fc;color:#163456;font-family:Arial,sans-serif}main{max-width:1160px;margin:auto;background:white;padding:28px;border-radius:18px}h1{font-size:26px}select{padding:10px;margin-right:16px}table{width:100%;border-collapse:collapse}td,th{padding:12px;text-align:left;border-bottom:1px solid #dce5f0}.scope{background:#fff4cd;padding:14px;border-radius:8px}#result{margin-top:20px}</style>
+<main><p class="scope">ข้อมูลจำลองในเครื่อง — ยังไม่เผยแพร่ · ไม่อัปโหลด ไม่รัน ไม่ใช้ผลหลัก และไม่เขียนข้อมูลจริง</p>
+<h1>ตรวจบริบทข้ามวัน ไม่หยุดเพราะวันที่ต่างกันอย่างเดียว</h1>
+<label>บริษัท <select id="company" aria-label="บริษัท"></select></label>
+<label>สถานการณ์ <select id="mode" aria-label="สถานการณ์"><option value="normal">ข้ามวันปกติ มีแถวอ้างอิง</option><option value="unverified">ขาดแถวอ้างอิง</option><option value="legacy">ผลเดิมที่พักรอทบทวน</option></select></label>
+<section id="result"></section><h2>บทบาทไฟล์รับใหม่</h2><table><thead><tr><th>เอกสาร</th><th>ใช้กระทบยอด</th><th>บทบาท</th></tr></thead><tbody>
+<tr><td>BO ฝาก / ถอน</td><td>ใช่</td><td>ข้อมูลหลักจาก BO</td></tr><tr><td>STM ธนาคาร / PM ผู้ให้บริการ</td><td>ใช่</td><td>ข้อมูลหลักฝั่ง STM / PM</td></tr>
+<tr><td>เติมมือ / โบนัส / ค่าคอมฯ / เอกสารอื่น</td><td>ไม่ใช้สร้างแถวกระทบยอด</td><td>เอกสารประกอบการชี้แจง เก็บชนิดเดิมในประวัติ</td></tr></tbody></table>
+<p>ไม่เปลี่ยนไฟล์และผลหลักเก่าย้อนหลัง ไม่ปล่อยผล AT4 / FR8 ที่พักไว้เดิมโดยอัตโนมัติ</p></main>
+<script src="../file-run-management.js"></script><script>
+const company=document.querySelector('#company'),mode=document.querySelector('#mode');
+company.innerHTML=['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'].map(c=>`<option>${c}</option>`).join('');company.value='FR8';
+function draw(){const blocked=mode.value!=='normal';document.querySelector('#result').innerHTML=FileRunManagement.preflightHtml({preflight:{blocked,warnings:mode.value==='unverified'?[{code:'cross_day_context_unverified',detail:'ตรวจบริบทก่อน เนื่องจากขาดแถวต้นทางที่พิสูจน์ได้'}]:mode.value==='legacy'?[{code:'cross_day_scope',detail:'ผลที่พักไว้เดิมรอคนตัดสินใจ ไม่ปล่อยย้อนหลังอัตโนมัติ'}]:[],informational:blocked?[]:[{code:'cross_day_scope',detail:'พบวันที่ 18 ต.ค. ในรอบ 19 ต.ค. เก็บวันและแถวจริงให้ทีมตรวจบริบท ไม่หยุดทั้งรอบ'}],cross_day_queue:[{code:'ตัวอย่างจำลอง',source_date:'2026-10-18',report_date:'2026-10-19',account:company.value+' บัญชีตัวอย่าง',direction:'ฝาก',amount:100,source_rows:{bo:{fileId:'ไฟล์ BO ตัวอย่าง',row:53}}}]}})}company.onchange=draw;mode.onchange=draw;draw();
+</script></html>

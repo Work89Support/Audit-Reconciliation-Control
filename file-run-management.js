@@ -36,11 +36,12 @@
  function noticeHtml(s){const n=runNotice(s);return `<aside class="manual-note" role="status"><strong>${esc(n.title)}</strong><p>สาเหตุ: ${esc(n.reason)}</p><p>ทำต่อ: ${esc(n.next)}</p></aside>`;}
  function preflightHtml(s){
   const p=s?.preflight;if(!p)return '';
-  const labels={file_day_mismatch:'วันในชื่อไฟล์ไม่ตรงรอบ',parse_error:'ไฟล์อ่านไม่ผ่าน',files_after_run:'มีไฟล์ใหม่หลังผลเดิม',cross_day_scope:'รายการข้ามวันรอทบทวน',source_held:'รอบนี้พักรันหรือมีไฟล์แก้ไข'};
-  const warnings=Array.isArray(p.warnings)?p.warnings:[],queue=Array.isArray(p.cross_day_queue)?p.cross_day_queue:[];
+  const labels={file_day_mismatch:'วันในชื่อไฟล์ไม่ตรงรอบ',parse_error:'ไฟล์อ่านไม่ผ่าน',files_after_run:'มีไฟล์ใหม่หลังผลเดิม',cross_day_scope:'รายการข้ามวันรอทบทวนเดิม',cross_day_context_unverified:'บริบทหรือแถวต้นทางยังไม่ครบ',historical_primary_protected:'ต้องตรวจผลหลักและเคสเดิมก่อน',source_held:'รอบนี้พักรันหรือมีไฟล์แก้ไข'};
+  const warnings=Array.isArray(p.warnings)?p.warnings:[],queue=Array.isArray(p.cross_day_queue)?p.cross_day_queue:[],informational=Array.isArray(p.informational)?p.informational:[];
   return `<aside class="manual-note" role="${p.blocked?'alert':'status'}"><strong>${p.blocked?'พักอัตโนมัติเมื่อพบคำเตือน — รอคนตัดสินใจ':'ตรวจคำเตือนก่อนรันแล้ว — รอบปกติทำงานอัตโนมัติได้'}</strong>
    <p>รับและเก็บไฟล์เดิมได้ แต่ไม่ลองรันซ้ำเองเมื่อมีคำเตือน การดูหน้านี้ยังไม่รัน ไม่ยืนยันผลหลัก ไม่ส่งชี้แจง และไม่เปลี่ยนเคส</p>
    ${warnings.length?`<ul>${warnings.map(w=>`<li>${esc(labels[w.code]||w.code)}${w.file_name?' · '+esc(w.file_name):''} · ${esc(w.detail||'')}</li>`).join('')}</ul>`:''}
+   ${informational.length?`<p><strong>ข้อมูลประกอบการตรวจบริบท — ไม่ใช่เหตุพักทั้งรอบ</strong></p><ul>${informational.map(w=>`<li>${esc(w.detail||w.code)}</li>`).join('')}</ul>`:''}
    ${queue.length?`<details open><summary>คิวข้ามวันรอทบทวน (${queue.length}) — อ่านอย่างเดียว</summary><p>คงวันและสถานะเคสเดิม ไม่รวมเป็นเคสวันที่ใหม่และไม่เปิดเคสซ้ำ หัวหน้าตรวจแถวต้นทางและคิวเดิมก่อนนำไปชี้แจง</p><table><thead><tr><th>เคสเดิม</th><th>วันรายการ / รอบที่อ่านพบ</th><th>บัญชี / ทิศทาง</th><th>ยอดเดิม</th><th>แถวต้นทาง</th></tr></thead><tbody>${queue.map(e=>`<tr><td>${esc(e.code)}</td><td>${esc(e.source_date)} / ${esc(e.report_date)}</td><td>${esc(e.account)} · ${esc(e.direction)}</td><td>${esc(e.amount)}</td><td>${esc(e.source_rows?.bo?.fileId||e.source_rows?.stm?.fileId||'ขาดอ้างอิง')} · แถว ${esc(e.source_rows?.bo?.row??e.source_rows?.stm?.row??'—')}</td></tr>`).join('')}</tbody></table></details>`:''}</aside>`;
  }
  function validateCorrection(b){

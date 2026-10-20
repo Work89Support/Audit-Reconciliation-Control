@@ -59,6 +59,8 @@ jobs:
           node tests/manual-source-addition-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/source-exclusion-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/source-workspace-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/context-cross-day-policy-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/preflight-review-ui.test.cjs
           node tests/finance-report-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-primary.test.cjs
           node tests/cross-day-rule-warning-view.test.cjs
