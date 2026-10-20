@@ -23,3 +23,15 @@ const request=fs.readFileSync('supabase/20261012_account_recheck.sql','utf8');
 assert.match(request,/กรุณาเลือกเพียงหนึ่งฉบับ/);
 assert.match(request,/p_file_ids uuid\[\]/);
 console.log('File revisions, holds, selected-file scope, duplicate-file and permission guards: PASS');
+for(const company of ['3XB','AT4','FR8','SK8','MC8','MR9','PS8','UR9','UFABET7M']){
+ const files=[{id:'same',company,business_date:'2026-10-18',kind:'stm_pdf'},
+  {id:'next',company,business_date:'2026-10-19',kind:'stm_pdf'},
+  {id:'wrong-company',company:'OTHER',business_date:'2026-10-18',kind:'bo_main'},
+  {id:'held',company,business_date:'2026-10-18',kind:'stm_pdf',excluded:true},
+  {id:'evidence',company,business_date:'2026-10-18',kind:'doc_clarify'}];
+ assert.deepEqual([...ui.initialSelection(files,company,'2026-10-18')],['same']);
+ assert.deepEqual([...ui.initialSelection(files,company,'2026-10-18',new Set(['next','wrong-company','held','evidence']))],['next']);
+ assert.equal(ui.initialSelection(files,company,'2026-10-18',new Set()).size,0);
+ assert.deepEqual([...ui.initialSelection(files,company,'2026-10-19')],['next']);
+}
+console.log('Nine-company same-day defaults, explicit adjacent choice and empty draft retention: PASS');

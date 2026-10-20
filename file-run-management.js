@@ -54,6 +54,10 @@
   const chosen=files.filter(f=>selected.has(f.id)&&!f.excluded),count=kind=>chosen.filter(f=>f.kind===kind).length;
   return `เลือกใช้ตรวจ ${chosen.length} ไฟล์ · BO ${count('bo_main')} · STM ${count('stm_pdf')} · PM ${count('pm_statement')} — ยังไม่รัน`;
  }
+ function initialSelection(files,company,date,previous){
+  return new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)
+   &&f.company===company&&(previous?previous.has(f.id):f.business_date===date)).map(f=>f.id));
+ }
  function mount(host,opts){
   let files=[],hold=null,manualOnly=false,runState=null,error='',busy=false,selected=new Set(),selectionLoaded=false,alive=true,reviewing=null,editor=null,upload=null,holdReason='',picker=null,addition=null,initialOpened=false;
   const actor=opts.actor?.(),sameActor=()=>!actor||opts.actor?.()===actor;
@@ -75,7 +79,7 @@
     ${picker?pickerHtml():''}${addition?additionHtml():''}
     <p class="manual-scope" data-selection-summary role="status">${esc(selectionSummary(files,selected))}</p>
     <div class="file-run-table-scroll"><table class="file-run-table"><colgroup><col class="use-col"><col class="name-col"><col class="kind-col"><col class="version-col"><col class="actions-col"></colgroup><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
-     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
+     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||f.company!==opts.company||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}${f.business_date!==opts.date?`<p class="manual-note">วันอ้างอิง ${esc(f.business_date)} · ไฟล์ข้างวัน ไม่เลือกให้อัตโนมัติ ตรวจบริบทก่อนเลือกใช้</p>`:''}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
     </tbody></table></div>
     <button data-run ${busy||!selected.size||runNotice(runState).blocked?'disabled':''}>ถัดไป: ทบทวนรันมือ (${selected.size} ไฟล์) — ยังไม่รัน</button>
     <p>ผลต้องผ่านการทบทวนและยืนยันจากหัวหน้า/ผู้ดูแลก่อนใช้ ไม่เปิดเคสจากการตรวจเปรียบเทียบ</p>
@@ -168,8 +172,8 @@
    };
   }
   async function action(fn){busy=true;error='';draw();try{await fn();await load();opts.onUpdated?.();}catch(e){error=e.message;}finally{busy=false;draw();}}
-  async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)&&(!selectionLoaded||selected.has(f.id))).map(f=>f.id));selectionLoaded=true;error='';if(opts.initialFileId&&!initialOpened){initialOpened=true;const file=files.find(f=>f.id===opts.initialFileId);if(file)edit(file);}}catch(e){runState=null;error=e.message;}draw();}
+  async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=initialSelection(files,opts.company,opts.date,selectionLoaded?selected:null);selectionLoaded=true;error='';if(opts.initialFileId&&!initialOpened){initialOpened=true;const file=files.find(f=>f.id===opts.initialFileId);if(file)edit(file);}}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary,initialSelection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);

@@ -1,0 +1,15 @@
+<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบเลือกไฟล์ข้างวัน — ข้อมูลจำลอง</title>
+<link rel="stylesheet" href="../styles.css"><style>body{margin:24px auto;max-width:1250px;padding:12px;background:#f3f7fb}h1{font-size:26px}.manual-tools{background:white;padding:24px}.manual-note{padding:12px}table{width:100%}td,th{padding:10px;text-align:left}input[type=checkbox]{width:20px;height:20px}</style>
+<h1>ทดสอบแพตช์เลือกไฟล์ข้างวัน · ข้อมูลจำลองเท่านั้น</h1>
+<p>SK8 รอบ 18 ต.ค. 2026 · ไม่เชื่อมฐานข้อมูล ไม่ส่งคำสั่งรัน ไม่เปลี่ยนไฟล์ ยอด เคส หรือทะเบียนพักจริง</p>
+<div id="panel"></div><p id="receipt">ยังไม่มีคำสั่งใดถูกส่ง</p>
+<script src="../file-run-management.js"></script><script>
+const company='SK8',date='2026-10-18';
+const files=[{id:'bo',file_name:'SK8_BO_D_2026-10-18.xlsx',company,business_date:date,kind:'bo_main',revision:1,parsed:true},
+{id:'stm',file_name:'SK8_STM_BBL_2026-10-18.pdf',company,business_date:date,kind:'stm_pdf',revision:1,parsed:true},
+{id:'adjacent',file_name:'SK8_STM_BBL_2026-10-19.pdf',company,business_date:'2026-10-19',kind:'stm_pdf',revision:1,parsed:false}];
+FileRunManagement.mount(document.querySelector('#panel'),{company,date,role:()=> 'audit_assistant',
+load:async()=>({files,job:{status:'queued'},hold:{paused:true,reason:'พักรันเดิม — ข้อมูลจำลอง'}}),
+onRun:ids=>document.querySelector('#receipt').textContent='ทบทวนชุดจำลอง '+ids.join(',')+' เท่านั้น — ไม่มีคำขอจริง',
+history:async()=>[]});
+</script></html>

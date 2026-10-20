@@ -1092,7 +1092,25 @@ const PdfStm = (() => {
     // line even though date, time, amount, balance and direction are complete.
     // Do not reject an otherwise auditable bank row or force a lossy OCR pass
     // solely because the optional description could not be attached.
-    const invalidRows = rows.filter((r) => !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction);
+    // BBL exports can contain a previous-day opening TRANSFER without its
+    // opening balance. Its direction cannot be inferred from text, but that
+    // row is not an input to this business day's reconciliation. Keep the
+    // diagnostic, never invent its direction or discard an unread/date-less
+    // row. Only the direction-only defect of a positively dated, out-of-day
+    // BBL row may be isolated from the current-day quality gate.
+    const outOfDayDirectionRows = [];
+    const invalidRows = rows.filter((r) => {
+      const invalid = !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction;
+      const previousDate = businessDate && /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
+        ? new Date(Date.parse(businessDate+'T00:00:00Z')-86400000).toISOString().slice(0,10) : null;
+      if (invalid && head.bank === 'BBL' && previousDate && r.date === previousDate
+        && r.sec !== null && Number.isFinite(r.amount) && Number.isFinite(r.balance) && !r.direction) {
+        outOfDayDirectionRows.push({page:r.page,sourceLine:r.sourceLine,date:r.date,raw:r.raw,
+          reason:'แถวนอกวันตรวจยังยืนยันทิศทางไม่ได้ — ไม่ใช้กระทบยอดรอบนี้'});
+        return false;
+      }
+      return invalid;
+    });
     if (head.bank === "SCB" && rows.some((r) => r.ocrMissingColumns)) {
       for (let i = 1; i < rows.length; i++) {
         const prev = rows[i - 1];
@@ -1104,7 +1122,9 @@ const PdfStm = (() => {
       }
     }
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
-      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })) };
+      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })),
+      outOfDayDirectionRows,
+      ...(head.bank==='BBL'?{businessDayPolicy:'bbl_previous_day_direction_v1',businessDate:businessDate||null}:{}) };
 
     // ทีมใช้งานตั้งรอบจากวันที่ในหัวข้ออีเมล แต่ statement ธนาคารบางฉบับ
     // (โดยเฉพาะ KBANK) เป็นรายการของวันก่อนหน้า 1 วันทั้งฉบับ เมื่อทุกแถว
@@ -1193,6 +1213,7 @@ const PdfStm = (() => {
     });
 
     const warnings = [];
+    if (outOfDayDirectionRows.length) warnings.push(`เก็บข้อสังเกต BBL นอกวันตรวจ ${outOfDayDirectionRows.length} แถวที่ยังยืนยันทิศทางไม่ได้ — ไม่นำเข้ากระทบยอดวันที่ ${businessDate}; หากตรวจวันของแถวนั้นต้องตรวจทิศทางก่อน`);
     if (previousDayReport) warnings.push(`Statement เป็นข้อมูลวันที่ ${expectedPreviousDate} และถูกนำเข้ารอบ ${businessDate} ตามวันที่รายงาน`);
     if (ocrDateCandidateRows) warnings.push(`เก็บรายการภาพ TMN ที่หัววันที่คลาด ${ocrDateCandidateRows} รายการไว้เป็น candidate ตรวจเท่านั้น — ใช้ได้เมื่อ BO ยืนยันคู่เดียว`);
     if (ktbNextDayCandidateRows) warnings.push(`เก็บรายการ KTB วันที่ถัดไป ${ktbNextDayCandidateRows} รายการไว้เป็น candidate ตรวจเท่านั้น — ใช้ได้เมื่อ BO เวลา 23:00-23:59 ยืนยันคู่เดียว`);
