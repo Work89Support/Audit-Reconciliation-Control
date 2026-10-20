@@ -21,9 +21,14 @@ function setup(mode='same',amountDifference=false) {
   assert.match(t.html(),/<details class="pair-raw">/);assert.doesNotMatch(t.html(),/<details[^>]* open/);
   assert.match(t.html(),/STM real/);assert.doesNotMatch(t.html(),/— ไม่พบ BO —/);
   assert.match(t.html(),/id="pairReasonType"/);assert.match(t.html(),/รายการข้ามวัน/);assert.doesNotMatch(t.html(),/value="wrong_company"/);
+  assert.equal(t.node('pairSubmit').disabled,true);assert.match(t.node('pairReadiness').textContent,/เลือกเคสคู่/);
   await t.node('pairSearch').onclick({target:t.node('pairSearch')});
-  t.node('pairCandidate').value='bo';t.node('pairCandidate').onchange();
+  assert.equal(t.node('pairCandidate').value,'bo');assert.match(t.node('pairSearchStatus').textContent,/เลือกคู่เดียวให้อัตโนมัติ/);
   assert.match(t.node('pairCompare').innerHTML,/ยอด BO/);assert.match(t.node('pairCompare').innerHTML,/ยอด STM\/PM/);assert.match(t.node('pairCompare').innerHTML,/0.02 บาท/);
+  assert.match(t.node('pairReadiness').textContent,/เลือกเหตุผลหลัก/);assert.equal(t.node('pairSubmit').disabled,true);
+  t.node('pairReasonType').value='posting_time';t.node('pairReasonType').onchange();
+  t.node('pairChecked').checked=true;t.node('pairChecked').onchange();
+  assert.equal(t.node('pairSubmit').disabled,false);assert.match(t.node('pairReadiness').textContent,/พร้อมส่งให้หัวหน้าทีมอนุมัติ/);
   t.node('pairChecked').checked=true;t.node('pairReasonType').value='small_difference';t.node('pairReason').value='อ้างอิงรายการเดียวกัน';
   t.node('pairDate').onchange();
   assert.equal(t.node('pairChecked').checked,false);assert.equal(t.node('pairCompare').textContent,'');
