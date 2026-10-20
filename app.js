@@ -557,6 +557,10 @@ function isQuickCloseEligible(e) {
     && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
 }
 
+function hasRecordedAmountOutcome(e) {
+  return !!e.closureRequestId || e.status === "pair_pending" || ["damage", "approved", "closed"].includes(e.status);
+}
+
 async function refreshQuickCloseEvidence(e) {
   e._quickSourceEvidence = false;
   if (state.dataset !== "production" || !e.dbId || !e._detailLoaded) return;
@@ -2239,7 +2243,7 @@ return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data
           const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
           const resultStatus = dailyResultStatus(lifecycle||{},row);
           const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
-return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${lifecycle?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(lifecycle.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
+return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${lifecycle?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(lifecycle.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
         }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
       </table></div>
     </section>`;
@@ -2679,6 +2683,7 @@ function dailyResultStatus(row,run={}) {
   const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
   return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
     manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
+    review:primary?.review_needed?(primary.review_reason||'มีไฟล์เพิ่มหลังยืนยัน · กรุณาทบทวน'):null,
     automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
     error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};
 }
@@ -3102,7 +3107,7 @@ function renderDailyCompanySummary(root) {
               : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
             const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
             const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
-return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td>${DailyCaseSummary.markup(row)}</td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
+return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td>${DailyCaseSummary.markup(row)}</td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.review?`<small role="alert">${h(row.resultStatus.review)}</small>`:''}${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
           }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
         </tbody></table></div>
       </section>`;
@@ -3111,7 +3116,7 @@ return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b><
       <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? displayTime(dailyCompanyState.updatedAt) : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
       ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
       ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
-      <section class="primary-result-note"><strong>แยกสถานะรอบงาน</strong><p>ผลหลัก: ${selectedResultStatus.primary?'ใช้ผลรันมือที่หัวหน้า/ผู้ดูแลยืนยันแล้ว':'ยังใช้ผลรอบอัตโนมัติเดิม ไม่ได้นำผลรันมือมาแทน'}</p>${selectedResultStatus.manual?`<p>${h(selectedResultStatus.manual)}</p>`:''}<p>${h(selectedResultStatus.automatic)} · สถานะนี้ไม่ใช่สถานะของผลรันมือ</p>${selectedResultStatus.error?`<p role="alert">${h(selectedResultStatus.error)}</p>`:''}</section>
+      <section class="primary-result-note"><strong>แยกสถานะรอบงาน</strong><p>ผลหลัก: ${selectedResultStatus.primary?'ใช้ผลรันมือที่หัวหน้า/ผู้ดูแลยืนยันแล้ว':'ยังใช้ผลรอบอัตโนมัติเดิม ไม่ได้นำผลรันมือมาแทน'}</p>${selectedResultStatus.review?`<p role="alert" class="mc8-warning">${h(selectedResultStatus.review)}</p>`:''}${selectedResultStatus.manual?`<p>${h(selectedResultStatus.manual)}</p>`:''}<p>${h(selectedResultStatus.automatic)} · สถานะนี้ไม่ใช่สถานะของผลรันมือ</p>${selectedResultStatus.error?`<p role="alert">${h(selectedResultStatus.error)}</p>`:''}</section>
       ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
 ${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>${r.primaryResult.case_set?'รายการงานปัจจุบันใช้เคสชุดใหม่ · เคสเดิมดูได้ในหน้าชีต Audit':'รายการเคสด้านล่างเป็นประวัติเคสเดิม'}</p></section>`).join('')}
       ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
@@ -4338,17 +4343,21 @@ async function openException(id, options = {}) {
   const overlay = $("#drawerOverlay");
   const closed = ["closed", "approved"].includes(e.status);
   const sourceEvidence = !!e._quickSourceEvidence;
+  const amountOutcomeRecorded = hasRecordedAmountOutcome(e);
   const checklist = [
-    { key: "raw", label: "โหลดข้อมูลรายการ STM / BO แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
+    { key: "raw", label: "โหลดรายละเอียดเคสและข้อมูลต้นทางที่มีอยู่แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
     { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
     { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
     { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — คู่ตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
     { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
-    { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : "ยืนยันผลตรวจยอด: ยอดตรง / ยอมรับยอดต่างจากหลักฐาน / ความเสียหายจริง", ok: Number(e.riskAmount || 0) === 0 || e.status === "damage" || e.status === "approved" || e.status === "closed" },
+    { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : amountOutcomeRecorded ? "ยืนยันผลตรวจยอดแล้ว" : "ยังไม่ได้ยืนยันผลตรวจยอด — เลือกผลและติ๊กยืนยันในขั้นตอนถัดไป", ok: amountOutcomeRecorded },
   ];
   const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const ready = !e.reviewHold && !closed && !e.closureRequestId && e.status!=='pair_pending' && (checklist.every((c) => c.ok) || quickCloseEligible);
-  const missingChecks = ready || closed || e.closureRequestId || e.status==='pair_pending' || (state.dataset==='production' && e.hasEvidence && ['monitor','audit_assistant','lead','admin'].includes(state.role)) ? [] : checklist.filter(item=>!item.ok);
+  const reviewPrerequisites = checklist.filter((item) => item.key !== "amount");
+  const closureReviewReady = !e.reviewHold && !closed && !e.closureRequestId && e.status!=='pair_pending'
+    && reviewPrerequisites.every((item) => item.ok) && (e.hasEvidence || sourceEvidence);
+  const closureActionReady = quickCloseEligible || closureReviewReady;
+  const missingChecks = closed || e.closureRequestId || e.status==='pair_pending' ? [] : reviewPrerequisites.filter((item) => !item.ok);
   const lastUiResult = caseUiResults.get(caseUiKey(e));
   const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
 
@@ -4417,7 +4426,7 @@ async function openException(id, options = {}) {
       <ul class="close-check" id="caseChecklistSection">
         ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
       </ul>
-      ${ready || closed ? "" : `<p class="hint">ยังปิดเคสไม่ได้จนกว่าเช็คลิสต์จะครบ — เป็นกฎบังคับตาม Audit Improvement Notes</p>`}
+      ${closureReviewReady && !amountOutcomeRecorded ? `<p class="hint">มีข้อมูลและหลักฐานสำหรับตรวจต่อแล้ว · ต้องเลือกผลยอดและติ๊กยืนยันในหน้าต่างขั้นตอนถัดไปก่อนบันทึก</p>` : closureActionReady || closed ? "" : `<p class="hint">ยังเปิดขั้นตอนยืนยันผลไม่ได้จนกว่าข้อมูลและหลักฐานจะครบ</p>`}
       </section>
 
       <h3 class="drawer-h3">หลักฐานแนบ</h3>
@@ -4462,7 +4471,7 @@ async function openException(id, options = {}) {
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
       <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากยอดต่างเล็กน้อยและไม่เสียหาย ให้ใช้ “ตรวจยอดต่าง / จับคู่เอง” ระบุเหตุผลและตรวจหลักฐาน ไม่ต้องบันทึกความเสียหายเพื่อให้ผ่านเช็กลิสต์</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${ready ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : ready ? "ปิดเคส" : "ยังปิดไม่ได้"}</button></div>
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${closureActionReady ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : closureReviewReady ? "ตรวจผลและปิดเคส" : "ยังตรวจผลไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
       <div id="caseClosureReview"></div>
       ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?`<button class="primary-button" id="btnSendClosure">${can('approve')?'ปิดเคส':'Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส'}</button>`:''}
@@ -4817,8 +4826,11 @@ async function openException(id, options = {}) {
   $("#btnApprove").addEventListener("click", async () => {
     if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
     if (quickCloseEligible) return confirmQuickClose(e);
-    if (state.dataset === 'production') return CaseClosure.openSubmit(e);
-    if (!ready) return toast("เช็คลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
+    if (state.dataset === 'production') {
+      if (!closureReviewReady) return toast("ข้อมูลหรือหลักฐานยังไม่ครบ เปิดขั้นตอนยืนยันผลไม่ได้", "warn");
+      return CaseClosure.openSubmit(e);
+    }
+    if (!closureActionReady) return toast("เช็กลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
     if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
     logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
     toast("อนุมัติและปิดเคส " + e.id + " แล้ว");

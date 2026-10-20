@@ -176,7 +176,8 @@ assert.match(app, /ไฟล์ประกอบของเคสนี้/, "
 assert.match(app, /id="btnChooseClarification"/, "เคสต้องมีปุ่มเลือกเอกสารชี้แจงโดยตรง");
 assert.match(app, /id='caseMailEvidenceButton'/, "ตัวเลือกเอกสารชี้แจงต้องมีจุดเปิดที่แน่นอนหลังโหลดไฟล์เสร็จ");
 assert.match(app, /await Sb\.manualMatchClarificationFile\(b\.dataset\.linkMail,\[e\.dbId\],note\)/, "การเลือกเอกสารต้องบันทึกการผูกกับเคสจริงและไม่ใช่ปุ่มจำลอง");
-assert.match(app, /ยืนยันผลตรวจยอด: ยอดตรง \/ ยอมรับยอดต่างจากหลักฐาน \/ ความเสียหายจริง/, "เช็กลิสต์ต้องแยกยอดต่างไม่เสียหายออกจากความเสียหายจริง");
+assert.match(app, /ยังไม่ได้ยืนยันผลตรวจยอด — เลือกผลและติ๊กยืนยันในขั้นตอนถัดไป/, "เช็กลิสต์ต้องไม่สรุปว่ายืนยันผลแล้วจาก risk amount ศูนย์หรือการแนบไฟล์อย่างเดียว");
+assert.match(app, /function hasRecordedAmountOutcome\(e\)/, "ผลยอดต้องมาจากสถานะหรือคำขอที่บันทึกจริง");
 assert.match(app, /กำลังโหลดข้อมูลจริง…/, "หน้า Exception ต้องบอกผู้ใช้ชัดเจนระหว่างโหลดข้อมูลจริง");
 assert.match(app, /recon-kpi-grid/, "สรุปผลกระทบยอดต้องใช้การ์ดหลักขนาดสม่ำเสมอ");
 assert.match(app, /function safeExceptionDetail\(e\)/, "เคสย้อนหลังที่วันที่เสียต้องไม่แสดง undefined หรือ NaN ต่อผู้ใช้");
