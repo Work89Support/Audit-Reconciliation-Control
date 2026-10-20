@@ -94,6 +94,7 @@ jobs:
           node tests/waiting-evidence-lookup-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/clarification-submit-flow-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           node tests/manual-pair-scoped-readiness.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-primary-pair-readiness.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
           npm run test:attachments
       - name: Verify authentication outage recovery
         run: node tests/auth-connecting-gate.test.mjs && node tests/auth-access-outage.test.mjs && node tests/auth-refresh-backoff.test.mjs
