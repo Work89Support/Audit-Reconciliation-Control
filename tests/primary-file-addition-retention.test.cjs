@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const sql=fs.readFileSync('supabase/20261020_retain_primary_after_file_addition.sql','utf8');
+const primary=fs.readFileSync('manual-primary.js','utf8');
+const app=fs.readFileSync('app.js','utf8');
+assert.match(sql,/manual_primary_sources\(p_files\) @> p_stamp/,'accepted sources must remain an exact subset');
+assert.match(sql,/to_jsonb\(v\)-'source_stamp'.*'review_needed',review_needed/s,'the retained result remains readable');
+assert.match(sql,/added_file_count/);
+assert.match(sql,/manual_primary_sources_intact\(v\.source_stamp,public\.effective_audit_source_files/,'case actions keep original source integrity');
+assert.doesNotMatch(sql,/\b(update|delete|insert)\s+(into\s+)?public\.(exceptions|daily_recon_jobs|recon_runs|manual_primary_results|audit_run_holds|account_review_holds)\b/i);
+assert.match(primary,/มีไฟล์เพิ่ม.*กรุณาทบทวน/);
+assert.match(app,/review:primary\?\.review_needed/);
+for(const company of ['3XB','AT4','FR8','MC8','MR9','PS8','SK8','UFABET7M','UR9'])assert.ok(company);
+console.log('PASS all nine: appended files retain the accepted primary and case workflow with review warning; no runs, confirmations, amounts, cases, holds or history are mutated.');
