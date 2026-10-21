@@ -873,7 +873,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{p_run:{business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:x.exceptions.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary:x.result.summary}},pairedItem:{item:0}}];"
+        "jsCode": "const x=$('กระทบยอดและสร้าง Exception').first().json; const gate=$('Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส').first().json; const publish=Array.isArray(gate.publish_exceptions)?gate.publish_exceptions:x.exceptions; const history=Array.isArray(gate.protected_history_context)?gate.protected_history_context:[]; const summary={...x.result.summary,protected_history_context:history,protected_history_context_count:history.length,protected_history_context_policy:'suppress-duplicate-case-v2'}; return [{json:{p_run:{business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:publish.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary}},pairedItem:{item:0}}];"
       },
       "id": "prepare-run-payload",
       "name": "เตรียมข้อมูลผลการรัน",
@@ -930,7 +930,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const source=$('กระทบยอดและสร้าง Exception').first().json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const rows=source.exceptions.map(e=>({...e,run_id:runId})); const size=200; if(!rows.length) return [{json:{...source,run_id:runId,exception_rows:[]},pairedItem:{item:0}}]; const out=[]; for(let i=0;i<rows.length;i+=size) out.push({json:{...source,exceptions:[],run_id:runId,exception_rows:rows.slice(i,i+size),batch_no:Math.floor(i/size)+1,batch_total:Math.ceil(rows.length/size)},pairedItem:{item:0}}); return out;"
+        "jsCode": "const source=$('กระทบยอดและสร้าง Exception').first().json; const gate=$('Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส').first().json; const publish=Array.isArray(gate.publish_exceptions)?gate.publish_exceptions:source.exceptions; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const rows=publish.map(e=>({...e,run_id:runId})); const size=200; if(!rows.length) return [{json:{...source,exceptions:[],protected_history_context:gate.protected_history_context||[],run_id:runId,exception_rows:[]},pairedItem:{item:0}}]; const out=[]; for(let i=0;i<rows.length;i+=size) out.push({json:{...source,exceptions:[],protected_history_context:gate.protected_history_context||[],run_id:runId,exception_rows:rows.slice(i,i+size),batch_no:Math.floor(i/size)+1,batch_total:Math.ceil(rows.length/size)},pairedItem:{item:0}}); return out;"
       },
       "id": "prepare-save",
       "name": "เตรียมบันทึก Exception",
@@ -1313,7 +1313,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id,p_result:x.result,p_exceptions:x.exceptions});})() }}",
+        "jsonBody": "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;const p_result={...x.result,summary:{...x.result.summary,protected_history_context_publish_v2:true}};return JSON.stringify({p_job_id:x.job.id,p_result,p_exceptions:x.exceptions});})() }}",
         "options": {
           "timeout": 180000,
           "response": {

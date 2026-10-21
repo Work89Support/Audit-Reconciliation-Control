@@ -4,8 +4,13 @@ const worker=JSON.parse(fs.readFileSync('n8n/audit-headless-worker.json','utf8')
 const before=structuredClone(worker),patched=patchWorkerPreflightGate(worker);
 const stage=patched.nodes.find(n=>n.name==='Supabase: พักรายงานที่มีคำเตือนก่อนสร้างเคส');
 assert.match(stage.parameters.url,/stage_daily_recon_preflight$/);assert.match(stage.parameters.jsonBody,/p_exceptions:x.exceptions/);assert.equal(stage.retryOnFail,false);
+assert.match(stage.parameters.jsonBody,/protected_history_context_publish_v2:true/);
 const gate=patched.nodes.find(n=>n.name==='ไม่มีคำเตือนและเขียนผลต่อได้?');assert.match(gate.parameters.conditions.conditions[0].leftValue,/proceed === true/);
 assert.equal(patched.connections[gate.name].main[1][0].node,'จบรอบ Worker');assert.equal(patched.connections[gate.name].main[0][0].node,'เตรียมข้อมูลผลการรัน');
+const runPayload=patched.nodes.find(n=>n.name==='เตรียมข้อมูลผลการรัน').parameters.jsCode;
+const savePayload=patched.nodes.find(n=>n.name==='เตรียมบันทึก Exception').parameters.jsCode;
+assert.match(runPayload,/publish_exceptions/);assert.match(runPayload,/protected_history_context/);assert.match(runPayload,/exception_count:publish\.length/);
+assert.match(savePayload,/publish_exceptions/);assert.match(savePayload,/const rows=publish\.map/);
 for(const node of before.nodes)assert.deepEqual(patched.nodes.find(n=>n.id===node.id),node,'original node/parser preserved');
 const twice=structuredClone(patched);assert.deepEqual(patchWorkerPreflightGate(patched),twice);
 assert(!patched.connections[gate.name].main[1].some(e=>/บันทึก Exception|สร้างผลการรัน|ปิด/.test(e.node)));
