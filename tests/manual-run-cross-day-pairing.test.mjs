@@ -24,5 +24,5 @@ assert.match(workbench,/async function openExistingRequest\(kind,id\)/);
 assert.match(client,/"cross_day_request_id", "cross_day_image_request_id"/);
 assert.match(workbench,/lateWaitingSource/);
 assert.match(app,/CrossDayWorkbench\.eligible\(e\)\?CrossDayWorkbench\.open/);
-for(const version of ['manual-adjacent-pairing-20261021','manual-existing-reservation-20261021','manual-waiting-crossday-20261021'])assert.ok(html.includes(version),version);
+assert.ok(html.match(/manual-existing-reservation-20261021/g).length>=4,'all affected runtime bundles must bypass the old cache');
 console.log('PASS manual-run adjacent pairing and late-night cross-day menu guards; definitions only, no case or amount writes.');
