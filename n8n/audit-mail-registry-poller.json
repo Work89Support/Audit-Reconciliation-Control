@@ -47,7 +47,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const emails=$input.all().map(i=>String(i.json.email||'').trim().toLowerCase()).filter(Boolean);\nif(!emails.length)return [];\nconst senders=emails.map(email=>'from:'+email.replace(/[^a-z0-9@._%+\\-]/g,'')).join(' ');\nreturn [{json:{query:'has:attachment -label:ingested {'+senders+'}'}}];"
+        "jsCode": "const emails=$input.all().map(i=>String(i.json.email||'').trim().toLowerCase()).filter(Boolean);\nif(!emails.length)return [];\nconst senders=emails.map(email=>'from:'+email.replace(/[^a-z0-9@._%+\\-]/g,'')).join(' ');\nreturn [{json:{query:'has:attachment newer_than:30m -label:ingested {'+senders+'}'}}];"
       },
       "id": "query",
       "name": "สร้างคำค้นจากทะเบียน",
