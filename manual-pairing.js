@@ -109,9 +109,11 @@ const ManualPairing=(()=>{
       ...(mode==='cross'?[['wrong_company','ลงรายการผิดบริษัท / โยกยอดระหว่างบริษัท']]:[]),
       ['other','อื่น ๆ — ระบุเหตุผลเอง']
     ];
-    openModal(mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท',`<div class="manual-pair-form"><div class="pair-policy">จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b><span>พนักงานส่งให้หัวหน้าอนุมัติ · หัวหน้าทำเองได้เฉพาะบริษัทเดียวกัน มี BO/STM ต้นทางจริง ต่างไม่เกิน 5 บาท ไม่ต้องแนบไฟล์เพิ่ม · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label><p id="pairReadiness" class="pair-field-hint" role="status">ยังทำรายการไม่ได้: เลือกเคสคู่ · เลือกเหตุผลหลัก · ติ๊กยืนยันว่าตรวจรายการแล้ว</p></section></div>`, '<button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit" disabled>ส่งให้หัวหน้าทีมอนุมัติ</button>');
+    openModal(mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท',`<div class="manual-pair-form"><div class="pair-policy">จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b><span>พนักงานส่งให้หัวหน้าอนุมัติ · หัวหน้าทำเองได้เฉพาะบริษัทเดียวกัน มี BO/STM ต้นทางจริง ต่างไม่เกิน 5 บาท ไม่ต้องแนบไฟล์เพิ่ม · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label><p id="pairReadiness" class="pair-field-hint" role="status">ยังทำรายการไม่ได้: เลือกเคสคู่ · เลือกเหตุผลหลัก · ติ๊กยืนยันว่าตรวจรายการแล้ว</p></section></div>`, '<button class="ghost-button" id="pairExisting" hidden>เปิดคำขอเดิม</button><button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit" disabled>ส่งให้หัวหน้าทีมอนุมัติ</button>');
     $('#pairSearchStatus').textContent='ค้นวันก่อน วันเดียวกัน และวันถัดไปจากวันอ้างอิง';
     $('#pairCancel').onclick=closeModal;
+    const existingButton=$('#pairExisting');
+    existingButton.onclick=async()=>{closeModal();try{await openException(e.id);}catch(err){toast('เปิดคำขอเดิมไม่ได้: '+err.message,'warn');}};
     // Refresh data, never the page/session or the user's draft. No automatic writes.
     const submitButton=$('#pairSubmit');
     let checking=false,blocked=false,saving=false,nextCheck=Date.now()+15000;
@@ -150,6 +152,7 @@ const ManualPairing=(()=>{
     async function checkCurrent(){
       if(checking||saving)return false;
       checking=true;submitButton.disabled=true;
+      existingButton.hidden=true;
       if(statusNode)statusNode.textContent='กำลังตรวจสถานะล่าสุด — ไม่ส่งคำขอปิดซ้ำ';
       try{
         const {bo,stm}=sides();
@@ -159,7 +162,18 @@ const ManualPairing=(()=>{
         if(typeof document!=='undefined'&&document.getElementById('pairSubmit')!==submitButton)return false;
         if(!fresh||!counterpart)throw new Error('ไม่พบต้นทางล่าสุดตามสิทธิ์');
         const rows=[fresh,counterpart];
-        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.manual_pair_id||r.case_closure_request_id||r.superseded_by_exception_id);
+        const pairIds=[...new Set(rows.map(r=>r.manual_pair_id).filter(Boolean))];
+        if(pairIds.length){
+          blocked=true;
+          const pair=pairIds.length===1?await Sb.manualPair(pairIds[0]).catch(()=>null):null;
+          const closed=pair?.status==='approved'||rows.some(r=>['closed','approved'].includes(r.status));
+          if(pair?.status==='pending'){
+            existingButton.hidden=false;
+            if(statusNode)statusNode.textContent='มีคำขอจับคู่เดิมรออนุมัติแล้ว — ไม่ต้องรอ 15 วินาที กด “เปิดคำขอเดิม” เพื่อตรวจและอนุมัติ';
+          }else if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการถูกจองด้วยคำขอเดิมแล้ว — เปิดรายละเอียดเคสเพื่อตรวจสถานะ ไม่สร้างคำขอซ้ำ';
+          return false;
+        }
+        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.case_closure_request_id||r.superseded_by_exception_id);
         if(blocked){
           const closed=rows.some(r=>['closed','approved'].includes(r.status));
           if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการมีคำขอเดิมหรือสถานะเปลี่ยนแล้ว — ตรวจคำขอเดิมก่อน ไม่สร้างคำขอซ้ำ';
