@@ -43,6 +43,7 @@ for(const workflow of [poller,queue]){
   assert.doesNotMatch(text,/eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/,'workflow must not embed credentials');
 }
 assert.match(JSON.stringify(poller),/mail_sources\?active=eq\.true/);
+assert.match(JSON.stringify(poller),/newer_than:30m/,'automatic polling must only inspect newly arrived mail');
 assert.match(JSON.stringify(poller),/ส่งเข้า Workflow Live/);
 assert.match(JSON.stringify(queue),/claim_mail_pull_request/);
 assert.match(JSON.stringify(queue),/finish_mail_pull_request/);
