@@ -41,6 +41,7 @@ const ManualPairing=(()=>{
   // Clarifying/answered one-sided cases may be inspected/prepared, never submitted or
   // closed through this new path. Keep the original write eligibility intact.
   const eligible=e=>submissionEligible(e)||(['missing_bo','missing_stm'].includes(e.type)&&['clarifying','answered'].includes(e.status));
+  const pairStateEligible=e=>eligible(e)||(e.type==='cross_day'&&e.status==='pending_next_day');
   const sourceRaw=e=>e.ex_type==='missing_bo'?e.stm_raw:e.ex_type==='missing_stm'?e.bo_raw:'';
   const describe=e=>`${e.company} · ${e.business_date} ${e.occurred_at||''} · ${e.account||'-'} · ${e.direction} · ${e.member_code||'-'}`;
   const original=e=>`BO: ${e.system_amount==null?'ไม่พบ':money(e.system_amount)} / STM/PM: ${e.bank_amount==null?'ไม่พบ':money(e.bank_amount)}`;
@@ -192,7 +193,7 @@ const ManualPairing=(()=>{
           }else if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการถูกจองด้วยคำขอเดิมแล้ว — เปิดรายละเอียดเคสเพื่อตรวจสถานะ ไม่สร้างคำขอซ้ำ';
           return false;
         }
-        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.case_closure_request_id||r.cross_day_request_id||r.cross_day_image_request_id||r.superseded_by_exception_id);
+        blocked=rows.some(r=>!pairStateEligible({type:r.ex_type,status:r.status})||r.case_closure_request_id||r.cross_day_request_id||r.cross_day_image_request_id||r.superseded_by_exception_id);
         if(blocked){
           const closed=rows.some(r=>['closed','approved'].includes(r.status));
           if(!closed){

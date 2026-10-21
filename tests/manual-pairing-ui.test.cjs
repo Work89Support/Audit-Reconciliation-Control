@@ -46,6 +46,15 @@ function setup(mode='same',amountDifference=false) {
   const cross=setup('cross');await cross.open();assert.match(cross.html(),/value="wrong_company"/);await cross.node('pairSearch').onclick({target:cross.node('pairSearch')});cross.node('pairCandidate').value='bo';cross.node('pairCandidate').onchange();cross.node('pairReasonType').value='wrong_company';cross.node('pairReason').value='หลักฐานยืนยันข้ามบริษัท';cross.node('pairChecked').checked=true;
   await cross.node('pairSubmit').onclick({target:cross.node('pairSubmit')});assert.equal(cross.requests.length,0);assert.match(cross.notices.at(-1),/ต้องแนบหลักฐาน/);
   const custom=setup();await custom.open();await custom.node('pairSearch').onclick({target:custom.node('pairSearch')});custom.node('pairCandidate').value='bo';custom.node('pairCandidate').onchange();custom.node('pairReasonType').value='other';custom.node('pairReason').value='อ้างอิงหลักฐานที่ตรวจสอบได้';custom.node('pairChecked').checked=true;await custom.node('pairSubmit').onclick({target:custom.node('pairSubmit')});assert.equal(custom.requests.length,1);assert.match(custom.requests[0].p_reason,/อื่น ๆ: อ้างอิงหลักฐาน/);
+  const pendingCrossDay=setup();
+  Object.assign(pendingCrossDay.other,{ex_type:'cross_day',status:'pending_next_day'});
+  await pendingCrossDay.open();await pendingCrossDay.node('pairSearch').onclick({target:pendingCrossDay.node('pairSearch')});
+  assert.equal(pendingCrossDay.node('pairCandidate').value,'bo');assert.match(pendingCrossDay.node('pairCandidate').innerHTML,/รอข้ามวัน/);
+  pendingCrossDay.node('pairReasonType').value='cross_day';pendingCrossDay.node('pairReasonType').onchange();pendingCrossDay.node('pairChecked').checked=true;pendingCrossDay.node('pairChecked').onchange();
+  assert.equal(pendingCrossDay.node('pairSubmit').disabled,false);
+  await pendingCrossDay.node('pairSubmit').onclick({target:pendingCrossDay.node('pairSubmit')});
+  assert.equal(pendingCrossDay.requests.length,1,'pending_next_day cross-day counterpart must remain pairable after the live-state check');
+  assert.equal(pendingCrossDay.node('pairExisting').hidden,true,'must not report a false existing request when no reservation id exists');
   const cents=setup('same',true);await cents.open();assert.match(cents.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(cents.node('.pair-search-grid').hidden,true);cents.node('pairReasonType').value='small_difference';cents.node('pairChecked').checked=true;await cents.node('pairSubmit').onclick({target:cents.node('pairSubmit')});assert.equal(cents.requests.length,1);assert.equal(cents.requests[0].p_bo,'stm');assert.equal(cents.requests[0].p_stm,'stm');
   const alias=setup('same',true);alias.context.DB.companies=[{code:'7M'},{code:'FR8'}];alias.source.company=alias.item.company='UFABET7M';await alias.open();assert.match(alias.html(),/<option>UFABET7M<\/option>/);assert.match(alias.node('pairCompare').innerHTML,/0.27 บาท/);assert.equal(alias.notices.length,0);
   const wrongMode=setup('cross',true);await wrongMode.open();assert.match(wrongMode.notices.at(-1),/ไม่ใช่จับคู่ข้ามบริษัท/);assert.equal(wrongMode.html(),'');
