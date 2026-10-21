@@ -113,7 +113,25 @@ const ManualPairing=(()=>{
     $('#pairSearchStatus').textContent='ค้นวันก่อน วันเดียวกัน และวันถัดไปจากวันอ้างอิง';
     $('#pairCancel').onclick=closeModal;
     const existingButton=$('#pairExisting');
-    existingButton.onclick=async()=>{closeModal();try{await openException(e.id);}catch(err){toast('เปิดคำขอเดิมไม่ได้: '+err.message,'warn');}};
+    let existingTarget=null;
+    const findExistingTarget=rows=>{
+      const one=(field,type)=>{const ids=[...new Set(rows.map(row=>row?.[field]).filter(Boolean))];return ids.length===1?{type,id:ids[0]}:null;};
+      return one('manual_pair_id','manual_pair')
+        ||one('case_closure_request_id','closure')
+        ||one('cross_day_request_id','cross_day')
+        ||one('cross_day_image_request_id','cross_day_image')
+        ||one('superseded_by_exception_id','replacement')
+        ||{type:'case',id:rows[0]?.id||e.dbId};
+    };
+    existingButton.onclick=async()=>{
+      const target=existingTarget;closeModal();
+      try{
+        if(target?.type==='replacement')return await openException(target.id);
+        if(target?.type==='closure'&&can('approve'))return await openApprovalReview(e.dbId,'closure',target.id);
+        if(target?.type==='cross_day'||target?.type==='cross_day_image')return await CrossDayWorkbench.openExistingRequest(target.type,target.id);
+        await openException(e.id);
+      }catch(err){toast('เปิดคำขอเดิมไม่ได้: '+err.message,'warn');}
+    };
     // Refresh data, never the page/session or the user's draft. No automatic writes.
     const submitButton=$('#pairSubmit');
     let checking=false,blocked=false,saving=false,nextCheck=Date.now()+15000;
@@ -162,6 +180,7 @@ const ManualPairing=(()=>{
         if(typeof document!=='undefined'&&document.getElementById('pairSubmit')!==submitButton)return false;
         if(!fresh||!counterpart)throw new Error('ไม่พบต้นทางล่าสุดตามสิทธิ์');
         const rows=[fresh,counterpart];
+        existingTarget=findExistingTarget(rows);
         const pairIds=[...new Set(rows.map(r=>r.manual_pair_id).filter(Boolean))];
         if(pairIds.length){
           blocked=true;
@@ -173,10 +192,14 @@ const ManualPairing=(()=>{
           }else if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการถูกจองด้วยคำขอเดิมแล้ว — เปิดรายละเอียดเคสเพื่อตรวจสถานะ ไม่สร้างคำขอซ้ำ';
           return false;
         }
-        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.case_closure_request_id||r.superseded_by_exception_id);
+        blocked=rows.some(r=>!eligible({type:r.ex_type,status:r.status})||r.case_closure_request_id||r.cross_day_request_id||r.cross_day_image_request_id||r.superseded_by_exception_id);
         if(blocked){
           const closed=rows.some(r=>['closed','approved'].includes(r.status));
-          if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':'รายการมีคำขอเดิมหรือสถานะเปลี่ยนแล้ว — ตรวจคำขอเดิมก่อน ไม่สร้างคำขอซ้ำ';
+          if(!closed){
+            existingButton.hidden=false;
+            existingButton.textContent=existingTarget?.type==='replacement'?'เปิดเคสล่าสุด':'เปิดคำขอเดิม';
+          }
+          if(statusNode)statusNode.textContent=closed?'รายการนี้ปิดแล้ว — ไม่ต้องอนุมัติซ้ำ ข้อความเดิมยังอยู่':existingTarget?.type==='replacement'?'เคสนี้มีผลรุ่นใหม่แล้ว — กด “เปิดเคสล่าสุด” เพื่อทำต่อ ไม่ปิดเคสเก่า':'รายการมีคำขอเดิมแล้ว — กด “เปิดคำขอเดิม” เพื่อทำต่อ ไม่สร้างคำขอซ้ำ';
           return false;
         }
         const own=fresh.id===e.dbId?fresh:counterpart,other=own===fresh?counterpart:fresh;

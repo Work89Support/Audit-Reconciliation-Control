@@ -711,7 +711,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
       "bank_amount", "amount_diff", "risk_amount", "currency", "fx_rate", "time_diff_sec", "employee", "shift",
       "cause", "detail", "created_at", "clarification_file_id", "auto_closed", "resolution_note", "resolved_at",
       "resolved_by", "match_confidence", "assigned_to", "requested_by", "requested_at", "response_text",
-      "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id", "case_closure_request_id", "document_due_at",
+      "responded_by", "responded_at", "approved_by", "approved_at", "manual_pair_id", "case_closure_request_id", "cross_day_request_id", "cross_day_image_request_id", "document_due_at",
       "bo_date", "bo_time", "stm_date", "stm_time", "customer_details", "superseded_by_exception_id",
     ].join(",");
     // Company/day scope includes accepted manual primaries even when both the

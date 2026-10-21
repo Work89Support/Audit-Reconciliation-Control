@@ -355,5 +355,11 @@ const CrossDayWorkbench = (() => {
       catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจคำขอเดิมก่อนลองซ้ำ','warn');}
     };
   }
-  return {eligible,lateWaitingSource,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf,caseNumber,rangeSelection,capturePosition,restorePosition};
+  async function openExistingRequest(kind,id){
+    const image=kind==='cross_day_image';
+    const q=await (image?Sb.crossDayImageReview:Sb.crossDayPair)(id);
+    if(!q)throw Error('ไม่พบคำขอข้ามวันเดิมหรือไม่มีสิทธิ์');
+    return image?reviewImage(q):review(q);
+  }
+  return {eligible,lateWaitingSource,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf,caseNumber,rangeSelection,capturePosition,restorePosition,openExistingRequest};
 })();
