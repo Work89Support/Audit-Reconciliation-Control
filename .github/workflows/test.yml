@@ -27,6 +27,8 @@ jobs:
         run: node tests/daily-current-case-summary.test.cjs && node tests/daily-hold-registry.test.cjs && node tests/manual-result-counts.test.cjs
       - name: Verify operational registry roles without expanding finance access
         run: node tests/operational-hold-registry.test.cjs
+      - name: Verify separate mail intake registry and pull queue
+        run: node scripts/build-mail-intake-workflows.mjs && node tests/mail-intake-control.test.cjs
       - name: Verify clarification request receipt and preserved navigation
         run: npm run test:ui-qa
       - name: Verify all-role evidence checklist

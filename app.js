@@ -116,6 +116,7 @@ const ROUTES = [
       { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
       { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
+      { id: "mail-intake", label: "ตรวจเมลเข้า", icon: "intake", title: "ตรวจผู้ส่งและดึงเมลเข้าคลัง", desc: "เพิ่มอีเมลผู้ส่งและสั่งดึงเมลที่ตกหล่นเข้าคลัง แยกจากการรันหรือยืนยันผลกระทบยอด", filters: false },
       { id: "users", label: "ผู้ใช้และสิทธิ์", icon: "users", title: "ผู้ใช้ บทบาท และบริษัท", desc: "กำหนดหน้าที่และบริษัทที่ผู้ใช้แต่ละคนรับผิดชอบ สิทธิ์ถูกบังคับซ้ำที่ฐานข้อมูล", filters: false },
       { id: "case-settings", label: "ตั้งค่าเคส / SLA", icon: "rules", title: "ตั้งค่า SLA แยกบริษัท", desc: "กำหนดเวลาขอเอกสารของแต่ละบริษัท ไม่เปลี่ยนกำหนดเคสเก่าและไม่ปิดความเสียหายอัตโนมัติ", filters: false },
     ],
@@ -241,6 +242,7 @@ const ROUTE_ROLES = {
   admin: Object.keys(ROUTE_MAP),
 };
 for(const role of ['monitor','audit_assistant','lead'])ROUTE_ROLES[role].push('source-upload','source-run');
+ROUTE_ROLES.lead.push('mail-intake');
 
 /* ---------------- state ---------------- */
 const PROD_TODAY = (() => {
@@ -1165,6 +1167,7 @@ function renderSourceWorkspace(host,page){
 }
 VIEWS['source-upload']=host=>renderSourceWorkspace(host,'upload');
 VIEWS['source-run']=host=>renderSourceWorkspace(host,'run');
+VIEWS['mail-intake']=host=>MailIntakeControl.mount(host,{api:Sb,role:state.role,today:PROD_TODAY,isActive:()=>state.route==='mail-intake'&&Sb.signedIn(),notify:toast});
 VIEWS.finance=root=>{
  if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
  FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,

@@ -1,0 +1,241 @@
+{
+  "name": "Audit — Registry Gmail intake ทุก 5 นาที",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "ตรวจเมลทุก 5 นาที",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "timeout": 30000
+        },
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/mail_sources?active=eq.true&select=email&order=email"
+      },
+      "id": "sources",
+      "name": "อ่านทะเบียนผู้ส่ง",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -500,
+        260
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails=$input.all().map(i=>String(i.json.email||'').trim().toLowerCase()).filter(Boolean);\nif(!emails.length)return [];\nconst senders=emails.map(email=>'from:'+email.replace(/[^a-z0-9@._%+\\-]/g,'')).join(' ');\nreturn [{json:{query:'has:attachment -label:ingested {'+senders+'}'}}];"
+      },
+      "id": "query",
+      "name": "สร้างคำค้นจากทะเบียน",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 20,
+        "filters": {
+          "q": "={{ $json.query }}"
+        },
+        "options": {}
+      },
+      "id": "list",
+      "name": "ค้นเมลจากผู้ส่งที่เปิดใช้",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -40,
+        260
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter(item=>item.json&&item.json.id);"
+      },
+      "id": "valid",
+      "name": "ตัดรายการว่าง",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      },
+      "id": "get",
+      "name": "ดาวน์โหลดเมลและไฟล์แนบ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        260
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LIVE_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Audit — Live Gmail ingest เข้า Supabase (v2)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "live",
+      "name": "ส่งเข้า Workflow Live",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "ตรวจเมลทุก 5 นาที": {
+      "main": [
+        [
+          {
+            "node": "อ่านทะเบียนผู้ส่ง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "อ่านทะเบียนผู้ส่ง": {
+      "main": [
+        [
+          {
+            "node": "สร้างคำค้นจากทะเบียน",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "สร้างคำค้นจากทะเบียน": {
+      "main": [
+        [
+          {
+            "node": "ค้นเมลจากผู้ส่งที่เปิดใช้",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ค้นเมลจากผู้ส่งที่เปิดใช้": {
+      "main": [
+        [
+          {
+            "node": "ตัดรายการว่าง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ตัดรายการว่าง": {
+      "main": [
+        [
+          {
+            "node": "ดาวน์โหลดเมลและไฟล์แนบ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ดาวน์โหลดเมลและไฟล์แนบ": {
+      "main": [
+        [
+          {
+            "node": "ส่งเข้า Workflow Live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Asia/Bangkok",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "audit-ai-reconciliation"
+  },
+  "tags": [
+    {
+      "name": "audit"
+    },
+    {
+      "name": "mail-intake"
+    }
+  ]
+}

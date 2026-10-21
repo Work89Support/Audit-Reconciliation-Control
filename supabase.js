@@ -1734,6 +1734,21 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return out;
   }
 
+  const mailSources = () => json('/rest/v1/mail_sources?select=email,display_name,business_systems,expected_reports,active,note,created_at,updated_at&order=active.desc,display_name.asc,email.asc');
+  const mailPullRequests = () => json('/rest/v1/mail_pull_requests?select=id,source_email,date_from,date_to,status,requested_by_email,requested_at,started_at,finished_at,found_count,imported_count,skipped_count,error_message,worker_receipt&order=requested_at.desc&limit=100');
+  const registerMailSource = body => rpc('register_mail_source', {
+    p_email: String(body.email || '').trim().toLowerCase(),
+    p_display_name: String(body.displayName || '').trim(),
+    p_business_systems: body.businessSystems || [],
+    p_expected_reports: body.expectedReports || [],
+    p_note: String(body.note || '').trim() || null,
+  });
+  const requestMailPull = body => rpc('request_mail_pull', {
+    p_email: String(body.email || '').trim().toLowerCase(),
+    p_date_from: body.dateFrom,
+    p_date_to: body.dateTo,
+  });
+
   // Compact authenticated export for Company Hub. Page until complete; never
   // copy raw financial evidence or Supabase sessions into the receiving app.
   async function companyHubResults({from, to, onProgress = () => {}} = {}) {
@@ -1779,6 +1794,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
+    mailSources,mailPullRequests,registerMailSource,requestMailPull,
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,

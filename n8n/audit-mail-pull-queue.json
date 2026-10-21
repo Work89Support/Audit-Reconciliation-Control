@@ -1,0 +1,433 @@
+{
+  "name": "Audit — Mail pull request worker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "ตรวจคิวดึงเมลทุก 2 นาที",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "timeout": 30000
+        },
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_mail_pull_request",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      },
+      "id": "claim",
+      "name": "รับคำขอหนึ่งรายการ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -680,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-id",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-request",
+      "name": "มีคำขอหรือไม่",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request=$json;\nconst from=DateTime.fromISO(request.date_from,{zone:'Asia/Bangkok'}).minus({days:1}).toFormat('yyyy/MM/dd');\nconst before=DateTime.fromISO(request.date_to,{zone:'Asia/Bangkok'}).plus({days:1}).toFormat('yyyy/MM/dd');\nreturn [{json:{request,query:'has:attachment -label:ingested from:'+request.source_email+' after:'+from+' before:'+before}}];"
+      },
+      "id": "query",
+      "name": "สร้างคำค้นย้อนหลัง",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -230,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 20,
+        "filters": {
+          "q": "={{ $json.query }}"
+        },
+        "options": {}
+      },
+      "id": "list",
+      "name": "ค้นเมลย้อนหลังสูงสุด 20 ฉบับ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        220
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const request=$('สร้างคำค้นย้อนหลัง').first().json.request;\nconst messages=$input.all().filter(item=>item.json&&item.json.id);\nreturn messages.length?messages.map(item=>({json:{...item.json,mail_pull_request_id:request.id},binary:item.binary})):[{json:{mail_pull_request_id:request.id,empty:true}}];"
+      },
+      "id": "attach",
+      "name": "แนบเลขคำขอ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-message",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-message",
+      "name": "พบเมลหรือไม่",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      },
+      "id": "get",
+      "name": "ดาวน์โหลดเมลย้อนหลังและไฟล์แนบ",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        120
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_GMAIL_CRED",
+          "name": "Gmail (work.ltd89)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_LIVE_WORKFLOW_ID",
+          "mode": "list",
+          "cachedResultName": "Audit — Live Gmail ingest เข้า Supabase (v2)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "live",
+      "name": "ส่งเมลย้อนหลังเข้า Workflow Live",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        920,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request=$('สร้างคำค้นย้อนหลัง').first().json.request;\nconst count=$input.all().length;\nreturn [{json:{id:request.id,status:count>=20?'partial':'completed',found:count,imported:count,skipped:0,receipt:{archive_only:true,limit:20}}}];"
+      },
+      "id": "summary",
+      "name": "สรุปผลนำเข้า",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request=$('สร้างคำค้นย้อนหลัง').first().json.request;return [{json:{id:request.id,status:'completed',found:0,imported:0,skipped:0,receipt:{archive_only:true,limit:20}}}];"
+      },
+      "id": "empty",
+      "name": "สรุปว่าไม่พบเมล",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {
+          "timeout": 30000
+        },
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/finish_mail_pull_request",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_id:$json.id,p_status:$json.status,p_found:$json.found,p_imported:$json.imported,p_skipped:$json.skipped,p_error:null,p_receipt:$json.receipt}) }}"
+      },
+      "id": "finish",
+      "name": "บันทึกใบรับผลดึง",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        240
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_SUPABASE_CRED",
+          "name": "Supabase API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "ตรวจคิวดึงเมลทุก 2 นาที": {
+      "main": [
+        [
+          {
+            "node": "รับคำขอหนึ่งรายการ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "รับคำขอหนึ่งรายการ": {
+      "main": [
+        [
+          {
+            "node": "มีคำขอหรือไม่",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "มีคำขอหรือไม่": {
+      "main": [
+        [
+          {
+            "node": "สร้างคำค้นย้อนหลัง",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "สร้างคำค้นย้อนหลัง": {
+      "main": [
+        [
+          {
+            "node": "ค้นเมลย้อนหลังสูงสุด 20 ฉบับ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ค้นเมลย้อนหลังสูงสุด 20 ฉบับ": {
+      "main": [
+        [
+          {
+            "node": "แนบเลขคำขอ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "แนบเลขคำขอ": {
+      "main": [
+        [
+          {
+            "node": "พบเมลหรือไม่",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "พบเมลหรือไม่": {
+      "main": [
+        [
+          {
+            "node": "ดาวน์โหลดเมลย้อนหลังและไฟล์แนบ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "สรุปว่าไม่พบเมล",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ดาวน์โหลดเมลย้อนหลังและไฟล์แนบ": {
+      "main": [
+        [
+          {
+            "node": "ส่งเมลย้อนหลังเข้า Workflow Live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ส่งเมลย้อนหลังเข้า Workflow Live": {
+      "main": [
+        [
+          {
+            "node": "สรุปผลนำเข้า",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "สรุปผลนำเข้า": {
+      "main": [
+        [
+          {
+            "node": "บันทึกใบรับผลดึง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "สรุปว่าไม่พบเมล": {
+      "main": [
+        [
+          {
+            "node": "บันทึกใบรับผลดึง",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Asia/Bangkok",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "audit-ai-reconciliation"
+  },
+  "tags": [
+    {
+      "name": "audit"
+    },
+    {
+      "name": "mail-intake"
+    },
+    {
+      "name": "backfill"
+    }
+  ]
+}
