@@ -1294,6 +1294,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
 
   async function manualPairCandidates(company,date,type,direction=null) {
     if(!company || !date || !['missing_stm','missing_bo'].includes(type)) throw new Error('เลือกบริษัท วันที่ และฝั่งรายการ');
+    const adjacent=(value,days)=>{const parsed=new Date(value+'T12:00:00Z');parsed.setUTCDate(parsed.getUTCDate()+days);return parsed.toISOString().slice(0,10);};
+    const from=adjacent(date,-1),to=adjacent(date,1);
     // Resolve the same accepted primary as the live lists, including manual
     // case sets with a null system run. Never fall back to historical cases.
     // Page the unfiltered resolver output to completion BEFORE filtering: an
@@ -1302,16 +1304,16 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     for(let offset=0;;offset+=pageSize){
       const page=await json('/rest/v1/rpc/audit_current_cases_scoped?select=*',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({p_from:date,p_to:date,p_company:company,p_limit:pageSize,p_offset:offset})});
+        body:JSON.stringify({p_from:from,p_to:to,p_company:company,p_limit:pageSize,p_offset:offset})});
       if(!Array.isArray(page))throw new Error('ค้นหาเคสคู่ไม่สำเร็จ: รูปแบบผลหลักไม่ถูกต้อง');
       for(const row of page){
         if(!row?.id||seen.has(row.id))throw new Error('ข้อมูลผลหลักเปลี่ยนระหว่างค้นหา กรุณาค้นหาใหม่ — ยังไม่ส่งคำขอ');
         seen.add(row.id);
-        if(row.company===company&&row.business_date===date&&['open','clarifying','answered'].includes(row.status)
-          &&row.ex_type===type&&!row.manual_pair_id&&!row.case_closure_request_id&&!row.superseded_by_exception_id
+        if(row.company===company&&row.business_date>=from&&row.business_date<=to&&['open','clarifying','answered','pending_next_day'].includes(row.status)
+          &&(row.ex_type===type||type==='missing_stm'&&row.ex_type==='cross_day')&&!row.manual_pair_id&&!row.case_closure_request_id&&!row.superseded_by_exception_id
           &&(!direction||row.direction===direction))candidates.push(row);
       }
-      if(page.length<pageSize)return candidates;
+      if(page.length<pageSize)return candidates.sort((a,b)=>Math.abs(Date.parse(a.business_date)-Date.parse(date))-Math.abs(Date.parse(b.business_date)-Date.parse(date))||String(a.business_date).localeCompare(String(b.business_date))||String(a.occurred_at||'').localeCompare(String(b.occurred_at||''))||String(a.id).localeCompare(String(b.id)));
     }
   }
   async function manualPair(id) {

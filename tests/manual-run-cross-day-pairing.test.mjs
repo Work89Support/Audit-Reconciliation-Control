@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const sql=fs.readFileSync('supabase/20261021_manual_run_cross_day_pairing.sql','utf8');
+const client=fs.readFileSync('supabase.js','utf8');
+const pairing=fs.readFileSync('manual-pairing.js','utf8');
+const workbench=fs.readFileSync('cross-day-workbench.js','utf8');
+const app=fs.readFileSync('app.js','utf8');
+const html=fs.readFileSync('index.html','utf8');
+
+for(const guard of ["e.ex_type='missing_stm'","waiting_source","time '23:00:00'",'primary_case_is_current(e.id)','cross_day_current_manual_case(e)','cross_day_case_source_ready(e)','cross_day_verified_rows(p_file)','storage.objects',"a.ex_type not in (''missing_stm'',''cross_day'')","a.status=''pending_next_day''","old.status=''pending_next_day''"])assert.ok(sql.includes(guard),guard);
+assert.doesNotMatch(sql,/\b(update|delete\s+from|insert\s+into)\s+public\.(exceptions|daily_recon_jobs|recon_runs|manual_primary_results|audit_run_holds)\b/i);
+assert.match(client,/const from=adjacent\(date,-1\),to=adjacent\(date,1\)/);
+assert.match(client,/p_from:from,p_to:to/);
+assert.match(pairing,/ค้นวันก่อน–วันเดียวกัน–วันถัดไป/);
+assert.match(pairing,/\$\{h\(c\.business_date\)\}/);
+assert.match(workbench,/lateWaitingSource/);
+assert.match(app,/CrossDayWorkbench\.eligible\(e\)\?CrossDayWorkbench\.open/);
+for(const version of ['manual-adjacent-pairing-20261021','manual-waiting-crossday-20261021'])assert.ok(html.includes(version),version);
+console.log('PASS manual-run adjacent pairing and late-night cross-day menu guards; definitions only, no case or amount writes.');

@@ -4518,7 +4518,7 @@ async function openException(id, options = {}) {
     $('#btnManualPair').disabled=false;
     $('#btnManualPair').textContent='จับคู่ข้ามวัน / เตรียมหลายคู่';
   }
-  $('#btnManualPair').addEventListener('click',()=>e.type==='cross_day'?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
+  $('#btnManualPair').addEventListener('click',()=>CrossDayWorkbench.eligible(e)?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
   $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
   if(['lead','admin'].includes(state.role)&&can('approve')&&!closed){
     const headClose=document.createElement('button');

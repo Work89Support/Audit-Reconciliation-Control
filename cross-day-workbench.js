@@ -14,7 +14,9 @@ const CrossDayWorkbench = (() => {
     const promise=(async()=>{try{const rows=await Sb.pendingCrossDayPairs();if(JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies])===key){queueState.rows=rows;queueState.error='';queueState.at=Date.now();}}catch(error){if(queueState.scopeKey===key){queueState.rows=null;queueState.error=error.message;queueState.at=0;}}finally{if(queueState.scopeKey===key){queueState.loading=false;if(typeof renderNav==='function')renderNav();}}})();pendingLoad={key,promise};try{await promise;}finally{if(pendingLoad?.promise===promise)pendingLoad=null;}
   }
   const writable = () => state.dataset === 'production' && Sb.signedIn() && ['monitor','audit_assistant','lead','admin'].includes(state.role);
-  const eligible = e => e.type === 'cross_day' && ['open','pending_next_day'].includes(e.status);
+  const lateWaitingSource = e => e.type === 'missing_stm' && ['open','pending_next_day'].includes(e.status)
+    && e.customerDetails?.waiting_source === true && lateNight(e.boTime || e.time);
+  const eligible = e => e.type === 'cross_day' && ['open','pending_next_day'].includes(e.status) || lateWaitingSource(e);
   const key = (file, row) => `${file.id}:${row.source_mode==='image'?'page':'row'}:${row.rowNo}`;
   const lateNight = value => {
     const match=String(value||'').match(/(?:^|[T\s])(\d{2}):(\d{2})(?::(\d{2}))?/);
@@ -353,5 +355,5 @@ const CrossDayWorkbench = (() => {
       catch(error){toast('ยังยืนยันผลไม่ได้: '+error.message+' — ตรวจคำขอเดิมก่อนลองซ้ำ','warn');}
     };
   }
-  return {eligible,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf,caseNumber,rangeSelection,capturePosition,restorePosition};
+  return {eligible,lateWaitingSource,open,mountQueue,stage,stageImage,send,approveMany,planSelected,drafts,queueState,loadPending,scopedData,lateNight,bankOf,caseNumber,rangeSelection,capturePosition,restorePosition};
 })();

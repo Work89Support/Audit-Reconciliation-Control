@@ -24,14 +24,15 @@ for(const company of companies)for(const origin of ['manual','system'])for(const
   fixture.push({...base,id:'closed',status:'closed'},{...base,id:'reserved',manual_pair_id:'pending-request'},
     {...base,id:'closure-pending',status:'answered',case_closure_request_id:'keep-request'},{...base,id:'approved',status:'approved'},
     {...base,id:'superseded',superseded_by_exception_id:'new-case'},{...base,id:'foreign',company:'FOREIGN'},
-    {...base,id:'other-date',business_date:'2026-10-16'},{...base,id:'other-direction',direction:direction==='ฝาก'?'ถอน':'ฝาก'},
+    {...base,id:'previous-date',business_date:'2026-10-16'},{...base,id:'next-date',business_date:'2026-10-18'},
+    {...base,id:'outside-date',business_date:'2026-10-15'},{...base,id:'other-direction',direction:direction==='ฝาก'?'ถอน':'ฝาก'},
     {...base,id:'other-type',ex_type:type==='missing_bo'?'missing_stm':'missing_bo'});
   const before=JSON.stringify(fixture),start=calls.length;
   const result=await client.manualPairCandidates(company,'2026-10-17',type,direction);
-  assert.equal(result.length,1250,company+' '+origin+' all pages, not 201');
-  assert.equal(result.at(-1).id,`${origin}-1249`);
+  assert.equal(result.length,1252,company+' '+origin+' current and adjacent cases, not 201');
+  assert.equal(result[0].id,`${origin}-0`);assert.equal(result.slice(-2).map(row=>row.id).join(','),'previous-date,next-date');
   assert.deepEqual(calls.slice(start).map(c=>c.args.p_offset),[0,1000]);
-  assert.ok(calls.slice(start).every(c=>c.args.p_company===company&&c.args.p_from==='2026-10-17'&&c.args.p_to==='2026-10-17'));
+  assert.ok(calls.slice(start).every(c=>c.args.p_company===company&&c.args.p_from==='2026-10-16'&&c.args.p_to==='2026-10-18'));
   assert.equal(JSON.stringify(fixture),before,'read only: amounts, cases, history and holds unchanged');
 }
 // A full first page can contain zero eligible rows: continue from raw page size.
@@ -42,9 +43,11 @@ failPage=true;await assert.rejects(client.manualPairCandidates('FR8','2026-10-17
 duplicatePage=true;await assert.rejects(client.manualPairCandidates('FR8','2026-10-17','missing_bo'),/เปลี่ยนระหว่างค้นหา/);duplicatePage=false;
 malformed=true;await assert.rejects(client.manualPairCandidates('FR8','2026-10-17','missing_bo'),/รูปแบบผลหลัก/);malformed=false;
 fixture=[];assert.equal((await client.manualPairCandidates('UR9','2026-10-17','missing_stm')).length,0);
+fixture=[{id:'fr8-cross-day-bo',company:'FR8',business_date:'2026-10-17',status:'pending_next_day',ex_type:'cross_day',direction:'ถอน',system_amount:200,bank_amount:null,manual_pair_id:null,case_closure_request_id:null,superseded_by_exception_id:null}];
+assert.equal((await client.manualPairCandidates('FR8','2026-10-17','missing_stm','ถอน'))[0].id,'fr8-cross-day-bo');
 await assert.rejects(client.manualPairCandidates('FR8','2026-10-17','amount_diff'));
 const ui=fs.readFileSync(new URL('../manual-pairing.js',import.meta.url),'utf8');
 assert.doesNotMatch(ui,/candidates\.slice\(0,200\)/);
 assert.match(ui,/pairUploadEvidence/);assert.match(ui,/ยังไม่ส่งคำขอและไม่ปิดเคส/);
 assert.match(ui,/uploadCaseEvidence\(e.dbId,file,message=>/);
-console.log('PASS read-only manual pairing search: all nine companies, manual null-run/system primaries, both sides/directions, 1250 candidates, sparse page, retryable error, no partial success, closed/reserved/history/foreign exclusion; immutable amounts/history/holds.');
+console.log('PASS read-only manual pairing search: all nine companies, manual null-run/system primaries, both sides/directions, adjacent-day candidates, sparse page, retryable error, no partial success, closed/reserved/history/foreign exclusion; immutable amounts/history/holds.');

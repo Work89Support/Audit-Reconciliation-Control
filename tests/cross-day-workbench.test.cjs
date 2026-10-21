@@ -10,6 +10,9 @@ const file={id:'statement',company:'FR8'},row={rowNo:85,verified:true,account:'S
  assert.equal(w.eligible({type:'cross_day',status:'open'}),true);assert.equal(w.eligible({type:'cross_day',status:'closed'}),false);
  assert.equal(w.eligible({type:'cross_day',status:'pending_next_day'}),true);
  assert.equal(w.eligible({type:'missing_stm',status:'pending_next_day'}),false);
+ const manualWaiting={type:'missing_stm',status:'open',boTime:'23:15:00',customerDetails:{waiting_source:true,manual_primary_id:'accepted-primary'}};
+ assert.equal(w.eligible(manualWaiting),true);assert.equal(w.eligible({...manualWaiting,boTime:'22:59:59'}),false);
+ assert.equal(w.eligible({...manualWaiting,customerDetails:{waiting_source:true}}),true);
  assert.equal(w.eligible({type:'cross_day',status:'pair_pending'}),false);
  const anchor={...bo('scope'),business_date:'2026-10-07',occurred_at:'23:00:00'};
  const scopeRows=[{...row,date:'2026-10-07',sec:82800},{...row,rowNo:2,date:'2026-10-07',sec:86399},{...row,rowNo:3,date:'2026-10-07',sec:82799},{...row,rowNo:4,date:'2026-10-06',sec:82800},{...row,rowNo:5,account:'other',date:'2026-10-07',sec:82800}];
