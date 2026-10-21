@@ -18,7 +18,7 @@ const poller={
   nodes:[
     schedule('schedule','ตรวจเมลทุก 5 นาที',5,[-720,260]),
     http('sources','อ่านทะเบียนผู้ส่ง',{url:'={{ $vars.SUPABASE_URL }}/rest/v1/mail_sources?active=eq.true&select=email&order=email'},[-500,260]),
-    code('query','สร้างคำค้นจากทะเบียน',`const emails=$input.all().map(i=>String(i.json.email||'').trim().toLowerCase()).filter(Boolean);\nif(!emails.length)return [];\nconst senders=emails.map(email=>'from:'+email.replace(/[^a-z0-9@._%+\\-]/g,'')).join(' ');\nreturn [{json:{query:'has:attachment -label:ingested {'+senders+'}'}}];`,[-280,260]),
+    code('query','สร้างคำค้นจากทะเบียน',`const emails=$input.all().map(i=>String(i.json.email||'').trim().toLowerCase()).filter(Boolean);\nif(!emails.length)return [];\nconst senders=emails.map(email=>'from:'+email.replace(/[^a-z0-9@._%+\\-]/g,'')).join(' ');\nreturn [{json:{query:'has:attachment newer_than:30m -label:ingested {'+senders+'}'}}];`,[-280,260]),
     gmailList('list','ค้นเมลจากผู้ส่งที่เปิดใช้','={{ $json.query }}',[-40,260]),
     code('valid','ตัดรายการว่าง',`return $input.all().filter(item=>item.json&&item.json.id);`,[180,260]),
     gmailGet('get','ดาวน์โหลดเมลและไฟล์แนบ',[400,260]),
