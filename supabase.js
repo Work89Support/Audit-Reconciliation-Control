@@ -882,6 +882,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   const financeBoReportHistory=(company,date)=>rpc('finance_bo_report_history',{p_company:company,p_date:date});
   const financeCaseReport=(company,from,to)=>rpc('finance_case_report',{p_company:company,p_from:from,p_to:to});
   const reviewHoldScopes=()=>rpc('account_review_hold_scopes');
+  const manageAccountReviewHold=payload=>rpc('manage_account_review_hold',payload);
   const reviewHoldForCase=id=>rpc('account_review_hold_for_case',{p_case:id});
   const reviewHoldReport=(company,from,to)=>rpc('account_review_hold_report',{p_company:company,p_from:from,p_to:to});
   // Operational ledger, not the restricted finance dashboard. These tables
@@ -1791,7 +1792,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   return {
-    financeReportingCompanies,financeBoWindow,financeReportBoWindow,financeBoReportManifest,acceptFinanceBoReport,financeBoReportHistory,financeCaseReport,reviewHoldScopes,reviewHoldForCase,reviewHoldReport,reviewHoldRegistryCompanies,reviewHoldRegistryReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
+    financeReportingCompanies,financeBoWindow,financeReportBoWindow,financeBoReportManifest,acceptFinanceBoReport,financeBoReportHistory,financeCaseReport,reviewHoldScopes,manageAccountReviewHold,reviewHoldForCase,reviewHoldReport,reviewHoldRegistryCompanies,reviewHoldRegistryReport,financeActionReport,financeActionCase,findFinanceActionCase,saveFinanceAction,financeActionUrl,uploadFinanceActionEvidence,
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
