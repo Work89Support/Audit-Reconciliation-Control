@@ -851,13 +851,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
-  async function exceptionFiles(runId, clarificationFileId) {
+  async function exceptionFiles(runId, clarificationFileId, sourceFileIds = []) {
     const ids = [];
     if (runId) {
       const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(runId)}&select=file_ids&limit=1`);
       (runs[0]?.file_ids || []).forEach((id) => ids.push(id));
     }
     if (clarificationFileId) ids.push(clarificationFileId);
+    for (const id of sourceFileIds || []) if (id) ids.push(id);
     const unique = [...new Set(ids.filter(Boolean))];
     if (!unique.length) return [];
     return json(`/rest/v1/source_files?id=in.(${unique.join(",")})&select=*&order=file_name.asc`);
@@ -1273,20 +1274,9 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
       && Number.isFinite(Date.parse(row.requested_at)) && !!row.requested_by;
     let saved;
     try {
-    if (previousStatus === 'pending_next_day') {
-      const result = await rpc('request_waiting_cross_day_clarification', {p_case:id});
-      if (!verify(result)) throw new Error('ผลตอบกลับไม่มีหลักฐานการส่งครบถ้วน');
-      saved = result;
-    } else {
-    if (!["open", "answered"].includes(previousStatus)) throw new Error("สถานะนี้ส่งรอผู้ชี้แจงไม่ได้");
-    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-      body: JSON.stringify({ ...body, status: "clarifying" }),
-    });
-    if (!Array.isArray(rows) || rows.length !== 1 || !verify(rows[0])) throw new Error("สถานะเปลี่ยนแล้ว ไม่มีสิทธิ์ หรือผลตอบกลับไม่มีหลักฐานการส่งครบถ้วน");
-    saved = rows[0];
-    }
+    if (!["open", "pending_next_day"].includes(previousStatus)) throw new Error("สถานะนี้ต้องใช้ปุ่มตีกลับเพื่อเก็บประวัติคำตอบเดิม");
+    saved = await rpc('request_current_case_clarification', {p_case:id,p_previous_status:previousStatus});
+    if (!verify(saved)) throw new Error('ผลตอบกลับไม่มีหลักฐานการส่งครบถ้วน');
     // Read through the authenticated, ID-scoped endpoint, not local overrides.
     const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&select=id,status,company,requested_at,requested_by&limit=1`, {recoverRead:true});
     const receipt = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
@@ -1652,15 +1642,13 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   async function closeException(id, previousStatus, body) {
-    const rows = await json(`/rest/v1/exceptions?id=eq.${encodeURIComponent(id)}&status=eq.${encodeURIComponent(previousStatus)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-      body: JSON.stringify({ ...body, status: "closed" }),
+    const saved = await rpc('close_current_audit_case', {
+      p_case:id,p_previous_status:previousStatus,p_resolution_note:body?.resolution_note,p_resolved_by:body?.resolved_by,
     });
-    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].status !== "closed") {
+    if (!saved || saved.id !== id || saved.status !== "closed") {
       throw new Error("สถานะเคสเปลี่ยนหรือไม่มีสิทธิ์บันทึก กรุณารีเฟรชแล้วตรวจใหม่");
     }
-    return rows[0];
+    return saved;
   }
 
   async function markParsed(fileId, rowCount, error) {
