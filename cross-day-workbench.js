@@ -101,7 +101,7 @@ const CrossDayWorkbench = (() => {
     $('#crossDayClose').onclick=()=>{if(!busy)closeModal();};
     const host=$('#crossDayWorkbench'); let data,active=e.dbId,file=null,row=null,previewVersion=0,busy=false;
     let retainedPreview=null,retainedFile=null,tab='work',rangeFrom='',rangeTo='',rangeMessage='';
-    try { data=await Sb.crossDayWorkbench({p_company:e.company,p_from:addDay(e.date,-3),p_to:addDay(e.date,3)}); }
+    try { data=await Sb.crossDayWorkbench({p_case:e.dbId}); }
     catch(error) { if(host.isConnected)host.innerHTML=`<p role="alert">เปิดหน้าจับคู่ข้ามวันไม่ได้: ${h(error.message)} · ต้องติดตั้งเวิร์กโฟลว์ฐานข้อมูลก่อน ไม่ใช้วิธีข้ามกฎปิดเคส</p>`;return; }
     if(!host.isConnected)return;
     let scoped;
