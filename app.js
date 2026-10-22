@@ -6140,6 +6140,7 @@ VIEWS['account-holds'] = (root) => AccountReviewHolds.mountManager(root,{
   role:()=>state.role,
   today:PROD_TODAY,
   companies:Sb.reviewHoldRegistryCompanies,
+  accounts:()=>{const aliases={"7M":"UFABET7M"};return (loadRegistryAccounts()||[]).map(row=>({company:aliases[row.company]||row.company,bank:row.bank,account:row.id,account_name:row.holder}));},
   scopes:Sb.reviewHoldScopes,
   save:Sb.manageAccountReviewHold,
 });
