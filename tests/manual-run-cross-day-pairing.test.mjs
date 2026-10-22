@@ -26,6 +26,6 @@ assert.match(workbench,/lateWaitingSource/);
 assert.match(app,/CrossDayWorkbench\.eligible\(e\)\?CrossDayWorkbench\.open/);
 for(const version of ['manual-pending-cross-day-20261021','manual-existing-reservation-20261021','mail-intake-control-20261021'])assert.ok(html.includes(version),`runtime bundle cache key missing: ${version}`);
 assert.equal(html.match(/manual-pending-cross-day-20261021/g)?.length,1,'manual pairing bundle must bypass the stale eligibility cache');
-assert.equal(html.match(/manual-existing-reservation-20261021/g)?.length,1,'cross-day bundle must keep its deployed reservation cache key');
+assert.equal(html.match(/scoped-crossday-20261022/g)?.length,2,'scoped cross-day UI and transport must bypass the old cache');
 assert.ok(html.match(/mail-intake-control-20261021/g).length>=4,'mail intake CSS, UI, API and app shell must bypass the old cache');
 console.log('PASS manual-run adjacent pairing and late-night cross-day menu guards; definitions only, no case or amount writes.');
