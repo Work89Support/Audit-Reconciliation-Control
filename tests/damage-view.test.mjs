@@ -33,28 +33,29 @@ assert.equal(context.exported[1].rows[0][4],'ระบบ');
 assert.equal(context.exported[1].rows[0][6],34.15);
 assert.equal(context.exported[1].rows[0][10],'ไม่ระบุเวลา');
 assert.equal(context.exported[1].rows[0][12],'รอยืนยันกะ');
+assert.equal(context.exported[1].rows[0][13],'รอยืนยันรหัสทีม');
 assert.match(root.innerHTML,/สรุปความเสียหายรายเดือน/);
-assert.match(root.innerHTML,/ยอดรวมแยกกะ/);
+assert.match(root.innerHTML,/ยอดรวมแยกรหัสทีม/);
 assert.match(root.innerHTML,/ยอดรวมแยกพนักงาน/);
 listeners['#damageCategoryFilter:change']({target:{value:'employee'}});
 assert.doesNotMatch(root.innerHTML,/TEST-ONLY-1/);
 context.liveDamageState.category='ALL';
 context.liveDamageState.rows=[
-  {id:'A1',date:'2026-10-01',company:'MC8',shift:'X1',employee:'A',employeeCode:'EMP-A',time:'23:59:00',amount:500,cause:'[damage:v2:employee] test',exceptionId:'-'},
-  {id:'B1',date:'2026-10-02',company:'MC8',shift:'X1',employee:'B',amount:1000,cause:'[damage:v2:pm] test',exceptionId:'-'},
-  {id:'C1',date:'2026-10-02',company:'MC8',shift:'X5',employee:'C',amount:100,cause:'[damage:v2:game] test',exceptionId:'-'},
+  {id:'A1',date:'2026-10-01',company:'MC8',shift:'night',employee:'A',employeeCode:'TNX1',time:'23:59:00',amount:500,cause:'[damage:v2:employee] test',exceptionId:'-'},
+  {id:'B1',date:'2026-10-02',company:'MC8',shift:'day',employee:'TNX1',amount:1000,cause:'[damage:v2:pm] test',exceptionId:'-'},
+  {id:'C1',date:'2026-10-02',company:'MC8',shift:'night',employee:'TNX5',amount:100,cause:'[damage:v2:game] test',exceptionId:'-'},
 ];
 vm.runInContext('renderLiveDamage(root)',context);
-listeners['drill:shift:X1']();
-assert.equal(context.liveDamageState.shift,'X1');
+listeners['drill:team:X1']();
+assert.equal(context.liveDamageState.team,'X1');
 assert.doesNotMatch(root.innerHTML,/>C1</);
-listeners['drill:employee:'+JSON.stringify(['MC8','EMP-A','A','X1'])]();
+listeners['drill:employee:'+JSON.stringify(['MC8','TNX1','A','กะดึก 20:00–08:00'])]();
 listeners['#damageExportLive:click']();
 assert.equal(context.exported[1].rows.length,1);
 assert.equal(context.exported[1].rows[0][6],500);
 assert.equal(context.exported[1].rows[0][10],'23:59:00');
 listeners['#damageDrillReset:click']();
-assert.equal(context.liveDamageState.shift,'ALL');
+assert.equal(context.liveDamageState.team,'ALL');
 assert.equal(context.liveDamageState.employee,'ALL');
 listeners['#damageMonthApply:click']();
 assert.equal(context.state.filters.from,'2026-10-01');
@@ -63,8 +64,9 @@ assert.equal(context.rendered,true);
 vm.runInContext('renderLiveDamage(root)',context);
 if(process.env.DAMAGE_PREVIEW) {
   context.liveDamageState.rows=[
-    {id:'TEST-A-X1',date:'2026-10-01',company:'MC8',shift:'X1',employee:'นาย A (ทดสอบ)',employeeCode:'A001',amount:5000,cause:'[damage:v2:employee] ตัวอย่างทดสอบเท่านั้น',exceptionId:'-',collectionReady:true,collection:{party_name:'นาย A (ทดสอบ)',party_code:'A001',shift:'X1',approved_amount:5000,paid_amount:2000}},
-    {id:'TEST-A-X3',date:'2026-10-02',company:'MC8',shift:'X3',employee:'นาย A (ทดสอบ)',employeeCode:'A002',amount:1000,cause:'[damage:v2:employee] ตัวอย่างชื่อซ้ำคนละกะ',exceptionId:'-',collectionReady:true,collection:{party_name:'นาย A (ทดสอบ)',party_code:'A002',shift:'X3',approved_amount:1000,paid_amount:0}},
+    {id:'TEST-X1',date:'2026-10-01',company:'MC8',shift:'day',employee:'TNX1',employeeCode:'TNX1',amount:5000,cause:'[damage:v2:employee] ตัวอย่างทดสอบเท่านั้น',exceptionId:'-',collectionReady:true,collection:{category:'employee',party_name:'TNX1',party_code:'TNX1',shift:'day',approved_amount:5000,paid_amount:2000}},
+    {id:'TEST-X8',date:'2026-10-02',company:'MC8',shift:'night',employee:'TNX8',employeeCode:'TNX8',amount:1000,cause:'[damage:v2:employee] ตัวอย่างทดสอบเท่านั้น',exceptionId:'-',collectionReady:true,collection:{category:'employee',party_name:'TNX8',party_code:'TNX8',shift:'night',approved_amount:1000,paid_amount:0}},
+    {id:'TEST-X5',date:'2026-10-03',company:'MC8',shift:'night',employee:'TNX5',employeeCode:'TNX5',amount:2000,cause:'[damage:v2:employee] ตัวอย่างทดสอบเท่านั้น',exceptionId:'-',collectionReady:true,collection:{category:'employee',party_name:'TNX5',party_code:'TNX5',shift:'night',approved_amount:2000,paid_amount:0}},
   ];
   vm.runInContext('renderLiveDamage(root)',context);
   fs.writeFileSync(process.env.DAMAGE_PREVIEW,`<!doctype html><html lang="th"><meta charset="utf-8"><title>ทดสอบหน้าความเสียหาย ไม่ใช่ข้อมูลจริง</title><link rel="stylesheet" href="http://127.0.0.1:8765/styles.css"><body><main style="padding:28px"><p>ทดสอบหน้าจอด้วยข้อมูลสมมติ ไม่ใช่ทะเบียนจริง</p>${root.innerHTML}</main></body></html>`);

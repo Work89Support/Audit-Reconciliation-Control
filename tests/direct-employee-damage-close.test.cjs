@@ -4,7 +4,8 @@ const sb=fs.readFileSync('supabase.js','utf8');
 const sql=fs.readFileSync('supabase/20261022_direct_employee_damage_close.sql','utf8');
 
 for(const token of ['closureResponsibilityFields','closureEmployee','closureShift','closureResponsibilityChecked','closeDocumentCaseWithResponsibility'])assert.ok(ui.includes(token),token);
-assert.match(ui,/missingResponsibility\(responsibility\.employee\).*missingResponsibility\(responsibility\.shift\)/s);
+assert.match(ui,/missingResponsibility\(responsibility\.employee\).*DamageSummary\.shiftKey\(\{shift:responsibility\.shift\}\)/s);
+assert.match(ui,/<select id="closureShift">.*value="day".*value="night"/s);
 assert.match(sb,/rpc\/close_document_case_with_responsibility/);
 assert.match(sb,/e\.employee!==body\.p_employee\|\|e\.shift!==body\.p_shift/);
 for(const token of ['for update','p_outcome<>\'damage\'','p_category<>\'employee\'','case_responsibility_confirm','public.close_document_case(p_id,p_case,p_outcome,p_amount,p_reason,p_category)'])assert.ok(sql.includes(token),token);

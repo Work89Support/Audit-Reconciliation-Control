@@ -2,6 +2,8 @@
    Stored in cause as a versioned prefix for compatibility with the existing damages schema. */
 const DamageSummary = (() => {
   const categories = Object.freeze({ employee: 'พนักงาน', backoffice: 'ระบบหลังบ้าน', external: 'ธนาคาร / ปัจจัยควบคุมไม่ได้', pm: 'ระบบ PM', game: 'ระบบเกม', system: 'ระบบ', unclassified: 'ยังไม่แยกประเภท' });
+  const workShifts = Object.freeze({ day: 'กะเช้า 08:00–20:00', night: 'กะดึก 20:00–08:00' });
+  const teamCodes = Object.freeze(['X1','X8','X5']);
   function classify(cause) {
     const current = String(cause || '').match(/^\[damage:v2:(employee|backoffice|external|pm|game)\]\s*/);
     if (current) return { category: current[1], subcategory: '', detail: String(cause).slice(current[0].length) };
@@ -14,9 +16,23 @@ const DamageSummary = (() => {
     if (!String(detail || '').trim()) throw new Error('ระบุสาเหตุและหลักฐานที่ใช้ยืนยัน');
     return `[damage:v2:${category}] ${String(detail).trim()}`;
   }
-  // Old X codes were stored as a category, not a confirmed shift. Never infer a shift from them.
-  function shiftLabel(row) { const value=String((row.collection?.category==='employee'?row.collection.shift:row.shift) || '').trim(); return !value || value==='-' ? 'รอยืนยันกะ' : value; }
+  // A work shift is time-based. X codes are team codes and must never be treated as shifts.
+  function shiftKey(row) {
+    const value=String((row.collection?.category==='employee'?row.collection.shift:row.shift) || '').trim().toLowerCase();
+    if (['day','morning','เช้า','กะเช้า'].includes(value)) return 'day';
+    if (['night','ดึก','กะดึก'].includes(value)) return 'night';
+    return '';
+  }
+  function shiftLabel(row) { const key=shiftKey(row); return key ? workShifts[key] : 'รอยืนยันกะ'; }
   function employeeLabel(row) { const value=String((row.collection?.category==='employee'?row.collection.party_name:row.employee) || '').trim(); return !value || value==='-' || value==='ไม่ระบุ' ? 'รอยืนยันผู้เกี่ยวข้อง' : value; }
+  function teamCode(row) {
+    const values=[row.collection?.party_code,row.employeeCode,row.collection?.party_name,row.employee];
+    for (const value of values) {
+      const match=String(value || '').toUpperCase().match(/X(1|8|5)(?!\d)/);
+      if (match) return `X${match[1]}`;
+    }
+    return 'รอยืนยันรหัสทีม';
+  }
   // A display name is not a person ID. Never merge missing identities across cases.
   function employeeKey(row) {
     const code=String(row.employeeCode || '').trim(), shift=shiftLabel(row), name=employeeLabel(row);
@@ -40,7 +56,7 @@ const DamageSummary = (() => {
   function groupBy(rows, field) {
     const grouped = new Map();
     for (const row of rows) {
-      const key = field === 'shift' ? shiftLabel(row) : employeeKey(row);
+      const key = field === 'team' ? teamCode(row) : employeeKey(row);
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(row);
     }
@@ -56,9 +72,9 @@ const DamageSummary = (() => {
         if (totals.net===null) group.pending++;
         else { group.confirmed++; group.net+=Math.round(totals.net*100); group.paid+=Math.round(totals.paid*100); group.approved+=Math.round(totals.approved*100); }
       }
-      return {key,label:field==='shift'?key:identityLabel(records[0]),...summary,
+      return {key,label:field==='team'?key:identityLabel(records[0]),...summary,
         netGroups:netGroups.map(g=>({...g,net:g.net/100,paid:g.paid/100,approved:g.approved/100}))};
-    });
+    }).sort((a,b)=>field==='team'?(teamCodes.indexOf(a.key)<0?teamCodes.length:teamCodes.indexOf(a.key))-(teamCodes.indexOf(b.key)<0?teamCodes.length:teamCodes.indexOf(b.key)):a.label.localeCompare(b.label,'th'));
   }
   function encode(category, subcategory, detail) {
     if (!['employee', 'system', 'external'].includes(category)) throw new Error('เลือกประเภทความเสียหายก่อน');
@@ -91,5 +107,5 @@ const DamageSummary = (() => {
   function financeComplete(status) {
     return ['completed','closed','ปิดแล้ว','ปิดรอบแล้ว','เสร็จแล้ว','เสร็จสิ้น'].includes(String(status || '').trim().toLowerCase());
   }
-  return { categories, classify, encode, encodeDetails, shiftLabel, employeeLabel, employeeKey, identityLabel, collectionTotals, monthRange, groupBy, cents, summarize, financeComplete };
+  return { categories, workShifts, teamCodes, classify, encode, encodeDetails, shiftKey, shiftLabel, teamCode, employeeLabel, employeeKey, identityLabel, collectionTotals, monthRange, groupBy, cents, summarize, financeComplete };
 })();

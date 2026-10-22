@@ -1,9502 +1,4550 @@
-/* =============================================================
-   Audit AI Reconciliation - Application shell
-   - hash router แยกหน้าจอจริงเมื่อกดเมนู (#/dashboard, #/exceptions ...)
-   - สิทธิ์ตาม role, ฟังก์ชันทำงานจริงบนข้อมูลจำลอง, audit log อัตโนมัติ
-   ============================================================= */
-
-/* ---------------- utilities ---------------- */
-const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const h = (s) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money0 = (n) => Number(n || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
-const num = (n) => Number(n || 0).toLocaleString("th-TH");
-const displayTime = value => AuditDisplay.dateTime(value);
-function normalizeEvidenceSearch(value) {
-  const thaiDigits = { "๐": "0", "๑": "1", "๒": "2", "๓": "3", "๔": "4", "๕": "5", "๖": "6", "๗": "7", "๘": "8", "๙": "9" };
-  return String(value ?? "").toLocaleLowerCase("th-TH")
-    .replace(/[๐-๙]/g, (digit) => thaiDigits[digit])
-    .replace(/,/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function evidenceAmountLabel(value) {
-  const amount = Number(String(value ?? "").replace(/,/g, ""));
-  return Number.isFinite(amount) && amount > 0
-    ? `ยอด ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`
-    : "";
-}
-const nowStamp = () => {
-  const d = new Date();
-  const p = (x) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-};
-
-async function copyPlainText(text) {
-  const value = String(text || "");
-  try {
-    await navigator.clipboard.writeText(value);
-  } catch (_) {
-    const input = document.createElement("textarea");
-    input.value = value;
-    input.setAttribute("readonly", "");
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand("copy");
-    input.remove();
-  }
-  return value;
-}
-
-/* ---------------- routes ---------------- */
-const ICONS = {
-  dashboard: "M3 13h8V3H3v10Zm10 8h8V11h-8v10ZM3 21h8v-6H3v6ZM13 9h8V3h-8v6Z",
-  intake: "M4 4h16v4H4V4Zm0 6h16v10H4V10Zm3 3h6v2H7v-2Z",
-  exceptions: "M12 2 1 21h22L12 2Zm0 6 6.5 11h-13L12 8Zm-1 3v4h2v-4h-2Zm0 5v2h2v-2h-2Z",
-  matching: "M4 6h7v3H4V6Zm0 9h7v3H4v-3Zm9-9h7v3h-7V6Zm0 9h7v3h-7v-3Zm-2-4.5h2v3h-2v-3Z",
-  approvals: "M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z",
-  damage: "M12 2 2 20h20L12 2Zm0 5 6 11H6l6-11Zm-1 3v4h2v-4h-2Z",
-  fx: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16Zm-1.2 3v1.3c-1.3.2-2.2 1-2.2 2.2 0 1.4 1.1 2 2.6 2.4 1.1.3 1.5.6 1.5 1.1 0 .5-.5.9-1.3.9-.9 0-1.6-.4-2.1-1l-1.2 1.2c.6.7 1.5 1.2 2.7 1.4V18h1.6v-1.4c1.5-.2 2.4-1.1 2.4-2.4 0-1.4-1-2.1-2.7-2.5-1-.3-1.4-.5-1.4-1 0-.5.4-.8 1.2-.8.8 0 1.4.3 1.9.9l1.2-1.2c-.6-.6-1.3-1-2.2-1.2V7h-1.6Z",
-  cloud: "M6.5 19a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 17.7 9.2 4.25 4.25 0 0 1 17.25 19H6.5Zm5-8.6-3.2 3.2 1.4 1.4 1.3-1.3V17h2v-3.3l1.3 1.3 1.4-1.4-3.2-3.2Z",
-  pm: "M3 3h18v4H3V3Zm0 6h8v12H3V9Zm10 0h8v5h-8V9Zm0 7h8v5h-8v-5Z",
-  kpi: "M4 20h3v-7H4v7Zm6.5 0h3V4h-3v16ZM17 20h3v-11h-3v11Z",
-  reports: "M6 2h8l4 4v16H6V2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v2H8v-2Zm0 4h8v2H8v-2Z",
-  talk: "M4 4h16v11H8l-4 4V4Zm3 3v2h10V7H7Zm0 4v2h7v-2H7Z",
-  rules: "M4 5h16v2H4V5Zm0 6h10v2H4v-2Zm0 6h16v2H4v-2Z",
-  users: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5Z",
-  log: "M5 3h14v18l-7-3-7 3V3Zm3 4v2h8V7H8Zm0 4v2h8v-2H8Z",
-  settings: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 4-2 .5.9 1.9-1.5 1.5-1.9-.9L15 17l-.5 2h-2.1L12 17l-1.9.9L8.6 16l-1.9.9L5.2 15.4 6.1 13.5 4 13v-2l2.1-.5-.9-1.9L6.7 7l1.9.9L10 6l.5-2h2.1L13 6l1.9-.9L16.4 6.6l-.9 1.9L18 9v3Z",
-  roadmap: "M3 4h7v7H3V4Zm11 0h7v4h-7V4ZM3 13h7v7H3v-7Zm11-1h7v9h-7v-9Z",
-  import: "M12 3v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3h2ZM4 19h16v2H4v-2Z",
-  bell: "M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-5.3V11a7 7 0 0 0-5.2-6.77V3.5a1.8 1.8 0 1 0-3.6 0v.73A7 7 0 0 0 5 11v5.7L3.2 18.5v.9h17.6v-.9L19 16.7Z",
-  clock: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 4 2.4-1 1.7-5-3V6h2v6.6Z",
-  clarify: "M4 3h16v13H8l-4 4V3Zm3 3v2h10V6H7Zm0 4v2h7v-2H7Zm11.5 6L22 19.5 20.5 21 17 17.5 18.5 16Z",
-};
-
-const ROUTES = [
-  {
-    group: "งานประจำวัน",
-    items: [
-      { id: "dashboard", label: "แดชบอร์ด", icon: "dashboard", title: "แดชบอร์ดตรวจสอบประจำวัน", desc: "ภาพรวมรายการ ผลจับคู่ และรายการผิดปกติ แยกตามบริษัท", filters: true },
-      { id: "daily-summary", label: "สรุปรายวัน", icon: "reports", title: "สรุป 1 บริษัท 1 วัน", desc: "ดูไฟล์ที่ได้รับ ผลกระทบยอด และสถานะการแก้ไขทั้งหมดของบริษัทในวันเดียว พร้อม Export", filters: false },
-      { id: "mc8-sheets", label: "ชีต AUDIT ทุกบริษัท", icon: "reports", title: "ชีต AUDIT ทุกบริษัท", desc: "ผลกระทบยอด STM / PM กับ BO แยก PM ตาม Provider และแยก STM ธนาคารทีละบัญชี พร้อมยอดรวมท้ายตาราง", filters: false },
-      { id: "cloud", label: "ไฟล์และสถานะ", icon: "cloud", title: "ตรวจไฟล์จากเมล", desc: "เปิดดูไฟล์ต้นฉบับ ตรวจบริษัท ประเภท และสถานะอ่านไฟล์จาก Supabase ก่อนกระทบยอด", filters: true },
-      { id: "source-upload", label: "รับและจัดไฟล์", icon: "cloud", title: "รับไฟล์ให้ถูก ก่อนเริ่มตรวจ", desc: "อัปโหลดแยกบริษัท วันและประเภท เก็บต้นฉบับและประวัติ โดยยังไม่รัน", filters: false },
-      { id: "source-run", label: "เตรียมรันมือ", icon: "matching", title: "เลือกชุดไฟล์และเตรียมรันมือ", desc: "เลือกจากเมล อัปโหลด หรือผสมกัน ส่งเฉพาะไฟล์ที่เลือกไปทบทวนรันรอบใหม่", filters: false },
-      { id: "intake", label: "ตรวจไฟล์เข้า", icon: "intake", title: "ตรวจไฟล์ก่อนกระทบยอด", desc: "ดูไฟล์จริงแยกตามบริษัทและประเภท PM / ฝาก / ถอน หากยังอ่านไม่สำเร็จระบบจะแจ้งให้ตรวจต่อ", filters: true, hidden: true },
-      { id: "exceptions", label: "ผลตรวจและเคส", icon: "exceptions", title: "ภาพรวมผลตรวจและเคส", desc: "ดูคู่สำเร็จและรายการที่ต้องตรวจ แยกบริษัท วันที่ ฝาก–ถอน และสถานะ", filters: true },
-      { id: "matching", label: "3-Point Match", icon: "matching", title: "ตรวจการจับคู่ 3 จุด", desc: "เทียบ account, time, amount ระหว่าง STM กับ BO ทีละรายการพร้อม tolerance ที่ใช้", filters: true, hidden: true },
-    ],
-  },
-  {
-    group: "ตรวจสอบและอนุมัติ",
-    items: [
-      { id: "clarify", label: "ติดตามคำชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ส่งและติดตามเอกสารจากผู้ชี้แจงตาม SLA บริษัท เมื่อส่งกลับให้ Audit ตรวจในหน้า Audit รอตรวจ", filters: true },
-      { id: "audit-review", label: "Audit รอตรวจ", icon: "exceptions", title: "Audit รอตรวจเอกสาร", desc: "เอกสารหรือคำตอบจากผู้ชี้แจงกลับมาแล้ว ตรวจในเคสเดิมก่อนส่งหัวหน้าอนุมัติปิด", filters: true },
-      { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: true },
-      { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
-    ],
-  },
-  {
-    group: "รายงาน",
-    items: [
-      { id: "finance", label: "การเงิน & ผู้บริหาร", icon: "kpi", title: "การเงินและภาพรวมผู้บริหาร", desc: "BO ความเสี่ยง ความเสียหาย พนักงาน และ Action แยกตามบริษัทที่มีสิทธิ์ · ไม่แก้ยอดหรือสถานะเคส", filters: false },
-      { id: "monthly-audit", label: "สุ่มตรวจรายเดือน", icon: "reports", title: "สุ่มตรวจ Audit รายเดือน", desc: "เก็บชุดสุ่ม ผู้ตรวจ ผลประเมิน หมายเหตุ หลักฐาน และประวัติแยกบริษัท/เดือน", filters: false },
-      { id: "kpi", label: "KPI บริษัท", icon: "kpi", title: "KPI ตามบริษัทและพนักงาน", desc: "ความผิดพลาดตามบริษัท ประเภท และผู้ตรวจ เพื่อใช้ประเมินและลดความผิดซ้ำ", filters: true, hidden: true },
-      { id: "reports", label: "รายงาน & Export", icon: "reports", title: "รายงานรายวัน / รายเดือน", desc: "สรุปผลตรวจ, แนวโน้มความเสียหาย และ export ให้การเงิน / บุคคล", filters: true },
-      { id: "talk", label: "Talk to Data", icon: "talk", title: "ถามข้อมูลด้วยภาษาไทย", desc: "ถามจากข้อมูลที่ reconcile แล้ว ทุกคำตอบอ้างอิงตัวเลข ช่วงวันที่ และลิงก์กลับหลักฐาน", filters: false, hidden: true },
-    ],
-  },
-  {
-    group: "ระบบ",
-    items: [
-      { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
-      { id: "account-holds", label: "พักบัญชี STM", icon: "clock", title: "จัดการบัญชีพักตรวจ / รอ STM", desc: "หัวหน้าออดิทและผู้ดูแลระบบเปิดหรือปลดพักบัญชีที่ถูกระงับ โดยไม่รันซ้ำหรือเปลี่ยนยอดและสถานะเคส", filters: false },
-      { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
-      { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
-      { id: "mail-intake", label: "ตรวจเมลเข้า", icon: "intake", title: "ตรวจผู้ส่งและดึงเมลเข้าคลัง", desc: "เพิ่มอีเมลผู้ส่งและสั่งดึงเมลที่ตกหล่นเข้าคลัง แยกจากการรันหรือยืนยันผลกระทบยอด", filters: false },
-      { id: "users", label: "ผู้ใช้และสิทธิ์", icon: "users", title: "ผู้ใช้ บทบาท และบริษัท", desc: "กำหนดหน้าที่และบริษัทที่ผู้ใช้แต่ละคนรับผิดชอบ สิทธิ์ถูกบังคับซ้ำที่ฐานข้อมูล", filters: false },
-      { id: "case-settings", label: "ตั้งค่าเคส / SLA", icon: "rules", title: "ตั้งค่า SLA แยกบริษัท", desc: "กำหนดเวลาขอเอกสารของแต่ละบริษัท ไม่เปลี่ยนกำหนดเคสเก่าและไม่ปิดความเสียหายอัตโนมัติ", filters: false },
-    ],
-  },
-];
-const ROUTE_MAP = {};
-ROUTES.forEach((g) => g.items.forEach((it) => (ROUTE_MAP[it.id] = it)));
-
-/* โครงสร้างเครือบริษัทและกฎตรวจที่ Audit อนุมัติแล้ว
-   แต่ละเครือใช้กฎของตัวเอง ห้ามยืมกฎข้ามเครือ */
-const AUDIT_COMPANY_GROUPS = Object.freeze([
-  {
-    id: "XB",
-    name: "เครือ XB",
-    status: "active",
-    companies: ["3XB", "MC8", "MR9", "PS8", "UR9"],
-    rules: [
-      "จับคู่ STM / PM กับ BO ภายในบริษัท บัญชี/Provider ทิศทาง และยอดเดียวกัน โดยไม่ข้ามบริษัท",
-      "PM ฝาก: ใช้ paymentTime ก่อน; ใช้ expiredTime เฉพาะเมื่อไม่มี paymentTime · PM ถอน: ใช้ updateTime",
-      "ยอดฝากทุก Provider ใช้ realAmount · ยอดถอน AT/M ใช้ transferredAmount · ยอดถอน AZ/CP/LP ใช้ amount",
-      "PM ของทุก Provider เก็บรหัสสองช่องแยกกัน: id เป็นรหัสธุรกรรม เช่น P2C... และ _id เป็นรหัส 6aa...; ฝั่ง BO แยกเฉพาะรหัส 6aa... หลัง Sapan:/Spean: เหมือน Text to Columns และตัดคำอธิบายที่ตามหลังออก",
-      "กฎ Sapan/_id ใช้กับ PM ถอนของ XB ที่มี _id ได้แก่ AT/AZ/CP/M/LP: _id ฝั่ง PM ต้องตรงกับรหัสที่แยกจากหมายเหตุ BO และยอดจริงต้องตรงกันแบบคู่ 1:1 จึงปิดได้ แม้เวลา/ชื่อ Provider เดิมคลาดเคลื่อน",
-      "3XB เปิดใช้ LOCALPAY ฝาก/ถอน (ฝากใช้ realAmount · ถอนใช้ amount) · QPAY รับไฟล์ไว้ได้แต่ยังไม่นำมากระทบยอดจนกว่าแอดมินเปิดใช้",
-      "รายการข้ามวันเปิดเป็น “ค้างรอข้อมูลข้ามวัน”; เมื่อวันถัดไปจับคู่แบบ 1:1 ได้จึงปิดงานค้างและเก็บ Audit Log",
-      "ยอดสูงและเวลาคลาดเคลื่อนที่จับคู่ได้ตามกฎเป็นสถานะแจ้งผล ไม่ส่งให้ Audit ยืนยัน; คู่ซ้ำหรือคลุมเครือจะไม่ปิดอัตโนมัติ",
-      "STM ธนาคารของ XB รวมรายการฝากและถอน (D-W) ไว้ชีตเดียวต่อบัญชี เช่น KB A D-W หรือ SCB B D-W",
-    ],
-  },
-  { id: "SYS123", name: "เครือ 123", status: "active", companies: ["AT4", "FR8", "SK8"], rules: [
-    "AUTOPEER ฝาก/ถอน: รหัสสมาชิก ↔ สมาชิก BO, เลขบัญชีสมาชิก ↔ บัญชีลูกค้า BO และยอดฝาก/ถอน ↔ จำนวนเงินฝาก/จำนวนเงินถอนจริง BO",
-    "AZPAY ฝาก: รหัสสมาชิก + เลขบัญชีสมาชิก + จำนวนเงินฝาก ต้องตรงกับ สมาชิก + บัญชีลูกค้า + จำนวนเงินฝาก BO (ยังไม่เปิดกฎถอน)",
-    "COREPAY ฝาก/ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก/ถอน ต้องตรงกับสมาชิก + บัญชีลูกค้า + ยอดจริงฝั่ง BO",
-    "CYBERPLUS ฝากใช้ 3 จุดเหมือน COREPAY; CYBERPLUS ถอนใช้ 2 จุดคือรหัสสมาชิกและจำนวนเงินถอนจริง โดยไม่บังคับเลขบัญชีสมาชิก",
-    "LOCALPAY ฝาก/ถอน: รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดฝาก/ถอน ต้องตรงกับสมาชิก + บัญชีลูกค้า + ยอดจริงฝั่ง BO",
-    "ทุกคู่ต้องอยู่บริษัท Provider และทิศทางเดียวกัน; เลขบัญชีเต็มจับกับ 4 หลักท้ายได้เมื่อสมาชิกและยอดตรงกัน",
-    "ถ้าสมาชิกหรือเลขบัญชีขาดเพียงหนึ่งฝั่ง ระบบใช้จุดที่เหลือร่วมกับยอดและคู่เวลาใกล้ที่สุดไม่เกิน 10 นาทีแบบ reciprocal 1:1; ข้อมูลขัดกัน คู่เวลาเสมอ หรือมีแต่ยอดจะไม่ปิด",
-    "รายการซ้ำก่อน/หลังเที่ยงคืนจับต่อได้เมื่อ identity ตรงและเป็นคู่เวลาใกล้ที่สุดภายใน 60 นาที; เก็บหลักฐานข้ามวันใน Audit Log",
-    "STM ธนาคารปกติจับเวลากับคอลัมน์วันที่ธนาคารในรายงานฝาก/ถอน; BBL และ GSB ที่ไม่มีเวลาใช้บัญชี+วัน+ทิศทาง+ยอด",
-    "รายการ KTB เวลา 23:00-23:59 ที่ธนาคารลงวันที่ถัดไป เก็บเป็น candidate และปิดได้เฉพาะเมื่อบัญชี ทิศทาง ยอด และเวลาธนาคารเป็นคู่ 1:1 กับ BO ของวันก่อนหน้า",
-    "ยอดตรงที่เวลาแตกต่างแต่ระบุคู่ได้ชัดเจนเป็นผลการจับคู่ ไม่ส่งให้ Audit ยืนยัน; หลักฐานขัดกันหรือคู่กำกวมยังคงเป็นเคส",
-    "รายการฝากมือธนาคารปกติ: ใช้ยอดกับเวลาธนาคารใน BO จับคู่ STM; ท้าย 4 ตัวและชื่อลูกค้าใช้ช่วยแยกรายการซ้ำ และจะไม่เปิดเคสเพียงเพราะระบุว่าเติมมือ",
-    "BBL/GSB ที่ STM ไม่มีเวลา: AT4 BBL นรวรฝาก, AT4 KTB เบญจพรฝาก และ SK8 BBL ดลยาฝากยังใช้กฎเฉพาะแบบยอดไม่ซ้ำ คนละยูส และยอด BO ไม่เกิน STM",
-    "STM ธนาคารปกติแยกชีตตามบัญชีและแยกฝาก (D) / ถอน (W)",
-  ] },
-  { id: "SYS7M", name: "เครือ 7M", status: "active", companies: ["UFABET7M"], rules: [
-    "PM ฝากและถอนต้องจับคู่ 3 จุด: Ref/Ref Id ใน STM PM กับ Note ของ BO, User/Username กับ User ใน BO และยอดตามช่องเงินจริงของ Provider กับยอด BO",
-    "ATP ฝากใช้ยอด โอนจริง · ATP ถอนใช้ยอด P2P จ่าย",
-    "COREPAY และ CYBERPLUS ฝากใช้ จำนวนที่ได้รับ · ถอนใช้ จำนวนเงิน",
-    "AZPAY ฝากใช้ จำนวนเงิน · MYPAY และ LOCALPAY ฝาก/ถอนใช้ จำนวนเงินตามช่องรายการ",
-    "Note ของ BO อาจมีคำอธิบาย เช่น P2P สำเร็จจากรายการ P2C หรือ MyPay สำเร็จจากรายการ ระบบต้องค้นหา Ref ภายในข้อความ ไม่เทียบทั้งช่องแบบตรงตัว",
-    "เวลาเป็นข้อมูลประกอบ ไม่ใช่คีย์หลัก ถ้า Ref + User + ยอดเงินตรงกันให้ปิดได้ แม้เวลาต่างกัน; ถ้า User ไม่ครบ ใช้ Ref + ยอดเงินได้เมื่อเป็นคู่เดียวที่ไม่ซ้ำ",
-    "ค้นหาคู่ข้ามแถว/ข้ามชีตได้ แต่คู่ซ้ำหรือคลุมเครือจะคงไว้ให้ตรวจเพิ่ม ไม่ปิดจากเวลาใกล้เคียงเพียงอย่างเดียว",
-    "STM ธนาคารปกติจับคู่ด้วยยอดเงินและฝาก/ถอนภายในบัญชีเดียวกัน รองรับ BO/STM เรียงแถวไม่ตรงกัน โดยใช้เวลาที่ใกล้ที่สุดช่วยเลือกคู่",
-    "เฉพาะ TMN แยกชีตฝาก (D) และถอน (W); STM ธนาคารปกติอื่นรวมฝาก-ถอน (D-W) ไว้ชีตเดียวต่อบัญชี; แสดงสถานะ วิธีจับคู่ เหตุผล และยอดรวมท้ายชีต"
-  ] },
-]);
-
-function auditCompanyGroupOf(company) {
-  const code = String(company || "").trim().toUpperCase();
-  return AUDIT_COMPANY_GROUPS.find((group) => group.companies.includes(code));
-}
-
-function groupedCompanyOptions(codes, selected) {
-  const available = new Set((codes || []).map((code) => String(code || "").trim().toUpperCase()).filter(Boolean));
-  const groups = AUDIT_COMPANY_GROUPS.map((group) => {
-    const members = group.companies.filter((code) => available.has(code));
-    if (!members.length) return "";
-    return `<optgroup label="${h(group.name)}${group.status === "pending" ? " · รอเงื่อนไข" : ""}">${members.map((code) => `<option value="${h(code)}" ${code === selected ? "selected" : ""}>${h(code)}</option>`).join("")}</optgroup>`;
-  }).join("");
-  const grouped = new Set(AUDIT_COMPANY_GROUPS.flatMap((group) => group.companies));
-  const ungrouped = [...available].filter((code) => !grouped.has(code)).sort((a, b) => a.localeCompare(b, "th"));
-  return groups + (ungrouped.length ? `<optgroup label="ยังไม่จัดเครือ">${ungrouped.map((code) => `<option value="${h(code)}" ${code === selected ? "selected" : ""}>${h(code)}</option>`).join("")}</optgroup>` : "");
-}
-
-function reviewCompanyGroupsMarkup(companies) {
-  const available = new Map((companies || []).map((company) => [String(company.code || "").trim().toUpperCase(), company]));
-  const configured = new Set(AUDIT_COMPANY_GROUPS.flatMap((group) => group.companies));
-  const groupCards = AUDIT_COMPANY_GROUPS.map((group) => {
-    const members = group.companies.map((code) => available.get(code)).filter(Boolean);
-    if (!members.length) return "";
-    return `<article class="company-group-card review-company-group ${group.status === "pending" ? "pending" : "active"}">
-      <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(members.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
-      <div class="company-subcompany-list">${members.map((company) => `<button type="button" class="company-subcompany" data-review-company="${h(company.code)}"><span><b>${h(company.code)}</b><small>${h(company.name || company.code)}</small></span><i>เปิดชีทของบริษัทนี้</i></button>`).join("")}</div>
-      ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของ${h(group.name)}</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ ${num(members.length)} บริษัทในกลุ่มนี้ · หลักฐานไม่ครบหรือมีหลายคู่ต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของกลุ่มอื่นแทน</span></div>`}
-    </article>`;
-  }).join("");
-  const ungrouped = [...available.entries()].filter(([code]) => !configured.has(code)).map(([, company]) => company);
-  const ungroupedCard = ungrouped.length ? `<article class="company-group-card review-company-group pending"><div class="company-group-head"><div><strong>ยังไม่จัดเครือ</strong><span>${num(ungrouped.length)} บริษัท</span></div><span class="badge grey">รอจัดกลุ่ม</span></div><div class="company-subcompany-list">${ungrouped.map((company) => `<button type="button" class="company-subcompany" data-review-company="${h(company.code)}"><span><b>${h(company.code)}</b><small>${h(company.name || company.code)}</small></span><i>เปิดชีทของบริษัทนี้</i></button>`).join("")}</div></article>` : "";
-  return groupCards + ungroupedCard;
-}
-
-function auditRuleBookMarkup(selectedCompany = "") {
-  const selectedGroup = auditCompanyGroupOf(selectedCompany);
-  const activeGroups = AUDIT_COMPANY_GROUPS.filter((group) => group.status === "active");
-  return `<section class="panel audit-rule-book" aria-label="เงื่อนไขการกระทบยอดที่ระบบใช้จริง">
-    <div class="panel-heading"><div><p class="eyebrow">กติกาที่ระบบใช้จริง</p><h2>เงื่อนไขกระทบยอด XB · 123 · 7M</h2><small class="head-sub">แสดงกฎที่เปิดใช้งานแล้วเท่านั้น · คู่ซ้ำ หลักฐานไม่ครบ หรือข้อมูลขัดกันจะไม่ถูกปิดอัตโนมัติ</small></div><span class="health ok">${num(activeGroups.length)} เครือเปิดใช้</span></div>
-    <div class="audit-rule-book-grid">
-      ${activeGroups.map((group) => `<article class="audit-rule-book-card ${selectedGroup?.id === group.id ? "selected" : ""}">
-        <header><div><strong>${h(group.name)}</strong><small>${h(group.companies.join(" · "))}</small></div><span class="badge green">ใช้กฎแล้ว</span></header>
-        <ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol>
-      </article>`).join("")}
-    </div>
-    <div class="cross-day-rule-flow">
-      <strong>วงจรรายการข้ามวัน</strong>
-      <span><b>1</b> วันแรก: ค้างรอข้อมูลข้ามวันและแจ้ง Audit</span>
-      <i>→</i>
-      <span><b>2</b> วันถัดไป: ค้นหาคู่เดิมด้วยบัญชี/Provider ทิศทาง ยอด และหลักฐานอ้างอิง</span>
-      <i>→</i>
-      <span><b>3</b> พบคู่เดียว: ปิดรายการค้าง นำออกจากคิว และเก็บประวัติใน Audit Log</span>
-      <em>ไม่พบคู่หรือพบหลายคู่: คงไว้ให้ Audit ตรวจ ไม่บังคับปิด</em>
-    </div>
-  </section>`;
-}
-
-/* หน้าที่แต่ละ role มองเห็น */
-const ROUTE_ROLES = {
-  monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "monthly-audit", "notifications"],
-  audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "monthly-audit", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "account-holds", "notifications", "audit-log", "case-settings", "users", "finance"],
-  shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
-  exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications", "finance"],
-  /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
-  admin: Object.keys(ROUTE_MAP),
-};
-for(const role of ['monitor','audit_assistant','lead'])ROUTE_ROLES[role].push('source-upload','source-run');
-ROUTE_ROLES.lead.push('mail-intake');
-
-/* ---------------- state ---------------- */
-const PROD_TODAY = (() => {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-  const value = type => parts.find(part => part.type === type).value;
-  return `${value('year')}-${value('month')}-${value('day')}`;
-})();
-const OPERATING_START_DATE = "2026-08-30";
-// Display scope only: retain older sources for cross-day matching and evidence.
-// Do not apply this boundary to ingestion or reconciliation source lookups.
-const VISIBLE_DATE_FROM = "2026-09-15";
-const VISIBLE_DATE_TO = "9999-12-31";
-function visibleDate(value) {
-  return !value || value < VISIBLE_DATE_FROM ? VISIBLE_DATE_FROM : value > VISIBLE_DATE_TO ? VISIBLE_DATE_TO : value;
-}
-const DEFAULT_WORK_DATE = (() => {
-  const [year, month, day] = PROD_TODAY.split('-').map(Number);
-  return visibleDate(new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10));
-})();
-// Start with one day. Historical ranges remain explicitly selectable; source
-// ingestion and adjacent-day matching are not restricted by this UI default.
-const DEFAULT_RANGE_FROM = DEFAULT_WORK_DATE;
-const state = {
-  route: "cloud",
-  role: "lead",
-  filters: { date: DEFAULT_WORK_DATE, from: DEFAULT_RANGE_FROM, to: DEFAULT_WORK_DATE, preset: "custom", company: "ALL", direction: "ALL" },
-  filtersOpen: false,
-  exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
-  reviewSheet: "all",
-  auditDocumentView: "excel",
-  exceptionView: "sheet",
-  sort: { key: "time", dir: "asc" },
-  page: 1,
-  perPage: 12,
-  selected: null,
-  matchIndex: 0,
-  damageCycle: "C1",
-  dailySummary: { date: DEFAULT_WORK_DATE, company: "3XB" },
-  dataset: "production",
-  access: { email: "", fullName: "", role: "monitor", companies: [], active: false, loaded: false },
-  chat: [],
-};
-
-const can = (cap) => DB.roles[state.role].can.includes(cap);
-const canAccessCompany = (company) => {
-  const code = String(company || "").trim().toUpperCase();
-  if (state.dataset !== "production" || ["lead", "exec", "admin"].includes(state.role)) return true;
-  return state.access.companies.includes("*") || state.access.companies.includes(code);
-};
-const companyMaster = () => {
-  const rows = state.dataset === "production"
-    ? DB.companies.map((company) => company.code === "7M" ? { ...company, code: "UFABET7M", name: "UFABET7M" } : company)
-    : DB.companies;
-  return rows.filter((company) => canAccessCompany(company.code));
-};
-
-/* รายชื่อประเภท exception ทั้งหมด = ที่ตั้งไว้ในระบบ + ที่เกิดจริงจากกฎธุรกิจ */
-function allExceptionTypes() {
-  const out = DB.exceptionTypes.map((t) => ({ code: t.code, name: t.name }));
-  const seen = new Set(out.map((t) => t.code));
-  DB.exceptions.forEach((e) => {
-    if (seen.has(e.type)) return;
-    seen.add(e.type);
-    out.push({ code: e.type, name: e.typeName || e.type });
-  });
-  return out;
-}
-const currentUser = () => ({
-  username: state.access.email || (typeof Sb !== "undefined" ? Sb.currentEmail() : "") || "ผู้ใช้งานระบบ",
-  name: state.access.fullName || state.access.email || "ผู้ใช้งานระบบ",
-  role: state.role,
-  shift: "",
-});
-
-/* ---------------- audit log + toast ---------------- */
-function logAction(action, entity, target, detail) {
-  const entry = { at: nowStamp(), user: currentUser().username, action, entity, target, detail };
-  DB.auditLog.unshift(entry);
-  if (typeof Store !== "undefined") {
-    Store.data.auditLog.unshift(entry);
-    Store.persist();
-  }
-  if (state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn()) {
-    Sb.post("audit_log", [{ actor: Sb.currentEmail() || currentUser().username, action, entity, target: String(target || ""), detail: String(detail || "") }], "return=minimal").catch((e) => console.warn("audit log", e));
-  }
-}
-
-/* บันทึกสถานะเคสที่ถูกแก้ ให้อยู่รอดข้ามการรีเฟรช */
-function saveOverride(e, persistRemote = true) {
-  Store.data.exOverrides[e.id] = {
-    status: e.status,
-    hasEvidence: e.hasEvidence,
-    notes: e.notes,
-    resolutionNote: e.resolutionNote || "",
-    resolvedAt: e.resolvedAt || null,
-    resolvedBy: e.resolvedBy || null,
-    evidence: (e.evidence || []).map((f) => ({ name: f.name, size: f.size, at: f.at })),
-  };
-  Store.persist();
-  if (persistRemote && state.dataset === "production" && typeof Sb !== "undefined" && Sb.signedIn() && e.dbId) {
-    const authId = Sb.authUser()?.id || null;
-    const stamp = new Date().toISOString();
-    const payload = { status: e.status, updated_at: new Date().toISOString() };
-    if (e.status === "clarifying") Object.assign(payload, {
-      requested_by: e.requestedBy || authId,
-      requested_at: e.requestedAt || stamp,
-    });
-    if (e.status === "answered") Object.assign(payload, {
-      response_text: e.responseText || e.resolutionNote || (e.notes || []).map((note) => note.text).filter(Boolean).join("\n") || "ชี้แจงพร้อมหลักฐาน",
-      responded_by: e.respondedBy || authId,
-      responded_at: e.respondedAt || stamp,
-    });
-    if (["approved", "closed"].includes(e.status)) Object.assign(payload, {
-      approved_by: e.approvedBy || authId,
-      approved_at: e.approvedAt || stamp,
-    });
-    if (e.status === "closed" && e.resolutionNote) Object.assign(payload, {
-      resolution_note: e.resolutionNote,
-      resolved_at: e.resolvedAt || new Date().toISOString(),
-      resolved_by: e.resolvedBy || Sb.currentEmail() || currentUser().username,
-    });
-    Sb.patch("exceptions", `id=eq.${encodeURIComponent(e.dbId)}`, payload).catch((err) => {
-      toast("บันทึกสถานะกลับ Supabase ไม่สำเร็จ: " + err.message, "warn");
-    });
-  }
-}
-function applyStoredState() {
-  const ov = Store.data.exOverrides || {};
-  DB.exceptions.forEach((e) => {
-    const o = ov[e.id];
-    if (!o) return;
-    e.status = o.status ?? e.status;
-    e.hasEvidence = o.hasEvidence ?? e.hasEvidence;
-    e.notes = o.notes || e.notes;
-    e.resolutionNote = o.resolutionNote || e.resolutionNote;
-    e.resolvedAt = o.resolvedAt || e.resolvedAt;
-    e.resolvedBy = o.resolvedBy || e.resolvedBy;
-    e.evidence = o.evidence || e.evidence;
-  });
-  if (Store.data.settings) Object.assign(DB.settings, Store.data.settings);
-  if (Store.data.auditLog.length) DB.auditLog = Store.data.auditLog.concat(DB.auditLog).slice(0, 500);
-  (Store.data.extraDamages || []).forEach((d) => {
-    if (!DB.damages.some((x) => x.id === d.id)) DB.damages.push(d);
-  });
-}
-function toast(msg, kind = "ok") {
-  const wrap = $("#toastWrap");
-  const el = document.createElement("div");
-  el.className = `toast ${kind}`;
-  el.textContent = msg;
-  wrap.appendChild(el);
-  setTimeout(() => el.classList.add("on"), 10);
-  setTimeout(() => {
-    el.classList.remove("on");
-    setTimeout(() => el.remove(), 300);
-  }, 3200);
-}
-function deny(what) {
-  toast(`สิทธิ์ ${DB.roles[state.role].name} ไม่สามารถ${what}ได้`, "warn");
-}
-
-/* ---------------- data selectors ---------------- */
-function belongsToClarificationSheet(e) {
-  return !e.closureRequestId && Boolean(e.requestedAt || e.respondedAt || ["clarifying", "answered"].includes(e.status));
-}
-function filteredExceptions(source = DB.exceptions) {
-  const f = state.filters;
-  const x = state.exFilter;
-  return source.filter((e) => {
-    if (!canAccessCompany(e.company)) return false;
-    if (state.route === "exceptions" && state.reviewSheet !== "all" && belongsToClarificationSheet(e) !== (state.reviewSheet === "clarification")) return false;
-    if (!inRange(e.date)) return false;
-    if (f.company !== "ALL" && e.company !== f.company) return false;
-    if (f.direction !== "ALL" && e.direction !== f.direction) return false;
-    if (x.type !== "ALL" && e.type !== x.type) return false;
-    if (x.severity !== "ALL" && e.severity !== x.severity) return false;
-    if (x.status === "ACTION" && ["closed", "approved", "damage"].includes(e.status)) return false;
-    if (x.status === 'CLOSURE_PENDING' && !(e.closureRequestId && e.status === 'answered')) return false;
-    if (!['ALL', 'ACTION', 'CLOSURE_PENDING'].includes(x.status) && e.status !== x.status) return false;
-    if (x.sla && !e.overSla) return false;
-    if (x.q) {
-      const q = x.q.toLowerCase();
-      const provider = typeof pmProviderOf === "function" ? pmProviderOf(`${e.account} ${e.detail} ${e.stmRaw} ${e.boRaw}`) || "" : "";
-      const sys123CustomerTags = ["AT4", "FR8", "SK8"].includes(String(e.company || "").toUpperCase())
-        ? JSON.stringify(e.customerDetails || {}) : "";
-      const hay = `${e.id} ${e.code || ""} ${caseLabel(e)} ${e.company} ${e.account} ${e.employee} ${e.member} ${e.type} ${e.typeName} ${e.cause} ${e.bank} ${e.direction} ${e.detail} ${e.stmRaw} ${e.boRaw} ${provider} ${sys123CustomerTags}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-}
-function scopedExceptions() {
-  const f = state.filters;
-  return DB.exceptions.filter(
-    (e) =>
-      canAccessCompany(e.company) &&
-      inRange(e.date) &&
-      (f.company === "ALL" || e.company === f.company) &&
-      (f.direction === "ALL" || e.direction === f.direction),
-  );
-}
-/* ---------------- ช่วงวันที่ ---------------- */
-const DATE_PRESETS = [
-  { code: "day", name: "วันที่ตรวจ (วันเดียว)" },
-  { code: "last7", name: "7 วันล่าสุด" },
-  { code: "last30", name: "30 วันล่าสุด" },
-  { code: "thisMonth", name: "เดือนนี้" },
-  { code: "lastMonth", name: "เดือนก่อน" },
-  { code: "thisQuarter", name: "ไตรมาสนี้" },
-  { code: "thisYear", name: "ปีนี้" },
-  { code: "custom", name: "กำหนดเอง" },
-];
-function shiftDays(iso, n) {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  const p = (x) => String(x).padStart(2, "0");
-  return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
-}
-function monthBounds(iso, monthOffset) {
-  const [y, m] = iso.split("-").map(Number);
-  const start = new Date(Date.UTC(y, m - 1 + monthOffset, 1));
-  const end = new Date(Date.UTC(y, m + monthOffset, 0));
-  const p = (x) => String(x).padStart(2, "0");
-  return [
-    `${start.getUTCFullYear()}-${p(start.getUTCMonth() + 1)}-01`,
-    `${end.getUTCFullYear()}-${p(end.getUTCMonth() + 1)}-${p(end.getUTCDate())}`,
-  ];
-}
-function applyPreset(preset) {
-  const base = state.filters.date;
-  const f = state.filters;
-  f.preset = preset;
-  if (preset === "day") [f.from, f.to] = [base, base];
-  else if (preset === "last7") [f.from, f.to] = [shiftDays(base, -6), base];
-  else if (preset === "last30") [f.from, f.to] = [shiftDays(base, -29), base];
-  else if (preset === "thisMonth") [f.from, f.to] = monthBounds(base, 0);
-  else if (preset === "lastMonth") [f.from, f.to] = monthBounds(base, -1);
-  else if (preset === "thisQuarter") {
-    const m = +base.split("-")[1];
-    const qStart = Math.floor((m - 1) / 3) * 3 + 1;
-    const y = base.split("-")[0];
-    const [, end] = monthBounds(`${y}-${String(qStart + 2).padStart(2, "0")}-01`, 0);
-    [f.from, f.to] = [`${y}-${String(qStart).padStart(2, "0")}-01`, end];
-  } else if (preset === "thisYear") {
-    const y = base.split("-")[0];
-    [f.from, f.to] = [`${y}-01-01`, `${y}-12-31`];
-  }
-  f.date = visibleDate(f.date);
-  f.from = visibleDate(f.from);
-  f.to = visibleDate(f.to);
-}
-const inRange = (d) => {
-  if (!d || d === "-") return true;
-  const day = String(d).slice(0, 10);
-  return day >= VISIBLE_DATE_FROM && day <= VISIBLE_DATE_TO && day >= state.filters.from && day <= state.filters.to;
-};
-const rangeLabel = () =>
-  state.filters.from === state.filters.to ? state.filters.from : `${state.filters.from} ถึง ${state.filters.to}`;
-
-/* แสดงผลต่างให้ตรงกับความหมายของ exception แต่ละประเภท */
-function diffLabel(e) {
-  switch (e.type) {
-    case "amount_diff":
-      return `<span class="danger">${money(e.amountDiff)}</span>`;
-    case "time_diff":
-      return `${e.timeDiffSec} วิ`;
-    case "cross_day":
-      return `<span class="muted">ข้ามวัน ${e.timeDiffSec} วิ</span>`;
-    case "missing_bo":
-      return `<span class="danger">ไม่พบใน BO</span>`;
-    case "missing_stm":
-      return `<span class="danger">ไม่พบใน STM</span>`;
-    case "duplicate":
-      return `<span class="danger">ซ้ำ ${money(e.riskAmount)}</span>`;
-    default:
-      return `<span class="danger">${money(e.riskAmount)}</span>`;
-  }
-}
-function hasComparableExceptionTimes(e) {
-  return !!(e && e.boTime && e.stmTime && e.boTime !== "-" && e.stmTime !== "-");
-}
-function exceptionTimeDiffLabel(e) {
-  return hasComparableExceptionTimes(e) ? `${num(e.timeDiffSec)} วิ` : "ไม่มีเวลา";
-}
-function evidenceTimeDiffLabel(e) {
-  return e?.bo?.noTime || e?.stm?.noTime || !Number.isFinite(Number(e?.timeDifferenceSeconds))
-    ? "ไม่มีเวลา"
-    : `${num(e.timeDifferenceSeconds)} วินาที`;
-}
-const sumRisk = (list) => list.reduce((a, c) => a + (c.riskAmount || 0), 0);
-const severityColor = (s) => Charts.STATUS[s] || "#7c8ea2";
-const statusMeta = (code) => DB.statuses.find((s) => s.code === code) || { name: code, tone: "grey" };
-const caseStatusMeta = (e) => (e.reviewHold || window.AccountReviewHolds?.match(e)) ? {name:AccountReviewHolds.label,tone:'amber'} : e.closureRequestId && e.status === 'answered' ? {name:'รอหัวหน้าปิดเคส',tone:'grey'} : statusMeta(e.status);
-const sevMeta = (code) => DB.severities.find((s) => s.code === code) || { name: code };
-const isEmptyPmFile = (file) => file?.parsed && !file?.parse_error && file?.kind === "pm_statement" && Number(file?.row_count || 0) === 0 && Number(file?.size_bytes || 0) <= 16;
-const parsedFileLabel = (file) => isEmptyPmFile(file) ? "ไม่มีรายการ (0)" : "พร้อมใช้งาน";
-
-/* ปิดด่วนได้เมื่อมีรายการครบทั้งสองฝั่งและยอดเท่ากัน ผู้ตรวจยังต้องกดยืนยันเอง */
-function isQuickCloseEligible(e) {
-  if (typeof state !== "undefined" && state.dataset === "production") return !!e?._quickSourceEvidence && e.status === "open";
-  const realEvidence = (raw) => {
-    const value = String(raw || "").trim();
-    return value.length > 1 && !/^[—–-]|ไม่พบรายการ|ไม่ต้องใช้\s*statement|ตรวจจากรายงานหลังบ้าน|รอข้อมูล|ไม่มีข้อมูล/i.test(value);
-  };
-  return e
-    && !["closed", "approved", "damage"].includes(e.status)
-    && e.bankAmount !== null && e.bankAmount !== undefined
-    && e.systemAmount !== null && e.systemAmount !== undefined
-    && e.bankAmount !== "" && e.systemAmount !== ""
-    && Number.isFinite(Number(e.bankAmount)) && Number.isFinite(Number(e.systemAmount))
-    && !!e._detailLoaded
-    && realEvidence(e.stmRaw)
-    && realEvidence(e.boRaw)
-    && Math.abs(Number(e.bankAmount) - Number(e.systemAmount)) < 0.01;
-}
-
-function hasRecordedAmountOutcome(e) {
-  return !!e.closureRequestId || e.status === "pair_pending" || ["damage", "approved", "closed"].includes(e.status);
-}
-
-async function refreshQuickCloseEvidence(e) {
-  e._quickSourceEvidence = false;
-  if (state.dataset !== "production" || !e.dbId || !e._detailLoaded) return;
-  // Only open/closed complete pairs can pass the existing source-evidence
-  // check (closed is display-only). Skip whole-day reads for other cases.
-  if(!['open','closed'].includes(e.status) || e.bankAmount==null || e.systemAmount==null
-    || e.bankAmount==='' || e.systemAmount==='' || !Number.isFinite(Number(e.bankAmount))
-    || !Number.isFinite(Number(e.systemAmount)) || Math.abs(Number(e.bankAmount)-Number(e.systemAmount))>=0.01)return;
-  const [data, links] = await Promise.all([
-    Sb.reconciliationOverview(e.company, e.date),
-    Sb.evidenceCaseRecommendations({caseId:e.dbId}),
-  ]);
-  const row = data.cases?.find(row => row.id === e.dbId);
-  // Fail closed for linked clarification/cross-company cases and incomplete queries.
-  if (!row || row.company !== e.company || !Array.isArray(links) || links.length
-      || !["open","closed"].includes(row.status)) return;
-  const review = {...data, cases:data.cases.map(item => item.id === row.id ? {...item,status:"open"} : item)};
-  e._quickSourceEvidence = PreliminaryReview.manualCandidates(review).has(row.id);
-  e._quickVerifiedStatus = row.status;
-}
-
-// Completion is a positive assertion: absent/failed queries must never count as passed checks.
-function dailyCompletionBlockers(data) {
-  const blockers = [];
-  if (!data.files.length) blockers.push("ยังไม่ได้รับไฟล์");
-  if (!data.checklist) blockers.push("Checklist ยังโหลดไม่ครบ");
-  if (!data.reconciliationFiles.length || data.reconciliationFiles.some((f) => !f.parsed || f.parse_error)) blockers.push("ยังอ่านไฟล์กระทบยอดไม่ครบ");
-  if (!data.quality.length || data.quality.some((r) => !r.run_id || r.status !== "completed")) blockers.push("ยังไม่มีผลกระทบยอดสำเร็จครบ");
-  if (!data.boFirst || data.boFirst.complete !== true || (data.boFirst.missing || []).length) blockers.push("ยังตรวจคู่ STM/PM ตาม BO ไม่ครบ");
-  if ((data.checklist?.missing_items || []).length) blockers.push("มีเอกสารที่ต้องติดตาม");
-  if (data.stillOpen > 0) blockers.push(`ยังมี ${data.stillOpen} เคสค้าง`);
-  return blockers;
-}
-
-const caseUiResults = new Map();
-function caseUiKey(e) { return e.dbId || [e.company,e.date,e.runId,e.id].join('|'); }
-function recordCaseUiResult(e, message) {
-  caseUiResults.set(caseUiKey(e), {message, status:e.status, actor:(typeof Sb !== 'undefined' && Sb.currentEmail()) || currentUser().username, at:nowStamp()});
-}
-const clarificationRequestFlights = new Set();
-function isUnsentClarificationCase(row) {
-  return ['open','pending_next_day'].includes(row.status) && !row.requestedAt && !row.respondedAt && !row.closureRequestId;
-}
-function clarificationAccountKey(row) { return String(row.account||'').trim().toUpperCase(); }
-function captureClarificationRequestContext(e) {
-  const root = $('#viewRoot');
-  const scrolls = Array.from(root?.querySelectorAll('*') || []).filter(el => el.scrollTop || el.scrollLeft).map(el => {
-    const parts=[]; let node=el;
-    while(node && node!==root){parts.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
-    return {selector:parts.join(' > '),top:el.scrollTop,left:el.scrollLeft};
-  });
-  // Sheet filters live inside MC8LiveSheets, not state.exFilter. A sheet case
-  // may be the only row hydrated into DB.exceptions, so never infer exhaustion
-  // from that partial, unrelated list.
-  const rows=state.route==='mc8-sheets'?[]:filteredExceptions();
-  const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
-  const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
-  const candidates=ordered.filter(row=>row.company===e.company && caseUiKey(row)!==caseUiKey(e)
-    && isUnsentClarificationCase(row) && canAccessCompany(row.company));
-  const account=clarificationAccountKey(e);
-  const sameAccount=row=>account && clarificationAccountKey(row)===account;
-  return {company:e.company, date:e.date, route:state.route, actor:Sb.authUser()?.id||null,
-    account:e.account, x:window.scrollX,y:window.scrollY,scrolls,
-    nextKeys:[...candidates.filter(sameAccount),...candidates.filter(row=>!sameAccount(row))].map(caseUiKey)};
-}
-function restoreClarificationRequestScroll(context) {
-  const restore=()=>{
-    for(const saved of context.scrolls){const el=$('#viewRoot')?.querySelector(saved.selector);if(el){el.scrollTop=saved.top;el.scrollLeft=saved.left;}}
-    window.scrollTo({left:context.x,top:context.y,behavior:'instant'});
-  };
-  restore();requestAnimationFrame(()=>requestAnimationFrame(restore));
-}
-async function loadClarificationReceiptCandidates(e,context) {
-  if((context.route!=='mc8-sheets'&&!context.readOnlyQueue)||state.dataset!=='production')return;
-  if(!context.date||!canAccessCompany(context.company))throw Error('ไม่พบขอบเขตบริษัทและวันที่ของเคส');
-  const [raw,scopes]=await Promise.all([
-    Sb.currentExceptions({company:context.company,from:context.date,to:context.date,limit:10000}),
-    Sb.reviewHoldScopes(),
-  ]);
-  if(!Array.isArray(raw)||raw.length>=10000||!Array.isArray(scopes))throw Error('ยังโหลดรายการเคสปัจจุบันไม่ครบ กรุณาลองตรวจอีกครั้ง');
-  if(context.actor!==(Sb.authUser()?.id||null)||context.route!==state.route)throw Error('ผู้ใช้หรือหน้ารายการเปลี่ยนแล้ว');
-  AccountReviewHolds.set(scopes);
-  const rows=raw.map(mapLiveException).filter(row=>row.company===context.company&&row.date===context.date);
-  const index=rows.findIndex(row=>caseUiKey(row)===caseUiKey(e));
-  const ordered=index<0?rows:rows.slice(index+1).concat(rows.slice(0,index));
-  const candidates=ordered.filter(row=>caseUiKey(row)!==caseUiKey(e)&&isUnsentClarificationCase(row)&&!AccountReviewHolds.match(row));
-  if(context.readOnlyQueue){
-    const flags=await Sb.caseEvidenceFlags(candidates.map(row=>row.dbId));
-    if(context.actor!==(Sb.authUser()?.id||null)||context.route!==state.route)throw Error('ผู้ใช้หรือหน้ารายการเปลี่ยนแล้ว');
-    for(const row of candidates)row.hasEvidence=!!row.clarificationFileId||!!flags[row.dbId];
-    context.queueStats={total:rows.length,held:rows.filter(row=>AccountReviewHolds.match(row)).length};
-  }
-  const same=row=>clarificationAccountKey(row)===clarificationAccountKey(e);
-  context.nextKeys=[...candidates.filter(same),...candidates.filter(row=>!same(row))].map(caseUiKey);
-  for(const row of rows){
-    const existing=DB.exceptions.find(item=>caseUiKey(item)===caseUiKey(row));
-    if(existing)Object.assign(existing,row,{notes:existing.notes||[],evidence:existing.evidence||[]});
-    else DB.exceptions.push(row);
-  }
-}
-async function showReadOnlyCaseQueue(e) {
-  if(!can('request_clarify')||!canAccessCompany(e.company))return deny('ดูคิวเคสถัดไป');
-  if(state.dataset==='production'&&!Sb.signedIn())return deny('ดูคิวเคสถัดไป');
-  captureCaseOpenDraft();
-  const context=captureClarificationRequestContext(e);
-  context.readOnlyQueue=true;
-  return showClarificationRequestReceipt(e,context,{readOnly:true});
-}
-async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}) {
-  const next=()=>context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).find(row=>row
-    && row.company===context.company && isUnsentClarificationCase(row)
-    && canAccessCompany(row.company));
-  openModal(readOnly?'ดูคิวเคสถัดไป — อ่านอย่างเดียว':'ส่งขอชี้แจงสำเร็จแล้ว', `<div role="status"><p><strong>${h(e.company)} · ${h(e.date||'')} · ${h(e.code||e.id||'ทุกบัญชี')}</strong></p><p>${readOnly?'ยังไม่ได้ส่งคำขอใด ๆ · เปิดดูรายละเอียดเท่านั้น ไม่สร้างเคส ไม่เปลี่ยนยอด และไม่ปิดเคส':'ส่งคำขอให้ผู้ชี้แจงในเคสเดิมแล้ว ไม่สร้างเคสซ้ำ ไม่เปลี่ยนยอด และยังไม่ปิดเคส'}</p><p id="requestReceiptStatus">กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…</p><small>คงบริษัท วันที่ ตัวกรอง หน้ารายการ และตำแหน่งเลื่อนเดิม · คิวครอบคลุมทุกบัญชีในบริษัท/วันเดียวกัน ตรวจบัญชีเดิมก่อน · ไฟล์แนบอย่างเดียวยังถือว่ายังไม่ส่ง</small></div>${readOnly?'<div id="readOnlyCaseQueue" aria-label="ลำดับเคสถัดไป"></div>':''}`,
-    `<button class="ghost-button" id="requestReceiptReturn">${readOnly?'กลับเคส / รายการเดิม':'กลับหน้ารายการ'}</button><button class="primary-button" id="requestReceiptNext" disabled>ตรวจเคสถัดไปของบริษัทนี้</button>`);
-  const nextButton=$('#requestReceiptNext'),status=$('#requestReceiptStatus');
-  let acted=false,busy=false,failed=false;
-  $('#modal')._contentCleanup=()=>{acted=true;};
-  const active=()=>!acted&&state.route===context.route&&(Sb.authUser()?.id||null)===context.actor&&$('#requestReceiptNext')===nextButton;
-  const returnToList=()=>{closeModal();if(!readOnly)closeDrawer();if(!readOnly&&context.route!=='mc8-sheets')render();restoreClarificationRequestScroll(context);};
-  const refresh=async()=>{
-    busy=true;nextButton.disabled=true;status.textContent='กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…';
-    try{
-      await loadClarificationReceiptCandidates(e,context);
-      if(!active())return;
-      failed=false;const row=next();nextButton.disabled=!row;nextButton.textContent=readOnly?'เปิดดูเคสถัดไป (ไม่ส่งคำขอ)':'ตรวจเคสถัดไปของบริษัทนี้';
-      status.textContent=row?`เคสถัดไป: ${row.code||row.id} · ${row.account||'ไม่ระบุ'} · ${!clarificationAccountKey(e)?'เริ่มจากคิวของบริษัทนี้':clarificationAccountKey(row)===clarificationAccountKey(e)?'ตรวจบัญชีเดิมต่อ':'บัญชีเดิมไม่มีเคสที่ส่งต่อได้ ไปบัญชีอื่นของบริษัทนี้'}`:'ไม่มีเคสที่ยังไม่ส่งขอชี้แจงในขอบเขตนี้แล้ว (ไม่รวมเคสพักตรวจ)';
-      if(readOnly){
-        const queue=context.nextKeys.map(key=>DB.exceptions.find(row=>caseUiKey(row)===key)).filter(row=>row&&row.company===context.company&&canAccessCompany(row.company)&&isUnsentClarificationCase(row));
-        const stats=context.queueStats||{};
-        $('#readOnlyCaseQueue').innerHTML=`<p>เคสในผลหลัก ${num(stats.total||0)} · พักตรวจ ${num(stats.held||0)} · คิวถัดไป ${num(queue.length)} (ไม่รวมเคสที่กำลังเปิด)</p><div class="table-wrap"><table><thead><tr><th>ลำดับ</th><th>เคส</th><th>บัญชี</th><th>หลักฐาน</th></tr></thead><tbody>${queue.slice(0,100).map((row,i)=>`<tr data-next-queue-case="${h(row.dbId||row.id)}"><td>${i+1}${clarificationAccountKey(row)===clarificationAccountKey(e)?' · บัญชีเดิม':''}</td><td>${h(row.code||row.id)}</td><td>${h(row.account||'ไม่ระบุ')}</td><td>${row.hasEvidence?'แนบแล้ว — ยังไม่ส่ง':'ยังไม่แนบ — ยังไม่ส่ง'}</td></tr>`).join('')||'<tr><td colspan="4">ไม่มีเคสถัดไปที่ส่งต่อได้</td></tr>'}</tbody></table></div>${queue.length>100?'<p>แสดง 100 เคสแรกจากคิวทั้งหมด · ปุ่มถัดไปใช้คิวครบทุกเคส</p>':''}`;
-      }
-    }catch(error){if(active()){failed=true;status.textContent='ยังตรวจเคสถัดไปไม่สำเร็จ: '+error.message+(readOnly?' · ยังไม่ได้ส่งคำขอ':' · คำขอเดิมส่งสำเร็จแล้ว ไม่ต้องส่งซ้ำ');nextButton.disabled=false;nextButton.textContent='ลองตรวจเคสถัดไปอีกครั้ง';if(readOnly)$('#readOnlyCaseQueue').innerHTML='';}}
-    finally{busy=false;}
-  };
-  $('#requestReceiptReturn').onclick=()=>{if(acted)return;acted=true;returnToList();};
-  $('#requestReceiptNext').onclick=async()=>{
-    if(!active()||busy)return;
-    if(!can('request_clarify'))return deny('ตรวจเคสถัดไป');
-    if(failed)return refresh();
-    // Re-read the accepted current case set on navigation, not another send.
-    await refresh();if(!active()||failed)return;
-    const row=next();if(!row){$('#requestReceiptNext').disabled=true;return toast('ไม่มีเคสถัดไปในบริษัทและตัวกรองเดิมแล้ว','warn');}
-    acted=true;if(readOnly)captureCaseOpenDraft();returnToList();await openException(row.id);
-  };
-  await refresh();
-}
-function showCaseSubmissionReceipt(kind, label = '') {
-  const receipts = {
-    request: ['ส่งขออนุมัติปิดเคสเรียบร้อย', 'คำขอปิดเคสถูกบันทึกและส่งเข้าคิวหัวหน้าแล้ว เคสยังไม่ปิดจนกว่าหัวหน้าจะตรวจและอนุมัติสำเร็จ'],
-    clarification: ['ส่งคำชี้แจงพร้อมหลักฐานเรียบร้อย — รอ Audit ตรวจ', 'คำชี้แจงพร้อมหลักฐานถูกบันทึกแล้ว แต่ยังไม่ได้ส่งคำขอให้หัวหน้าปิดเคส ให้ Audit ตรวจเอกสารและผลยอด แล้วกดส่งหัวหน้ารอปิดเคส เคสเดิมยังอยู่ในภาพรวม'],
-    evidence: ['แนบหลักฐานเรียบร้อย', 'บันทึกไฟล์และผูกกับเคสแล้ว แต่การแนบไฟล์หรือบันทึก Note อย่างเดียวยังไม่ได้ส่งคำขอปิดเคส ให้ส่งคำชี้แจงหรือคำขอจับคู่ตามประเภทเคส'],
-    additional_evidence: ['เพิ่มหลักฐานในเคสรออนุมัติเรียบร้อย', 'บันทึกหลักฐานเพิ่มแล้ว คำขอเดิมยังรอหัวหน้าตรวจ ไม่ต้องส่งซ้ำ และยังไม่ใช่การปิดเคส'],
-    review_evidence: ['ส่งหลักฐานเข้าคิวตรวจเรียบร้อย', 'ผูกเอกสารกับเคสและรอผู้ตรวจทานแล้ว ยังไม่ใช่การยืนยันยอดหรืออนุมัติปิดเคส'],
-  };
-  const receipt = receipts[kind];
-  if (!receipt) throw new Error('Unknown case submission receipt');
-  openModal(receipt[0], `<div role="status"><p>${h(label)}</p><p>${h(receipt[1])}</p><p>กลับไปหน้าภาพรวมเคสเพื่อดำเนินการเคสถัดไป</p></div>`, '<button class="ghost-button" id="receiptViewCase">ดูเคสนี้ต่อ</button><button class="primary-button" id="receiptOverview">กลับไปหน้าภาพรวมเคส</button>');
-  $('#receiptViewCase').onclick = closeModal;
-  $('#receiptOverview').onclick = () => { closeModal(); closeDrawer(); state.reviewSheet='all'; state.exFilter.status='ALL'; go('exceptions'); };
-}
-async function persistCaseClosure(e, note) {
-  if (e._closing) return false;
-  e._closing = true;
-  try {
-    const stamp = new Date().toISOString();
-    const actor = (typeof Sb !== "undefined" && Sb.currentEmail()) || currentUser().username;
-    if (state.dataset === "production") {
-      if (typeof Sb === "undefined" || !Sb.signedIn() || !e.dbId) throw new Error("ยังยืนยันบัญชีผู้ใช้หรือเคสต้นทางไม่ได้");
-      await Sb.closeException(e.dbId, e.status, {
-        resolution_note: note, resolved_at: stamp, resolved_by: actor,
-        approved_by: Sb.authUser()?.id, approved_at: stamp, updated_at: stamp,
-      });
-    }
-    Object.assign(e, { status: "closed", resolutionNote: note, resolvedAt: stamp, resolvedBy: actor });
-    recordCaseUiResult(e, 'ยืนยันปิดเคสสำเร็จ — ตรวจหลักฐานและประวัติการปิดได้ในเคสนี้');
-    if (state.dataset !== "production") saveOverride(e);
-    else {
-      delete Store.data.exOverrides[e.id];
-      Store.persist();
-    }
-    return true;
-  } catch (err) {
-    toast("ยังไม่ยืนยันการปิดเคส: " + err.message + " — รีเฟรชเพื่อตรวจสถานะจริง", "warn");
-    return false;
-  } finally {
-    e._closing = false;
-  }
-}
-
-async function completeQuickClose(e) {
-  if (!can("approve")) return deny("ปิดเคส");
-  try { await refreshQuickCloseEvidence(e); }
-  catch (err) { return toast("ตรวจหลักฐานล่าสุดไม่สำเร็จ: " + err.message, "warn"); }
-  if (state.dataset === "production" && e._quickVerifiedStatus !== "open") return toast("สถานะเคสเปลี่ยนแล้ว กรุณาเปิดตรวจใหม่", "warn");
-  if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
-  const note = "Audit ยืนยันคู่ BO/PM และปิดเคส — ยอมรับเวลาต่างหรือข้ามวัน ตรวจยอด อ้างอิงและคู่ซ้ำแล้ว; ยอด " + e.systemAmount + " บาท; เวลา " + exceptionTimeDiffLabel(e) + "; BO: " + e.boRaw + "; PM: " + e.stmRaw;
-  if (!await persistCaseClosure(e, note)) return;
-  e.resolutionNote = note;
-  e.resolvedAt = new Date().toISOString();
-  e.resolvedBy = (typeof Sb !== "undefined" && Sb.signedIn() ? Sb.currentEmail() : "") || currentUser().username;
-  e.notes = e.notes || [];
-  e.notes.push({ by: currentUser().username, at: nowStamp(), text: note });
-  logAction("quick_close", "exception", e.id, `${note} · STM ${money(e.bankAmount)} · BO ${money(e.systemAmount)} · เวลา ${exceptionTimeDiffLabel(e)}`);
-  closeModal();
-  toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
-  renderNav();
-  await refreshCaseView();
-  await openException(e.id);
-}
-
-let bulkCaseApprovalRunning = false;
-let auditStatusBatchRunning = false;
-function confirmAuditStatusBatch(items, {company,date,onComplete}) {
-  if(auditStatusBatchRunning || !items.length)return;
-  const snapshot=items.map(({row,action})=>({row:row?{...row}:null,action}));
-  openModal('บันทึกสถานะที่เตรียมไว้', `<p>${h(company)} · ${h(date)} · ${snapshot.length} รายการ</p><p>ตรวจสถานะล่าสุดก่อนบันทึกทีละรายการ รายการที่ไม่ผ่านจะไม่เปลี่ยนสถานะ ไม่ส่งข้อความภายนอก</p>${snapshot.map(({row,action})=>`<p>${h(row?.code||'ไม่พบเคส')} → ${action==='close'?'ยืนยันปิดเคส':'ส่งเข้าชีทรอชี้แจง'}</p>`).join('')}<p id="auditBatchProgress" role="status"></p>`, '<button id="auditBatchCancel" class="ghost-button">ยกเลิก</button><button id="auditBatchConfirm" class="primary-button">ยืนยันบันทึกทั้งหมด</button>');
-  let cancelled=false;$('#modal')._contentCleanup=()=>{cancelled=true;};
-  $('#auditBatchCancel').onclick=closeModal;
-  $('#auditBatchConfirm').onclick=async()=>{
-    if(auditStatusBatchRunning)return;
-    auditStatusBatchRunning=true;$('#auditBatchConfirm').disabled=true;
-    const results=[];
-    try {
-      for(const {row,action} of snapshot){
-        if(cancelled)break;
-        try{
-          if(!Sb.signedIn())throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
-          if(!row)throw new Error('ไม่พบเคสในชุดข้อมูลล่าสุด กรุณาเลือกเคสใหม่');
-          if(row.company!==company)throw new Error(`เคสเป็นของ ${row.company} ไม่ใช่ ${company}`);
-          if(row.business_date!==date)throw new Error(`เคสอยู่วันที่ ${row.business_date} แต่กำลังตรวจวันที่ ${date} กรุณาเปิดวันที่ของเคส`);
-          if(action==='close'){
-            const result=await BulkCaseReview.run([row],{company,date},{allowed:()=>can('approve')&&Sb.signedIn(),cancelled:()=>cancelled,load:Sb.reconciliationOverview,candidates:PreliminaryReview.manualCandidates,links:id=>Sb.evidenceCaseRecommendations({caseId:id}),progress:()=>{},save:async fresh=>{
-              const e=mapLiveException(fresh);e.id=fresh.id;
-              return persistCaseClosure(e,`Audit ยืนยันปิดจากตาราง — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; BO: ${e.boRaw}; PM: ${e.stmRaw}`);
-            }});
-            results.push({code:row.code,ok:result[0]?.status==='closed',message:result[0]?.status==='closed'?'ปิดเคสแล้ว':result[0]?.reason||'ยังไม่ปิด'});
-          }else if(action==='clarify'){
-            if(!can('request_clarify'))throw new Error('ไม่มีสิทธิ์ส่งชี้แจง');
-            const fresh=await Sb.exceptionDetail(row.id);
-            if(!fresh||fresh.company!==company||fresh.business_date!==date||fresh.run_id!==row.run_id||fresh.status!==row.status||!['open','answered','pending_next_day'].includes(fresh.status))throw new Error('ข้อมูลเคสเปลี่ยนแล้ว กรุณาตรวจใหม่');
-            if(cancelled)break;
-            const at=new Date().toISOString();
-            await Sb.requestClarification(row.id,fresh.status,{requested_at:at,requested_by:Sb.authUser()?.id,updated_at:at});
-            results.push({code:row.code,ok:true,message:'ส่งเข้าชีทรอชี้แจงแล้ว'});
-          }else throw new Error('ไม่รองรับสถานะนี้');
-        }catch(error){results.push({code:row?.code,ok:false,message:error.message});}
-        if(!cancelled&&$('#auditBatchProgress'))$('#auditBatchProgress').textContent=`ตรวจแล้ว ${results.length}/${snapshot.length}`;
-      }
-      await onComplete();
-      if(cancelled)return toast(`บันทึกสำเร็จ ${results.filter(r=>r.ok).length} รายการ — หยุดรายการที่เหลือแล้ว`);
-      openModal('ผลบันทึกสถานะ',`<p>สำเร็จ ${results.filter(r=>r.ok).length}/${snapshot.length} รายการ</p>${results.map(r=>`<p>${h(r.code)} — ${h(r.message)}</p>`).join('')}`,'<button id="auditBatchDone" class="primary-button">เสร็จสิ้น</button>');
-      $('#auditBatchDone').onclick=closeModal;
-    } finally {auditStatusBatchRunning=false;}
-  };
-}
-function confirmBulkCaseClose(rows, {company, date, onComplete}) {
-  if (!can("approve")) return deny("ปิดเคส");
-  if (bulkCaseApprovalRunning || !rows.length || state.dataset !== "production") return;
-  const snapshot = JSON.parse(JSON.stringify(rows));
-  const total = snapshot.reduce((sum,row)=>sum+Math.round(Number(row.system_amount)*100),0)/100;
-  openModal(`ยืนยันปิด ${num(snapshot.length)} เคสที่เลือก`,
-    `<p>${h(company)} · ${h(date)} · รวม ${money(total)} บาท</p><p>ตรวจอ้างอิง BO/PM ยอด ตัวตน และคู่ซ้ำอีกครั้ง โดยยอมรับเวลาต่างหรือข้ามวันก่อนบันทึกแต่ละรายการ เคสที่เปลี่ยนสถานะหรือมีหลักฐานเชื่อมโยงจะข้ามไว้ ไม่ส่งข้อความและไม่บันทึกความเสียหาย</p><details><summary>รายการที่เลือก</summary>${snapshot.map(row=>`<p>${h(row.code || row.id)} · ${money(row.system_amount)} บาท</p>`).join('')}</details><p id="bulkCaseProgress" role="status"></p>`,
-    '<button id="bulkCaseCancel" class="ghost-button">ยกเลิก</button><button id="bulkCaseConfirm" class="primary-button">ยืนยันอนุมัติและปิดรายการที่ผ่านเกณฑ์</button>');
-  let cancelled = false;
-  $("#modal")._contentCleanup = () => { cancelled = true; };
-  $("#bulkCaseCancel").onclick = closeModal;
-  $("#bulkCaseConfirm").onclick = async () => {
-    if (bulkCaseApprovalRunning) return;
-    bulkCaseApprovalRunning = true;
-    $("#bulkCaseConfirm").disabled = true;
-    $("#bulkCaseCancel").textContent = 'หยุดรายการที่เหลือ';
-    try {
-      const results = await BulkCaseReview.run(snapshot,{company,date},{
-        allowed:()=>can('approve') && Sb.signedIn(), cancelled:()=>cancelled,
-        load:Sb.reconciliationOverview, candidates:PreliminaryReview.manualCandidates,
-        links:id=>Sb.evidenceCaseRecommendations({caseId:id}),
-        progress:(done,count)=>{if(!cancelled && $('#bulkCaseProgress')) $('#bulkCaseProgress').textContent=`ตรวจแล้ว ${done}/${count} รายการ`;},
-        save:async row=>{
-          const e=mapLiveException(row);e.id=row.id;
-          const note=`Audit ยืนยันแบบหลายรายการ — คู่ BO/PM ยอดและตัวตนตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน; ยอด ${e.systemAmount} บาท; เวลา ${exceptionTimeDiffLabel(e)}; BO: ${e.boRaw}; PM: ${e.stmRaw}`;
-          return persistCaseClosure(e,note);
-        },
-      });
-      const closed=results.filter(r=>r.status==='closed'), skipped=results.filter(r=>r.status!=='closed');
-      await onComplete();
-      if(cancelled) return toast(`ปิดแล้ว ${closed.length} เคส · ไม่ปิด ${skipped.length} เคส`);
-      openModal('ผลอนุมัติรายการที่เลือก',`<p role="status">ปิดแล้ว ${closed.length} เคส · ${money(closed.reduce((n,r)=>n+r.amount,0))} บาท · ไม่ปิด ${skipped.length} เคส</p>${results.map(r=>`<p>${h(r.code)} — ${r.status==='closed'?'ปิดเคสแล้ว':h(r.reason)}</p>`).join('')}`, '<button id="bulkCaseDone" class="primary-button">เสร็จสิ้น</button>');
-      $('#bulkCaseDone').onclick=closeModal;
-    } catch(error) { toast('ตรวจผลล่าสุดไม่สำเร็จ: '+error.message+' — กรุณารีเฟรชก่อนลองใหม่','warn'); }
-    finally { bulkCaseApprovalRunning=false; }
-  };
-}
-
-function confirmQuickClose(e) {
-  if (!can("approve")) return deny("ปิดเคส");
-  if (!isQuickCloseEligible(e)) return toast("เคสนี้ยังปิดด่วนไม่ได้ กรุณาตรวจรายละเอียดก่อน", "warn");
-  openModal(
-    `ยืนยันปิดเคส ${h(e.id)}`,
-    `<div class="quick-close-box"><strong>พบข้อมูลครบทั้งสองฝั่งและยอดตรงกัน</strong><div class="quick-close-grid"><div><span>STM / ธนาคาร</span><b>${money(e.bankAmount)}</b></div><div><span>BO / ระบบ</span><b>${money(e.systemAmount)}</b></div><div><span>ผลต่างยอด</span><b>${money(Number(e.systemAmount) - Number(e.bankAmount))}</b></div><div><span>ผลต่างเวลา</span><b>${h(exceptionTimeDiffLabel(e))}</b></div></div><small>ระบบจะบันทึกผู้ยืนยัน เวลา และเหตุผลไว้ใน Audit Log การปิดนี้เป็นการตัดสินใจของผู้ตรวจ ไม่ใช่การปิดอัตโนมัติ</small></div>`,
-    `<button class="ghost-button" id="quickCloseCancel">กลับไปตรวจ</button><button class="primary-button" id="quickCloseConfirm">ยืนยันยอดตรงและปิดเคส</button>`,
-  );
-  $("#quickCloseCancel").addEventListener("click", closeModal);
-  $("#quickCloseConfirm").addEventListener("click", () => completeQuickClose(e));
-}
-
-/* ---------------- shell rendering ---------------- */
-function scopedWorkflowMetrics() {
-  const inScope = (row) => {
-    const date = row?.business_date || row?.date || "";
-    return row
-      && isLiveCompanyRow(row)
-      && canAccessCompany(row.company)
-      && (!state.filters.from || date >= state.filters.from)
-      && (!state.filters.to || date <= state.filters.to)
-      && (state.filters.company === "ALL" || normalizeLiveCompanyCode(row.company) === normalizeLiveCompanyCode(state.filters.company));
-  };
-  const qualityRows = (liveOverviewState.quality || []).filter(inScope).filter((row) => row.run_id && !row.is_archived);
-  const hiddenRows = (liveOverviewState.informationalExceptions || []).filter(inScope).filter((row) => !["closed", "approved"].includes(row.status));
-  const checklistRows = (liveOverviewState.checklist || []).filter(inScope);
-  const checklistByKey = new Map(checklistRows.map((row) => [`${row.business_date}|${normalizeLiveCompanyCode(row.company)}`, row]));
-  const aggregateOpenBeforePolicy = qualityRows.reduce((sum, run) => {
-    const total = Number(run.exception_count || 0);
-    const checklist = checklistByKey.get(`${run.business_date}|${normalizeLiveCompanyCode(run.company)}`);
-    const resolved = Number(checklist?.resolved_count || 0);
-    const reportedOpen = Number(checklist?.open_count || 0);
-    const checklistCoversRun = checklist?.open_count != null && reportedOpen + resolved >= total;
-    return sum + (checklistCoversRun ? reportedOpen : Math.max(0, total - resolved));
-  }, 0);
-  const aggregateOpen = Math.max(0, aggregateOpenBeforePolicy - hiddenRows.length);
-  const loadedOpen = DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status)).length;
-  const qualityReady = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
-  return {
-    openAvailable: qualityReady || liveOverviewState.exceptionsReady,
-    open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
-    approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null && CrossDayWorkbench.queueState.rows !== null)),
-    approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && row.status === 'damage').length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) + (CrossDayWorkbench.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
-    followUps: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
-  };
-}
-
-function renderNav() {
-  if(state.dataset==='production'&&Sb.signedIn()){ManualPairing.loadPending();CaseClosure.loadPending();CrossDayWorkbench.loadPending();}
-  const allowed = ROUTE_ROLES[state.role];
-  const workflow = scopedWorkflowMetrics();
-  $("#navList").innerHTML = ROUTES.map((g) => {
-    const items = g.items.filter((it) => allowed.includes(it.id) && (!it.hidden || state.role === "admin"));
-    if (!items.length) return "";
-    return (
-      `<span class="nav-label">${h(g.group)}</span>` +
-      items
-        .map(
-          (it) =>
-            `<a href="#/${it.id}" class="${state.route === it.id ? "active" : ""}" data-route="${it.id}" title="${h(it.label)}">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[it.icon]}"/></svg><span>${h(it.label)}</span>
-              ${it.id === "exceptions" ? `<b class="nav-count">${workflow.openAvailable ? num(workflow.open) : "—"}</b>` : ""}
-              ${it.id === "audit-review" ? `<b class="nav-count" title="เคสรอ Audit ตรวจในบริษัทและวันที่ที่เลือก">${liveOverviewState.exceptionsReady ? num(AuditReview.rows(DB.exceptions, {filters:state.filters,canAccessCompany}).length) : "—"}</b>` : ""}
-              ${it.id === "approvals" ? `<b class="nav-count" title="คำขอจับคู่ทุกวันที่ตามสิทธิ์ รวมเคสชี้แจงแล้วในขอบเขตที่โหลด">${workflow.approvalsAvailable ? num(workflow.approvals) : "—"}</b>` : ""}
-            </a>`,
-        )
-        .join("")
-    );
-  }).join("");
-}
-
-function setSidebarCollapsed(collapsed) {
-  const shell = $("#appShell");
-  const button = $("#navToggle");
-  if (!shell || !button) return;
-  shell.classList.toggle("sidebar-collapsed", collapsed);
-  button.setAttribute("aria-expanded", String(!collapsed));
-  button.setAttribute("aria-label", collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู");
-  button.title = collapsed ? "แสดงแถบเมนู" : "ซ่อนแถบเมนู";
-  try { localStorage.setItem("audit-sidebar-collapsed", collapsed ? "1" : "0"); } catch (_) {}
-}
-
-function renderAuditFlow() {
-  const files = (cloudState.batches || []).flatMap((batch) => batch.source_files || []);
-  const fileIssues = files.filter((file) => (file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown").length;
-  const fileReview = files.filter(statementNeedsBoReview).length;
-  const fileWaiting = files.filter((file) => !file.parsed && !file.parse_error && !["unknown", "doc_clarify"].includes(file.kind)).length;
-  const workflow = scopedWorkflowMetrics();
-  const steps = [
-    { route: "cloud", no: 1, label: "ตรวจไฟล์", meta: files.length ? `${num(files.length)} ไฟล์${fileIssues ? ` · ปัญหา ${num(fileIssues)}` : ""}${fileReview ? ` · รอเทียบ BO ${num(fileReview)}` : ""}${fileWaiting ? ` · รอระบบ ${num(fileWaiting)}` : fileIssues || fileReview ? "" : " · พร้อม"}` : "ตรวจไฟล์ที่ได้รับ", tone: fileIssues || fileReview ? "warn" : files.length ? "ok" : "" },
-    { route: "dashboard", no: 2, label: "ดูภาพรวม", meta: "แยกตามบริษัท", tone: "" },
-    { route: "exceptions", no: 3, label: "ตรวจข้อผิดปกติ", meta: workflow.openAvailable ? `${num(workflow.open)} เคสเปิด` : "กำลังโหลดยอดเคส", tone: !workflow.openAvailable ? "" : workflow.open ? "warn" : "ok" },
-    { route: "clarify", no: 4, label: "ติดตาม/อนุมัติ", meta: workflow.approvalsAvailable ? `${num(workflow.followUps)} งาน` : "กำลังโหลดงานติดตาม", tone: !workflow.approvalsAvailable ? "" : workflow.followUps ? "warn" : "ok" },
-    { route: "reports", no: 5, label: "ออกรายงาน", meta: "Export หลักฐาน", tone: "" },
-  ];
-  const active = { intake: "cloud", matching: "exceptions", approvals: "clarify", kpi: "reports", talk: "reports" }[state.route] || state.route;
-  $("#auditFlow").innerHTML = steps.map((step) => `<a href="#/${step.route}" class="${active === step.route ? "active" : ""} ${step.tone}"><i>${step.no}</i><span><b>${h(step.label)}</b><small>${h(step.meta)}</small></span></a>`).join("");
-  if (state.route === "cloud") {
-    $("#auditFlow").querySelector('a[href="#/cloud"]')?.addEventListener("click", (event) => {
-      event.preventDefault();
-      document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
-}
-
-let pendingCloudInbox = false;
-
-function nextActionForState() {
-  const files = (cloudState.batches || liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, batchCompany: batch.company, business_date: batch.business_date })));
-  const unread = files.filter((file) => (file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown");
-  const needsBoReview = files.filter(statementNeedsBoReview);
-  const waiting = (liveOverviewState.checklist || []).filter((row) => ["missing_files", "missing_required", "waiting_files", "parse_error"].includes(row.checklist_status));
-  const workflow = scopedWorkflowMetrics();
-  if (unread.length) return { route: "cloud", label: `ตรวจไฟล์ที่มีปัญหา ${num(unread.length)} ไฟล์`, detail: "กดดูรายชื่อไฟล์ปัญหาทั้งหมดและสาเหตุก่อน แล้วค่อยเปิดตรวจทีละรายการ", tone: "bad" };
-  if (needsBoReview.length) return { route: "cloud", label: `เทียบ BO สำหรับไฟล์ที่อ่านแล้ว ${num(needsBoReview.length)} ไฟล์`, detail: "ไม่พบรายการในวันตรวจ ไม่ใช่ไฟล์เสีย — ตรวจบัญชีและวันกับ BO ก่อนสรุป ไม่ต้องรันไฟล์เดิมซ้ำ", tone: "warn" };
-  if (waiting.length) return { route: "daily-summary", label: `ดูรายการที่ยังขาด ${num(waiting.length)} บริษัท/วัน`, detail: "ตรวจ Checklist แล้วตาม STM หรือ BO ที่ยังไม่ครบ", tone: "warn" };
-  if (workflow.approvalsAvailable && workflow.approvals && can('approve')) return { route: "approvals", label: `ตรวจคำชี้แจง / คำขออนุมัติ ${num(workflow.approvals)} งาน`, detail: "เปิดเคสและเอกสารที่ผูกไว้ ตรวจหลักฐานก่อนอนุมัติ", tone: "warn" };
-  const auditWaiting = AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length;
-  if (auditWaiting && ROUTE_ROLES[state.role].includes('audit-review')) return { route: 'audit-review', label: `Audit รอตรวจ ${num(auditWaiting)} เคส`, detail: 'ตรวจคำตอบและหลักฐานในเคสเดิมก่อนส่งหัวหน้า', tone: 'warn' };
-  if (workflow.followUps) return { route: "clarify", label: `ติดตามคำชี้แจง ${num(workflow.followUps)} งาน`, detail: "ติดตามคำตอบและหลักฐานจากผู้ชี้แจง", tone: "warn" };
-  if (workflow.openAvailable && workflow.open) return { route: "exceptions", label: `ตรวจรายการผิดปกติ ${num(workflow.open)} เคส`, detail: "เปิดหลักฐาน ตรวจยอดต่าง และส่งติดตามคำชี้แจง", tone: "warn" };
-  if (!workflow.openAvailable) return { route: "dashboard", label: "กำลังตรวจยอดเคสจากฐานข้อมูล", detail: "ยังไม่สรุปว่างานหมดจนกว่าจะโหลดยอดจริงสำเร็จ", tone: "warn" };
-  return { route: "reports", label: "ดูสรุปและออกรายงาน", detail: "งานที่ต้องดำเนินการหมดแล้ว ตรวจรายวันและ Export หลักฐาน", tone: "ok" };
-}
-
-function renderNextAction(root) {
-  if (state.route === "mc8-sheets") return;
-  if (state.dataset !== "production" || !Sb.signedIn()) return;
-  const action = nextActionForState();
-  const route = ROUTE_ROLES[state.role].includes(action.route) ? action.route : "dashboard";
-  const buttonLabel = route === "cloud" ? "ดูไฟล์ปัญหาทั้งหมด →" : "ไปต่อ →";
-  root.insertAdjacentHTML("afterbegin", `<section class="next-action-bar ${action.tone}" data-next-route="${h(route)}" role="link" tabindex="0" aria-label="ขั้นถัดไป ${h(action.label)}"><div><span>ขั้นถัดไปที่แนะนำ</span><b>${h(action.label)}</b><small>${h(action.detail)}</small></div><button class="primary-button sm" type="button">${buttonLabel}</button></section>`);
-  const bar = root.querySelector("[data-next-route]");
-  const follow = () => {
-    const nextRoute = bar.dataset.nextRoute;
-    if (nextRoute === "cloud") {
-      pendingCloudInbox = true;
-      if (state.route === "cloud") {
-        pendingCloudInbox = false;
-        (document.getElementById("problemFileSummary") || document.getElementById("cloudInbox"))?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-    }
-    go(nextRoute);
-  };
-  bar.addEventListener("click", follow);
-  bar.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); follow(); }
-  });
-}
-
-function renderRoleSelect() {
-  $("#roleSelect").innerHTML = Object.entries(DB.roles)
-    .map(([k, v]) => `<option value="${k}" ${state.role === k ? "selected" : ""}>${h(v.name)}</option>`)
-    .join("");
-}
-
-function renderFilters() {
-  const route = ROUTE_MAP[state.route];
-  const box = $("#globalFilters");
-  if (!route || !route.filters || (state.route === "exceptions" && state.dataset === "production" && Sb.signedIn())) {
-    box.hidden = true;
-    box.innerHTML = "";
-    return;
-  }
-  box.hidden = false;
-  const f = state.filters;
-  const companyLabel = f.company === "ALL" ? "ทุกบริษัท" : f.company;
-  const directionLabel = f.direction === "ALL" ? "ทุกประเภท" : f.direction;
-  box.innerHTML = `
-    <div class="filter-bar-head">
-      <div><strong>1. เลือกข้อมูลที่จะตรวจ</strong><span>${h(rangeLabel())} · ${h(companyLabel)} · ${h(directionLabel)}</span></div>
-      <button class="ghost-button xs" id="filterToggle" type="button" aria-expanded="${state.filtersOpen}">${state.filtersOpen ? "ย่อ" : "ปรับตัวกรอง"}</button>
-    </div>
-    <div class="filter-fields" ${state.filtersOpen ? "" : "hidden"}>
-      <label>วันที่ตั้งต้นของช่วง
-        <input type="date" id="fDate" value="${f.date}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" />
-      </label>
-      <label>เลือกช่วงวันที่
-        <select id="fPreset">
-          ${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}
-        </select>
-      </label>
-      <label>วันเริ่มต้น
-        <input type="date" id="fFrom" value="${f.from}" min="${VISIBLE_DATE_FROM}" max="${f.to}" />
-      </label>
-      <label>วันสิ้นสุด
-        <input type="date" id="fTo" value="${f.to}" min="${f.from}" max="${VISIBLE_DATE_TO}" />
-      </label>
-      <label>บริษัท
-        <select id="fCompany">
-          <option value="ALL">ทุกบริษัท</option>
-          ${companyMaster().map((c) => `<option value="${c.code}" ${f.company === c.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
-        </select>
-      </label>
-      <label>ธุรกรรม / ช่องทาง
-        <select id="fDirection">
-          <option value="ALL">ฝากและถอน · ทุกช่องทาง</option>
-          <option value="PM" ${f.direction === "PM" ? "selected" : ""}>เฉพาะ Payment (PM)</option>
-          <option value="ฝาก" ${f.direction === "ฝาก" ? "selected" : ""}>ฝาก</option>
-          <option value="ถอน" ${f.direction === "ถอน" ? "selected" : ""}>ถอน</option>
-        </select>
-      </label>
-    </div>
-    <div class="filter-summary" id="filterSummary"></div>`;
-
-  $("#filterToggle").addEventListener("click", () => {
-    state.filtersOpen = !state.filtersOpen;
-    renderFilters();
-  });
-
-  $("#fDate").addEventListener("change", (e) => {
-    state.filters.date = e.target.value;
-    applyPreset(state.filters.preset);
-    toast("เปลี่ยนวันที่ตรวจเป็น " + e.target.value);
-    render();
-  });
-  $("#fPreset").addEventListener("change", (e) => {
-    applyPreset(e.target.value);
-    state.page = 1;
-    render();
-  });
-  $("#fFrom").addEventListener("change", (e) => {
-    state.filters.from = e.target.value;
-    if (state.filters.from > state.filters.to) state.filters.to = state.filters.from;
-    state.filters.preset = "custom";
-    state.page = 1;
-    render();
-  });
-  $("#fTo").addEventListener("change", (e) => {
-    state.filters.to = e.target.value;
-    if (state.filters.to < state.filters.from) state.filters.from = state.filters.to;
-    state.filters.preset = "custom";
-    state.page = 1;
-    render();
-  });
-  ["fCompany", "fDirection"].forEach((id) => {
-    $("#" + id).addEventListener("change", (e) => {
-      state.filters[id === "fCompany" ? "company" : "direction"] = e.target.value;
-      state.page = 1;
-      render();
-    });
-  });
-  if (state.route === "damage" && state.dataset === "production" && Sb.signedIn()) {
-    const ready = liveDamageState?.ready && liveDamageState.key === damageQueryKey();
-    const rows = ready ? liveDamageState.rows : [];
-    const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · ความเสียหายที่ยืนยันแล้ว <b>${ready ? num(rows.length) : "—"}</b> รายการ · ยอดรวม <b>${ready ? `${money0(total)} บาท` : "กำลังโหลดข้อมูลจริง"}</b>`;
-    return;
-  }
-  const scoped = scopedExceptions();
-  if (state.dataset === 'production' && Sb.signedIn() && (!liveOverviewState.exceptionsReady || liveOverviewState.key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`)) {
-    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · รายการเคส <b>—</b> · SLA <b>—</b> · ยอด <b>—</b> · กำลังรอข้อมูลจริง ไม่ใช่ศูนย์`;
-    return;
-  }
-  if (state.dataset === 'production' && state.route === 'clarify' && state.role === 'shift_lead') {
-    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · คิวคำขอที่ Audit ส่งมา <b>${num(scoped.length)}</b> เคสในบริษัทที่เลือก · ไม่ใช่ยอดกระทบยอดหรือความเสียหาย`;
-    return;
-  }
-  if (typeof fastReviewQueueMode === 'function' && fastReviewQueueMode()) {
-    $('#filterSummary').innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · รายการเคสที่โหลดในบริษัทที่เลือก <b>${num(scoped.length)}</b> · ไม่ใช่ยอดรวมการเงินหรือความเสียหาย`;
-    return;
-  }
-  $("#filterSummary").innerHTML = `ช่วงข้อมูล <b>${h(rangeLabel())}</b> · กำลังดู <b>${num(scoped.length)}</b> exception · เกิน SLA <b>${num(scoped.filter((e) => e.overSla).length)}</b> รายการ · ความเสียหายในช่วงนี้ <b>${money0(DB.damages.filter((d) => inRange(d.date)).reduce((a, c) => a + c.amount, 0))}</b> บาท`;
-}
-
-/* ---------------- router ---------------- */
-function parseHash() {
-  const raw = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return ROUTE_MAP[raw] ? raw : (window.APP_CONFIG?.defaultRoute || "cloud");
-}
-function go(route, opts = {}) {
-  if (opts.exFilter) Object.assign(state.exFilter, opts.exFilter);
-  if (opts.filters) Object.assign(state.filters, opts.filters);
-  location.hash = "#/" + route;
-}
-window.addEventListener("hashchange", () => {
-  const r = parseHash();
-  if (!ROUTE_ROLES[state.role].includes(r)) {
-    toast(`สิทธิ์ ${DB.roles[state.role].name} เข้าหน้านี้ไม่ได้`, "warn");
-    location.hash = "#/cloud";
-    return;
-  }
-  state.route = r;
-  state.page = 1;
-  closeDrawer();
-  render();
-  $("#viewRoot").focus({ preventScroll: true });
-  window.scrollTo({ top: 0, behavior: "smooth" });
-});
-
-/* ---------------- main render ---------------- */
-const VIEWS = {};
-const sourceWorkspaceScope={company:null,date:null};
-function renderSourceWorkspace(host,page){
- if(state.dataset!=='production'||!Sb.signedIn()){host.innerHTML='<section class="panel">หน้านี้ใช้ทะเบียนจริงหลังเข้าสู่ระบบ ไม่มีข้อมูลจำลอง</section>';return;}
- const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany);if(!companies.length){host.innerHTML='<section class="panel">ไม่มีสิทธิ์บริษัท</section>';return;}
- if(!companies.includes(sourceWorkspaceScope.company))sourceWorkspaceScope.company=companies.includes(state.filters.company)?state.filters.company:companies.includes(state.dailySummary.company)?state.dailySummary.company:companies[0];
- sourceWorkspaceScope.date=sourceWorkspaceScope.date||state.dailySummary.date||state.filters.to||PROD_TODAY;
- const scope=(company,date)=>Object.assign(sourceWorkspaceScope,{company,date});
- const controller=SourceWorkspace.mount(host,{page,company:sourceWorkspaceScope.company,date:sourceWorkspaceScope.date,companies,
- role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>Sb.signedIn()&&state.route===`source-${page==='upload'?'upload':'run'}`,
- load:Sb.sourceWorkspace,add:Sb.addAuditManualSource,confirm:FileRunManagement.confirmAction,scope,
- navigate:(route,company,date)=>{scope(company,date);go(route);},
- manage:(company,date,fileId,onUpdated)=>openFileRunManagement({company,date,accounts:[],fileId,onUpdated}),
- preview:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date:file.business_date,size:file.size_bytes}),
- run:(company,date,fileIds)=>openAccountRecheck({company,date,accounts:[],fileIds})});
- host.sourceWorkspaceDispose=()=>controller.dispose();
-}
-VIEWS['source-upload']=host=>renderSourceWorkspace(host,'upload');
-VIEWS['source-run']=host=>renderSourceWorkspace(host,'run');
-VIEWS['mail-intake']=host=>MailIntakeControl.mount(host,{api:Sb,role:state.role,today:PROD_TODAY,isActive:()=>state.route==='mail-intake'&&Sb.signedIn(),notify:toast});
-VIEWS.finance=root=>{
- if(state.dataset!=='production'||!Sb.signedIn()) {root.innerHTML='<section class="panel">รายงานนี้ใช้ข้อมูลจริงหลังเข้าสู่ระบบเท่านั้น ไม่มีตัวเลขตัวอย่าง</section>';return;}
- FinanceExecutive.mount(root,{role:()=>state.role,actor:()=>Sb.authUser()?.id,active:()=>state.route==='finance'&&Sb.signedIn(),today:PROD_TODAY,
-  context:Sb.financeReportingCompanies,bo:Sb.financeReportBoWindow,cases:Sb.financeCaseReport,formatTime:displayTime,saveBlob:Exporter.saveBlob,buildWorkbook:XlsxWriter.build,archive:XlsxWriter.archive,
-  boManifest:Sb.financeBoReportManifest,acceptBoReport:Sb.acceptFinanceBoReport,boHistory:Sb.financeBoReportHistory,
-  boDownload:async file=>{if(state.route!=='finance'||!['lead','admin'].includes(state.role)||!canAccessCompany(file.company))throw Error('ไม่มีสิทธิ์อ่าน BO รายงาน');return Sb.download(file.storage_path,{force:true});},
-  boReadXlsx:async bytes=>{const sheets=(await XlsxReader.readWorkbook(bytes,{includeMetadata:true})).filter(s=>s.rows.some(r=>r.some(v=>String(v??'').trim())));if(sheets.length!==1)throw Error('BO หลายชีต/ไม่มีชีตข้อมูล ต้องทบทวนขอบเขตรายงานก่อน ไม่อ่านแค่ชีตแรก');return sheets[0];},boParse:Formats.parse,boSha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
-  holds:Sb.reviewHoldReport,actions:Sb.financeActionReport,actionCase:Sb.financeActionCase,findActionCase:Sb.findFinanceActionCase,saveAction:Sb.saveFinanceAction,uploadAction:Sb.uploadFinanceActionEvidence,actionUrl:Sb.financeActionUrl});
-};
-function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=null,onPrimaryReady=null}) {
-  if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('ตรวจเฉพาะบัญชี');
-  openModal('ตรวจซ้ำ / กระทบยอดเฉพาะบัญชี', '<div id="accountRecheckPanel"></div>', '<button id="accountRecheckDismiss">ปิดหน้าทบทวน</button>');
-  const dispose=AccountRecheck.mount($('#accountRecheckPanel'),{
-    company,date,accounts:['ALL',...accounts.filter(a=>a!=='ALL')],fileIds,initialJobId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
-    request:Sb.requestAccountRecheck,list:Sb.listAccountRechecks,loadState:Sb.fileRunManagement,confirm:Sb.confirmAccountRecheck,
-    detail:Sb.accountRecheckDetail,exportWorkbook:Exporter.workbook,
-    finalConfirmation:AccountRecheck.finalConfirmation,
-    onPrimary:id=>ManualPrimary.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,
-      preview:Sb.manualPrimaryPreview,accept:Sb.acceptManualPrimaryWithCases,withCases:true,
-      onAccepted:async value=>{
-        toast(`ใช้ผลตรวจมือเป็นผลหลักและเตรียมเคสพร้อมดำเนินการแล้ว ${value?.case_set?.case_count??0} เคส`,'ok');
-        dispose();closeModal();
-        if(onPrimaryReady)await onPrimaryReady();
-        else { await loadLiveOverview(true); render(); }
-      }}),
-  });
-  $('#modal')._contentCleanup=dispose;
-  $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};
-}
-async function openFileExclusion(fileId) {
-  if(state.dataset!=='production'||!Sb.signedIn()||!FileExclusion.canManage(state.role))return deny('ยกเว้นไฟล์จากการรัน');
-  return FileExclusion.open({fileId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
-    preview:Sb.sourceExclusionPreview,save:Sb.setSourceExcluded,confirm:FileRunManagement.confirmAction});
-}
-function openFileRunManagement({company,date,accounts,fileId=null,onUpdated=null}) {
-  if(state.dataset!=='production'||!Sb.signedIn()||!canAccessCompany(company))return deny('จัดการไฟล์/พักรัน');
-  openModal('เลือกไฟล์ / แก้ข้อมูล / พักรัน','<div id="fileRunManagementPanel"></div>','<button id="fileRunManagementDismiss">ปิด</button>');
-  const dispose=FileRunManagement.mount($('#fileRunManagementPanel'),{
-    company,date,initialFileId:fileId,onUpdated,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
-    companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
-    setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
-    onExclude:openFileExclusion,
-    searchSources:Sb.effectiveAuditFiles,addSource:Sb.addAuditManualSource,
-    confirmAddition:b=>FileRunManagement.confirmAction({title:'ทบทวนเพิ่มไฟล์ในรอบตรวจ',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเพิ่มไฟล์โดยเก็บต้นฉบับและตรวจไฟล์ซ้ำ พักบอทรอบนี้ ยังไม่รัน ไม่ใช้ผลหลักหรือเปลี่ยนเคส`,confirmLabel:'ยืนยันเพิ่มไฟล์ · ไม่รัน',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
-    confirmHold:b=>FileRunManagement.confirmAction({title:`${b.paused?'พัก':'เปิด'}บอทรอบหลัก · ${company} · ${date}`,message:`${b.reason}\nไม่แก้ยอดหรือปิดเคส\nการพักบอทไม่เริ่มรันมือให้เอง`,confirmLabel:b.paused?'ยืนยันพักบอท':'ยืนยันเปิดบอท',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
-    uploadCorrection:Sb.uploadAuditSourceCorrection,
-    onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
-    confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับ เพิ่มเวอร์ชันใหม่ และพักบอทรอบที่เกี่ยวข้อง ไม่รันหรือยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
-    confirmRunWarnings:b=>FileRunManagement.confirmAction({title:`ทบทวนคำเตือน · ${b.company} · ${b.date}`,message:`พบคำเตือน ${b.warnings.length} รายการ\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nไปทบทวนขอบเขตรันตรวจมือเท่านั้น ยังไม่รันจนกดยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`,confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน',allowed:()=>Sb.signedIn()&&canAccessCompany(company)}),
-    onRun:async fileIds=>{
-      try{let choices=accounts||[];
-        // Selected sources are enough to open an ALL-account staged recheck.
-        // A stale primary must block acceptance, not the rerun needed to review it.
-        if(!choices.length&&!fileIds?.length){const data=await Sb.reconciliationOverview(company,date);choices=[...new Set([...(data.run?.summary?.match_evidence||[]).map(r=>r.account),...(data.cases||[]).map(r=>r.account),...(data.run?.summary?.bo_first?.required||[]).map(r=>r.identity)].filter(a=>a&&String(a).toUpperCase()!=='UNKNOWN'))];}
-        dispose();closeModal();openAccountRecheck({company,date,accounts:choices,fileIds});
-      }catch(error){toast(error.message,'bad');}
-    },
-  });
-  $('#modal')._contentCleanup=dispose;
-  $('#fileRunManagementDismiss').onclick=()=>{dispose();closeModal();};
-}
-function chooseFileRunManagement(){
-  const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),company=companies.includes(state.filters.company)?state.filters.company:companies[0];
-  openModal('เลือกขอบเขตจัดการไฟล์ / พักรัน',`<label>บริษัท<select id="fileManageCompany">${companies.map(c=>`<option ${c===company?'selected':''}>${h(c)}</option>`).join('')}</select></label><label>วันที่<input type="date" id="fileManageDate" value="${h(state.filters.to||state.filters.date||DEFAULT_WORK_DATE)}"></label>`,'<button id="fileManageContinue">เปิดไฟล์/สถานะของวัน</button>');
-  $('#fileManageContinue').onclick=()=>{const company=$('#fileManageCompany').value,date=$('#fileManageDate').value;if(!company||!/^\d{4}-\d{2}-\d{2}$/.test(date))return toast('เลือกบริษัทและวันที่ให้ครบ','warn');closeModal();openFileRunManagement({company,date,accounts:[]});};
-}
-function openAuditSourceArchive(){
-  if(state.dataset!=='production'||!Sb.signedIn())return deny('ดาวน์โหลดไฟล์จริง');
-  const companies=MC8LiveSheets.COMPANIES.filter(canAccessCompany),initialActor=Sb.authUser()?.id;
-  openModal('ดาวน์โหลดไฟล์จริง — เผื่อทำงานมือ','<div id="auditSourceArchivePanel"></div>','<button id="auditArchiveCancel">ปิด / ยกเลิกการเตรียม</button>');
-  $('#modal').classList.add('source-archive-modal');
-  const dispose=AuditSourceArchive.mount($('#auditSourceArchivePanel'),{
-    company:companies.includes(state.filters.company)?state.filters.company:companies[0],date:state.filters.to||state.filters.date||DEFAULT_WORK_DATE,companies,initialActor,
-    actorId:()=>Sb.authUser()?.id,catalog:Sb.auditSourceArchiveManifest,download:path=>Sb.download(path,{force:true}),
-    validate:Sb.auditSourceArchiveValidate,
-    access:async()=>{const result=await Sb.myAccess();return Array.isArray(result)?result[0]:result;},
-    sha256:async bytes=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join(''),
-    zip:XlsxWriter.archive,save:Exporter.saveBlob,
-  });
-  $('#modal')._contentCleanup=()=>{dispose();$('#modal').classList.remove('source-archive-modal');};
-  $('#auditArchiveCancel').onclick=()=>{dispose();closeModal();};
-}
-async function readAuditBoOperatorRecords(file,date) {
-  if(state.dataset!=='production'||!Sb.signedIn()||file.kind!=='bo_main'||!canAccessCompany(file.company))throw new Error('ไม่มีสิทธิ์อ่าน BO ต้นทาง');
-  if(!/\.xlsx$/i.test(file.file_name))throw new Error('ไฟล์ BO นี้ไม่ใช่ XLSX ที่รองรับ');
-  const response=await fetch(await Sb.signedUrl(file.storage_path));
-  if(!response.ok)throw new Error('ดาวน์โหลด BO ไม่สำเร็จ ('+response.status+')');
-  const result=Formats.parse(file.file_name,await XlsxReader.read(await response.arrayBuffer()),date);
-  if(!['bo_compact','bo_transaction_export','bo_main'].includes(result.code))throw new Error('ไม่พบรูปแบบ BO ที่ตรวจสอบได้');
-  return [...result.records,...(result.aux||[]).filter(r=>r.kind==='xb_information')];
-}
-async function openManualPrimaryCaseSet(id,onReload){
-  if(!['lead','admin'].includes(state.role))return deny('ยืนยันเคสชุดใหม่');
-  return PrimaryCaseSets.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,preview:Sb.manualPrimaryCasesPreview,activate:Sb.activateManualPrimaryCases,onActivated:()=>{toast('สร้างเคสชุดใหม่แล้ว เก็บเคสเดิมเป็นประวัติ');onReload?.();}});
-}
-VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
-  date: state.filters.date || DEFAULT_WORK_DATE,
-  company: MC8LiveSheets.COMPANIES.includes(state.dailySummary.company) ? state.dailySummary.company : 'MC8',
-  companies: MC8LiveSheets.COMPANIES,
-  signedIn: () => state.dataset === 'production' && Sb.signedIn(),
-  load: Sb.reconciliationOverview,
-  loadFiles: runId => Sb.exceptionFiles(runId),
-  readBoRecords: readAuditBoOperatorRecords,
-  onRecheck: openAccountRecheck,
-  onManageFiles: openFileRunManagement,
-  exportBoWaitingCases: downloadBoWaitingCaseRequest,
-  onNextCaseQueue: can('request_clarify') ? scope=>showReadOnlyCaseQueue({...scope,account:''}) : null,
-  isActive: () => state.route === 'mc8-sheets',
-  onLocal: () => MC8Sheets.render(root),
-  onCompany: company => { state.dailySummary.company = company; },
-  onDate: date => { state.filters.date = date; },
-  onCase: async (row) => {
-    if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
-    await openEvidenceRelatedCase(row.id);
-  },
-  onNewCaseSet: ['lead','admin'].includes(state.role)?openManualPrimaryCaseSet:null,
-  onCaseError: (error) => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
-  onFile: (file,date,company) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||company,date,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
-  exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
-  onExported: ({filename,company,date,rows,sheets,complete}) => {
-    logAction('export', 'audit_reconciliation_workbook', `${company}|${date}`, `Excel ${sheets} ชีต · ${rows} แถว · ${complete?'ข้อมูลรอบครบ':'ข้อมูลรอบยังไม่ครบ'}`);
-    toast(`ดาวน์โหลด ${filename} แล้ว (${sheets} ชีต · ${num(rows)} แถว)`);
-  },
-});
-function showLoginGate(message) {
-  $('#accessWaitNotice')?.remove?.();
-  $('#appShell').inert = false;
-  for (const id of ['#drawer', '#modal', '#drawerOverlay', '#modalOverlay']) {
-    const node = $(id); if (node) { node.inert = false; node.hidden = true; }
-  }
-  $('#connectionGate').hidden = true;
-  $("#appShell").hidden = true;
-  $("#loginGate").hidden = false;
-  $("#loginForm").hidden = false;
-  $("#resetForm").hidden = true;
-  const out = $("#loginError");
-  if (message) {
-    out.textContent = message;
-    out.hidden = false;
-  } else {
-    out.hidden = true;
-  }
-}
-
-function showConnectingGate(message, retryAction, preserveWork = false) {
-  const shell = $('#appShell');
-  $('#accessWaitNotice')?.remove?.();
-  if (preserveWork) {
-    // Keep the authenticated DOM/drafts, but never admit writes on stale access.
-    shell.inert = true;
-    for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) node.inert = true; }
-    const notice = document.createElement('aside');
-    notice.id = 'accessWaitNotice';
-    notice.className = 'alert warn';
-    notice.setAttribute('role', 'status');
-    const text = document.createElement('span');
-    text.textContent = message;
-    notice.append(text);
-    if (retryAction) {
-      const retry = document.createElement('button');
-      retry.textContent = 'ตรวจสิทธิ์อีกครั้ง';
-      retry.onclick = async () => { retry.disabled = true; try { await retryAction(); } finally { retry.disabled = false; } };
-      notice.append(retry);
-    }
-    shell.before(notice);
-    $('#connectionGate').hidden = true;
-    return;
-  }
-  shell.inert = false;
-  for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) { node.inert = false; node.hidden = true; } }
-  $('#loginGate').hidden = true;
-  $('#appShell').hidden = true;
-  $('#connectionGate').hidden = false;
-  $('#connectionMessage').textContent = message || 'กำลังคืนสถานะเข้าสู่ระบบและตรวจสิทธิ์ กรุณารอสักครู่ ไม่ต้องเข้าสู่ระบบซ้ำ';
-  const retry = $('#accessCheckRetry');
-  retry.hidden = !retryAction;
-  retry.disabled = false;
-  retry.onclick = retryAction ? async () => {
-    if (retry.disabled) return;
-    retry.disabled = true;
-    try { await retryAction(); } finally { retry.disabled = false; }
-  } : null;
-}
-
-function showPasswordResetGate() {
-  $('#connectionGate').hidden = true;
-  $("#appShell").hidden = true;
-  $("#loginGate").hidden = false;
-  $("#loginForm").hidden = true;
-  $("#resetForm").hidden = false;
-  $("#newPassword").focus();
-}
-
-function render() {
-  state.filters.date = visibleDate(state.filters.date);
-  state.filters.from = visibleDate(state.filters.from);
-  state.filters.to = visibleDate(state.filters.to);
-  if (state.filters.from > state.filters.to) state.filters.to = state.filters.from;
-  state.dailySummary.date = visibleDate(state.dailySummary.date);
-  const route = ROUTE_MAP[state.route];
-  Charts.reset();
-  $("#crumb").textContent = ROUTES.find((g) => g.items.some((i) => i.id === route.id)).group;
-  $("#pageTitle").textContent = route.title;
-  document.title = `${route.title} · Audit AI Reconciliation`;
-  $("#pageDesc").innerHTML =
-    h(route.desc) +
-    (Sb.signedIn() ? ' <span class="badge green">ระบบข้อมูลจริง</span>' : "");
-  renderNav();
-  renderAuditFlow();
-  renderFilters();
-  captureFastQueueDrafts();
-  $("#viewRoot").dataset.fastQueueDraftKey = fastQueueDraftKey();
-  $("#viewRoot").financeDispose?.();
-  $("#viewRoot").sourceWorkspaceDispose?.();
-  $("#viewRoot").innerHTML = "";
-  VIEWS[route.id]($("#viewRoot"));
-  restoreFastQueueDrafts();
-  $('#fileManageEntry')?.remove();
-  $('#sourceArchiveEntry')?.remove();
-  if(state.dataset==='production'&&Sb.signedIn()&&['cloud','intake','exceptions','daily-summary','mc8-sheets'].includes(route.id)&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
-    const entry=document.createElement('button');entry.id='fileManageEntry';entry.className='ghost-button';entry.textContent='รันมือ / จัดการไฟล์';entry.onclick=chooseFileRunManagement;$('#btnExport').parentElement.appendChild(entry);
-    const backup=document.createElement('button');backup.id='sourceArchiveEntry';backup.className='ghost-button';backup.textContent='ดาวน์โหลดไฟล์จริง (ทำงานมือ)';backup.onclick=openAuditSourceArchive;$('#btnExport').parentElement.appendChild(backup);
-    if(['cloud','intake'].includes(route.id)){
-      const card=document.createElement('section');card.className='source-archive-launch';card.innerHTML='<div><h2>ดาวน์โหลดต้นฉบับไว้ทำกระทบยอดมือ</h2><p>เลือกบริษัทและวันที่ · ได้ ZIP แยกโฟลเดอร์ STM/PM, BO และหลักฐาน · ไม่รันบอทหรือเปลี่ยนเคส</p></div><button>ดาวน์โหลดไฟล์ต้นฉบับ</button>';card.querySelector('button').onclick=openAuditSourceArchive;$('#viewRoot').prepend(card);
-      const manual=document.createElement('section');manual.className='source-archive-launch';manual.innerHTML='<div><h2>รันตรวจซ้ำ / จัดการไฟล์</h2><p>1 เลือกบริษัทและวัน → 2 เลือกไฟล์/บัญชี → 3 ตรวจและทบทวนผล · หัวหน้า/ผู้ดูแลยืนยันเท่านั้น<br>แก้ชื่อ/บริษัท/ฉบับแทน หรือพักรันได้ โดยเก็บต้นฉบับและประวัติ</p></div><button>เลือกไฟล์และรันตรวจซ้ำ</button>';manual.querySelector('button').onclick=chooseFileRunManagement;$('#viewRoot').prepend(manual);
-    }
-  }
-  if (state.dataset === "production" && Sb.signedIn() && !["dashboard", "damage", "mc8-sheets", "finance"].includes(route.id)) {
-    const liveNotice = liveOverviewState.loading
-      ? `<section class="alert live-background-notice"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>หน้านี้ใช้งานได้ตามปกติ ตัวเลขจะอัปเดตอัตโนมัติเมื่อ Supabase ตอบกลับ</span></section>`
-      : liveOverviewState.error
-        ? `<section class="alert warn live-background-notice"><strong>ข้อมูลล่าสุดยังมาไม่ครบ</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveBackgroundRetry">ลองใหม่</button></section>`
-        : "";
-    if (liveNotice) $("#viewRoot").insertAdjacentHTML("afterbegin", liveNotice);
-    $("#liveBackgroundRetry")?.addEventListener("click", () => loadLiveOverview(true));
-  }
-  renderNextAction($("#viewRoot"));
-  addPanelCaptureButtons();
-  if (state.route === "cloud" && pendingCloudInbox) requestAnimationFrame(() => {
-    pendingCloudInbox = false;
-    (document.getElementById("problemFileSummary") || document.getElementById("cloudInbox"))?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  $("#sidebar").classList.remove("open");
-  AuditUi.syncNav();
-}
-
-/* =============================================================
-   VIEW: Dashboard
-   ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
-const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
-const exceptionSupportCache = new Map();
-const moreCaseState = { offset: 0, hasMore: true, loading: false, error: "" };
-
-async function loadMoreCases() {
-  if (moreCaseState.loading || liveOverviewState.loading || liveOverviewState.auxiliaryLoading) return;
-  const key = liveOverviewState.key;
-  const generation = liveOverviewState.requestId;
-  moreCaseState.loading = true;
-  moreCaseState.error = "";
-  render();
-  try {
-    const rows = await Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 250, offset: moreCaseState.offset });
-    if (key !== liveOverviewState.key || generation !== liveOverviewState.requestId) return;
-    moreCaseState.offset += rows.length;
-    moreCaseState.hasMore = rows.length === 250;
-    const existing = new Map(DB.exceptions.map((row) => [row.dbId || row.id, row]));
-    for (const raw of actionableAuditRows(rows,liveOverviewState.matchEvidence)) if (!existing.has(raw.id)) existing.set(raw.id, mapLiveException(raw));
-    DB.exceptions = [...existing.values()];
-  } catch (error) {
-    if (key === liveOverviewState.key) moreCaseState.error = "โหลดเคสเพิ่มเติมไม่สำเร็จ: " + error.message;
-  } finally {
-    moreCaseState.loading = false;
-    if (state.route === "exceptions") render();
-  }
-}
-
-async function loadLiveExceptionSearch(term) {
-  const key = `${term}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  if (!term || liveExceptionSearch.loading || liveExceptionSearch.key === key) return;
-  liveExceptionSearch.key = key;
-  liveExceptionSearch.loading = true;
-  liveExceptionSearch.error = null;
-  liveExceptionSearch.rows = [];
-  try {
-    const rows = await Sb.searchExceptions({ term, from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 });
-    liveExceptionSearch.rows = actionableAuditRows(rows,liveOverviewState.matchEvidence).map(mapLiveException);
-  } catch (error) {
-    liveExceptionSearch.rows = [];
-    liveExceptionSearch.error = error.message || "ค้นหา Supabase ไม่สำเร็จ";
-  }
-  liveExceptionSearch.loading = false;
-  if (state.route === "exceptions") render();
-}
-
-const LIVE_KIND_LABEL = {
-  stm_pdf: "STM / ฝาก-ถอนธนาคาร",
-  bo_main: "รายงาน BO",
-  pm_statement: "รายการเดินบัญชี PM",
-  manual_credit: "ฝากมือ - เครดิต",
-  manual_payment: "ฝากมือ - Payment",
-  manual_bonus: "ฝากมือ - โบนัส",
-  comm_req: "ถอนค่าคอมมิชชั่น",
-  credit_out: "ถอนเครดิต",
-  doc_clarify: "เอกสารชี้แจง",
-  unknown: "ยังจำแนกไม่ได้",
-};
-
-const LIVE_STATUS = {
-  completed: { label: "ระบบประมวลผลเสร็จ", tone: "green" },
-  completed_review: { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" },
-  needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
-  waiting_files: { label: "รอไฟล์", tone: "amber" },
-  ready: { label: "พร้อมกระทบยอด", tone: "blue" },
-  queued: { label: "เข้าคิว", tone: "blue" },
-  running: { label: "กำลังทำงาน", tone: "violet" },
-  error: { label: "ล้มเหลว", tone: "red" },
-};
-
-// ตารางคิวรุ่นเก่าเคยสร้างแถวรวมตามชื่อระบบ (PM / SYS123 / XXX)
-// แถวเหล่านั้นไม่ใช่บริษัทและต้องไม่ถูกนำไปปนกับสรุป 9 บริษัทจริง
-const LIVE_COMPANY_CODES = new Set(["3XB", "AT4", "FR8", "MC8", "MR9", "PS8", "SK8", "UR9", "UFABET7M"]);
-const normalizeLiveCompanyCode = (value) => {
-  const code = String(value || "").trim().toUpperCase();
-  if (code === "3X") return "3XB";
-  if (code === "7M") return "UFABET7M";
-  return LIVE_COMPANY_CODES.has(code) ? code : "";
-};
-const businessSystemOfCompany = (value) => {
-  const company = normalizeLiveCompanyCode(value);
-  if (["3XB", "MR9", "MC8", "UR9", "PS8"].includes(company)) return "XXX";
-  if (["FR8", "AT4", "SK8"].includes(company)) return "123";
-  if (company === "UFABET7M") return "7M";
-  return "ไม่ระบุระบบ";
-};
-const isLiveCompanyRow = (row) => Boolean(normalizeLiveCompanyCode(row?.company));
-const actionableAuditRows = (rows, evidence) => window.AuditVisiblePolicy ? window.AuditVisiblePolicy.filter(rows, evidence) : (Array.isArray(rows) ? rows : []);
-const informationalAuditRows = (rows) => (Array.isArray(rows) ? rows : []).filter((row) => window.AuditVisiblePolicy?.isInformational(row));
-const matchedStaleAuditCount = (rows, evidence) => Math.max(0, actionableAuditRows(rows).length - actionableAuditRows(rows, evidence).length);
-
-const CHECKLIST_STATUS = {
-  scheduled: { label: "เตรียมรอวันทำการ", tone: "grey" },
-  receiving: { label: "อยู่ในช่วงรับไฟล์", tone: "blue" },
-  missing_files: { label: "ยังไม่ได้รับไฟล์", tone: "red" },
-  missing_required: { label: "ไฟล์หลักยังไม่ครบ", tone: "red" },
-  parse_error: { label: "มีไฟล์อ่านไม่ได้", tone: "red" },
-  waiting_parse: { label: "กำลังอ่านไฟล์", tone: "amber" },
-  waiting_files: { label: "รอไฟล์", tone: "amber" },
-  ready: { label: "พร้อมกระทบยอด", tone: "blue" },
-  queued: { label: "เข้าคิว", tone: "blue" },
-  running: { label: "กำลังกระทบยอด", tone: "violet" },
-  needs_review: { label: "ต้องตรวจสอบ", tone: "red" },
-  open_cases: { label: "มีเคสต้องปิด", tone: "amber" },
-  completed: { label: "ระบบประมวลผลเสร็จ", tone: "green" },
-  error: { label: "ทำงานล้มเหลว", tone: "red" },
-};
-
-const checklistMark = (ok, value, optional = false) =>
-  `<span class="check-mark ${ok ? "ok" : optional ? "optional" : "missing"}"><b>${ok ? "✓" : optional ? "–" : "!"}</b>${h(value)}</span>`;
-
-const expectedBoCount = (row) => Number(row?.expected_bo_count || (["AT4", "FR8", "SK8"].includes(normalizeLiveCompanyCode(row?.company)) ? 2 : 1));
-const registeredStmCount = (row) => Number(row?.registered_stm_accounts || 0);
-const registeredPmCount = (row) => Number(row?.registered_pm_files || 0);
-
-function safeExceptionDetail(e) {
-  const detail = String(e.detail || "");
-  if (!/undefined|NaN(?::NaN)*/i.test(detail)) return detail;
-  if ((e.ex_type || e.type) === "cross_day") return "ข้อมูลวันที่หรือเวลาฝั่ง BO ไม่ครบ — ไม่ควรใช้รายการนี้ตัดสินว่าเป็นรายการข้ามวัน กรุณาประมวลผลใหม่ด้วย Worker เวอร์ชันล่าสุด";
-  return detail.replace(/undefined/gi, "ไม่พบข้อมูล").replace(/NaN(?::NaN)*/gi, "ไม่พบเวลา");
-}
-
-function caseLabel(e) {
-  const company = String(e?.company || "ไม่ระบุ").trim();
-  const date = String(e?.date || e?.business_date || "").slice(0, 10);
-  const shortDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
-    ? `${date.slice(8, 10)}-${date.slice(5, 7)}-${date.slice(2, 4)}`
-    : date;
-  const code = String(e?.code || e?.id || "เคส").trim();
-  return [company, shortDate, code].filter(Boolean).join(" ");
-}
-
-function mapLiveException(e) {
-  const severity = e.severity || "medium";
-  const slaHours = Number(sevMeta(severity).sla || 48);
-  const created = e.created_at ? new Date(e.created_at).getTime() : Date.now();
-  const ageHours = Math.max(0, Math.floor((Date.now() - created) / 3600000));
-  const status = e.status || "open";
-  return {
-    // `code` starts again at EX-3001 for every company/run.  It is a display
-    // number, not a globally unique key.  Using it for drawer navigation made
-    // a 3XB row open the first MC8 EX-3001 already loaded in memory.  Keep the
-    // persisted UUID as the UI/action key and render the scoped label instead.
-    id: e.id,
-    code: e.code || e.id,
-    dbId: e.id,
-    runId: e.run_id,
-    manualPairId: e.manual_pair_id || null,
-    crossDayRequestId: e.cross_day_request_id || null,
-    crossDayImageRequestId: e.cross_day_image_request_id || null,
-    supersededByExceptionId: e.superseded_by_exception_id || null,
-    date: e.business_date,
-    time: String(e.occurred_at || "").slice(0, 8),
-    boTime: String(e.bo_time || "").slice(0, 8),
-    stmTime: String(e.stm_time || "").slice(0, 8),
-    boDate: e.bo_date || "",
-    stmDate: e.stm_date || "",
-    company: e.company || "ไม่ระบุ",
-    bank: e.bank || "-",
-    account: e.account || "-",
-    direction: e.direction || "-",
-    member: e.member_code || "-",
-    customerDetails: e.customer_details || {},
-    type: e.ex_type || "unknown",
-    typeName: e.type_name || e.ex_type || "ยังไม่จำแนก",
-    severity,
-    status,
-    track: e.track,
-    dueAt: e.due_at,
-    documentDueAt: e.document_due_at || null,
-    closureRequestId: e.case_closure_request_id || null,
-    systemAmount: e.system_amount == null ? null : Number(e.system_amount),
-    bankAmount: e.bank_amount == null ? null : Number(e.bank_amount),
-    amountDiff: Number(e.amount_diff || 0),
-    riskAmount: Number(e.risk_amount || 0),
-    currency: e.currency || "THB",
-    fxRate: e.fx_rate == null ? null : Number(e.fx_rate),
-    timeDiffSec: Number(e.time_diff_sec || 0),
-    employee: e.employee || "ไม่ระบุ",
-    shift: e.shift || "day",
-    cause: e.cause || "รอตรวจสอบสาเหตุ",
-    detail: safeExceptionDetail(e),
-    stmRaw: e.stm_raw || "—",
-    boRaw: e.bo_raw || "—",
-    ageHours,
-    slaHours,
-    overSla: !e.case_closure_request_id && !["closed", "approved"].includes(status) && (e.document_due_at ? status==='clarifying'&&Date.now()>Date.parse(e.document_due_at) : ageHours > slaHours),
-    notes: [],
-    evidence: [],
-    hasEvidence: !!e.clarification_file_id,
-    clarificationFileId: e.clarification_file_id || null,
-    autoClosed: !!e.auto_closed,
-    resolutionNote: e.resolution_note || "",
-    resolvedAt: e.resolved_at || null,
-    resolvedBy: e.resolved_by || null,
-    matchConfidence: Number(e.match_confidence || 0),
-    assignedTo: e.assigned_to || null,
-    requestedBy: e.requested_by || null,
-    requestedAt: e.requested_at || null,
-    responseText: e.response_text || "",
-    respondedBy: e.responded_by || null,
-    respondedAt: e.responded_at || null,
-    approvedBy: e.approved_by || null,
-    approvedAt: e.approved_at || null,
-  };
-}
-
-function mapLiveDamage(d) {
-  return {
-    id: d.code || d.id,
-    dbId: d.id,
-    exceptionId: d.exception_id || "-",
-    date: d.business_date,
-    company: normalizeLiveCompanyCode(d.company) || d.company || "ไม่ระบุ",
-    employee: d.employee || "ไม่ระบุ",
-    shift: d.shift || "-",
-    time: String(d.occurred_at || '').slice(0, 8),
-    amount: d.amount_thb == null && d.amount == null ? null : Number(d.amount_thb ?? d.amount),
-    cause: d.cause || "รอตรวจสอบ",
-    cycle: d.cycle || "ไม่ระบุรอบ",
-    evidence: !!d.has_evidence,
-    hrStatus: d.hr_status || "รอดำเนินการ",
-    financeStatus: d.finance_status || "รอดำเนินการ",
-    createdAt: d.created_at || null,
-  };
-}
-
-function openWrongClosureReversal(e,action) {
-  if(state.dataset!=='production'||!Sb.signedIn()||!['lead','admin'].includes(state.role)||!can('approve'))return deny('ยกเลิกผลปิดเคส');
-  if(!['closed','damage'].includes(e.status))return toast('เคสนี้ไม่ได้อยู่ในสถานะปิดหรือยืนยันความเสียหายแล้ว','warn');
-  const returning=action==='return_clarification';
-  const title=returning?'ตีกลับให้ชี้แจงเพิ่มเติม':'ยกเลิกผลปิด — คืนให้ Audit ตรวจใหม่';
-  openModal(title,`<p>${h(caseLabel(e))}</p><p class="alert warn">การทำรายการนี้ไม่ลบยอด หลักฐาน หรือประวัติเดิม ระบบจะทำเครื่องหมายผลความเสียหายเดิมว่า “ยกเลิก” และนำออกจากยอดสรุปปัจจุบัน</p><p>${returning?'คืนเคสไปสถานะรอผู้ชี้แจงส่งข้อมูลเพิ่มเติม':'คืนเคสไปสถานะตอบแล้ว เพื่อให้ Audit ตรวจและปิดผลใหม่'}</p><label>เหตุผลที่ยกเลิกผลเดิม<textarea id="closureReversalReason" maxlength="2000" placeholder="ระบุว่าผลเดิมผิดอย่างไร และต้องตรวจแก้จุดใด"></textarea></label><label><input type="checkbox" id="closureReversalChecked">ตรวจเลขเคส ยอดเดิม หลักฐาน และยืนยันว่าต้องย้อนผลปิดเคสนี้</label><p id="closureReversalStatus" role="status"></p>`,`<button class="ghost-button" id="closureReversalCancel">ยกเลิก</button><button class="primary-button" id="closureReversalConfirm">${h(title)}</button>`);
-  $('#closureReversalCancel').onclick=closeModal;
-  $('#closureReversalConfirm').onclick=async event=>{
-    const reason=$('#closureReversalReason').value.trim();
-    if(!$('#closureReversalChecked').checked||reason.length<10||reason.length>2000)return toast('ต้องตรวจยืนยันและระบุเหตุผล 10–2,000 ตัวอักษร','warn');
-    event.currentTarget.disabled=true;$('#closureReversalStatus').textContent='กำลังบันทึกและอ่านสถานะยืนยัน — ห้ามกดซ้ำ';
-    try{
-      await Sb.reverseWrongCaseClosure({p_id:crypto.randomUUID(),p_case:e.dbId,p_previous_status:e.status,p_action:action,p_reason:reason});
-      closeModal();closeDrawer();await loadLiveOverview(true);render();toast(returning?'ตีกลับให้ชี้แจงแล้ว และเก็บประวัติผลเดิมครบ':'ยกเลิกผลปิดและคืนให้ Audit ตรวจใหม่แล้ว');
-    }catch(error){$('#closureReversalStatus').textContent='ยังไม่ยืนยันผล: '+error.message;toast('ยังย้อนเคสไม่ได้: '+error.message,'warn');event.currentTarget.disabled=false;}
-  };
-}
-
-function hydrateLiveData(quality, operations, exceptions, damages, logs) {
-  DB.exceptions = actionableAuditRows(exceptions).map(mapLiveException);
-  DB.damages = (damages || []).map(mapLiveDamage);
-  DB.auditLog = (logs || []).map((l) => ({ at: l.at, user: l.actor || "ระบบ", action: l.action, entity: l.entity, target: l.target, detail: l.detail || "" }));
-  const lastRun = (quality || []).find((x) => x.run_id && x.run_at);
-  DB.currentRun = lastRun
-    ? {
-        id: lastRun.run_id,
-        businessDate: lastRun.business_date,
-        company: lastRun.company,
-        stmCount: Number(lastRun.stm_count || 0),
-        boCount: Number(lastRun.bo_count || 0),
-        matched: Number(lastRun.matched || 0),
-        matchRate: Number(lastRun.match_rate || 0),
-        exceptionCount: Number(lastRun.exception_count || 0),
-        noStmCount: 0,
-      }
-    : null;
-}
-
-// Background requests must not replace a sheet, filter or draft being used.
-let liveInteractionVersion = 0;
-for (const eventName of ["pointerdown", "keydown", "input", "wheel", "touchmove"]) {
-  document.addEventListener(eventName, () => { liveInteractionVersion++; }, { passive: true });
-}
-let liveQueueUpdatePending = false;
-let liveQueueLastPoll = 0;
-function liveQueueRoute() {
-  return ['dashboard','clarify','audit-review','approvals'].includes(state.route) && state.dataset==='production' && Sb.signedIn();
-}
-function liveQueueProtected() {
-  if ($('#appShell')?.inert) return true;
-  if(document.visibilityState==='hidden')return true;
-  if(['#drawer','#modal'].some(selector=>$(selector)&&!$(selector).hidden))return true;
-  const root=$('#viewRoot');
-  return Array.from(root?.querySelectorAll('textarea,input,select')||[]).some(el=>
-    (document.activeElement===el && el.id!=='auditReviewCompany') || (['checkbox','radio'].includes(el.type)?el.checked:
-    el.tagName==='SELECT'?Array.from(el.options).some((option,index)=>option.selected!==(option.defaultSelected || (!el.multiple && !Array.from(el.options).some(item=>item.defaultSelected) && index===0))):el.value!==el.defaultValue));
-}
-function applyLiveQueueUpdate(force=false) {
-  if(!liveQueueRoute() || liveOverviewState.loading || liveOverviewState.auxiliaryLoading
-    || (!liveOverviewState.exceptionsReady && !(state.route === 'clarify' && liveOverviewState.auxiliaryError)) || (['audit-review','approvals'].includes(state.route) && (liveOverviewState.error || liveOverviewState.auxiliaryError))
-    || (!force && liveQueueProtected()))return false;
-  const root=$('#viewRoot'),x=window.scrollX,y=window.scrollY;
-  if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
-    const updated=root.auditQueueUpdateInPlace();
-    if(updated){liveQueueUpdatePending=false;$('#liveUpdateAvailable')?.remove();root.querySelector('.live-background-notice')?.remove();renderNav();renderAuditFlow();if(typeof renderFilters==='function')renderFilters();}
-    return updated;
-  }
-  const scrolls=Array.from(root?.querySelectorAll('*')||[]).filter(el=>el.scrollTop||el.scrollLeft).map(el=>{
-    const path=[];let node=el;while(node&&node!==root){path.unshift(`${node.tagName.toLowerCase()}:nth-child(${Array.from(node.parentElement.children).indexOf(node)+1})`);node=node.parentElement;}
-    return {selector:path.join(' > '),top:el.scrollTop,left:el.scrollLeft};
-  });
-  liveQueueUpdatePending=false;
-  render();
-  const restore=()=>{for(const saved of scrolls){const el=$('#viewRoot')?.querySelector(saved.selector);if(el){el.scrollTop=saved.top;el.scrollLeft=saved.left;}}window.scrollTo(x,y);};
-  restore();requestAnimationFrame(restore);
-  return true;
-}
-async function pollLiveQueues() {
-  if(!liveQueueRoute() || liveQueueProtected())return;
-  if(liveQueueUpdatePending)applyLiveQueueUpdate();
-  if(liveOverviewState.loading || liveOverviewState.auxiliaryLoading || Date.now()-liveQueueLastPoll<30000)return;
-  liveQueueLastPoll=Date.now();
-  // Read only. Never dispatch reconciliation, decisions, notes or case changes.
-  if(state.route==='approvals')for(const name of [CaseClosure,ManualPairing,CrossDayWorkbench])name.queueState.at=0;
-  await loadLiveOverview(true);
-}
-setInterval(()=>pollLiveQueues().catch(()=>{}),1000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='hidden'){liveQueueLastPoll=0;pollLiveQueues().catch(()=>{});}});
-function offerLiveOverviewUpdate() {
-  if(state.route==='finance')return;
-  if(typeof liveQueueRoute==='function' && liveQueueRoute()) {
-    liveQueueUpdatePending=true;
-    if(applyLiveQueueUpdate())return;
-  }
-  const root = $("#viewRoot");
-  if (!root || !Sb.signedIn()) return;
-  let notice = $("#liveUpdateAvailable");
-  if (!notice) {
-    notice = document.createElement("aside");
-    notice.id = "liveUpdateAvailable";
-    notice.className = "alert live-update-available";
-    notice.setAttribute("role", "status");
-    const text = document.createElement("span");
-    text.textContent = "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
-    const button = document.createElement("button");
-    button.className = "ghost-button sm";
-    button.textContent = "แสดงข้อมูลล่าสุด";
-    button.onclick = () => {
-      // Applying is explicit; never discard a form or open case silently.
-      if (($('#drawer') && !$('#drawer').hidden) || (typeof liveQueueRoute === 'function' && liveQueueRoute() && liveQueueProtected()) || ($("#modal") && !$("#modal").hidden)) {
-        toast("กรุณาบันทึกและปิดหน้ารายละเอียดที่เปิดอยู่ก่อน — ยังไม่ได้เปลี่ยนหน้าหรือทิ้งข้อความ", "warn");
-        return;
-      }
-      if (notice.querySelector("div")) return;
-      const confirm = document.createElement("div");
-      confirm.setAttribute("role", "group");
-      confirm.setAttribute("aria-label", "ยืนยันแสดงข้อมูลล่าสุด");
-      const warning = document.createElement("p");
-      warning.textContent = "แสดงข้อมูลล่าสุด? หากมีข้อความที่ยังไม่บันทึก ให้ยกเลิกและบันทึกก่อน";
-      const cancel = document.createElement("button");
-      cancel.className = "ghost-button sm";
-      cancel.textContent = "ยกเลิก";
-      cancel.onclick = () => confirm.remove();
-      const apply = document.createElement("button");
-      apply.className = "primary-button sm";
-      apply.textContent = "ยืนยันแสดงข้อมูลล่าสุด";
-      apply.onclick = () => {
-        if (($('#drawer') && !$('#drawer').hidden) || (typeof liveQueueRoute === 'function' && liveQueueRoute() && liveQueueProtected()) || ($("#modal") && !$("#modal").hidden)) return;
-        const x = window.scrollX, y = window.scrollY;
-        render();
-        window.scrollTo(x, y);
-      };
-      confirm.append(warning, cancel, apply);
-      notice.append(confirm);
-    };
-    const retry = document.createElement("button");
-    retry.className = "ghost-button sm";
-    retry.textContent = "ลองโหลดใหม่";
-    retry.onclick = async () => {
-      retry.disabled = true;
-      try { await loadLiveOverview(true); }
-      finally { retry.disabled = false; }
-    };
-    notice.append(text, button, retry);
-    root.append(notice);
-  }
-  const errors = [liveOverviewState.error, liveOverviewState.auxiliaryError].filter(Boolean);
-  notice.querySelector("span").textContent = errors.length
-    ? "ข้อมูลบางส่วนโหลดไม่สำเร็จ: " + errors.join(" · ") + " — ไม่ใช่ยอดค้างเป็นศูนย์; กดลองโหลดใหม่โดยไม่ทิ้งงานที่เปิดอยู่"
-    : "ข้อมูลล่าสุดพร้อมแล้ว · หน้าที่กำลังตรวจยังคงเดิม";
-}
-// Read-only responder model. One authorized date-range snapshot serves all
-// company filters; never persist it or share it across actors/access scopes.
-const fastQueueDrafts = new Map();
-function fastQueueDraftKey() {
-  if (!['audit-review','approvals'].includes(state.route) || state.dataset !== 'production') return '';
-  return JSON.stringify([Sb.authUser()?.id,state.role,state.access?.companies,state.route,state.filters]);
-}
-function captureFastQueueDrafts() {
-  const root=$('#viewRoot'),key=root?.dataset.fastQueueDraftKey;
-  if (!key) return;
-  const values=fastQueueDrafts.get(key)||{};
-  root.querySelectorAll('textarea').forEach(el=>{const name=el.id||(el.hasAttribute('data-pair-bulk-note')?'pair-bulk-note':'');if(name)values[name]=el.value;});
-  fastQueueDrafts.set(key,values);
-}
-function restoreFastQueueDrafts(expectedKey=fastQueueDraftKey()) {
-  const root=$('#viewRoot');
-  if (!expectedKey || root?.dataset.fastQueueDraftKey!==expectedKey) return;
-  const values=fastQueueDrafts.get(expectedKey)||{};
-  root.querySelectorAll('textarea').forEach(el=>{const name=el.id||(el.hasAttribute('data-pair-bulk-note')?'pair-bulk-note':'');if(Object.hasOwn(values,name)&&el.value===el.defaultValue&&document.activeElement!==el)el.value=values[name];});
-}
-let responderQueueCache = null;
-let responderQueueFailure = null;
-const responderQueueFlights = new Map();
-function responderQueueMode() {
-  return state.dataset === 'production' && state.route === 'clarify' && state.role === 'shift_lead' && Sb.signedIn();
-}
-function fastReviewQueueMode() {
-  return state.dataset === 'production' && Sb.signedIn() &&
-    ['audit-review','approvals'].includes(state.route) && ['monitor','audit_assistant','lead','admin'].includes(state.role);
-}
-function fastCaseQueueMode() { return responderQueueMode() || fastReviewQueueMode(); }
-function responderQueueKey() {
-  return JSON.stringify([Sb.authUser()?.id, state.access?.email, state.role,
-    [...(state.access?.companies || [])].sort(), state.filters.from, state.filters.to]);
-}
-function applyResponderQueue(snapshot) {
-  DB.exceptions = snapshot.rows.filter(row => canAccessCompany(row.company)).map(mapLiveException);
-  liveOverviewState.key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  liveOverviewState.responderOnly = true;
-  liveOverviewState.exceptionsReady = true;
-  liveOverviewState.error = null;
-  liveOverviewState.coreErrors = [];
-  liveOverviewState.updatedAt = new Date(snapshot.at);
-  moreCaseState.hasMore = snapshot.truncated;
-  moreCaseState.offset = snapshot.total;
-  moreCaseState.error = '';
-}
-async function loadResponderQueue(force = false) {
-  if (!fastCaseQueueMode() || !Sb.authUser()?.id) return;
-  // Independent authenticated reads: do not wait for jobs/case summaries before
-  // warming the three approval queues. Their existing single flights/cache own
-  // error and actor isolation; this does not submit or decide any request.
-  if (state.route === 'approvals') {
-    for (const module of [ManualPairing, CrossDayWorkbench, CaseClosure]) {
-      module.loadPending().catch(() => {});
-    }
-  }
-  const key = responderQueueKey();
-  if (!liveOverviewState.responderOnly) ++liveOverviewState.requestId;
-  if (responderQueueCache?.key !== key) {
-    responderQueueCache = null;
-    DB.exceptions = [];
-    liveOverviewState.exceptionsReady = false;
-  }
-  if (responderQueueCache) applyResponderQueue(responderQueueCache);
-  if (!force && responderQueueCache && Date.now() - responderQueueCache.at < 30000) {
-    renderFilters();
-    return;
-  }
-  if (responderQueueFlights.has(key)) return responderQueueFlights.get(key);
-  if (!force && responderQueueFailure?.key === key && Date.now() < responderQueueFailure.retryAt) return;
-  const scope = {from: state.filters.from, to: state.filters.to, company: 'ALL', limit: 5000};
-  liveOverviewState.responderOnly = true;
-  liveOverviewState.key = `${scope.from}|${scope.to}|${state.filters.company}`;
-  liveOverviewState.loading = true;
-  liveOverviewState.auxiliaryLoading = false;
-  liveOverviewState.auxiliaryError = null;
-  const flight = (async () => {
-    // Existing authenticated transport + server-side RLS/current-primary model.
-    // No dashboard, history, finance, notifications or reconciliation reads.
-    try {
-      const rows = await Sb.currentExceptionsSummary(scope);
-      if (!fastCaseQueueMode() || responderQueueKey() !== key) return;
-      responderQueueCache = {key, at: Date.now(), total: rows.length, truncated: rows.length === scope.limit,
-        rows: responderQueueMode() ? rows.filter(row => row.requested_at && !row.case_closure_request_id && ['open','clarifying','answered'].includes(row.status)) : rows};
-      applyResponderQueue(responderQueueCache);
-      responderQueueFailure = null;
-    } catch (error) {
-      if (fastCaseQueueMode() && responderQueueKey() === key) {
-        responderQueueFailure = {key, retryAt: Date.now() + 30000};
-        liveOverviewState.auxiliaryError = 'รายการเคส: ' + (error.message || 'โหลดไม่สำเร็จ') + ' · คงร่างและข้อมูลที่โหลดได้ครั้งก่อน';
-      }
-    } finally {
-      responderQueueFlights.delete(key);
-      if (fastCaseQueueMode() && responderQueueKey() === key) {
-        liveOverviewState.loading = false;
-        liveOverviewState.auxiliaryLoading = false;
-        offerLiveOverviewUpdate();
-      }
-    }
-  })();
-  responderQueueFlights.set(key, flight);
-  return flight;
-}
-async function loadLiveOverview(force = false) {
-  if (state.route === 'clarify' && state.role === 'shift_lead') return loadResponderQueue(force);
-  if (typeof fastReviewQueueMode === 'function' && fastReviewQueueMode()) return loadResponderQueue(force);
-  if (liveOverviewState.responderOnly) {
-    liveOverviewState.responderOnly = false;
-    liveOverviewState.loading = false;
-    liveOverviewState.auxiliaryLoading = false;
-    ++liveOverviewState.requestId;
-    liveOverviewState.quality = null;
-    liveOverviewState.key = '';
-  }
-  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  const caseReadLimit = state.route === 'clarify' ? 5000 : 250;
-  if (liveOverviewState.loading || liveOverviewState.auxiliaryLoading || (!force && liveOverviewState.key === key && liveOverviewState.quality)) return;
-  const requestId = ++liveOverviewState.requestId;
-  const changedFilter = liveOverviewState.key !== key;
-  const firstDashboardLoad = state.route === "dashboard" && !liveOverviewState.quality;
-  const interactionAtStart = liveInteractionVersion;
-  liveOverviewState.loading = true;
-  liveOverviewState.auxiliaryLoading = false;
-  liveOverviewState.auxiliaryError = null;
-  liveOverviewState.coreErrors = [];
-  liveOverviewState.error = null;
-  liveOverviewState.key = key;
-  if (changedFilter) {
-    liveOverviewState.daily = null;
-    liveOverviewState.operations = null;
-    liveOverviewState.quality = null;
-    liveOverviewState.checklist = null;
-    liveOverviewState.boFirst = null;
-    liveOverviewState.damages = null;
-    liveOverviewState.logs = null;
-    liveOverviewState.clarifications = null;
-    liveOverviewState.informationalExceptions = [];
-    liveOverviewState.exceptionsReady = false;
-    liveOverviewState.damagesReady = false;
-    liveOverviewState.logsReady = false;
-    DB.exceptions = [];
-    DB.damages = [];
-  }
-  // Keep existing content while the request is in flight.
-  try {
-    // Phase 1: ข้อมูลสรุปขนาดเล็กต้องขึ้นหน้าจอก่อน ไม่รอ exception/หลักฐานหลายพันแถว
-    const core = await Promise.allSettled([
-      Sb.dailyStatus({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
-      Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
-      Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
-      Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
-      Sb.boFirstCoverage({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
-      Sb.runtimeSettings(),
-      Sb.reviewHoldScopes(),
-    ]);
-    if (requestId !== liveOverviewState.requestId) return;
-    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ", "ทะเบียนพักตรวจ"];
-    AccountReviewHolds.set(core[6].status==='fulfilled'?core[6].value:[]);
-    if (key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
-      liveOverviewState.loading = false;
-      return loadLiveOverview(true);
-    }
-    const coreValue = (index, fallback) => core[index].status === "fulfilled" ? (core[index].value ?? fallback) : fallback;
-    let daily = coreValue(0, liveOverviewState.daily);
-    let operations = coreValue(1, liveOverviewState.operations);
-    let quality = coreValue(2, liveOverviewState.quality);
-    let checklistRows = coreValue(3, liveOverviewState.checklist);
-    let boFirstRows = coreValue(4, liveOverviewState.boFirst);
-    const settings = coreValue(5, liveOverviewState.settings ? [liveOverviewState.settings] : null);
-    liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
-    // Keep the requested day even when empty; never silently widen or change Day-1.
-    if (requestId !== liveOverviewState.requestId) return;
-    if (daily !== null) liveOverviewState.daily = daily || [];
-    if (operations !== null) liveOverviewState.operations = (operations || []).filter(isLiveCompanyRow);
-    if (quality !== null) liveOverviewState.quality = (quality || []).filter(isLiveCompanyRow);
-    if (checklistRows !== null) liveOverviewState.checklist = (checklistRows || []).filter(isLiveCompanyRow);
-    if (boFirstRows !== null) liveOverviewState.boFirst = (boFirstRows || []).filter(isLiveCompanyRow);
-    if (settings !== null) liveOverviewState.settings = Array.isArray(settings) ? (settings[0] || null) : settings;
-    liveOverviewState.error = liveOverviewState.coreErrors.length
-      ? `ข้อมูลบางส่วนยังไม่พร้อม: ${[...new Set(liveOverviewState.coreErrors)].join(", ")} — ตัวเลขส่วนนี้จะแสดง “—” แทนศูนย์`
-      : null;
-    liveOverviewState.updatedAt = new Date();
-    liveOverviewState.loading = false;
-    liveOverviewState.auxiliaryLoading = true;
-    // Phase 1 must not erase the last loaded case objects/drafts while the
-    // independent case read is pending. Hydrate raw rows only after phase 2.
-    if (firstDashboardLoad && state.route === "dashboard" && liveInteractionVersion === interactionAtStart && liveOverviewState.quality) {
-      const x = window.scrollX, y = window.scrollY;
-      render();
-      window.scrollTo(x, y);
-    } else offerLiveOverviewUpdate();
-
-    // Phase 2: เติมรายละเอียดหนักด้านหลัง โดยไม่บล็อกแดชบอร์ดหลัก
-    const aux = await Promise.allSettled([
-      // โหลดเฉพาะชุดแรกให้หน้าขึ้นไว; ค้นหา/Export ค่อยดึงเพิ่มเติมเมื่อผู้ใช้ร้องขอ
-      Sb.currentExceptionsSummary({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: caseReadLimit }),
-      Sb.damages({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 2000 }),
-      Sb.auditLogs({ from: state.filters.from, to: state.filters.to, limit: 500 }),
-      Sb.notifications(200, VISIBLE_DATE_FROM),
-      Sb.clarificationMatches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
-      Sb.reconciliationEvidence({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
-    ]);
-    if (requestId !== liveOverviewState.requestId) return;
-    if (liveOverviewState.key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
-      liveOverviewState.loading = false;
-      liveOverviewState.auxiliaryLoading = false;
-      return loadLiveOverview(true);
-    }
-    const value = (index, fallback = []) => aux[index].status === "fulfilled" ? (aux[index].value || fallback) : fallback;
-    const previousCases = DB.exceptions;
-    const previousDamages = DB.damages;
-    const previousLogs = DB.auditLog;
-    const rawExceptionRows = value(0, []);
-    const matchEvidence = value(5, []);
-    const exceptionRows = actionableAuditRows(rawExceptionRows,matchEvidence);
-    const damageRows = value(1, liveOverviewState.damages || []);
-    const logRows = value(2, liveOverviewState.logs || []);
-    const casesSucceeded = aux[0].status === "fulfilled";
-    liveOverviewState.exceptionsReady = casesSucceeded || liveOverviewState.exceptionsReady;
-    if (casesSucceeded) {
-      liveOverviewState.informationalExceptions = informationalAuditRows(rawExceptionRows);
-      liveOverviewState.matchEvidence = matchEvidence;
-      liveOverviewState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptionRows,matchEvidence);
-      moreCaseState.offset = rawExceptionRows.length;
-      moreCaseState.hasMore = rawExceptionRows.length === caseReadLimit;
-      moreCaseState.error = "";
-    }
-    liveOverviewState.damagesReady = aux[1].status === "fulfilled";
-    liveOverviewState.logsReady = aux[2].status === "fulfilled";
-    if (aux[1].status === "fulfilled") liveOverviewState.damages = damageRows;
-    if (aux[2].status === "fulfilled") liveOverviewState.logs = logRows;
-    if (aux[3].status === "fulfilled") liveOverviewState.notifications = value(3);
-    if (aux[4].status === "fulfilled") liveOverviewState.clarifications = value(4);
-    const auxiliaryNames = ["รายการเคส", "ทะเบียนความเสียหาย", "ประวัติงาน", "การแจ้งเตือน", "คำชี้แจง", "หลักฐานจับคู่"];
-    const auxiliaryErrors = aux.flatMap((item, index) => item.status === "rejected"
-      ? [auxiliaryNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
-    liveOverviewState.auxiliaryError = auxiliaryErrors.length ? auxiliaryErrors.join(" · ") : null;
-    liveOverviewState.auxiliaryLoading = false;
-    liveOverviewState.updatedAt = new Date();
-    hydrateLiveData(liveOverviewState.quality || [], liveOverviewState.operations || [], exceptionRows, damageRows, logRows);
-    if (!casesSucceeded) DB.exceptions = previousCases;
-    if (aux[1].status !== 'fulfilled') DB.damages = previousDamages;
-    if (aux[2].status !== 'fulfilled') DB.auditLog = previousLogs;
-    updateBell();
-  } catch (e) {
-    if (requestId === liveOverviewState.requestId) liveOverviewState.error = e.message || "โหลดข้อมูลจริงไม่สำเร็จ";
-  }
-  if (requestId === liveOverviewState.requestId) {
-    liveOverviewState.loading = false;
-    liveOverviewState.auxiliaryLoading = false;
-    offerLiveOverviewUpdate();
-  }
-}
-
-function ensureLiveOverview(root) {
-  if (state.dataset !== "production" || !Sb.signedIn()) return true;
-  if (fastCaseQueueMode()) { loadResponderQueue().catch(() => {}); return true; }
-  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  const stale = liveOverviewState.key !== key;
-  if (liveOverviewState.responderOnly || ((!liveOverviewState.quality || stale) && !liveOverviewState.loading)) loadLiveOverview(stale);
-  // อย่าปิดทั้งหน้าระหว่างรอข้อมูลกลาง แต่ละหน้าจะแสดงข้อมูลที่มีอยู่ก่อน
-  // และ render() จะเติมแถบแจ้งสถานะด้านบนจนกว่าการอัปเดตจะเสร็จ
-  return true;
-}
-
-function hasLiveCoreError(section, errors = liveOverviewState.coreErrors) {
-  return errors.some((message) => message === section || message.startsWith(`${section}:`));
-}
-function renderLiveDashboard(root) {
-  if (!liveOverviewState.quality && !liveOverviewState.loading) loadLiveOverview();
-
-  const inLiveRange = (x) => (!state.filters.from || x.business_date >= state.filters.from) && (!state.filters.to || x.business_date <= state.filters.to) && (state.filters.company === "ALL" || x.company === state.filters.company);
-  const daily = (liveOverviewState.daily || []).filter(inLiveRange);
-  const operations = (liveOverviewState.operations || []).filter(inLiveRange);
-  const quality = (liveOverviewState.quality || []).filter(inLiveRange);
-  const exceptions = scopedExceptions();
-  const totalMail = daily.reduce((sum, x) => sum + Number(x.mail_count || 0), 0);
-  const totalFiles = daily.reduce((sum, x) => sum + Number(x.file_count || 0), 0);
-  const parsedFiles = daily.reduce((sum, x) => sum + Number(x.parsed_count || 0), 0);
-  const completed = quality.filter((x) => x.primaryResult || x.status === "completed").length;
-  const needsReview = quality.filter((x) => x.status === "needs_review").length;
-  const waiting = quality.filter((x) => !x.primaryResult && x.status === "waiting_files").length;
-  const failed = quality.filter((x) => !x.primaryResult && (x.status === "error" || Number(x.error_count || 0) > 0)).length;
-  const checklistInRange = (liveOverviewState.checklist || []).filter(inLiveRange);
-  const checklistByCompanyDate = new Map(checklistInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
-  const manualFollowups=manualFollowupItems(checklistInRange);
-  const manualFollowupErrors=[...new Set(checklistInRange.map(r=>r.workflowStatusError).filter(Boolean))];
-  const manualFollowupReady=Array.isArray(liveOverviewState.checklist)&&!hasLiveCoreError('เช็กลิสต์');
-  const currentExceptionCount = (row) => {
-    const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
-    return lifecycle?.open_count != null && lifecycle?.resolved_count != null
-      ? Number(lifecycle.open_count || 0) + Number(lifecycle.resolved_count || 0)
-      : Number(row.exception_count || 0);
-  };
-  const hiddenExceptionTotal = (liveOverviewState.informationalExceptions || []).filter(inLiveRange).length;
-  const hasLifecycleCounts = checklistInRange.some((row) => row.open_count != null && row.resolved_count != null);
-  const exceptionTotal = hasLifecycleCounts
-    ? checklistInRange.reduce((sum, row) => sum + Number(row.open_count || 0) + Number(row.resolved_count || 0), 0)
-    : Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal - Number(liveOverviewState.matchedStaleExceptions || 0));
-  const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
-  const dailyAvailable = Array.isArray(liveOverviewState.daily) && !hasLiveCoreError("ยอดเมลและไฟล์");
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
-  const showMetric = (available, value) => available ? num(value) : "—";
-
-  const opByKey = new Map(operations.map((x) => [`${x.business_date}|${x.company}|${x.business_system || ""}`, x]));
-  const companyMap = new Map();
-  quality.forEach((row) => {
-    const key = `${row.company}|${row.business_system || "ไม่ระบุระบบ"}`;
-    if (!companyMap.has(key)) companyMap.set(key, { company: row.company, system: row.business_system || "ไม่ระบุระบบ", completed: 0, review: 0, waiting: 0, error: 0, files: 0, latest: row.business_date, kinds: new Set() });
-    const item = companyMap.get(key);
-    item.files += Number(row.file_count || 0);
-    item.latest = item.latest > row.business_date ? item.latest : row.business_date;
-    if (row.primaryResult || row.status === "completed") item.completed++;
-    else if (row.status === "waiting_files") item.waiting++;
-    else if (row.status === "error") item.error++;
-    else item.review++;
-    const op = opByKey.get(`${row.business_date}|${row.company}|${row.business_system || ""}`);
-    (op?.present_kinds || []).forEach((kind) => item.kinds.add(kind));
-  });
-  const companies = [...companyMap.values()].sort((a, b) => b.latest.localeCompare(a.latest) || b.review + b.waiting - (a.review + a.waiting));
-
-  const behaviorGroups = [
-    { label: "STM / ฝาก-ถอนธนาคาร", kinds: ["stm_pdf"], tone: "blue" },
-    { label: "รายงาน BO", kinds: ["bo_main"], tone: "green" },
-    { label: "PM / Payment", kinds: ["pm_statement"], tone: "violet" },
-    { label: "Manual / รายการพิเศษ", kinds: ["manual_credit", "manual_payment", "manual_bonus", "comm_req", "credit_out"], tone: "amber" },
-    { label: "ชี้แจง / ยังจำแนกไม่ได้", kinds: ["doc_clarify", "unknown"], tone: "red" },
-  ].map((group) => ({ ...group, value: operations.filter((op) => (op.present_kinds || []).some((kind) => group.kinds.includes(kind))).length }));
-
-  const typeSummary = Object.entries(exceptions.reduce((acc, e) => ((acc[e.typeName] = (acc[e.typeName] || 0) + 1), acc), {})).sort((a, b) => b[1] - a[1]).slice(0, 6);
-  const recent = [...quality].sort((a, b) => String(b.business_date).localeCompare(String(a.business_date)) || String(a.company).localeCompare(String(b.company), "th")).slice(0, 80);
-  const missingText = (row) => cloudMissingGroupsText(row.missing_groups);
-  const companyByCode = new Map(companies.map((company) => [String(company.company || "").toUpperCase(), company]));
-  const latestCompanyDate = (codes) => codes.reduce((latest, code) => {
-    const value = companyByCode.get(code)?.latest || "";
-    return value > latest ? value : latest;
-  }, state.filters.to || DEFAULT_WORK_DATE);
-  const activeStart = liveOverviewState.settings?.operational_start_date || OPERATING_START_DATE;
-  const historyCutoff = liveOverviewState.settings?.history_cutoff_date || "2026-08-26";
-  const checklistDates = [...new Set((liveOverviewState.checklist || []).map((row) => row.business_date))].sort().reverse();
-  const checklistDate = checklistDates.includes(state.filters.date) ? state.filters.date : (checklistDates[0] || state.filters.date);
-  const checklist = (liveOverviewState.checklist || []).filter((row) => row.business_date === checklistDate);
-  const boFirstByCompanyDate = new Map();
-  (liveOverviewState.boFirst || []).forEach((row) => {
-    const key = `${row.business_date}|${String(row.company || "").toUpperCase()}`;
-    if (!boFirstByCompanyDate.has(key)) boFirstByCompanyDate.set(key, row);
-  });
-  const loadNotice = liveOverviewState.loading
-    ? `<section class="alert"><strong>กำลังอัปเดตข้อมูลล่าสุด</strong><span>เปิดดูเมนูและรายงานได้ทันที ระบบจะเติมตัวเลขบนหน้านี้เมื่อข้อมูลมาถึง</span></section>`
-    : liveOverviewState.error
-      ? `<section class="alert warn"><strong>ข้อมูลจริงมาไม่ครบทุกส่วน</strong><span>${h(liveOverviewState.error)}</span><button class="ghost-button sm" id="liveRetry">ลองใหม่</button></section>`
-      : !daily.length && !operations.length && !quality.length
-        ? `<section class="alert warn"><strong>ไม่พบข้อมูลในช่วง ${h(rangeLabel())}</strong><span>ข้อมูลอาจอยู่ก่อนช่วงวันที่ที่เลือก ลองขยายช่วงย้อนหลัง หรือเปิดคลังไฟล์เพื่อตรวจวันที่จากเมลจริง</span><button class="ghost-button sm" id="expandDateRange">ขยายย้อนหลัง 90 วัน</button><button class="ghost-button sm" data-goto="cloud">เปิดคลังไฟล์</button></section>`
-        : "";
-
-  root.innerHTML = `
-    ${loadNotice}
-    <section class="status-strip live-status-strip action-tiles">
-      <article class="ok" data-action-route="cloud"><span>เมลในช่วงที่เลือก</span><strong>${showMetric(dailyAvailable, totalMail)}</strong><small>${dailyAvailable ? `${num(totalFiles)} ไฟล์ · อ่านแล้ว ${num(parsedFiles)}` : "ข้อมูลเมลยังไม่พร้อม"} · กดดูไฟล์</small></article>
-      <article class="ok" data-action-route="daily-summary"><span>ระบบประมวลผลเสร็จ</span><strong>${showMetric(qualityAvailable, completed)}</strong><small>จำนวนงานรายวัน/บริษัท · ยังไม่ใช่การยืนยันจาก Audit</small></article>
-      <article class="warn" data-action-route="daily-summary"><span>ต้องตรวจสอบ</span><strong>${showMetric(qualityAvailable, needsReview)}</strong><small>${qualityAvailable ? "ข้อมูลมาแล้วแต่ยังไม่ครบ" : "ผลกระทบยอดยังไม่พร้อม"} · กดดูสิ่งที่ขาด</small></article>
-      <article class="bad" data-action-route="cloud"><span>รอไฟล์ / ล้มเหลว</span><strong>${showMetric(qualityAvailable, waiting + failed)}</strong><small>${qualityAvailable ? `รอ ${num(waiting)} · ล้มเหลว ${num(failed)}` : "ผลกระทบยอดยังไม่พร้อม"} · กดแก้ไฟล์</small></article>
-      <article class="bad" data-action-route="exceptions"><span>เคสที่ระบบตรวจพบ</span><strong>${showMetric(qualityAvailable, exceptionTotal)}</strong><small>${!qualityAvailable ? "ผลกระทบยอดยังไม่พร้อม" : liveOverviewState.auxiliaryLoading ? "ข้อมูลหลักพร้อมแล้ว · กำลังเติมยอดเสี่ยง" : !liveOverviewState.exceptionsReady ? "ยอดเสี่ยงยังโหลดไม่สำเร็จ" : `ยอดเสี่ยงเฉพาะ ${num(exceptions.length)} เคสที่โหลด ${money0(risk)} บาท · ไม่ใช่ยอดรวมทั้งระบบ`} · กดตรวจเคส</small></article>
-    </section>
-
-    <section class="panel manual-followup-panel" aria-labelledby="manualFollowupTitle">
-      <div class="panel-heading"><div><p class="eyebrow">ไม่ลืมยืนยันผลรันมือ</p><h2 id="manualFollowupTitle">ผลรันมือที่ต้องทำต่อ ${manualFollowupReady?`(${num(manualFollowups.length)})`:''}</h2><small class="head-sub">ตามบริษัทและช่วงวันที่ที่เลือก · แสดงรอบล่าสุดของแต่ละขอบเขต · เปิดทบทวนเท่านั้น ไม่ยืนยันหรือเปลี่ยนผลหลักอัตโนมัติ</small></div></div>
-      ${!manualFollowupReady?'<p role="status">ยังตรวจสถานะรายงานไม่สำเร็จ กรุณารีเฟรช ไม่ได้หมายความว่าไม่มีงานค้าง</p>':''}
-      ${manualFollowupErrors.map(e=>`<p role="alert">${h(e)} · รายการอาจยังไม่ครบ</p>`).join('')}
-${manualFollowups.map(q=>`<article class="manual-followup-item"><div><strong>${h(q.company)} · ${h(q.business_date)}</strong><p>${q.status==='ready'?'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยันรายงาน':'ยืนยันรายงานแล้ว · ยังไม่ใช้เป็นผลหลัก'}</p><small>${h(q.account==='ALL'?'ทุกบัญชี':q.account)} · ${h({all:'ฝากและถอน',deposit:'ฝาก',withdraw:'ถอน'}[q.direction]||q.direction)} · รันเมื่อ ${h(displayTime(q.created_at))}</small>${q.account!=='ALL'||q.direction!=='all'?'<small class="sub">รายงานเฉพาะขอบเขต: ยืนยันเก็บเป็นรายงานแยกได้ แต่ใช้แทนผลหลักทั้งบริษัทไม่ได้</small>':''}</div>${['lead','admin'].includes(state.role)&&canAccessCompany(q.company)?`<button class="primary-button" data-manual-followup="${h(q.id)}">${q.status==='ready'?'ทบทวนและยืนยันรายงาน':q.account!=='ALL'||q.direction!=='all'?'เปิดรายงานเฉพาะขอบเขต':'ทบทวนใช้เป็นผลหลัก'}</button>`:'<small>ให้หัวหน้า/ผู้ดูแลในบริษัทนี้ดำเนินการ</small>'}</article>`).join('')}
-      ${manualFollowupReady&&!manualFollowups.length&&!manualFollowupErrors.length?'<p class="empty">ไม่พบผลรันมือที่รอยืนยันหรือยังไม่ใช้เป็นผลหลักในขอบเขตนี้</p>':''}
-    </section>
-
-    <section class="action-overview">
-      <div><p class="eyebrow">สรุปที่ต้องทำ</p><h2>${!qualityAvailable ? "กำลังรอผลกระทบยอดจริง" : needsReview + waiting + failed ? `มี ${num(needsReview + waiting + failed)} งานที่ต้องตาม` : "ตรวจผลและการยืนยันของ Audit ต่อในหน้ารายการ"}</h2><p>${!qualityAvailable ? "ระบบไม่สรุปเป็นศูนย์จนกว่าจะอ่านผลจริงสำเร็จ" : `${waiting ? `รอไฟล์ ${num(waiting)} งาน · ` : ""}${needsReview ? `ต้องตรวจ ${num(needsReview)} งาน · ` : ""}${failed ? `ล้มเหลว ${num(failed)} งาน` : "ไม่พบงานล้มเหลว"}`}${liveOverviewState.auxiliaryLoading ? " · รายละเอียดกำลังโหลดเบื้องหลัง" : ""}${liveOverviewState.auxiliaryError ? ` · ${h(liveOverviewState.auxiliaryError)}` : ""}</p></div>
-      <div class="inline-actions"><button class="primary-button" data-goto="daily-summary">สรุป 1 บริษัท/วัน</button><button class="ghost-button" data-goto="cloud">ดูเมลและไฟล์</button><button class="ghost-button" data-goto="exceptions">ดู Exception</button><button class="ghost-button" id="liveRefresh">รีเฟรชข้อมูล</button></div>
-    </section>
-
-    <section class="period-banner">
-      <div><p class="eyebrow">รอบปฏิบัติงานปัจจุบัน</p><h2>เริ่มตรวจใหม่ตั้งแต่ ${h(activeStart)}</h2><p>ข้อมูลถึง ${h(historyCutoff)} ถูกเก็บไว้เป็นประวัติ ไม่ถูกลบ และไม่ปนกับคิวงานรอบใหม่</p></div>
-      <button class="ghost-button" id="openHistory">ดูประวัติ 1–23 ส.ค.</button>
-    </section>
-
-    <section class="panel operating-timeline">
-      <div class="panel-heading"><div><p class="eyebrow">รอบงานประจำวัน</p><h2>${h(checklist[0]?.workflow_phase_label || "ติดตามตามเวลาปฏิบัติงาน")}</h2><small class="head-sub">ระบบจะยังไม่แจ้งว่าขาดไฟล์ก่อนสิ้นสุดช่วงรับไฟล์ 08:00 น.</small></div><span class="badge blue">เวลาไทย</span></div>
-      <div class="operating-timeline-grid">
-        <article><b>05:00–08:00</b><span>รับไฟล์ตรวจจากแอดมิน</span></article>
-        <article><b>08:00–17:00</b><span>อ่านไฟล์และกระทบยอด</span></article>
-        <article><b>17:00</b><span>ส่งเคสให้แอดมินชี้แจง</span></article>
-        <article><b>17:00–19:00</b><span>อัปโหลดไฟล์ที่ออดิทเสร็จ</span></article>
-        <article><b>หลัง 19:00</b><span>ติดตามทีมออดิทหากยังไม่อัปโหลด</span></article>
-      </div>
-    </section>
-
-    <section class="panel daily-checklist-panel">
-<div class="panel-heading"><div><p class="eyebrow">Checklist รายบริษัท</p><h2>วันที่ ${h(checklistDate)} · ครบทั้ง 9 บริษัท</h2><small class="head-sub">ระบบอ่าน BO ก่อนเพื่อรู้บัญชี/Provider ที่ใช้จริง แล้วจึงตรวจ STM/PM ที่ต้องส่ง · คอลัมน์เอกสารและการอ่านไฟล์เป็นรอบอัตโนมัติ · ผลหลักและผลรันมือแสดงแยกในคอลัมน์สถานะ</small></div><span class="health ${checklist.some((row) => !row.primaryResult && !["completed", "scheduled", "receiving"].includes(row.checklist_status)) ? "attention" : "ok"}">${num(checklist.filter((row) => row.primaryResult || row.checklist_status === "completed").length)}/${num(checklist.length || 9)} บริษัทที่ระบบประมวลผลเสร็จ</span></div>
-      <div class="table-wrap"><table class="checklist-table"><thead><tr><th>บริษัท / ระบบ</th><th>เมล / ไฟล์</th><th>STM ตาม BO</th><th>BO ที่รับ / ต้องมี</th><th>PM ตาม BO</th><th>บัญชี/Provider ที่ BO ระบุ</th><th>อ่านไฟล์</th><th>กระทบยอด / เคส</th><th>สถานะ</th></tr></thead><tbody>
-        ${checklist.map((row) => {
-          const resultStatus=dailyResultStatus(row);
-          const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : CHECKLIST_STATUS[row.checklist_status] || LIVE_STATUS[row.job_status] || { label: row.checklist_status, tone: "grey" };
-          const future = row.checklist_status === "scheduled";
-          const reconFileCount = Number(row.recon_file_count ?? row.file_count ?? 0);
-          const parsedOk = reconFileCount > 0 && Number(row.parsed_count) === reconFileCount && !Number(row.error_count);
-          const boExpected = expectedBoCount(row);
-          const boOk = Number(row.bo_count) >= boExpected;
-          const pmReceived = Number(row.pm_deposit_count || 0) + Number(row.pm_withdraw_count || 0);
-          const coverage = boFirstByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
-          const requiredCoverage = Array.isArray(coverage?.required) ? coverage.required : [];
-          const missingCoverage = Array.isArray(coverage?.missing) ? coverage.missing : [];
-          const coverageCount = (kind) => {
-            const required = requiredCoverage.filter((item) => item.kind === kind);
-            const missing = missingCoverage.filter((item) => item.kind === kind);
-            return { required, missing, received: Math.max(0, required.length - missing.length) };
-          };
-          const stmCoverage = coverageCount("STM");
-          const pmCoverage = coverageCount("PM");
-          const boIdentities = requiredCoverage.map((item) => `${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
-          const providers = coverage ? (boIdentities.join(", ") || "BO ไม่พบรายการใช้งาน") : "รออ่าน BO";
-          const inactiveProviders = Array.isArray(row.inactive_pm_providers) ? row.inactive_pm_providers.join(", ") : "";
-          const pendingProviders = Array.isArray(row.pending_registry_pm_providers) ? row.pending_registry_pm_providers.join(", ") : "";
-          const providerNotes = `${!coverage && inactiveProviders ? `<small class="sub">ทะเบียนยังไม่พบใช้: ${h(inactiveProviders)}</small>` : ""}${pendingProviders ? `<small class="sub registry-note">ชื่อรอยืนยันในชีต: ${h(pendingProviders)}</small>` : ""}`;
-          const boFirstMissing = missingCoverage.map((item) => `ขาด ${item.kind} ${item.label || item.identity}${item.direction && item.direction !== "unknown" ? ` ${item.direction === "deposit" ? "ฝาก" : "ถอน"}` : ""}`);
-          const pending = () => checklistMark(false, "รอวันทำการ", true);
-return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data-check-company="${h(row.company)}"><td><b>${h(row.display_name || row.company)}</b><small class="sub">ระบบ ${h(row.business_system || "-")} · ${future ? "รอเริ่มวันทำการ" : `รับล่าสุด ${h(displayTime(row.last_mail_at))}`}</small></td><td>${future ? pending() : checklistMark(Number(row.file_count)>0, `${num(row.mail_count)} เมล · ${num(row.file_count)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(stmCoverage.missing.length === 0, `${num(stmCoverage.received)}/${num(stmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td>${future ? pending() : checklistMark(boOk, `${num(row.bo_count)}/${num(boExpected)} ไฟล์`)}</td><td>${future ? pending() : coverage ? checklistMark(pmCoverage.missing.length === 0, `${num(pmCoverage.received)}/${num(pmCoverage.required.length)} กลุ่ม`) : checklistMark(false, "รออ่าน BO", true)}</td><td><small>${h(providers)}</small>${providerNotes}</td><td>${future ? pending() : checklistMark(parsedOk, Number(row.error_count) ? `อ่านไม่ได้ ${num(row.error_count)}` : `${num(row.parsed_count)}/${num(reconFileCount)}`)}</td><td>${future ? pending() : checklistMark((resultStatus.primary || row.job_status==="completed") && Number(row.open_count)===0, resultStatus.primary || row.job_status==="completed" ? `จับคู่ ${num(resultStatus.primary?.report?.matched ?? row.matched_count)} · ค้าง ${num(row.open_count)}` : (LIVE_STATUS[row.job_status]?.label || "ยังไม่รัน"))}</td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${!future && boFirstMissing.length ? `<small class="sub danger">${h(boFirstMissing.join(" · "))}</small>` : !future && Array.isArray(row.missing_items) && row.missing_items.length ? `<small class="sub danger">${h(cloudMissingGroupsText(row.missing_items))}</small>` : ""}${row.registry_warning ? `<small class="sub registry-note">ทะเบียน: ${h(row.registry_warning)}</small>` : ""}</td></tr>`;
-        }).join("") || `<tr><td colspan="9" class="empty">กำลังเตรียมเช็กลิสต์รอบใหม่</td></tr>`}
-      </tbody></table></div>
-      <p class="hint">กดแถวบริษัทเพื่อเปิดสรุป 1 บริษัท 1 วัน · ระบบอ่านบัญชีที่ใช้จริงจาก BO/รายงานฝาก-ถอน แล้วตรวจหา STM/PM คู่กัน ส่วน BO ตรวจตามกฎ 1 หรือ 2 ไฟล์อัตโนมัติ</p>
-    </section>
-
-    <section class="grid-2 live-main-grid company-rule-layout">
-      <div class="panel company-group-panel">
-        <div class="panel-heading"><div><p class="eyebrow">บริษัทและระบบ</p><h2>3 เครือบริษัท · แยกบริษัทย่อย</h2><small class="head-sub">กดชื่อบริษัทเพื่อเปิดสรุปรายวันของบริษัทนั้น</small></div><span class="health ${needsReview + waiting ? "attention" : "ok"}">${num(AUDIT_COMPANY_GROUPS.length)} เครือ</span></div>
-        <div class="company-group-grid">
-          ${AUDIT_COMPANY_GROUPS.map((group) => {
-            const members = group.companies.map((code) => ({ code, data: companyByCode.get(code) }));
-            const totals = members.reduce((acc, member) => {
-              acc.completed += Number(member.data?.completed || 0);
-              acc.review += Number(member.data?.review || 0);
-              acc.waiting += Number(member.data?.waiting || 0) + Number(member.data?.error || 0);
-              return acc;
-            }, { completed: 0, review: 0, waiting: 0 });
-            return `<article class="company-group-card ${group.status === "pending" ? "pending" : "active"}">
-              <div class="company-group-head"><div><strong>${h(group.name)}</strong><span>${num(group.companies.length)} บริษัท</span></div><span class="badge ${group.status === "active" ? "green" : "grey"}">${group.status === "active" ? "ใช้กฎแล้ว" : "รอเงื่อนไข"}</span></div>
-              <div class="company-subcompany-list">${members.map(({ code, data }) => `<button type="button" class="company-subcompany ${data ? "has-data" : ""}" data-summary-company="${h(code)}" data-summary-date="${h(data?.latest || latestCompanyDate(group.companies))}"><span><b>${h(code)}</b><small>${data ? `ล่าสุด ${h(data.latest)}` : "ยังไม่พบงานในช่วงที่เลือก"}</small></span><i>${data ? `สำเร็จ ${num(data.completed)} · ตรวจ ${num(data.review)} · รอ ${num(data.waiting + data.error)}` : "เปิดดูบริษัท"}</i></button>`).join("")}</div>
-              ${group.status === "active" ? `<details class="company-rule-details" open><summary>เงื่อนไขตรวจของ${h(group.name)}</summary><ol>${group.rules.map((rule) => `<li>${h(rule)}</li>`).join("")}</ol><p>ใช้กับ ${num(group.companies.length)} บริษัทในกลุ่มนี้ · หากหลักฐานไม่ครบหรือมีหลายคู่ ระบบต้องคงเคสให้ Audit ตรวจ</p></details>` : `<div class="company-group-pending"><b>ยังไม่เปิดกฎอัตโนมัติ</b><span>รอเงื่อนไขจาก Audit และจะไม่ใช้กฎของกลุ่มอื่นแทน</span></div>`}
-              <div class="company-group-totals"><span class="ok">สำเร็จ <b>${num(totals.completed)}</b></span><span class="warn">ตรวจ <b>${num(totals.review)}</b></span><span class="bad">รอ/พลาด <b>${num(totals.waiting)}</b></span></div>
-            </article>`;
-          }).join("")}
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">ลักษณะงานจากเมล</p><h2>เมลที่ได้รับเป็นงานประเภทใด</h2></div></div>
-        <div class="behavior-list">${behaviorGroups.map((x) => `<div><span class="badge ${x.tone}">${h(x.label)}</span><b>${num(x.value)}</b><small>ชุดงาน</small></div>`).join("")}</div>
-        <p class="hint">“ฝาก-ถอนธนาคาร” จัดเป็น STM ตามกติกาของทีม ส่วนพฤติกรรมรายการฝาก/ถอนรายบุคคลจะแสดงหลังระบบอ่านข้อมูลในไฟล์และสร้าง Exception แล้ว</p>
-        <div class="exception-summary">
-          <h3>สาเหตุ Exception ที่พบมาก</h3>
-          ${typeSummary.map(([label, value]) => `<div><span>${h(label)}</span><b>${num(value)}</b></div>`).join("") || `<p class="empty">ยังไม่มี Exception ในช่วงที่เลือก</p>`}
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">รายการล่าสุด</p><h2>สถานะรายวันแยกบริษัท</h2><small class="head-sub">อัปเดต ${liveOverviewState.updatedAt ? displayTime(liveOverviewState.updatedAt) : "-"}</small></div><span class="health ok">ข้อมูลจริง Supabase</span></div>
-      <div class="table-wrap"><table class="live-table">
-        <thead><tr><th>วันที่</th><th>บริษัท / ระบบ</th><th>สถานะ</th><th class="right">ไฟล์</th><th>ไฟล์ที่ยังขาด</th><th>ผลกระทบยอด</th></tr></thead>
-        <tbody>${recent.map((row) => {
-          const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
-          const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
-          const resultStatus = dailyResultStatus(lifecycle||{},row);
-          const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
-return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${lifecycle?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(lifecycle.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
-        }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
-      </table></div>
-    </section>`;
-
-  root.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => go(button.dataset.goto)));
-  $("#expandDateRange")?.addEventListener("click", () => {
-    state.filters.from = shiftDays(state.filters.to || DEFAULT_WORK_DATE, -90);
-    state.filters.preset = "custom";
-    liveOverviewState.key = "";
-    render();
-  });
-  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
-  root.querySelectorAll("[data-summary-company]").forEach((item) => {
-    const open = () => {
-      state.dailySummary.date = item.dataset.summaryDate;
-      state.dailySummary.company = item.dataset.summaryCompany;
-      go("daily-summary");
-    };
-    item.addEventListener("click", open);
-    item.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
-    });
-  });
-  root.querySelectorAll("[data-check-company]").forEach((row) => row.addEventListener("click", () => {
-    state.dailySummary.date = row.dataset.checkDate;
-    state.dailySummary.company = row.dataset.checkCompany;
-    go("daily-summary");
-  }));
-  $("#openHistory")?.addEventListener("click", () => {
-    state.filters = { ...state.filters, date: "2026-08-23", from: "2026-08-01", to: "2026-08-23", preset: "custom" };
-    liveOverviewState.key = "";
-    go("cloud");
-  });
-  $("#liveRefresh")?.addEventListener("click", () => loadLiveOverview(true));
-  root.querySelectorAll('[data-manual-followup]').forEach(button=>button.addEventListener('click',async()=>{
-    const q=manualFollowups.find(x=>x.id===button.dataset.manualFollowup),actor=Sb.authUser()?.id;
-    const allowed=()=>actor===Sb.authUser()?.id&&['lead','admin'].includes(state.role)&&q&&canAccessCompany(q.company);
-    if(!allowed())return deny('ทบทวนผลรันมือ');
-    button.disabled=true;
-    try{
-      const [items,primary]=await Promise.all([Sb.listAccountRechecks(q.company,q.business_date),Sb.readManualPrimary(q.company,q.business_date)]);
-      if(!allowed())throw Error('บัญชีผู้ใช้หรือสิทธิ์เปลี่ยน กรุณาเปิดใหม่');
-      if(primary?.stale)throw Error(primary.message);
-      const current=manualFollowupItems([{company:q.company,business_date:q.business_date,rechecks:items,primaryResult:primary}]).find(x=>x.id===q.id);
-      if(!current)throw Error('รายงานนี้มีสถานะหรือรอบใหม่แล้ว กรุณารีเฟรช Dashboard');
-      openAccountRecheck({company:q.company,date:q.business_date,accounts:[current.account],initialJobId:current.id});
-    }catch(error){toast(error.message,'warn');}finally{if(button.isConnected)button.disabled=false;}
-  }));
-  $("#liveRetry")?.addEventListener("click", () => loadLiveOverview(true));
-}
-
-VIEWS.dashboard = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveDashboard(root);
-    return;
-  }
-  const ex = scopedExceptions();
-  const run = DB.currentRun;
-  const totalTx = run ? run.stmCount + (run.noStmCount || 0) : DB.hourly.reduce((a, c) => a + c.total, 0);
-  const totalEx = DB.hourly.reduce((a, c) => a + c.exception, 0);
-  const matched = run ? run.matched : totalTx - totalEx;
-  const matchBase = run ? run.stmCount || 1 : totalTx || 1;
-  const filesOk = DB.files.filter((f) => f.status === "received").length;
-  const filesBad = DB.files.length - filesOk;
-  const damageSum = DB.damages.reduce((a, c) => a + c.amount, 0);
-  const overSla = ex.filter((e) => e.overSla).length;
-
-  const tiles = [
-    {
-      label: "Transactions วันนี้",
-      value: num(totalTx),
-      sub: run ? `ฝั่งธนาคาร ${num(run.stmCount)} · ฝั่ง BO ${num(run.boCount)}` : "นำเข้าแล้ว 98.7% ของไฟล์ที่รับ",
-      spark: DB.hourly.map((x) => x.total),
-      color: Charts.PALETTE.s1,
-    },
-    {
-      label: "Matched (3-point)",
-      value: num(matched),
-      sub: `อัตราจับคู่ ${((matched / matchBase) * 100).toFixed(2)}%${run && run.noStmCount ? ` · รอไฟล์ธนาคารอีก ${num(run.noStmCount)}` : ""}`,
-      spark: DB.hourly.map((x) => x.matched),
-      color: Charts.PALETTE.s3,
-    },
-    { label: "Diff / Missing", value: num(totalEx), sub: `เปิดค้าง ${num(ex.filter((e) => !["closed", "approved"].includes(e.status)).length)} เคสในคิว`, spark: DB.hourly.map((x) => x.exception), color: Charts.PALETTE.s2, tone: "warn" },
-    { label: "เกิน SLA", value: num(overSla), sub: "ต้องเร่งติดตามชี้แจงวันนี้", spark: DB.hourly.map((x) => Math.round(x.exception * 0.3)), color: "#d03b3b", tone: overSla ? "bad" : "" },
-    { label: "ไฟล์ที่ตรวจแล้ว", value: `${filesOk}/${DB.files.length}`, sub: filesBad ? `ยังมีปัญหา ${filesBad} ไฟล์` : "ครบทุกไฟล์", color: Charts.PALETTE.s4, tone: filesBad ? "warn" : "" },
-  ];
-
-  const byType = DB.exceptionTypes
-    .map((t) => ({ label: t.name, value: ex.filter((e) => e.type === t.code).length, code: t.code }))
-    .filter((x) => x.value)
-    .sort((a, b) => b.value - a.value);
-  const bySeverity = DB.severities.map((s) => ({ label: s.name, value: ex.filter((e) => e.severity === s.code).length, color: severityColor(s.code), code: s.code }));
-  const byShift = DB.shifts.map((s) => ({ label: `${s.name}\n${s.range}`, value: ex.filter((e) => e.shift === s.code).length, hint: "คลิกกราฟเพื่อดูตัวเลขเทียบกัน" }));
-  const byAccount = Object.entries(
-    ex.reduce((acc, e) => {
-      acc[e.account] = (acc[e.account] || 0) + 1;
-      return acc;
-    }, {}),
-  )
-    .map(([k, v]) => ({ label: k, value: v }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  root.innerHTML = `
-    <section class="status-strip">
-      ${tiles
-        .map(
-          (t) => `<article class="${t.tone || ""}">
-        <span>${h(t.label)}</span>
-        <strong>${t.value}</strong>
-        <div class="tile-foot"><small>${h(t.sub)}</small>${t.spark ? Charts.spark(t.spark, t.color) : ""}</div>
-      </article>`,
-        )
-        .join("")}
-    </section>
-
-    <section class="pipeline" aria-label="ขั้นตอนการทำงาน">
-      ${["รับไฟล์จาก Email", "ตรวจความครบถ้วน", "Normalize STM / BO", "3-Point Match", "ส่งชี้แจง / อนุมัติ", "สรุปความเสียหาย"]
-        .map((s, i) => `<div class="${i < 4 ? "done" : i === 4 ? "active" : ""}"><strong>${i + 1}</strong><span>${h(s)}</span></div>`)
-        .join("")}
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Volume vs Exception</p><h2>รายการต่อชั่วโมง</h2></div>
-          <span class="health ok">อัปเดตล่าสุด 1 ชม.ที่แล้ว</span>
-        </div>
-        <p class="small-mult-title" style="--dot:${Charts.PALETTE.s1}">ปริมาณรายการทั้งหมด</p>
-        <div class="chart" id="chHourly"></div>
-        <p class="small-mult-title" style="--dot:${Charts.PALETTE.s2}">รายการที่ไม่ match (คนละสเกล)</p>
-        <div class="chart" id="chHourlyEx"></div>
-        <p class="chart-note">แยกเป็นสองกราฟที่ใช้แกน y ของตัวเอง เพราะสองค่านี้ต่างสเกลกันมาก การใส่แกนคู่ในกราฟเดียวจะอ่านผิดได้ · ช่วง 22:00-06:00 มีสัดส่วน exception สูงกว่าช่วงอื่น</p>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Severity</p><h2>ระดับความรุนแรง</h2></div></div>
-        <div class="chart" id="chSeverity"></div>
-        <div class="sev-list">
-          ${bySeverity
-            .map(
-              (s) => `<button class="sev-row" data-sev="${s.code}">
-              <i style="background:${s.color}"></i>
-              <span>${h(s.label)}</span>
-              <small>${h(sevMeta(s.code).desc)}</small>
-              <b>${num(s.value)}</b></button>`,
-            )
-            .join("")}
-        </div>
-        <p class="chart-note">คลิกที่ระดับใดระดับหนึ่งเพื่อกรอง Exception Queue ตามระดับนั้นทันที · ระดับความรุนแรงกำหนดจากประเภท exception และยอด diff โดยระบบจะยกระดับอัตโนมัติเมื่อยอดเกิน 10,000 บาท</p>
-        <div class="sla-mini">
-          <div><span>SLA Critical</span><b>4 ชม.</b></div>
-          <div><span>High</span><b>8 ชม.</b></div>
-          <div><span>Medium</span><b>48 ชม.</b></div>
-          <div><span>Low</span><b>72 ชม.</b></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="grid-3">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Exception Type</p><h2>แยกตามประเภท</h2></div></div>
-        <div class="chart" id="chType"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Shift</p><h2>เทียบตามกะ</h2></div></div>
-        <div class="chart" id="chShift"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Account Risk</p><h2>บัญชีที่เกิด diff บ่อย</h2></div></div>
-        <div class="chart" id="chAccount"></div>
-      </div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">SLA Watch</p><h2>เคสที่เลยกำหนดชี้แจง</h2></div>
-          <button class="ghost-button sm" data-goto="exceptions" data-sla="1">ดูทั้งหมด</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>เคส / ผู้เกี่ยวข้อง</th><th>ประเภท</th><th>ระดับ</th><th>อายุเคส</th></tr></thead>
-            <tbody>
-              ${ex
-                .filter((e) => e.overSla)
-                .sort((a, b) => b.ageHours / b.slaHours - a.ageHours / a.slaHours)
-                .slice(0, 6)
-                .map(
-                  (e) => `<tr class="clickable" data-ex="${e.id}">
-                  <td><b>${h(caseLabel(e))}</b><small class="sub">${h(e.employee)}</small></td>
-                  <td>${h(e.typeName)}</td>
-                  <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
-                  <td class="danger">${e.ageHours} ชม. / SLA ${e.slaHours} ชม.</td></tr>`,
-                )
-                .join("") || `<tr><td colspan="4" class="empty">ไม่มีเคสเลย SLA ในตัวกรองนี้</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Damage</p><h2>ความเสียหายรอบปัจจุบัน</h2></div>
-          <button class="ghost-button sm" data-goto="damage">ทะเบียนความเสียหาย</button>
-        </div>
-        <div class="big-stat"><span>ยอดที่อาจเป็นความเสียหาย</span><strong>${money0(damageSum)} บาท</strong><small>${DB.damages.length} เคส · รอบ 1 (1-15 ส.ค. 2026)</small></div>
-        <div class="chart" id="chDamageCause"></div>
-      </div>
-    </section>`;
-
-  Charts.draw("#chHourly", "line", {
-    label: "ปริมาณรายการต่อชั่วโมง",
-    xLabels: DB.hourly.map((x) => x.label),
-    short: true,
-    hideXLabels: true,
-    series: [{ name: "รายการทั้งหมด", color: Charts.PALETTE.s1, values: DB.hourly.map((x) => x.total), area: true }],
-    height: 150,
-  });
-  Charts.draw("#chHourlyEx", "line", {
-    label: "รายการที่ไม่ match ต่อชั่วโมง",
-    xLabels: DB.hourly.map((x) => x.label),
-    series: [{ name: "ไม่ match", color: Charts.PALETTE.s2, values: DB.hourly.map((x) => x.exception), area: true }],
-    height: 150,
-  });
-  Charts.draw("#chSeverity", "stack", { label: "สัดส่วนความรุนแรง", items: bySeverity });
-  Charts.draw("#chType", "hbars", { label: "exception แยกตามประเภท", items: byType.slice(0, 7), color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
-  Charts.draw("#chShift", "bars", { label: "exception แยกตามกะ", items: byShift, color: Charts.PALETTE.s4, metric: "จำนวนเคส", height: 232 });
-  Charts.draw("#chAccount", "hbars", { label: "บัญชีที่เกิด diff บ่อย", items: byAccount, color: Charts.PALETTE.s2, metric: "จำนวนเคส" });
-
-  const causeAgg = Object.entries(
-    DB.damages.reduce((a, d) => {
-      a[d.cause] = (a[d.cause] || 0) + d.amount;
-      return a;
-    }, {}),
-  )
-    .map(([k, v]) => ({ label: k, value: v }))
-    .filter((it) => it.value > 0)
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 5);
-  Charts.draw("#chDamageCause", "hbars", { label: "สาเหตุความเสียหาย", items: causeAgg, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
-
-  root.querySelectorAll(".sev-row").forEach((b) =>
-    b.addEventListener("click", () => go("exceptions", { exFilter: { severity: b.dataset.sev, status: "ALL" } })),
-  );
-  root.querySelectorAll("[data-goto]").forEach((b) =>
-    b.addEventListener("click", () => go(b.dataset.goto, b.dataset.sla ? { exFilter: { sla: true } } : {})),
-  );
-  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", (event) => {
-    if (event.target.closest("details,button,a,input")) return;
-    openException(tr.dataset.ex);
-  }));
-};
-
-/* =============================================================
-   VIEW: Daily company summary - 1 บริษัท / 1 วัน
-   ============================================================= */
-const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
-dailyCompanyState.confirmedRechecks=[];
-dailyCompanyState.recheckReportError='';
-
-async function loadDailyCompanySummary(force = false) {
-  const date = state.dailySummary.date = visibleDate(state.dailySummary.date || PROD_TODAY);
-  const company = state.dailySummary.company || companyMaster()[0]?.code || "3XB";
-  const sameSelection = dailyCompanyState.date === date && dailyCompanyState.company === company;
-  if ((dailyCompanyState.loading && sameSelection) || (!force && sameSelection && dailyCompanyState.batches)) return;
-  const requestId = ++dailyCompanyState.requestId;
-  dailyCompanyState.confirmedRechecks=[];dailyCompanyState.recheckReportError='';
-  if (!sameSelection) {
-    dailyCompanyState.batches = null;
-    dailyCompanyState.quality = null;
-    dailyCompanyState.operations = null;
-    dailyCompanyState.checklist = null;
-    dailyCompanyState.boFirst = null;
-    dailyCompanyState.exceptions = null;
-    dailyCompanyState.informationalExceptions = [];
-    dailyCompanyState.matchEvidence = [];
-    dailyCompanyState.matchedStaleExceptions = 0;
-    dailyCompanyState.damages = null;
-  }
-  dailyCompanyState.loading = true;
-  dailyCompanyState.detailsLoading = false;
-  dailyCompanyState.coreError = null;
-  dailyCompanyState.detailsError = null;
-  dailyCompanyState.error = null;
-  dailyCompanyState.date = date;
-  dailyCompanyState.company = company;
-  if (state.route === "daily-summary") render();
-  try {
-    const core = await Promise.allSettled([
-      Sb.batches({ from: date, to: date }),
-      // ดึงทุกบริษัทของวันที่เดียวกัน เพื่อให้ Audit Sheet ภาพรวมและรายงาน
-      // บริษัทที่เลือกอ้างอิง snapshot เดียวกัน ไม่ขึ้น 0 บริษัททั้งที่มีผลจริง
-      Sb.quality({ from: date, to: date, limit: 500 }),
-      Sb.operations({ from: date, to: date, limit: 500 }),
-      Sb.dailyChecklist({ from: date, to: date, limit: 100 }),
-      Sb.boFirstCoverage({ from: date, to: date, company, limit: 20 }),
-    ]);
-    if (requestId !== dailyCompanyState.requestId) return;
-    const fulfilled = core.filter((item) => item.status === "fulfilled").length;
-    if (!fulfilled) throw new Error("Supabase ยังไม่ตอบกลับข้อมูลของวันที่และบริษัทที่เลือก");
-    const valueAt = (index) => core[index].status === "fulfilled" ? (core[index].value || []) : [];
-    const selectedQuality = valueAt(1).filter((row) => row.business_date === date);
-    /* หน้าเปิดครั้งแรกยึดวันที่วันนี้ แต่ผลรันอาจเพิ่งเสร็จถึงวันก่อนหน้า
-       ถ้าวันนี้ยังไม่มีผล ให้พาไปวันที่ล่าสุดที่บริษัทนี้มีผลจริงทันที */
-    if (date === PROD_TODAY && !selectedQuality.some((row) => row.company === company && row.run_id)) {
-      const latestRows = await Sb.quality({ from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company, limit: 100 });
-      if (requestId !== dailyCompanyState.requestId) return;
-      const latestDate = (latestRows || [])
-        .filter((row) => row.run_id && row.business_date && !row.is_archived)
-        .map((row) => row.business_date)
-        .sort()
-        .pop();
-      if (latestDate && latestDate !== date) {
-        state.dailySummary.date = latestDate;
-        dailyCompanyState.loading = false;
-        return loadDailyCompanySummary(true);
-      }
-    }
-    dailyCompanyState.batches = valueAt(0);
-    dailyCompanyState.quality = selectedQuality;
-    dailyCompanyState.operations = valueAt(2).filter((row) => row.business_date === date);
-    dailyCompanyState.checklist = valueAt(3);
-    dailyCompanyState.boFirst = valueAt(4).filter((row) => row.business_date === date);
-    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist", "บัญชีที่พบจาก BO"].filter((_, index) => core[index].status === "rejected");
-    dailyCompanyState.coreError = failedCore.length ? `${failedCore.join(" / ")} ตอบกลับช้า จึงแสดงส่วนที่โหลดสำเร็จก่อน` : null;
-    dailyCompanyState.exceptions = [];
-    dailyCompanyState.damages = [];
-    dailyCompanyState.updatedAt = new Date();
-    dailyCompanyState.loading = false;
-    dailyCompanyState.detailsLoading = true;
-    if (state.route === "daily-summary") render();
-
-    const details = await Promise.allSettled([
-      Sb.currentExceptionsSummary({ from: date, to: date, company, limit: 250 }),
-      Sb.damages({ from: date, to: date, company, limit: 500 }),
-      Sb.matchedEvidence(company,date),
-      company==='ALL'||!['monitor','audit_assistant','lead','admin'].includes(state.role)?Promise.resolve([]):Sb.listAccountRechecks(company,date),
-    ]);
-    if (requestId !== dailyCompanyState.requestId) return;
-    const rawExceptions = details[0].status === "fulfilled" ? (details[0].value || []) : [];
-    const matchEvidence = details[2].status === "fulfilled" && Array.isArray(details[2].value?.summary?.match_evidence) ? details[2].value.summary.match_evidence : [];
-    dailyCompanyState.informationalExceptions = informationalAuditRows(rawExceptions);
-    dailyCompanyState.matchEvidence = matchEvidence;
-    dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptions,matchEvidence);
-    dailyCompanyState.exceptions = actionableAuditRows(rawExceptions,matchEvidence).map(mapLiveException);
-    dailyCompanyState.damages = details[1].status === "fulfilled" ? (details[1].value || []) : [];
-    dailyCompanyState.confirmedRechecks=details[3].status==='fulfilled'?(details[3].value||[]).filter(q=>q.status==='confirmed'):[];
-    dailyCompanyState.recheckReportError=details[3].status==='rejected'?'ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้':'';
-    dailyCompanyState.detailsError = details.slice(0,3).some((item) => item.status === "rejected") ? "รายละเอียด Exception หรือความเสียหายบางส่วนตอบกลับช้า" : null;
-    dailyCompanyState.detailsLoading = false;
-    dailyCompanyState.updatedAt = new Date();
-  } catch (error) {
-    if (requestId === dailyCompanyState.requestId) dailyCompanyState.error = error.message || "โหลดสรุปรายวันไม่สำเร็จ";
-  }
-  if (requestId === dailyCompanyState.requestId) {
-    dailyCompanyState.loading = false;
-    dailyCompanyState.detailsLoading = false;
-    if (state.route === "daily-summary") render();
-  }
-}
-
-function dailyCompanyData(company) {
-  const batches = dailyCompanyState.batches || [];
-  const files = batches.flatMap((batch) => (batch.source_files || []).map((file) => ({
-    ...file,
-    batch,
-    resolvedCompany: intakeCompanyOf(file, batch) || file.company || batch.company || "ไม่ระบุ",
-    receivedAt: file.received_at || batch.received_at || "",
-  }))).filter((file) => file.resolvedCompany === company);
-  const batchIds = new Set(files.map((file) => file.batch.id));
-  batches.filter((batch) => String(batch.company || "").toUpperCase() === company).forEach((batch) => batchIds.add(batch.id));
-  const ownBatches = batches.filter((batch) => batchIds.has(batch.id));
-  const quality = (dailyCompanyState.quality || []).filter((row) => row.company === company);
-  const operations = (dailyCompanyState.operations || []).filter((row) => row.company === company);
-  const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
-  const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
-  const checklist = (dailyCompanyState.checklist || []).find((row) => row.company === company) || null;
-  const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
-  const reportedExceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
-  const informationalCount = (dailyCompanyState.informationalExceptions || []).filter((row) => normalizeLiveCompanyCode(row.company) === company).length;
-  const computedCurrentTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
-  const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
-  const confirmedDamage = exceptions.filter((row) => row.status === "damage");
-  /* audit_daily_checklist already counts the current actionable lifecycle and
-     intentionally excludes informational/stale rows. Do not compare it with
-     recon_runs.exception_count (the number originally generated), otherwise a
-     valid filtered total looks "incomplete" and the UI resurrects old cases. */
-  const hasCurrentCounts = checklist?.open_count != null && checklist?.resolved_count != null;
-  const resolvedTotal = hasCurrentCounts ? Number(checklist.resolved_count || 0) : fixed.length;
-  const stillOpen = hasCurrentCounts ? Number(checklist.open_count || 0) : Math.max(0, computedCurrentTotal - resolvedTotal);
-  const exceptionTotal = hasCurrentCounts ? stillOpen + resolvedTotal : computedCurrentTotal;
-  const reconciliationFiles = files.filter((file) => file.kind !== "doc_clarify");
-  const evidenceFiles = files.filter((file) => file.kind === "doc_clarify");
-  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
-}
-
-function dailyCompanyOptions() {
-  const found = new Set(companyMaster().map((company) => normalizeLiveCompanyCode(company.code)).filter(Boolean));
-  const addCompany = (value) => {
-    const company = normalizeLiveCompanyCode(value);
-    if (company) found.add(company);
-  };
-  (dailyCompanyState.quality || []).forEach((row) => addCompany(row.company));
-  (dailyCompanyState.operations || []).forEach((row) => addCompany(row.company));
-  (dailyCompanyState.checklist || []).forEach((row) => addCompany(row.company));
-  (dailyCompanyState.batches || []).forEach((batch) => {
-    addCompany(batch.company);
-    (batch.source_files || []).forEach((file) => {
-      addCompany(intakeCompanyOf(file, batch));
-    });
-  });
-  return [...found].sort((a, b) => String(a).localeCompare(String(b), "th"));
-}
-
-function dailyMissingKinds(rows) {
-  const kinds = (rows || []).flatMap((row) => Array.isArray(row.missing_groups) ? row.missing_groups.flat(3) : []);
-  return [...new Set(kinds)].map((kind) => LIVE_KIND_LABEL[kind] || kind);
-}
-
-function manualFollowupItems(rows) {
-  const output=[],seen=new Set();
-  for(const row of rows){
-    const latest=new Map(),primary=row.primaryResult;
-    const jobs=[...(row.rechecks||[])].filter(q=>q.mode==='account'&&q.company===row.company&&q.business_date===row.business_date).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
-    for(const q of jobs){const scope=JSON.stringify([q.account,q.direction]);if(latest.has(scope))continue;latest.set(scope,q);
-      if(!['ready','confirmed'].includes(q.status)||q.id===primary?.recheck_id||seen.has(q.id))continue;
-      if(primary&&Date.parse(q.created_at)<=Date.parse(primary.accepted_at))continue;
-      seen.add(q.id);output.push({...q});
-    }
-  }
-  return output.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
-}
-
-function dailyResultStatus(row,run={}) {
-  const unavailable=run.primaryUnavailable||row.primaryUnavailable;
-  const primary=unavailable?null:run.primaryResult||row.primaryResult;
-  const manual=row.latestRecheck;
-  const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
-  return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
-    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
-    review:primary?.review_needed?(primary.review_reason||'มีไฟล์เพิ่มหลังยืนยัน · กรุณาทบทวน'):null,
-    automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
-    error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};
-}
-
-function dailyAuditSheetRows(date) {
-  const checklist = (dailyCompanyState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
-  const quality = (dailyCompanyState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
-  const checklistByCompany = new Map(checklist.map((row) => [row.company, row]));
-  const qualityByCompany = new Map(quality.map((row) => [row.company, row]));
-  const companies = [...new Set([...checklistByCompany.keys(), ...qualityByCompany.keys()])];
-  return companies.map((company) => {
-    const row = checklistByCompany.get(company) || { company };
-    const run = qualityByCompany.get(company) || {};
-    const resultStatus = dailyResultStatus(row,run);
-    const primary=resultStatus.primary;
-    const generatedExceptionCount = primary ? (primary.report?.exceptions?.length || 0) + (primary.report?.summary?.waiting_bo?.length || 0) : Number(run.exception_count ?? row.exception_count ?? 0);
-    const hasCurrentCounts = (!primary || !!primary.case_set) && row.open_count != null && row.resolved_count != null;
-    const resolvedCount = hasCurrentCounts ? Number(row.resolved_count || 0) : 0;
-    const openCount = hasCurrentCounts ? Number(row.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
-    const exceptionCount = generatedExceptionCount;
-    const runStatus = row.job_status || run.status || "waiting_files";
-    return {
-      ...row,
-      resultStatus,
-      status: openCount > 0 && runStatus === "completed" ? "completed_review" : (row.checklist_status || runStatus),
-      fileCount: primary ? row.primaryFileCount??null : Number(run.file_count || row.file_count || 0),
-      parsedCount: primary ? row.primaryFileCount??null : Math.max(
-        Number(run.parsed_count || 0),
-        Number(row.parsed_count || 0),
-        run.run_id && runStatus === "completed" && !Number(run.error_count || row.error_count || 0)
-          ? Number(run.file_count || row.file_count || 0)
-          : 0,
-      ),
-      stmCount: Number(run.stm_count ?? row.stm_count ?? 0),
-      boCount: Number(run.bo_count ?? row.bo_count ?? 0),
-      matched: Number(run.matched ?? row.matched_count ?? 0),
-      exceptionCount,
-      generatedExceptionCount,
-      currentCountsReady: hasCurrentCounts && [row.open_count,row.resolved_count].every(v=>Number.isFinite(Number(v))&&Number(v)>=0),
-      caseSetPending: !!primary && !primary.case_set,
-      historicalOpenCount: primary && !primary.case_set ? row.open_count ?? null : null,
-      openCount,
-      resolvedCount,
-      missing: Array.isArray(row.missing_items) ? row.missing_items : [],
-    };
-  }).sort((a, b) => String(a.company).localeCompare(String(b.company), "th"));
-}
-
-function exportDailyCompanySummary(data) {
-  if (!can("export")) return deny("export ข้อมูล");
-  const date = state.dailySummary.date;
-  const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
-  const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error && !statementNeedsBoReview(file)).length;
-  const fileBoReview = data.reconciliationFiles.filter(statementNeedsBoReview).length;
-  const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
-  const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
-  const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
-  const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
-  const sheets = [
-    {
-      name: "สรุป",
-      title: `สรุป Audit ${data.company} วันที่ ${date}`,
-      headers: ["หัวข้อ", "ผลรวม", "คำอธิบาย"],
-      widths: [34, 18, 55],
-      rows: [
-        ["อีเมลที่ได้รับ", data.batches.length, "นับชุดอีเมลที่มีไฟล์ของบริษัทนี้"],
-        ["ไฟล์ที่ได้รับ", data.files.length, "ไฟล์จริงใน Supabase Storage"],
-        ["ไฟล์สำหรับกระทบยอด", data.reconciliationFiles.length, "ไม่นับไฟล์ชี้แจงหรือหลักฐานประกอบ"],
-        ["ไฟล์ที่ระบบอ่านสำเร็จ", parsed, "ไฟล์สำหรับกระทบยอดที่พร้อมใช้งาน"],
-        ["ไฟล์ไม่พบรายการวันตรวจ รอเทียบ BO", fileBoReview, "ได้รับไฟล์แล้ว ยังไม่ยืนยันว่า BO ไม่มีรายการหรือไฟล์ครอบคลุมวันตรวจ"],
-        ["ไฟล์ชี้แจง/หลักฐาน", data.evidenceFiles.length, "เก็บไว้เปิดตรวจและใช้ประกอบการปิดเคส ไม่ต้องอ่านเป็นรายการ"],
-        ["ไฟล์อ่านไม่สำเร็จ", fileErrors, "ต้องเปิดต้นฉบับหรือตรวจรูปแบบไฟล์"],
-        ["รายการฝั่ง STM", stm, "รายการฝาก-ถอน/PM ที่ระบบอ่านได้"],
-        ["รายการฝั่ง BO", bo, "รายการระบบหลังบ้านที่ระบบอ่านได้"],
-        ["จับคู่สำเร็จ", matched, "ผ่านเงื่อนไข account + time + amount"],
-        ["Exception ทั้งหมด", data.exceptionTotal, "รายการที่ต้องตรวจต่อ"],
-        ["แก้ไขและปิดแล้ว", data.resolvedTotal, "สถานะ approved หรือ closed"],
-        ["ยังแก้ไม่สำเร็จ", data.stillOpen, "รวมกำลังติดตามและรายการที่ยังปิดไม่ได้"],
-        ["ยืนยันเป็นความเสียหาย", data.confirmedDamage.length, "ส่วนหนึ่งของรายการที่ยังแก้ไม่สำเร็จ"],
-        ["มูลค่าความเสียหายที่บันทึก", damageTotal, "บาท"],
-      ],
-    },
-    {
-      name: "ไฟล์ที่ได้รับ",
-      title: `ไฟล์ที่ได้รับ ${data.company} วันที่ ${date}`,
-      headers: ["รับเมื่อ", "หัวข้อเมล", "ผู้ส่ง", "ชื่อไฟล์", "ประเภท", "ขนาด (KB)", "แถว", "สถานะอ่าน", "ข้อผิดพลาด", "Storage path"],
-      widths: [22, 42, 28, 38, 24, 14, 12, 18, 42, 50],
-      rows: data.files.map((file) => [file.receivedAt, file.batch.subject || "", file.batch.sender || "", file.file_name || "", LIVE_KIND_LABEL[file.kind] || file.kind || "", Math.round(Number(file.size_bytes || 0) / 1024), Number(file.row_count || 0), file.kind === "doc_clarify" ? "หลักฐานพร้อมตรวจ" : statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่สำเร็จ" : file.parsed ? parsedFileLabel(file) : "รออ่าน", file.parse_error || "", file.storage_path || ""]),
-    },
-    {
-      name: "ผลกระทบยอด",
-      title: `ผลกระทบยอด ${data.company} วันที่ ${date}`,
-      headers: ["ระบบ", "สถานะ", "STM", "BO", "จับคู่สำเร็จ", "อัตราจับคู่ (%)", "Exception", "ไฟล์", "ไฟล์อ่านผิดพลาด", "ไฟล์ที่ยังขาด", "เวลารัน"],
-      widths: [18, 20, 12, 12, 16, 18, 14, 12, 18, 44, 22],
-      rows: data.quality.map((row) => [row.business_system || "", LIVE_STATUS[row.status]?.label || row.status || "", Number(row.stm_count || 0), Number(row.bo_count || 0), Number(row.matched || 0), Number(row.match_rate || 0), Number(row.exception_count || 0), Number(row.file_count || 0), Number(row.error_count || 0), dailyMissingKinds([row]).join(", "), row.run_at || ""]),
-    },
-    {
-      name: "Exception",
-      title: `Exception ${data.company} วันที่ ${date}`,
-      headers: ["เคส", "เวลา", "ธนาคาร", "บัญชี", "ฝาก/ถอน", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่าง", "ระดับ", "สถานะ", "ผู้เกี่ยวข้อง", "สาเหตุ", "รายละเอียด"],
-      widths: [16, 12, 14, 18, 12, 28, 16, 16, 16, 12, 18, 22, 35, 60],
-      rows: data.exceptions.map((row) => [row.id, row.time, row.bank, row.account, row.direction, row.typeName, row.systemAmount ?? "", row.bankAmount ?? "", row.amountDiff, row.severity, statusMeta(row.status).name, row.employee, row.cause, row.detail]),
-    },
-    {
-      name: "ความเสียหาย",
-      title: `ความเสียหาย ${data.company} วันที่ ${date}`,
-      headers: ["รหัส", "เคส", "ยอด (บาท)", "สาเหตุ", "ผู้เกี่ยวข้อง", "หลักฐาน", "สถานะการเงิน"],
-      widths: [16, 16, 18, 42, 22, 14, 20],
-      rows: data.damages.map((row) => [row.code || row.id, row.exception_id || "", Number(row.amount_thb ?? row.amount ?? 0), row.cause || "", row.employee || "", row.has_evidence ? "ครบ" : "รอ", row.finance_status || ""]),
-    },
-  ];
-  const filename = `daily-audit_${date}_${data.company}.xlsx`;
-  sheets.push(...AccountRecheck.confirmedSheets((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===data.company&&q.business_date===date)));
-  for(const row of data.quality.filter(r=>r.primaryResult))sheets.push(...ManualPrimary.sheets(row.primaryResult));
-  const meta = `บริษัท ${data.company} · วันที่ ${date} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
-  const result = Exporter.workbook(sheets, filename, meta);
-  if (result.ok) {
-    logAction("export", "daily_company_summary", `${date}|${data.company}`, `Excel ${sheets.length} ชีต · ${data.files.length} ไฟล์ · ${data.exceptionTotal} exception`);
-    toast(`ดาวน์โหลด ${filename} แล้ว`);
-  } else {
-    Exporter.csv(sheets[0].headers, sheets[0].rows, filename.replace(".xlsx", ".csv"));
-    toast("ดาวน์โหลดสรุปเป็น CSV ให้แทน เนื่องจากตัวเขียน Excel ยังไม่พร้อม", "warn");
-  }
-}
-
-function renderDailyCompanySummary(root) {
-  let openBoFollowUp = () => {};
-  if (!Sb.signedIn()) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>ยังไม่ได้เข้าสู่ระบบ</strong><span>เข้าสู่ระบบก่อนเพื่ออ่านไฟล์และผลกระทบยอดจริงจาก Supabase</span></div></section>`;
-    return;
-  }
-  if ((!dailyCompanyState.batches || dailyCompanyState.date !== state.dailySummary.date || dailyCompanyState.company !== state.dailySummary.company) && !dailyCompanyState.loading) loadDailyCompanySummary();
-  const companies = dailyCompanyOptions();
-  const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
-  state.dailySummary.company = company;
-  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="ghost-button" id="dailySummaryHolds">พักบัญชี / ทะเบียนพักตรวจ (อ่านอย่างเดียว)</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
-  const rulesPanel = auditRuleBookMarkup(company);
-  if (dailyCompanyState.loading && !dailyCompanyState.batches) {
-    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
-  } else if (dailyCompanyState.error) {
-    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
-  } else {
-    const data = dailyCompanyData(company);
-    const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
-    const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error).length;
-    const waitingFiles = data.reconciliationFiles.length - parsed - fileErrors;
-    const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
-    const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
-    const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
-    const matchRate = stm ? (matched / stm) * 100 : 0;
-    const risk = data.exceptions.reduce((sum, row) => sum + Number(row.riskAmount || 0), 0);
-    const riskIsPartial = data.exceptionTotal > data.exceptions.length;
-    const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
-    const scheduled = data.checklist?.checklist_status === "scheduled";
-    const missing = scheduled ? [] : data.checklist?.missing_items?.length
-      ? data.checklist.missing_items
-      : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
-    const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
-    const selectedResultStatus=dailyResultStatus(data.checklist||{},data.quality[0]||{});
-    const status = selectedResultStatus.primary ? {label:selectedResultStatus.label,tone:'green'} : selectedResultStatus.manual ? {label:selectedResultStatus.manual,tone:'blue'} : latestStatus === "completed" && data.stillOpen > 0
-      ? { label: "ระบบประมวลผลเสร็จ · รอ Audit ตรวจเคส", tone: "amber" }
-      : LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
-    const kindCounts = Object.entries(data.files.reduce((acc, file) => {
-      const label = LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้";
-      acc[label] = (acc[label] || 0) + 1;
-      return acc;
-    }, {})).sort((a, b) => b[1] - a[1]);
-    const stmFiles = data.files.filter((file) => file.kind === "stm_pdf").length;
-    const boFiles = data.files.filter((file) => file.kind === "bo_main").length;
-    const pmFiles = data.files.filter((file) => file.kind === "pm_statement").length;
-    const boSourceFiles = data.files.filter((file) => file.kind === "bo_main");
-    const evidenceFiles = data.evidenceFiles.length;
-    const boExpected = expectedBoCount(data.checklist || { company });
-    const stmRegistered = registeredStmCount(data.checklist);
-    const pmRegistered = registeredPmCount(data.checklist);
-    const checklistReady = Boolean(data.checklist);
-    const checklistBoCount = data.checklist?.bo_count == null ? boFiles : Number(data.checklist.bo_count || 0);
-    const checklistStmCount = data.checklist?.stm_count == null ? stmFiles : Number(data.checklist.stm_count || 0);
-    const checklistPmCount = data.checklist == null
-      ? pmFiles
-      : Number(data.checklist.pm_deposit_count || 0) + Number(data.checklist.pm_withdraw_count || 0);
-    const reconciliationReady = data.reconciliationFiles.length > 0 && parsed === data.reconciliationFiles.length && fileErrors === 0;
-    const boRequired = Array.isArray(data.boFirst?.required) ? data.boFirst.required : [];
-    const boReceived = Array.isArray(data.boFirst?.received) ? data.boFirst.received : [];
-    const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
-    const completionBlockers = dailyCompletionBlockers(data);
-    const dayComplete = completionBlockers.length === 0;
-    const coverageComplete = reconciliationReady && checklistReady && Boolean(data.boFirst?.complete) && boMissing.length === 0 && missing.length === 0 && boFiles >= boExpected;
-    const boRequiredByKind = (kind) => boRequired.filter((item) => item.kind === kind);
-    const boMissingByKind = (kind) => boMissing.filter((item) => item.kind === kind);
-    const stmRequiredByBo = boRequiredByKind("STM");
-    const pmRequiredByBo = boRequiredByKind("PM");
-    const stmMissingByBo = boMissingByKind("STM");
-    const pmMissingByBo = boMissingByKind("PM");
-    const businessSystem = data.checklist?.business_system || data.quality[0]?.business_system || data.operations[0]?.business_system || businessSystemOfCompany(company);
-    const damageDisplay = damageTotal
-      ? `${money0(damageTotal)} บาท`
-      : evidenceFiles
-        ? "รอตรวจหลักฐาน"
-        : "ยังไม่พบความเสียหาย";
-    const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
-    const sourceFilesFor = (kind) => data.files.filter((file) => kind === "PM" ? file.kind === "pm_statement" : file.kind === "stm_pdf");
-    const pairInfo = (item, received, missingItem) => {
-      if (!missingItem) return {
-        code: "matched", tone: "green", title: "จับคู่แหล่งข้อมูลแล้ว",
-        detail: `${num(received?.rows || 0)} รายการ`,
-        sourceNames: Array.isArray(received?.source_files) ? received.source_files.filter(Boolean) : [],
-      };
-      const files = sourceFilesFor(item.kind);
-      const errors = files.filter((file) => file.parse_error && !statementNeedsBoReview(file));
-      const needsBoReview = files.filter(statementNeedsBoReview);
-      const parsedFiles = files.filter((file) => file.parsed);
-      const sameIdentity = boReceived.find((candidate) => candidate.kind === item.kind && candidate.identity === item.identity);
-      const sameNames = Array.isArray(sameIdentity?.source_files) ? sameIdentity.source_files.filter(Boolean) : [];
-      const allNames = files.map((file) => file.file_name).filter(Boolean);
-      if (!files.length) return { code: "missing_file", tone: "red", title: `ยังไม่ได้รับไฟล์ ${item.kind || "STM"}`, detail: "ไม่พบไฟล์ต้นทางของบริษัท/วันที่นี้", sourceNames: [] };
-      if (errors.length) return { code: "read_error", tone: "red", title: "ได้รับไฟล์แล้ว แต่อ่านไม่ได้", detail: `${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}`, sourceNames: allNames };
-      if (needsBoReview.length) return { code: "needs_bo_review", tone: "amber", title: "ได้รับไฟล์แล้ว · มีไฟล์ไม่พบรายการในวันตรวจ", detail: `${num(needsBoReview.length)} ไฟล์รอเทียบ BO และตรวจช่วงวันที่ — ยังไม่ยืนยันว่าเป็นบัญชีคู่กันหรือไม่มีรายการทั้งสองฝั่ง`, sourceNames: allNames };
-      if (parsedFiles.length < files.length) return { code: "waiting", tone: "amber", title: "ได้รับไฟล์แล้ว · รออ่าน", detail: `อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์`, sourceNames: allNames };
-      if (sameIdentity) return { code: "wrong_direction", tone: "red", title: "พบบัญชีแล้ว แต่ทิศทางไม่ตรง", detail: `BO ${directionLabel(item.direction)} · ไฟล์ ${directionLabel(sameIdentity.direction)}`, sourceNames: sameNames.length ? sameNames : allNames };
-      return { code: "identity_not_found", tone: "red", title: "มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่", detail: `ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์`, sourceNames: allNames };
-    };
-    const pairStatus = (info, followIndex) => `<span class="badge ${h(info.tone)}">${h(info.title)}</span><small class="sub">${h(info.detail)}${info.sourceNames.length && info.code === "matched" ? ` · ${h(info.sourceNames.join(" · "))}` : ""}</small><button type="button" class="bo-follow-button" data-bo-follow="${followIndex}">ดูรายละเอียด / ดำเนินการ</button>`;
-    const fullBoIdentity = (item) => {
-      const labels = Array.isArray(item?.source_labels) ? item.source_labels.filter(Boolean) : [];
-      if (!labels.length) return `<span class="muted">–</span><small class="sub">รันใหม่เพื่อเก็บชื่อเต็ม</small>`;
-      return `<div class="bo-full-identities">${labels.map((label) => `<span title="${h(label)}">${h(label)}</span>`).join("")}</div>`;
-    };
-    const boFollowUps = [];
-    const boRequirementRows = boRequired.map((item) => {
-      const received = boReceived.find((candidate) => candidate.key === item.key);
-      const missingItem = boMissing.some((candidate) => candidate.key === item.key);
-      const info = pairInfo(item, received, missingItem);
-      const sourceNameSet = new Set(info.sourceNames.map((name) => String(name).trim().toLowerCase()));
-      const sourceFiles = data.files.filter((file) => sourceNameSet.has(String(file.file_name || "").trim().toLowerCase()));
-      const followIndex = boFollowUps.push({ item, received, info, sourceFiles }) - 1;
-      return `<tr class="${missingItem ? "bo-requirement-attention" : ""}"><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${fullBoIdentity(item)}</td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${pairStatus(info, followIndex)}</td></tr>`;
-    }).join("");
-    const requiredKeys = new Set(boRequired.map((item) => item.key));
-    const unmatchedReceived = boReceived.filter((item) => !requiredKeys.has(item.key));
-    const unmatchedReceivedRows = unmatchedReceived.map((item) => `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td>${Array.isArray(item.source_files) && item.source_files.length ? h(item.source_files.join(" · ")) : "ไฟล์ถูกอ่านแล้ว แต่ผลรันเดิมยังไม่ได้เก็บชื่อไฟล์"}</td></tr>`).join("");
-    const boFileCards = boSourceFiles.map((file) => {
-      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
-      const statusLabel = statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
-      const tone = statementNeedsBoReview(file) ? "amber" : file.parse_error ? "red" : file.parsed ? "green" : "amber";
-      return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(displayTime(file.receivedAt))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
-    }).join("");
-    const boPreviewButton = (file, sourceLabel) => {
-      if (!file) return "";
-      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
-      return `<button type="button" class="bo-follow-file" data-bo-preview data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><small>${h(sourceLabel)}</small><b>${h(file.file_name || "ไฟล์ต้นทาง")}</b></span><em>Preview →</em></button>`;
-    };
-    openBoFollowUp = (followIndex) => {
-      const follow = boFollowUps[Number(followIndex)];
-      if (!follow) return;
-      const { item, info, sourceFiles } = follow;
-      const labels = Array.isArray(item.source_labels) ? item.source_labels.filter(Boolean) : [];
-      const identity = item.label || item.identity || "-";
-      const uniqueNames = (names) => [...new Set((names || []).map((name) => String(name || "").trim()).filter(Boolean))];
-      const boFileNames = uniqueNames(boSourceFiles.map((file) => file.file_name));
-      const stmFileNames = uniqueNames(info.sourceNames);
-      const totalRelatedFiles = boFileNames.length + stmFileNames.length;
-      const numberedFileText = (title, names, emptyText) => [
-        `${title} (${num(names.length)} ไฟล์)`,
-        ...(names.length ? names.map((name, index) => `${index + 1}. ${name}`) : [`- ${emptyText}`]),
-      ];
-      const numberedFileHtml = (names, emptyText) => names.length
-        ? `<ol class="bo-follow-file-list">${names.map((name) => `<li>${h(name)}</li>`).join("")}</ol>`
-        : `<p class="bo-follow-file-empty">${h(emptyText)}</p>`;
-      const previewStatus = !stmFileNames.length
-        ? "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้"
-        : sourceFiles.length
-          ? `เปิด Preview ได้ ${num(sourceFiles.length)} จาก ${num(stmFileNames.length)} ไฟล์`
-          : `ได้รับชื่อไฟล์ ${num(stmFileNames.length)} ไฟล์แล้ว แต่ผลโหลดชุดนี้ยังไม่มีข้อมูลเชื่อมสำหรับเปิด Preview`;
-      const requiredFile = `${item.kind || "STM"} ของ ${identity} ฝั่ง${directionLabel(item.direction)}`;
-      const missingSummary = info.code === "matched"
-        ? `ไม่ขาดไฟล์ · จับคู่ ${requiredFile} แล้ว`
-        : info.code === "missing_file"
-          ? `ขาดไฟล์ ${requiredFile}`
-          : info.code === "read_error"
-            ? `ต้องส่งใหม่หรือแก้ไฟล์ ${requiredFile} เพราะระบบอ่านไม่ได้`
-            : info.code === "waiting"
-              ? `ยังสรุปว่าขาดไม่ได้ · รอระบบอ่าน ${requiredFile}`
-              : info.code === "wrong_direction"
-                ? `มีไฟล์แล้ว แต่เป็นคนละทิศทางกับ ${requiredFile}`
-                : `มีไฟล์ครบแล้ว แต่ระบบจับคู่ ${requiredFile} ไม่สำเร็จ`;
-      const summaryLabel = ["identity_not_found", "wrong_direction"].includes(info.code) ? "สรุปผลตรวจ" : "สรุปสิ่งที่ขาด";
-      const nextStepSummary = info.code === "identity_not_found"
-        ? "ไม่ต้องตามไฟล์ใหม่ · กด “ประมวลผลจับคู่ใหม่” ก่อน หากยังไม่สำเร็จให้ตรวจทะเบียนชื่อและเลขบัญชี"
-        : info.code === "wrong_direction"
-          ? "กดประมวลผลจับคู่ใหม่ก่อน · หากผลเดิมให้ตรวจว่าไฟล์ฝาก/ถอนถูกตั้งประเภทถูกต้องหรือไม่"
-          : info.code === "matched"
-            ? "ไม่ต้องดำเนินการเพิ่ม"
-            : `ติดตามหรือแก้ไข ${requiredFile} แล้วกด “ประมวลผลจับคู่ใหม่”`;
-      const receivedSummary = `ระบบได้รับ BO ${num(boFileNames.length)} ไฟล์ และ STM/PM ${num(stmFileNames.length)} ไฟล์ · ${info.detail}`;
-      const copyText = [
-        "[ติดตามเอกสารกระทบยอด BO-first]",
-        `${summaryLabel}: ${missingSummary}`,
-        `ต้องทำต่อ: ${nextStepSummary}`,
-        `ไฟล์ที่ได้รับ: ${receivedSummary}`,
-        "",
-        "=== 1) ข้อมูลรายการที่อ่านจาก BO ===",
-        `อ้างอิงจากไฟล์ BO ต้นฉบับ: ${num(boFileNames.length)} ไฟล์`,
-        `วันที่: ${state.dailySummary.date}`,
-        `ระบบ: ${item.system || businessSystem}`,
-        `บริษัท: ${normalizeLiveCompanyCode(item.company) || company}`,
-        `บัญชี/Provider: ${identity}`,
-        `ชื่อเต็มจาก BO: ${labels.join(" | ") || "-"}`,
-        `ประเภท: ${item.kind || "STM"} ${directionLabel(item.direction)}`,
-        "",
-        "=== 2) ผลตรวจจาก BO ===",
-        `รายการใน BO: ${num(item.rows || 0)} รายการ`,
-        `ยอดรวม BO: ${money0(item.amount || 0)} บาท`,
-        `สถานะ: ${info.title}`,
-        `รายละเอียด: ${info.detail}`,
-        "",
-        `=== 3) ไฟล์ที่ระบบได้รับและใช้ตรวจ: รวม ${num(totalRelatedFiles)} ไฟล์ ===`,
-        ...numberedFileText("ไฟล์ BO ต้นฉบับ", boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ"),
-        "",
-        ...numberedFileText("ไฟล์ STM/PM ที่ได้รับ", stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้"),
-        `สถานะ Preview: ${previewStatus}`,
-        "",
-        "=== 4) สิ่งที่ขอให้ทีมตรวจ ===",
-        "1. ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่",
-        "2. ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา",
-        "3. หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง",
-      ].join("\n");
-      const sourceFileHtml = sourceFiles.length
-        ? sourceFiles.map((file) => boPreviewButton(file, "ไฟล์ STM/PM ที่ระบบพบ")).join("")
-        : info.sourceNames.length
-          ? `<div class="bo-follow-file-names"><b>ชื่อไฟล์ที่ผลรันระบุ</b><span>${info.sourceNames.map(h).join("<br>")}</span><small>ไม่พบ metadata สำหรับเปิด Preview ในผลโหลดชุดนี้ ให้เปิดคลังไฟล์เพื่อตรวจต่อ</small></div>`
-          : `<div class="empty-box">ยังไม่มีไฟล์ STM/PM สำหรับรายการนี้</div>`;
-      openModal(
-        `ติดตาม ${h(identity)} · ${h(directionLabel(item.direction))}`,
-        `<div class="bo-follow-detail"><div class="bo-follow-missing-summary ${h(info.tone)}"><span>${h(summaryLabel)}</span><strong>${h(missingSummary)}</strong><small>${h(receivedSummary)}</small><em>${h(nextStepSummary)}</em></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><div class="bo-follow-copy"><div class="bo-follow-copy-head"><div><span>ข้อความพร้อมส่งให้ทีม</span><small>อ่านผลตรวจและสิ่งที่ต้องทำต่อก่อน แล้วค่อยดูรายละเอียดไฟล์ประกอบ</small></div></div><div class="bo-follow-message"><section><div class="bo-follow-section-head"><div><h3>1. ข้อมูลรายการที่อ่านจาก BO</h3><small>ข้อมูลส่วนนี้มาจากไฟล์ BO ต้นฉบับ ${num(boFileNames.length)} ไฟล์ ไม่ใช่รายการไฟล์ที่ขาด</small></div></div><dl><div><dt>วันที่</dt><dd>${h(state.dailySummary.date)}</dd></div><div><dt>ระบบ / บริษัท</dt><dd>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(identity)}</dd></div><div><dt>ชื่อเต็มจาก BO</dt><dd>${labels.length ? labels.map(h).join("<br>") : "-"}</dd></div><div><dt>ประเภท</dt><dd>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</dd></div></dl></section><section><h3>2. ผลตรวจจาก BO</h3><dl><div><dt>${h(summaryLabel)}</dt><dd class="danger">${h(missingSummary)}</dd></div><div><dt>ต้องทำต่อ</dt><dd>${h(nextStepSummary)}</dd></div><div><dt>ไฟล์ที่ได้รับ</dt><dd>${h(receivedSummary)}</dd></div><div><dt>สถานะเดิม</dt><dd>${h(info.title)}</dd></div></dl></section><section><div class="bo-follow-section-head"><h3>3. ไฟล์ที่ระบบได้รับและใช้ตรวจ</h3><b class="bo-follow-count">รวม ${num(totalRelatedFiles)} ไฟล์</b></div><div class="bo-follow-file-group"><h4>ไฟล์ BO ต้นฉบับ <span>${num(boFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ")}</div><div class="bo-follow-file-group"><h4>ไฟล์ STM/PM ที่ได้รับ <span>${num(stmFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้")}</div><p class="bo-follow-file-state"><b>สถานะ Preview:</b> ${h(previewStatus)}</p></section><section class="action"><h3>4. สิ่งที่ขอให้ทีมตรวจ</h3><ol><li>ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่</li><li>ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา</li><li>หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง</li></ol></section></div><details class="bo-follow-raw"><summary>ดูข้อความแบบข้อความล้วน</summary><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></details></div></div>`,
-        `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button>${info.code !== "matched" ? `<button class="primary-button" id="boFollowRetry">ประมวลผลจับคู่ใหม่</button>` : ""}<button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
-      );
-      $("#boFollowClose").addEventListener("click", closeModal);
-      const retryButton = $("#boFollowRetry");
-      if (retryButton) retryButton.addEventListener("click", async () => {
-        // The checklist view can legitimately omit job_id even though the
-        // selected daily job is present in v_recon_operations. Resolve the
-        // exact company/date job from that authoritative row before retrying.
-        const selectedOperation = data.operations.find((row) =>
-          row.business_date === state.dailySummary.date &&
-          normalizeLiveCompanyCode(row.company) === company &&
-          !row.is_archived
-        );
-        const resolvedJob = data.checklist?.job_id || selectedOperation?.id
-          ? null
-          : await Sb.dailyJob(company, state.dailySummary.date);
-        const jobId = data.checklist?.job_id || selectedOperation?.id || resolvedJob?.id;
-        if (!jobId) {
-          toast("ยังไม่พบรหัสงานรายวัน กรุณาเปิดคลังไฟล์และกดรีเฟรชก่อน", "warn");
-          return;
-        }
-        retryButton.disabled = true;
-        retryButton.textContent = "กำลังประมวลผลใหม่…";
-        try {
-          await Sb.retryJob(jobId);
-          toast(`เข้าคิวจับคู่ใหม่แล้ว · ${state.dailySummary.date} · ${company}`);
-          closeModal();
-          await cloudWorkerTick();
-          liveOverviewState.key = "";
-          dailyCompanyState.batches = null;
-          dailyCompanyState.quality = null;
-          dailyCompanyState.operations = null;
-          dailyCompanyState.checklist = null;
-          dailyCompanyState.boFirst = null;
-          await loadDailyCompanySummary(true);
-          render();
-        } catch (error) {
-          retryButton.disabled = false;
-          retryButton.textContent = "ประมวลผลจับคู่ใหม่";
-          toast(`ประมวลผลใหม่ไม่สำเร็จ: ${error.message}`, "warn");
-        }
-      });
-      $("#boFollowCopy").addEventListener("click", async (event) => {
-        await copyPlainText(copyText);
-        event.currentTarget.textContent = "คัดลอกแล้ว ✓";
-        toast("คัดลอกข้อความติดตามแล้ว", "ok");
-      });
-      $("#boFollowCloud").addEventListener("click", () => {
-        closeModal();
-        go("cloud", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
-      });
-      $("#boFollowCases").addEventListener("click", () => {
-        closeModal();
-        go("clarify", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
-      });
-      bindStoredFileLinks($("#modal"), "[data-bo-preview]");
-    };
-    const nextWork = !data.files.length
-      ? { route: "cloud", tone: "warn", title: "ยังไม่ได้รับไฟล์ของวันนี้", detail: `รออีเมล/ไฟล์ของ ${company} ก่อน จึงจะตรวจความครบถ้วนและกระทบยอดได้`, button: "ตรวจไฟล์เข้า" }
-      : !boFiles
-        ? { route: "cloud", tone: "bad", title: "ยังขาดรายงาน BO", detail: "BO เป็นไฟล์หลักสำหรับระบุบัญชีและ Provider ที่ใช้งานจริงของวันนี้", button: "ตรวจไฟล์ BO" }
-        : fileErrors
-          ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
-      : waitingFiles
-        ? { route: "cloud", tone: "warn", title: `รอระบบอ่าน ${num(waitingFiles)} ไฟล์`, detail: "ตรวจสถานะไฟล์ก่อนเริ่มกระทบยอด", button: "ดูไฟล์" }
-        : missing.length
-          ? { route: "cloud", tone: "warn", title: `ตามไฟล์ที่ยังขาด ${num(missing.length)} ประเภท`, detail: missing.join(" · "), button: "ดูสิ่งที่ขาด" }
-          : data.stillOpen
-            ? { route: "exceptions", tone: "warn", title: `ตรวจรายการค้าง ${num(data.stillOpen)} เคส`, detail: "เปิดหลักฐานและติดตามผลการชี้แจง", button: "ตรวจเคส" }
-            : !dayComplete
-              ? { route: "cloud", tone: "warn", title: "ยังยืนยันปิดงานไม่ได้", detail: completionBlockers.join(" · "), button: "ตรวจสิ่งที่ค้าง" }
-            : { route: "reports", tone: "ok", title: "ตรวจครบแล้ว พร้อมออกรายงาน", detail: "ตรวจยอดสรุปอีกครั้งแล้ว Export เก็บเป็นหลักฐาน", button: "ดูรายงาน" };
-    const sheetRows = dailyAuditSheetRows(state.dailySummary.date);
-    const selectedCaseSummary=sheetRows.find(row=>row.company===company);
-    const currentCaseCountsReady=selectedCaseSummary?.currentCountsReady&&!selectedCaseSummary.caseSetPending;
-    const currentCaseCount=currentCaseCountsReady?num(selectedCaseSummary.openCount):'รอข้อมูล';
-    const closedCaseCount=currentCaseCountsReady?num(selectedCaseSummary.resolvedCount):'รอข้อมูล';
-    const auditSheetHtml = `
-      <section class="panel audit-sheet-panel">
-        <div class="panel-heading"><div><p class="eyebrow">Audit Sheet · ภาพรวมทุกบริษัท</p><h2>สถานะงานวันที่ ${h(state.dailySummary.date)}</h2><small class="head-sub">สรุปขึ้นก่อนทันที ส่วนรายละเอียดแต่ละรายงานจะโหลดเมื่อกดเปิด</small></div><span class="badge blue">${num(sheetRows.length)} บริษัท</span></div>
-        <p class="hint">จำนวนเด่นคือเคสค้างปัจจุบัน · ปิดแล้วนับจากชุดเคสปัจจุบัน · ผลตรวจตอนรันเป็นประวัติคนละจำนวน ไม่ใช่เคสค้างหรือยอดความเสียหาย</p>
-        <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>เคสค้างปัจจุบัน / ประวัติผลตรวจ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
-          ${sheetRows.map((row) => {
-            const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.resultStatus.manual ? {label:row.resultStatus.manual,tone:'blue'} : row.status === "completed_review"
-              ? { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" }
-              : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
-            const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
-            const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
-return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td>${DailyCaseSummary.markup(row)}</td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.review?`<small role="alert">${h(row.resultStatus.review)}</small>`:''}${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
-          }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
-        </tbody></table></div>
-      </section>`;
-    root.innerHTML = controls + rulesPanel + `
-      ${auditSheetHtml}
-      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? displayTime(dailyCompanyState.updatedAt) : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
-      ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
-      ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
-      <section class="primary-result-note"><strong>แยกสถานะรอบงาน</strong><p>ผลหลัก: ${selectedResultStatus.primary?'ใช้ผลรันมือที่หัวหน้า/ผู้ดูแลยืนยันแล้ว':'ยังใช้ผลรอบอัตโนมัติเดิม ไม่ได้นำผลรันมือมาแทน'}</p>${selectedResultStatus.review?`<p role="alert" class="mc8-warning">${h(selectedResultStatus.review)}</p>`:''}${selectedResultStatus.manual?`<p>${h(selectedResultStatus.manual)}</p>`:''}<p>${h(selectedResultStatus.automatic)} · สถานะนี้ไม่ใช่สถานะของผลรันมือ</p>${selectedResultStatus.error?`<p role="alert">${h(selectedResultStatus.error)}</p>`:''}</section>
-      ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
-${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>${r.primaryResult.case_set?'รายการงานปัจจุบันใช้เคสชุดใหม่ · เคสเดิมดูได้ในหน้าชีต Audit':'รายการเคสด้านล่างเป็นประวัติเคสเดิม'}</p></section>`).join('')}
-      ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
-      <section class="panel daily-focus-board">
-        <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>
-        <div class="daily-reconcile-tiles action-tiles">
-          <article data-action-route="cloud"><span>รายการ STM / PM</span><strong>${num(stm)}</strong><small>${num(stmFiles + pmFiles)} ไฟล์ต้นทาง</small></article>
-          <article data-action-route="cloud"><span>รายการ BO</span><strong>${num(bo)}</strong><small>${num(boFiles)} ไฟล์ต้นทาง</small></article>
-          <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่ผ่าน 3 จุด</span><strong>${num(matched)}</strong><small>${matchRate.toFixed(2)}% ของ STM / PM</small></article>
-          <article data-action-route="exceptions" class="${data.stillOpen ? "warn" : "ok"}"><span>เคสค้างปัจจุบัน</span><strong>${h(currentCaseCount)}</strong><small>ไม่รวมเคสปิดแล้ว · ไม่ใช่จำนวนผลตรวจตอนรัน</small></article>
-          <article data-action-route="clarify" class="ok"><span>เคสปิดแล้ว</span><strong>${h(closedCaseCount)}</strong><small>เฉพาะชุดเคสปัจจุบัน · ไม่รวมเคสรุ่นเก่าที่ถูกแทน</small></article>
-        </div>
-        ${riskIsPartial?`<p class="hint">ยอดที่ตรวจพบใน ${num(data.exceptions.length)} เคสแรก อย่างน้อย ${money0(risk)} บาท · เป็นรายละเอียดบางส่วนรวมเคสปิดแล้ว ไม่ใช่ยอดเคสค้างหรือความเสียหายยืนยัน</p>`:''}
-        <div class="daily-difference-strip"><div class="${stm === bo ? "ok" : "warn"}"><span>จำนวนรายการ STM/PM เทียบ BO</span><b>${num(stm - bo)}</b></div><div class="${data.stillOpen ? "bad" : "ok"}"><span>เคสค้างที่ต้องติดตาม</span><b>${h(currentCaseCount)}</b></div><div class="${damageTotal ? "bad" : evidenceFiles ? "warn" : "ok"}"><span>ความเสียหายที่ยืนยันแล้ว</span><b>${h(damageDisplay)}</b></div></div>
-        <button type="button" class="daily-next-work ${nextWork.tone}" data-action-route="${nextWork.route}"><span><small>ขั้นถัดไปที่แนะนำ</small><b>${h(nextWork.title)}</b><em>${h(nextWork.detail)}</em></span><strong>${h(nextWork.button)} →</strong></button>
-      </section>
-      <section class="daily-source-summary" aria-label="ไฟล์ที่ได้รับ"><article><span>อีเมลที่ได้รับ</span><b>${num(data.batches.length)} ฉบับ</b><small>เอกสารแนบทั้งหมด ${num(data.files.length)} ไฟล์</small></article><article><span>STM ธนาคาร</span><b>${num(stmFiles)} ไฟล์</b></article><article><span>BO หลังบ้าน</span><b>${num(boFiles)} ไฟล์</b></article><article><span>PM ฝาก/ถอน</span><b>${num(pmFiles)} ไฟล์</b></article><article><span>หลักฐานชี้แจง</span><b>${num(evidenceFiles)} ไฟล์</b><small>${evidenceFiles ? "รอผู้ตรวจยืนยันก่อนบันทึกความเสียหาย" : "ยังไม่มีหลักฐานชี้แจง"}</small></article><article class="${fileErrors ? "bad" : reconciliationReady ? "ok" : "warn"}"><span>ไฟล์กระทบยอดที่อ่านสำเร็จ</span><b>${num(parsed)}/${num(data.reconciliationFiles.length)}</b></article>
-      </section>
-      <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${reconciliationReady ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์กระทบยอด<small>${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.resolvedTotal)} · กดติดตาม</small></span></button></section>
-
-      <section class="panel bo-document-summary">
-        <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">ระบบ ${h(businessSystem)} · บริษัท ${h(company)} · BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วจึงตามหา STM/PM ของบริษัทเดียวกัน</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
-        <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังจับคู่ STM/PM ไม่ได้</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
-        <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider</th><th>ชื่อเต็มจาก BO</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="8" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
-        ${unmatchedReceived.length ? `<div class="bo-unmatched-received"><h3>ไฟล์ STM/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider ที่อ่านได้</th><th>ประเภท</th><th class="right">รายการ</th><th>ไฟล์ต้นทาง</th></tr></thead><tbody>${unmatchedReceivedRows}</tbody></table></div></div>` : ""}
-        <div class="alert ${data.boFirst?.complete ? "ok" : "warn"} bo-follow-summary"><div><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>${boMissing.length ? `<button type="button" class="primary-button sm" id="boOpenFirstFollow">เปิดรายละเอียดกลุ่มแรก</button>` : ""}</div>
-      </section>
-
-      <section class="panel company-day-checklist">
-        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${dayComplete ? "ok" : "attention"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : dayComplete ? "Checklist ครบ · ตรวจการยืนยัน Audit ต่อ" : "ยังตรวจไม่ครบ"}</span></div>
-        <div class="checklist-cards">
-          ${[
-            ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
-            ["STM ของบัญชีที่พบใน BO", Boolean(data.boFirst) && stmRequiredByBo.length > 0 && stmMissingByBo.length === 0, data.boFirst ? `${num(stmRequiredByBo.length - stmMissingByBo.length)}/${num(stmRequiredByBo.length)} กลุ่มตาม BO · รับ ${num(checklistStmCount)} ไฟล์` : `${num(checklistStmCount)} ไฟล์ · รออ่าน BO`, !data.boFirst || !stmRequiredByBo.length],
-            ["รายงาน BO บังคับ", checklistBoCount >= boExpected, `${num(checklistBoCount)}/${num(boExpected)} ไฟล์`, false],
-            ["PM D/W ของ Provider ที่พบใน BO", Boolean(data.boFirst) && pmRequiredByBo.length > 0 && pmMissingByBo.length === 0, data.boFirst ? `${num(pmRequiredByBo.length - pmMissingByBo.length)}/${num(pmRequiredByBo.length)} กลุ่มตาม BO · รับ ${num(checklistPmCount)} ไฟล์` : `${num(checklistPmCount)} ไฟล์ · รออ่าน BO`, !data.boFirst || !pmRequiredByBo.length],
-            ["อ่านไฟล์สำหรับกระทบยอด", reconciliationReady, fileErrors ? `อ่านไม่ได้ ${num(fileErrors)}` : `${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์ไม่ต้องแปลงรายการ`, false],
-            ["กระทบยอดและปิดเคส", dayComplete, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
-          ].map(([label, ok, detail, optional]) => scheduled
-            ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
-            : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
-        </div>
-        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : !dayComplete ? `<div class="alert warn"><strong>ยังยืนยันปิดงานไม่ได้</strong><span>${h(completionBlockers.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบ · ไม่ใช่การยืนยันจาก Audit</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
-        ${data.checklist?.registry_warning ? `<div class="alert warn registry-alert"><strong>ข้อมูลทะเบียนที่ควรยืนยัน</strong><span>${h(data.checklist.registry_warning)}</span></div>` : ""}
-      </section>
-
-      <section class="grid-2 daily-summary-grid">
-        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${coverageComplete ? "ok" : "attention"}">${coverageComplete ? "ครบตาม BO และกฎ" : boMissing.length ? `ยังจับคู่ไม่ได้ ${num(boMissing.length)} กลุ่ม` : missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ยังยืนยันความครบถ้วนไม่ได้"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
-        <div class="panel" id="dailyReconcileResult"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception รวมจากทั้งสองฝั่ง</span><b>${num(data.exceptionTotal)}</b><small class="sub">รวมรายการไม่พบคู่ ยอดต่าง เวลาต่าง และรายการซ้ำ จึงไม่เท่ากับ STM ลบรายการจับคู่เสมอ</small></li><li><span>ความเสียหายที่ผู้ตรวจยืนยันแล้ว</span><b>${h(damageDisplay)}</b></li></ul></div>
-      </section>
-
-      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Source files</p><h2>ไฟล์ที่ได้รับทั้งหมด</h2><small class="head-sub">กดชื่อไฟล์เพื่อดูตัวอย่างก่อนดาวน์โหลด · ไฟล์ชี้แจงใช้เป็นหลักฐานและไม่ต้องแปลงเป็นรายการ</small></div><span class="health ok">${num(data.files.length)} ไฟล์</span></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>รับเมื่อ</th><th>หัวข้อเมล / ผู้ส่ง</th><th>ชื่อไฟล์</th><th>ประเภท</th><th class="right">แถว</th><th>สถานะ</th></tr></thead><tbody>${data.files.map((file) => {
-        const evidence = file.kind === "doc_clarify";
-        const fileStatus = evidence ? "evidence" : file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
-        const statusHtml = evidence
-          ? `<span class="badge blue">หลักฐานพร้อมตรวจ</span><small class="sub">ไม่ต้องอ่านเป็นรายการ</small>`
-          : statementNeedsBoReview(file)
-            ? `<span class="badge amber">${h(statementReviewLabel(file))}</span><small class="sub">${h(file.parse_error)} · ต้องยืนยันว่าต้นฉบับครอบคลุมวันตรวจ และเทียบ BO บัญชีเดียวกัน แยกฝาก–ถอนก่อนสรุปว่าไม่มีรายการทั้งสองฝั่ง</small>`
-          : file.parse_error
-            ? `<span class="badge red">อ่านไม่ได้</span><small class="sub danger">${h(file.parse_error)}</small>`
-            : file.parsed
-              ? `<span class="badge green">${h(parsedFileLabel(file))}</span>`
-              : `<span class="badge amber">รออ่าน</span>`;
-        return `<tr><td>${h(displayTime(file.receivedAt))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${evidence || file.row_count == null ? "-" : num(file.row_count)}</td><td>${statusHtml}</td></tr>`;
-      }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
-
-      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Exception resolution</p><h2>ผลการตรวจและแก้ไขทั้งหมด</h2><small class="head-sub">แก้ไขแล้ว ${num(data.resolvedTotal)} · ยังไม่ปิด ${num(data.stillOpen)} · แสดงรายละเอียดชุดแรก ${num(data.exceptions.length)}/${num(data.exceptionTotal)}</small></div><button class="ghost-button sm" id="dailyGoExceptions">เปิดหน้าติดตามเคส</button></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>เคส / เวลา</th><th>ประเภท</th><th>บัญชี</th><th class="right">ยอด BO</th><th class="right">ยอด STM</th><th class="right">ผลต่าง</th><th>ระดับ</th><th>สถานะการแก้ไข</th><th>ผู้เกี่ยวข้อง / สาเหตุ</th></tr></thead><tbody>${data.exceptions.map((row) => `<tr class="clickable" data-daily-ex="${h(row.id)}"><td><b>${h(row.id)}</b><small class="sub">${h(row.time || "-")}</small></td><td>${h(row.typeName)}</td><td>${h(row.account)}<small class="sub">${h(row.bank)} · ${h(row.direction)}</small></td><td class="right tnum">${row.systemAmount == null ? "-" : money(row.systemAmount)}</td><td class="right tnum">${row.bankAmount == null ? "-" : money(row.bankAmount)}</td><td class="right tnum danger">${money(row.amountDiff || row.riskAmount)}</td><td><span class="badge ${h(row.severity)}">${h(sevMeta(row.severity).name)}</span></td><td><span class="badge ${h(statusMeta(row.status).tone)}">${h(statusMeta(row.status).name)}</span></td><td>${h(row.employee)}<small class="sub">${h(row.cause)}</small></td></tr>`).join("") || `<tr><td colspan="9" class="empty">${data.exceptionTotal ? `ผลรันระบุ ${num(data.exceptionTotal)} Exception แต่ยังไม่มีรายละเอียดเคสที่เปิดดูได้` : "ไม่พบ Exception ของบริษัทนี้ในวันที่เลือก"}</td></tr>`}</tbody></table></div></section>`;
-
-    // แถบสถานะส่วนหัวต้องยึดข้อมูล live ของบริษัท/วันที่ที่ผู้ใช้กำลังดู
-    // ไม่ใช่ ImportState ในเครื่อง ซึ่งอาจเป็นผลจากวันก่อนและทำให้วันว่างขึ้นว่าเสร็จแล้ว
-    const liveHeader = !data.files.length
-      ? { text: "รอไฟล์", tone: "idle", why: `ยังไม่ได้รับไฟล์ของ ${company} วันที่ ${state.dailySummary.date}` }
-      : !boFiles
-        ? { text: "รอ BO", tone: "wait", why: "ยังไม่มีรายงาน BO สำหรับระบุบัญชีและ Provider ที่ใช้งานจริง" }
-        : !data.quality.length
-          ? { text: "รอผลกระทบยอด", tone: "wait", why: "ได้รับไฟล์แล้ว แต่ยังไม่มีผลกระทบยอดของวันและบริษัทนี้" }
-          : { text: status.label, tone: status.tone === "green" ? "ok" : status.tone === "red" ? "wait" : status.tone, why: `สถานะจริงจาก Supabase: ${status.label}` };
-    const liveAutoStatus = $("#autoStatus");
-    if (liveAutoStatus) {
-      liveAutoStatus.className = `auto-status ${liveHeader.tone}`;
-      liveAutoStatus.title = liveHeader.why;
-      $("#autoStatusText").textContent = liveHeader.text;
-    }
-  }
-
-  $("#dailySummaryDate")?.addEventListener("change", (event) => {
-    state.dailySummary.date = event.target.value || DEFAULT_WORK_DATE;
-    loadDailyCompanySummary(true);
-  });
-  $("#dailySummaryCompany")?.addEventListener("change", (event) => {
-    state.dailySummary.company = event.target.value;
-    loadDailyCompanySummary(true);
-  });
-  $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
-  $('#dailySummaryHolds')?.addEventListener('click',()=>{
-    openModal('พักบัญชี / ทะเบียนพักตรวจ — อ่านอย่างเดียว','<div id="dailyHoldRegistry"></div>','<button id="dailyHoldRegistryClose">ปิด</button>');
-    $('#dailyHoldRegistryClose').onclick=closeModal;
-    AccountReviewHolds.mountReadOnly($('#dailyHoldRegistry'),{
-      actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.reviewHoldRegistryCompanies,
-      scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldRegistryReport,view:AccountReviewHolds.view,
-      csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:state.dailySummary.date,to:state.dailySummary.date,
-    });
-  });
-  const matchedButton = document.createElement("button");
-  matchedButton.className = "primary-button";
-  matchedButton.textContent = "ดูรายการจับคู่สำเร็จ";
-  $("#dailySummaryRefresh")?.after(matchedButton);
-  matchedButton.addEventListener("click", async () => {
-    matchedButton.disabled = true;
-    const company = state.dailySummary.company, date = state.dailySummary.date;
-    try {
-      const run = await Sb.matchedEvidence(company, date);
-      const evidence = run?.summary?.match_evidence;
-      if (!Array.isArray(evidence) || !evidence.length) {
-        openModal("รายการจับคู่สำเร็จ", `<p>${h(company)} · ${h(date)}</p><p>ผลรอบนี้มีคู่สำเร็จ ${num(run?.matched || 0)} รายการ แต่${run ? "ยังไม่ได้เก็บหลักฐานรายคู่สำหรับมุมมองนี้" : "ยังไม่มีผลประมวลผล"} จึงยังแสดงรายละเอียดไม่ได้ ไม่ใช่ยืนยันว่าไม่มีคู่สำเร็จ</p><p>ต้องประมวลผลด้วย Worker ที่เก็บหลักฐานรายคู่ก่อน ไม่สร้างรายการทดแทนจากยอดรวม</p>`);
-        return;
-      }
-      const time = side => side?.date ? `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec * 1000).toISOString().slice(11,19) : "ไม่ระบุเวลา"}` : "ไม่ระบุ";
-      const person = p => p ? `บัญชี: ${h(p.account || "ไม่ระบุ")}<br>ชื่อ: ${h(p.name || "ไม่ระบุ")}<br>User: ${h(p.user || "ไม่ระบุ")}<br>อ้างอิง: ${h(p.reference || "ไม่ระบุ")}` : "ผลเก่าไม่ได้เก็บข้อมูลลูกค้า";
-      let direction = "deposit", page = 0;
-      const draw = () => {
-        const rows = evidence.filter(e => e.direction === direction);
-        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือทั่วไปต้องตรวจเอกสาร ยกเว้นบัญชีระบบ 123 ที่ผ่านกฎปิดอัตโนมัติซึ่ง Audit อนุมัติไว้</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(evidenceTimeDiffLabel(e))}</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : e.sys123ManualAutoClosed ? "<br>เติมมือ 123: ผ่านกฎปิดอัตโนมัติ" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
-        $("#matchedDeposit").onclick = () => { direction = "deposit"; page = 0; draw(); };
-        $("#matchedWithdraw").onclick = () => { direction = "withdraw"; page = 0; draw(); };
-        $("#matchedPrev").onclick = () => { page--; draw(); };
-        $("#matchedNext").onclick = () => { page++; draw(); };
-      };
-      draw();
-    } catch (error) { toast(`โหลดคู่สำเร็จไม่ได้: ${error.message}`); }
-    finally { matchedButton.disabled = false; }
-  });
-  $("#dailySummaryExport")?.addEventListener("click", async () => {
-    let data = dailyCompanyData(state.dailySummary.company);
-    if (data.exceptionTotal > data.exceptions.length) {
-      toast("กำลังดึงรายละเอียดทั้งหมดสำหรับ Export — หน้าจอยังใช้งานต่อได้");
-      try {
-        const rows = await Sb.currentExceptionsSummary({ from: state.dailySummary.date, to: state.dailySummary.date, company: state.dailySummary.company, limit: 5000 });
-        dailyCompanyState.informationalExceptions = informationalAuditRows(rows);
-        dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rows,dailyCompanyState.matchEvidence);
-        dailyCompanyState.exceptions = actionableAuditRows(rows,dailyCompanyState.matchEvidence).map(mapLiveException);
-        data = dailyCompanyData(state.dailySummary.company);
-      } catch (error) {
-        toast("ดึงรายละเอียดทั้งหมดไม่สำเร็จ จึง Export เฉพาะข้อมูลที่โหลดแล้ว: " + error.message, "warn");
-      }
-    }
-    exportDailyCompanySummary(data);
-  });
-  root.querySelectorAll("[data-sheet-open]").forEach((button) => button.addEventListener("click", () => {
-    state.dailySummary.company = button.dataset.sheetOpen;
-    loadDailyCompanySummary(true);
-  }));
-  root.querySelectorAll("[data-sheet-action]").forEach((button) => button.addEventListener("click", () => {
-    const company = button.dataset.sheetAction;
-    const mode = button.dataset.sheetMode;
-    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company };
-    if (mode === "files") return go("cloud", { filters });
-    if (mode === "issues") return go("exceptions", { filters, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false } });
-    if (mode === "approve") return go("approvals", { filters });
-    state.dailySummary.company = company;
-    loadDailyCompanySummary(true);
-  }));
-  $("#dailyGoExceptions")?.addEventListener("click", () => go("exceptions", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company }, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } }));
-  root.querySelectorAll("[data-daily-route]").forEach((button) => button.addEventListener("click", () => {
-    const route = button.dataset.dailyRoute;
-    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
-    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
-  }));
-  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => {
-    const route = item.dataset.actionRoute;
-    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
-    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
-  }));
-  root.querySelectorAll("[data-scroll-daily]").forEach((item) => item.addEventListener("click", () => {
-    document.getElementById(item.dataset.scrollDaily)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }));
-  root.querySelectorAll("[data-bo-follow]").forEach((button) => button.addEventListener("click", () => openBoFollowUp(button.dataset.boFollow)));
-  $("#boOpenFirstFollow")?.addEventListener("click", () => {
-    const first = root.querySelector(".bo-requirement-attention [data-bo-follow]");
-    if (first) openBoFollowUp(first.dataset.boFollow);
-  });
-  bindStoredFileLinks(root);
-  root.querySelectorAll("[data-daily-ex]").forEach((row) => row.addEventListener("click", () => {
-    const item = (dailyCompanyState.exceptions || []).find((exception) => exception.id === row.dataset.dailyEx);
-    if (item && !DB.exceptions.some((exception) => exception.id === item.id)) DB.exceptions.push(item);
-    openException(row.dataset.dailyEx);
-  }));
-}
-
-VIEWS["daily-summary"] = renderDailyCompanySummary;
-
-/* =============================================================
-   VIEW: Intake Control
-   ============================================================= */
-const liveIntakeState = { batches: null, loading: false, error: null, key: "", updatedAt: null };
-
-async function loadLiveIntake(force = false) {
-  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  if (liveIntakeState.loading || (!force && liveIntakeState.key === key && liveIntakeState.batches)) return;
-  liveIntakeState.loading = true;
-  liveIntakeState.error = null;
-  liveIntakeState.key = key;
-  render();
-  try {
-    liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, force });
-    liveIntakeState.updatedAt = new Date();
-  } catch (e) {
-    liveIntakeState.error = e.message || "โหลดทะเบียนไฟล์จริงไม่สำเร็จ";
-  }
-  liveIntakeState.loading = false;
-  render();
-}
-
-function intakeCompanyOf(file, batch) {
-  const master = companyMaster().map((c) => c.code);
-  const raw = `${file.company || ""} ${batch.company || ""} ${file.file_name || ""} ${batch.subject || ""}`.toUpperCase();
-  if (/UFABET\s*7M|UFA\s*7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)/.test(raw)) return state.dataset === "production" ? "UFABET7M" : "7M";
-  return master.find((code) => new RegExp(`(^|[^A-Z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`, "i").test(raw)) || null;
-}
-
-function intakeTypesOf(file) {
-  const text = `${file.kind || ""} ${file.file_name || ""}`.toLowerCase();
-  if (file.kind === "pm_statement" || /\bpm\b|autopeer|azpay|cyberplus|mypay|12pay|payment/.test(text)) return ["PM"];
-  const out = [];
-  const both = /ฝาก\s*[-–—/]?\s*ถอน|ถอน\s*[-–—/]?\s*ฝาก|ฝากถอน|ถอนฝาก|statement|\bstm\b/.test(text);
-  if (both || /ฝาก|deposit/.test(text)) out.push("ฝาก");
-  if (both || /ถอน|withdraw|\bwd\b/.test(text)) out.push("ถอน");
-  if (!out.length && ["stm_pdf", "bo_main"].includes(file.kind)) out.push("ฝาก", "ถอน");
-  return [...new Set(out)];
-}
-
-function renderLiveIntake(root) {
-  if (!liveIntakeState.batches && !liveIntakeState.loading) loadLiveIntake();
-  if (liveIntakeState.loading && !liveIntakeState.batches) {
-    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังตรวจไฟล์จริง</h2><p class="hint">จัดกลุ่ม PM ฝาก และถอนตามบริษัท...</p></div></section>`;
-    return;
-  }
-  if (liveIntakeState.error && !liveIntakeState.batches) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดไฟล์จริงไม่สำเร็จ</strong><span>${h(liveIntakeState.error)}</span><button class="ghost-button sm" id="intakeRetry">ลองใหม่</button></div></section>`;
-    $("#intakeRetry")?.addEventListener("click", () => loadLiveIntake(true));
-    return;
-  }
-
-  const batches = liveIntakeState.batches || [];
-  const files = batches.flatMap((batch) =>
-    (batch.source_files || []).map((file) => ({
-      ...file,
-      intakeCompany: intakeCompanyOf(file, batch),
-      intakeTypes: intakeTypesOf(file),
-      receivedAt: file.received_at || batch.received_at,
-    })),
-  );
-  const typedFiles = files.filter((file) => file.intakeCompany && file.intakeTypes.length);
-  const visibleTypes = state.filters.direction === "ALL" ? ["PM", "ฝาก", "ถอน"] : [state.filters.direction];
-  const selectedFiles = typedFiles.filter((file) => file.intakeTypes.some((type) => visibleTypes.includes(type)));
-  const companies = companyMaster().filter((company) => state.filters.company === "ALL" || company.code === state.filters.company);
-  const rows = companies.map((company) => {
-    const own = selectedFiles.filter((file) => file.intakeCompany === company.code);
-    const counts = Object.fromEntries(["PM", "ฝาก", "ถอน"].map((type) => [type, own.filter((file) => file.intakeTypes.includes(type)).length]));
-    const errors = own.filter((file) => file.parse_error).length;
-    const parsed = own.filter((file) => file.parsed).length;
-    const latest = own.map((file) => String(file.receivedAt || "")).sort().pop() || "";
-    return { company: company.code, own, counts, errors, parsed, latest };
-  });
-  const foundCompanies = rows.filter((row) => row.own.length).length;
-  const errors = selectedFiles.filter((file) => file.parse_error).length;
-  const waitingRead = selectedFiles.filter((file) => !file.parsed && !file.parse_error).length;
-  const missingCompanies = rows.length - foundCompanies;
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article><span>บริษัทที่ต้องตรวจ</span><strong>${num(rows.length)}</strong><small>${h(state.filters.company === "ALL" ? "ทะเบียนบริษัททั้งหมด" : state.filters.company)}</small></article>
-      <article class="ok"><span>บริษัทที่พบไฟล์</span><strong>${num(foundCompanies)}</strong><small>จากไฟล์จริงใน Supabase</small></article>
-      <article class="${waitingRead ? "warn" : "ok"}"><span>ไฟล์ PM / ฝาก / ถอน</span><strong>${num(selectedFiles.length)}</strong><small>รออ่าน ${num(waitingRead)} ไฟล์</small></article>
-      <article class="${errors || missingCompanies ? "bad" : "ok"}"><span>ต้องตรวจเพิ่ม</span><strong>${num(errors + missingCompanies)}</strong><small>ไม่พบบริษัท ${num(missingCompanies)} · อ่านไม่ได้ ${num(errors)}</small></article>
-    </section>
-
-    ${
-      !selectedFiles.length
-        ? `<div class="alert bad"><strong>ยังไม่พบไฟล์ PM ฝาก หรือถอน</strong><span>ช่วง ${h(rangeLabel())} ยังไม่มีไฟล์ที่จำแนกเข้าบริษัทได้ กรุณาตรวจช่วงวันที่หรือเปิดคลังไฟล์จากเมล</span></div>`
-        : errors || waitingRead || missingCompanies
-          ? `<div class="alert bad"><strong>ยังสรุปว่าไฟล์ครบไม่ได้</strong><span>พบข้อมูลจริงแล้ว แต่ยังมีบริษัทไม่พบไฟล์ ไฟล์รออ่าน หรือไฟล์อ่านไม่สำเร็จ ต้องตรวจต่อก่อนกระทบยอด</span></div>`
-          : `<div class="alert ok"><strong>ไฟล์ที่พบพร้อมตรวจ</strong><span>ไฟล์ในช่วงนี้อ่านสำเร็จแล้ว แต่ความครบถ้วนสุดท้ายให้ยืนยันจากผลกระทบยอดของแต่ละบริษัท</span></div>`
-    }
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">ข้อมูลจริงตามบริษัท</p><h2>สถานะ PM ฝาก และถอน</h2><small class="head-sub">อัปเดต ${liveIntakeState.updatedAt ? displayTime(liveIntakeState.updatedAt) : "-"}</small></div>
-        <div class="inline-actions"><button class="ghost-button sm" id="intakeRefresh">รีเฟรช</button><button class="primary-button sm" id="intakeCloud">เปิดคลังไฟล์</button></div>
-      </div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>บริษัท</th>${visibleTypes.map((type) => `<th class="right">${h(type)}</th>`).join("")}<th class="right">รวมไฟล์</th><th class="right">อ่านแล้ว</th><th>รับล่าสุด</th><th>สถานะ</th></tr></thead>
-        <tbody>${rows.map((row) => {
-          const tone = !row.own.length ? "grey" : row.errors ? "red" : row.parsed < row.own.length ? "amber" : "green";
-          const label = !row.own.length ? "ยังไม่พบไฟล์" : row.errors ? "มีไฟล์อ่านไม่ได้" : row.parsed < row.own.length ? "รออ่าน" : "พร้อมตรวจ";
-          return `<tr><td><b>${h(row.company)}</b></td>${visibleTypes.map((type) => `<td class="right tnum">${num(row.counts[type])}</td>`).join("")}<td class="right tnum">${num(row.own.length)}</td><td class="right tnum">${num(row.parsed)}</td><td>${row.latest ? h(displayTime(row.latest)) : "-"}</td><td><span class="badge ${tone}">${label}</span></td></tr>`;
-        }).join("")}</tbody>
-      </table></div>
-      <p class="hint">จำนวนในคอลัมน์คือจำนวนไฟล์ที่ระบบจำแนกได้ ไม่ใช่จำนวนธุรกรรม; ไฟล์ชื่อ “ฝาก-ถอน” จะนับได้ทั้งฝากและถอน ส่วน PM แยกเป็นประเภทของตัวเอง</p>
-    </section>`;
-
-  $("#intakeRefresh")?.addEventListener("click", () => loadLiveIntake(true));
-  $("#intakeCloud")?.addEventListener("click", () => go("cloud"));
-}
-
-VIEWS.intake = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveIntake(root);
-    return;
-  }
-  const f = state.filters;
-  const files = DB.files.filter((x) => f.company === "ALL" || x.company === f.company);
-  const stat = (s) => files.filter((x) => x.status === s).length;
-  const statusText = { received: "รับแล้ว", missing: "ไม่ได้ส่ง", wrong_company: "ผิดบริษัท", late: "ส่งช้า" };
-  const statusTone = { received: "green", missing: "red", wrong_company: "red", late: "amber" };
-  const blocked = stat("missing") + stat("wrong_company");
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article><span>ไฟล์ที่ต้องได้รับ</span><strong>${files.length}</strong><small>${DB.companies.length} บริษัท × ประเภทไฟล์</small></article>
-      <article class="ok"><span>รับครบถูกต้อง</span><strong>${stat("received")}</strong><small>ผ่าน quality gate</small></article>
-      <article class="warn"><span>ส่งช้ากว่ากำหนด</span><strong>${stat("late")}</strong><small>รับแล้วแต่เกินเวลา 09:00</small></article>
-      <article class="bad"><span>ขาด / ผิดบริษัท</span><strong>${blocked}</strong><small>ต้องแก้ก่อนเริ่ม reconcile</small></article>
-    </section>
-
-    ${
-      blocked
-        ? `<div class="alert bad">
-        <strong>ยังเริ่ม reconcile แบบเต็มรอบไม่ได้</strong>
-        <span>พบไฟล์ขาดหรือส่งผิดบริษัท ${blocked} รายการ ระบบจะไม่กระทบยอดเงียบ ๆ แต่รอจนกว่าไฟล์จะครบ แล้วจึงทำงานให้เองทันที</span>
-        <button class="ghost-button sm" id="btnRemind">ส่งแจ้งเตือนผู้ส่งไฟล์</button>
-      </div>`
-        : `<div class="alert ok"><strong>ไฟล์ครบตามเช็คลิสต์</strong><span>ระบบกระทบยอดให้อัตโนมัติแล้วเมื่อไฟล์เข้าครบทั้งสองฝั่ง ไม่ต้องสั่งเอง</span></div>`
-    }
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Daily Checklist</p><h2>สถานะไฟล์รายบริษัท</h2></div>
-        <div class="inline-actions">
-          <button class="ghost-button sm" id="btnRecheck">ตรวจไฟล์ใหม่</button>
-          <button class="primary-button sm" id="btnUpload">ไปหน้านำเข้าข้อมูลจริง</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>บริษัท</th><th>ประเภทไฟล์</th><th>เวลาที่รับ</th><th>จำนวนแถว</th><th>ผู้ส่ง</th><th>Checksum</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>
-            ${files
-              .map(
-                (x) => `<tr>
-              <td>${h(x.companyName)}</td>
-              <td>${h(x.fileType)}</td>
-              <td>${h(displayTime(x.receivedAt))}</td>
-              <td class="tnum">${x.rows ? num(x.rows) : "-"}</td>
-              <td>${h(x.sender)}</td>
-              <td class="mono">${h(x.checksum)}</td>
-              <td><span class="badge ${statusTone[x.status]}">${statusText[x.status]}</span></td>
-              <td>${x.status === "received" ? "" : `<button class="link-btn" data-fix="${h(x.id)}">ทวงไฟล์</button>`}</td>
-            </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Quality Gate</p><h2>สิ่งที่ระบบตรวจอัตโนมัติ</h2></div></div>
-        <ul class="tick-list">
-          <li>ไฟล์ถูกบริษัทหรือไม่ (เทียบเลขบัญชีใน master list)</li>
-          <li>ประเภทไฟล์ตรงกับที่ระบุใน subject email</li>
-          <li>ช่วงวันที่ในไฟล์ตรงกับวันที่ตรวจ (กันวันที่ปนจาก PM)</li>
-          <li>checksum ซ้ำกับไฟล์เดิมหรือไม่ (กันส่งไฟล์เก่าซ้ำ)</li>
-          <li>จำนวนแถวผิดปกติเทียบค่าเฉลี่ย 7 วัน</li>
-        </ul>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Manual Review</p><h2>สิ่งที่ยังต้องใช้คนตรวจ</h2></div></div>
-        <ul class="tick-list warn">
-          <li>อ่านไฟล์ชี้แจงที่มีบริบทเฉพาะของหัวหน้ากะ</li>
-          <li>ตัดสินว่าเคสใดเป็นความเสียหายจริง</li>
-          <li>อนุมัติการแก้ไขรายการหรือการลงโทษ</li>
-          <li>เคสที่ธนาคารไม่ระบุเวลา หรือข้อมูลไม่เป็น pattern</li>
-        </ul>
-      </div>
-    </section>`;
-
-  $("#btnRecheck")?.addEventListener("click", () => {
-    logAction("recheck", "source_file", "ALL", "ตรวจความครบถ้วนไฟล์ใหม่");
-    toast("ตรวจไฟล์ใหม่เสร็จ: สถานะไม่เปลี่ยนแปลง");
-  });
-  $("#btnUpload")?.addEventListener("click", () => go("import"));
-  $("#btnRemind")?.addEventListener("click", () => {
-    logAction("notify", "source_file", "missing", "ส่งแจ้งเตือนผู้ส่งไฟล์ที่ยังขาด");
-    toast("ส่งแจ้งเตือนไปยังหัวหน้ากะที่เกี่ยวข้องแล้ว");
-  });
-  root.querySelectorAll("[data-fix]").forEach((b) =>
-    b.addEventListener("click", () => {
-      logAction("notify", "source_file", b.dataset.fix, "ทวงไฟล์รายรายการ");
-      toast("ทวงไฟล์ " + b.dataset.fix + " แล้ว");
-    }),
-  );
-};
-
-/* =============================================================
-   VIEW: Exceptions
-   ============================================================= */
-function exceptionSideTimestamp(e, side) {
-  const time = e[`${side}Time`];
-  const date = e[`${side}Date`];
-  return time && time !== "-" && date ? `${date} ${time}` : "ยังไม่มีเวลาต้นฉบับ — เปิดหลักฐานตรวจ";
-}
-
-function reviewCustomer(e, side) {
-  const value = e.customerDetails?.[side] || {};
-  const account = String(value.account || "").trim();
-  const digits = account.replace(/[\s-]/g, "");
-  return { user: String(value.user || ""), account, name: String(value.name || ""),
-    tail: /^\d{4,}$/.test(digits) ? digits.slice(-4) : "", reference: String(value.reference || "") };
-}
-function reviewAccountHtml(e) {
-  const account = String(e.account || "").trim();
-  const isPm = /^(AUTOPEER|ATP|AZPAY|COREPAY|CPXM|CYBERPLUS|MYPAY|12PAY|PM)$/i.test(account);
-  const bo = reviewCustomer(e, "bo");
-  const stm = reviewCustomer(e, "stm");
-  const isSys123 = ["AT4", "FR8", "SK8"].includes(String(e.company || "").toUpperCase());
-  const tails = [...new Set([bo.tail, stm.tail].filter(Boolean))];
-  const names = [...new Set([bo.name, stm.name].filter(Boolean))];
-  const searchTags = isSys123 && (tails.length || names.length)
-    ? `<small class="sub">${tails.map((tail) => `<span class="badge blue">ท้าย 4: ${h(tail)}</span>`).join(" ")} ${names.map((name) => `<span class="badge violet">ชื่อ: ${h(name)}</span>`).join(" ")}</small>`
-    : "";
-  const customerBlock = (label, c) => `<span><b>${label}</b><br>เลขบัญชี: ${h(c.account || "ไม่ระบุในข้อมูลเคส")}<br>ชื่อลูกค้า: ${h(c.name || "ไม่ระบุในข้อมูลเคส")}<br>ท้าย 4 ตัว: <b>${h(c.tail || "ยังยืนยันไม่ได้")}</b></span>`;
-  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${searchTags}${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}${customerBlock("บัญชีลูกค้าใน BO", bo)}${customerBlock("บัญชีลูกค้าใน STM/PM", stm)}</div>`;
-}
-function reviewCustomerHtml(e, side) {
-  const c = reviewCustomer(e, side);
-  const source = e.customerDetails?.[side] || {};
-  const manual = side === "bo" && /เติม\s*มือ|เติมเอง|manual/i.test(String(source.origin || ""));
-  const manualHtml = manual ? `<div class="review-account-details"><b>รายการเติมมือ</b><span>ทำรายการโดย (N): <b>${h(source.performedBy || "ไม่ระบุในต้นฉบับ")}</b></span><span style="white-space:pre-wrap">หมายเหตุ (O): ${h(source.note || "ไม่ระบุในต้นฉบับ")}</span><small>หมายเหตุจาก BO ไม่ใช่เอกสารชี้แจง</small></div>` : "";
-  if (!Object.values(c).some(Boolean)) return manualHtml + '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
-  return manualHtml + `<details><summary>ดู User / บัญชีลูกค้า</summary><dl><dt>User</dt><dd>${h(c.user || "ไม่ระบุ")}</dd><dt>เลขบัญชีลูกค้า</dt><dd>${h(c.account || "ไม่ระบุ")}</dd><dt>ชื่อลูกค้า</dt><dd>${h(c.name || "ไม่ระบุ")}</dd><dt>ท้าย 4 ตัว</dt><dd>${h(c.tail || "ยังยืนยันไม่ได้")}</dd><dt>รหัสอ้างอิงต้นฉบับ</dt><dd>${h(c.reference || "ไม่ระบุ")}</dd></dl></details>`;
-}
-
-function groupReviewCases(rows) {
-  const groups = new Map();
-  for (const row of rows) {
-    // Unknown accounts must not be combined as if they were the same account.
-    const account = row.account && row.account !== "-" ? row.account : row.id;
-    const key = JSON.stringify([row.company, row.date, account, row.direction, row.type, row.status]);
-    if (!groups.has(key)) groups.set(key, { first: row, ids: [], overdue: 0 });
-    const group = groups.get(key);
-    group.ids.push(row.id);
-    if (row.overSla) group.overdue++;
-  }
-  return [...groups.values()];
-}
-
-let reviewQueueIds = [];
-VIEWS.exceptions = (root) => {
-  // A work sheet always belongs to one authorized company; ALL is a picker, not a mixed queue.
-  if (state.filters.company === "ALL" || !canAccessCompany(state.filters.company)) {
-    reviewQueueIds = [];
-    const companies = companyMaster();
-    root.innerHTML = `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">ขอบเขตการตรวจ</p><h2>3 เครือบริษัท · เลือกบริษัทย่อย</h2><p>เปิดงานทีละบริษัท → เลือกชีทฝากหรือถอน → ตรวจ BO เทียบ STM / PM</p></div><span class="health ok">${num(AUDIT_COMPANY_GROUPS.length)} เครือ</span></div><div class="review-company-groups">${reviewCompanyGroupsMarkup(companies) || "ยังไม่มีบริษัทที่คุณมีสิทธิ์ตรวจ"}</div></section>`;
-    root.querySelectorAll('[data-review-company]').forEach((button) => button.addEventListener('click', () => {
-      if (!canAccessCompany(button.dataset.reviewCompany)) return;
-      state.filters.company = button.dataset.reviewCompany;
-      state.filters.direction = "ฝาก";
-      state.reviewSheet = "normal";
-      state.auditDocumentView = MC8LiveSheets.COMPANIES.includes(button.dataset.reviewCompany) ? "excel" : "review";
-      state.exFilter.status = "ACTION";
-      state.page = 1;
-      render();
-    }));
-    return;
-  }
-  if (state.dataset === "production" && Sb.signedIn()) {
-    const company = state.filters.company;
-    const supportsExcelView = MC8LiveSheets.COMPANIES.includes(company);
-    const auditView = supportsExcelView ? state.auditDocumentView : 'review';
-    root.innerHTML = `<section class="audit-view-switcher" aria-label="รูปแบบหน้ากระทบยอด">
-      <div><b>${h(company)} · ${h(state.filters.to || DEFAULT_WORK_DATE)}</b><small>ข้อมูลชุดเดียวกันทั้งหน้าจอและไฟล์ Excel</small></div>
-      <div class="audit-view-switcher-actions">
-        <button type="button" class="ghost-button" data-audit-view="companies">กลับเลือกบริษัท</button>
-        <button type="button" class="${auditView === "excel" ? "primary-button" : "ghost-button"}" data-audit-view="excel" aria-pressed="${auditView === "excel"}" ${supportsExcelView?'':'disabled title="รอเงื่อนไขของเครือบริษัทนี้"'}>มุมมองเอกสาร Excel</button>
-        <button type="button" class="${auditView === "review" ? "primary-button" : "ghost-button"}" data-audit-view="review" aria-pressed="${auditView === "review"}">ตรวจ / อนุมัติเคส</button>
-      </div>
-    </section><div id="auditViewBody"></div>`;
-    root.querySelectorAll('[data-audit-view]').forEach(button => button.addEventListener('click', () => {
-      if (button.dataset.auditView === 'companies') state.filters.company = 'ALL';
-      else state.auditDocumentView = button.dataset.auditView;
-      render();
-    }));
-    const workspace = root.querySelector('#auditViewBody');
-    if (auditView === 'excel') {
-      MC8LiveSheets.mount(workspace, {
-        date: state.filters.to || DEFAULT_WORK_DATE,
-        company,
-        companies: [company],
-        signedIn: () => state.dataset === 'production' && Sb.signedIn(),
-        load: Sb.reconciliationOverview,
-        loadFiles: runId => Sb.exceptionFiles(runId),
-        readBoRecords: readAuditBoOperatorRecords,
-        onRecheck: openAccountRecheck,
-        onManageFiles: openFileRunManagement,
-        exportBoWaitingCases: downloadBoWaitingCaseRequest,
-        onNewCaseSet: ['lead','admin'].includes(state.role)?openManualPrimaryCaseSet:null,
-        isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
-        onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
-        onCase: async row => {
-          if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
-          await openEvidenceRelatedCase(row.id, {focusFiles: true});
-        },
-        onCaseError: error => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
-        onFile: (file,dateValue,companyValue) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||companyValue,date:dateValue,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
-        exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
-        onExported: ({filename,company:exportCompany,date,rows,sheets,complete}) => {
-          logAction('export', 'audit_reconciliation_workbook', `${exportCompany}|${date}`, `Excel ${sheets} ชีต · ${rows} แถว · ${complete?'ข้อมูลรอบครบ':'ข้อมูลรอบยังไม่ครบ'}`);
-          toast(`ดาวน์โหลด ${filename} แล้ว (${sheets} ชีต · ${num(rows)} แถว)`);
-        },
-      });
-      return;
-    }
-    ReviewOverview.mount(workspace, {
-      company,
-      date: state.filters.to || DEFAULT_WORK_DATE,
-      minDate: VISIBLE_DATE_FROM,
-      load: async (company,date) => {
-        const [data,scopes]=await Promise.all([Sb.reconciliationOverview(company,date),Sb.reviewHoldScopes()]);
-        AccountReviewHolds.set(scopes);return data;
-      },
-      loadRecommendations: Sb.evidenceCaseRecommendations,
-      onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
-      onExport: exportSheets,
-      onConfirm: Sb.confirmAuditPairs,
-      onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
-      onBatchStatus: confirmAuditStatusBatch,
-      onCrossDay: row => row && CrossDayWorkbench.open(mapLiveException(row)),
-      canReviewClosed: ['lead','admin'].includes(state.role),
-      onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
-      isActive: () => state.route === "exceptions" && state.filters.company === company && auditView === 'review',
-      onCompany: () => { state.filters.company = "ALL"; render(); },
-      onCase: (row, {action = 'files', onComplete = async () => {}} = {}) => {
-        if (!row) return;
-        if (action === 'close') {
-          if (!can('approve')) return deny('ปิดเคส');
-          return confirmBulkCaseClose([row], {company: row.company, date: row.business_date, onComplete});
-        }
-        if (action === 'clarify') {
-          if (!can('request_clarify')) return deny('ส่งชี้แจง');
-          if (!['open', 'answered', 'pending_next_day'].includes(row.status)) return toast('สถานะนี้ส่งชี้แจงไม่ได้ หรือส่งแล้ว กรุณารีเฟรช', 'warn');
-          openModal('ส่งขอชี้แจง', `<p>${h(row.code)} · ${h(row.company)} · ${h(row.business_date)}</p><p>ส่งเข้าเป็นงานในชีทของผู้ชี้แจงบริษัท ${h(row.company)} โดยใช้เคสเดิม ไม่ส่งข้อความภายนอก</p><p id="inlineClarifyResult" role="status"></p>`, '<button id="inlineClarifyCancel" class="ghost-button">ยกเลิก</button><button id="inlineClarifyConfirm" class="primary-button">ยืนยันส่งขอชี้แจง</button>');
-          $('#inlineClarifyCancel').onclick = closeModal;
-          $('#inlineClarifyConfirm').onclick = async (event) => {
-            const button = event.currentTarget;
-            button.disabled = true;
-            $('#inlineClarifyResult').textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
-            try {
-              const requestedAt = new Date().toISOString();
-              await Sb.requestClarification(row.id, row.status, {requested_at: requestedAt, requested_by: Sb.authUser()?.id, updated_at: requestedAt});
-            } catch (error) {
-              $('#inlineClarifyResult').textContent = error.message;
-              return;
-            }
-            closeModal();
-            toast('ส่งเข้า ชีทรอชี้แจงแล้ว — ไม่ต้องกดส่งซ้ำ');
-            await onComplete();
-          };
-          return;
-        }
-        const item = mapLiveException(row);
-        // EX codes repeat between runs/companies; use the persisted UUID here.
-        item.id = row.id;
-        reviewQueueIds = [];
-        const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
-        if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
-        openException(item.id, {focusFiles: action === 'files'});
-        if (action !== 'files') {
-          const target = action === 'answer' ? '#btnRespond' : '#caseSummarySection';
-          $(target)?.scrollIntoView({block:'center',behavior:'smooth'});
-          toast('ตรวจรายละเอียดและกดยืนยันอีกครั้ง — ยังไม่ได้เปลี่ยนสถานะหรือส่งข้อความ');
-        }
-      },
-    });
-    return;
-  }
-  if (!ensureLiveOverview(root)) return;
-  const query = String(state.exFilter.q || "").trim();
-  const searchKey = `${query}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-  if (state.dataset === "production" && Sb.signedIn() && query) {
-    loadLiveExceptionSearch(query);
-    const intakeKey = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-    if ((!liveIntakeState.batches || liveIntakeState.key !== intakeKey) && !liveIntakeState.loading) loadLiveIntake();
-  }
-  const serverRows = query && liveExceptionSearch.key === searchKey ? liveExceptionSearch.rows : [];
-  const source = [...new Map(DB.exceptions.concat(serverRows).map((row) => [row.dbId || row.id, row])).values()];
-  const list = filteredExceptions(source);
-  const sorted = [...list].sort((a, b) => {
-    const k = state.sort.key;
-    const dir = state.sort.dir === "asc" ? 1 : -1;
-    const av = k === "riskAmount" ? a.riskAmount : a[k];
-    const bv = k === "riskAmount" ? b.riskAmount : b[k];
-    return av > bv ? dir : av < bv ? -dir : 0;
-  });
-  const pages = Math.max(1, Math.ceil(sorted.length / state.perPage));
-  reviewQueueIds = sorted.map((row) => row.id);
-  const reviewGroups = groupReviewCases(sorted);
-  state.page = Math.min(state.page, pages);
-  const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
-  const x = state.exFilter;
-  const clarificationRows = liveOverviewState.clarifications || [];
-  const autoClosedCount = clarificationRows.filter((row) => row.outcome === "auto_closed").length;
-  const answeredCount = clarificationRows.filter((row) => row.outcome === "answered").length;
-  const reviewCount = clarificationRows.filter((row) => ["ambiguous", "no_match", "error"].includes(row.outcome)).length;
-  const fileMatches = query
-    ? (liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, business_date: batch.business_date, batchCompany: batch.company, subject: batch.subject }))).filter((file) => `${file.file_name} ${file.kind} ${file.company} ${file.batchCompany} ${file.subject}`.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
-    : [];
-  const qualityRows = (liveOverviewState.quality || []).filter((row) =>
-    (!state.filters.from || row.business_date >= state.filters.from)
-    && (!state.filters.to || row.business_date <= state.filters.to)
-    && (state.filters.company === "ALL" || row.company === state.filters.company),
-  );
-  const finishedRuns = qualityRows.filter((row) => !!row.run_id);
-  const completedJobs = qualityRows.filter((row) => row.status === "completed").length;
-  const waitingJobs = qualityRows.filter((row) => ["waiting_files", "ready", "queued", "running"].includes(row.status)).length;
-  const failedJobs = qualityRows.filter((row) => row.status === "error" || Number(row.error_count || 0) > 0).length;
-  const stmTotal = finishedRuns.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
-  const boTotal = finishedRuns.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
-  const matchedTotal = finishedRuns.reduce((sum, row) => sum + Number(row.matched || 0), 0);
-  const generatedExceptionTotal = finishedRuns.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
-  const exceptionsAvailable = liveOverviewState.exceptionsReady;
-  const resultMetric = (available, value) => available ? num(value) : "—";
-  const reconMessage = liveOverviewState.loading && !qualityRows.length
-    ? "กำลังตรวจสถานะงานกระทบยอดจาก Supabase"
-    : !qualityAvailable
-      ? "ผลกระทบยอดจริงยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"
-    : !qualityRows.length
-      ? "ยังไม่มีงานกระทบยอดในวันที่และบริษัทที่เลือก"
-      : !finishedRuns.length
-        ? `พบคิวงาน ${num(qualityRows.length)} งาน แต่ยังไม่มีผลรัน — เลข 0 ด้านล่างยังไม่ใช่ผลสำเร็จ`
-        : `มีผลรันแล้ว ${num(finishedRuns.length)} งาน · สำเร็จ ${num(completedJobs)} · ยังรอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}`;
-  const overviewLoading = liveOverviewState.loading || liveOverviewState.auxiliaryLoading;
-
-  const th = (key, label) =>
-    `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
-
-  const auditSheetRows = rows.map((e) => {
-    const hasStm = e.bankAmount !== null;
-    const hasBo = e.systemAmount !== null;
-    const result = hasStm && hasBo
-      ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
-      : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
-    const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
-    return `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
-      <td class="sheet-state"><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span><small>${h(caseLabel(e))}</small></td>
-      <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
-      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
-      <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
-      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>${reviewCustomerHtml(e, "stm")}` : ""}</td>
-      <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
-      <td class="right tnum">${hasStm && hasBo ? h(exceptionTimeDiffLabel(e)) : ""}</td>
-      <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
-      <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
-      <td class="sheet-explanation ${explanation ? "answered" : "waiting"}">${explanation ? h(explanation) : "<span>เว้นไว้รอชี้แจง</span>"}</td>
-      <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจ</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ไฟล์</button>${isQuickCloseEligible(e) && can("approve") ? `<button class="primary-button xs quick-close" data-case-quick-close="${h(e.id)}">ปิดเคส</button>` : ""}</div></td>
-    </tr>`;
-  }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
-
-  const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
-    <td><b>${h(caseLabel(e))}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
-    <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td><td>${h(e.typeName)}</td>
-    <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
-    <td class="right tnum">${e.bankAmount === null ? '<span class="muted">—</span>' : money(e.bankAmount)}</td>
-    <td class="right tnum">${diffLabel(e)}${e.riskAmount ? `<small class="sub">ตรวจ ${money(e.riskAmount)}</small>` : ""}</td>
-    <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
-    <td>${h(e.employee)}<small class="sub">${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift || "-")}</small></td>
-    <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
-    <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
-  </tr>`).join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
-
-  root.innerHTML = `
-    ${overviewLoading ? `<section class="recon-loading-banner" role="status" aria-live="polite"><span class="spinner"></span><div><b>กำลังโหลดข้อมูลจริง…</b><small>${liveOverviewState.loading ? "กำลังอ่านผลกระทบยอดและรายการผิดปกติจาก Supabase" : "ข้อมูลหลักมาแล้ว กำลังเติมรายละเอียดไฟล์และสถานะล่าสุด"}</small></div><span class="recon-loading-pulse" aria-hidden="true"></span></section>` : ""}
-    <section class="panel recon-result-summary">
-      <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
-      <div class="recon-kpi-grid">
-        <article class="recon-kpi run"><span>งานที่ประมวลผลแล้ว</span><strong>${resultMetric(qualityAvailable, finishedRuns.length)}<small> / ${qualityAvailable ? num(qualityRows.length) : "—"} งาน</small></strong><p>${qualityAvailable ? `สำเร็จ ${num(completedJobs)} · รอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}` : "กำลังรอข้อมูลจริง"}</p></article>
-        <article class="recon-kpi"><span>รายการ STM / PM</span><strong>${resultMetric(qualityAvailable, stmTotal)}</strong><p>ข้อมูลฝากและถอนที่ระบบอ่านได้</p></article>
-        <article class="recon-kpi"><span>รายการ BO</span><strong>${resultMetric(qualityAvailable, boTotal)}</strong><p>ข้อมูลรายการจากระบบหลังบ้าน</p></article>
-        <article class="recon-kpi match"><span>จับคู่สำเร็จ</span><strong>${resultMetric(qualityAvailable, matchedTotal)}</strong><p>${qualityAvailable ? `${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของรายการ STM / PM` : "กำลังรอข้อมูลจริง"}</p></article>
-      </div>
-      <div class="recon-work-grid">
-        <button type="button" class="warn" data-action-route="exceptions"><i>${resultMetric(exceptionsAvailable, sorted.length)}</i><span><b>รายการรอตรวจ</b><small>${qualityAvailable ? `สร้างจากผลรัน ${num(generatedExceptionTotal)} รายการ` : "กำลังรอข้อมูลจริง"}</small></span><em>ดูรายการด้านล่าง ↓</em></button>
-        <button type="button" class="amber" data-action-route="audit-review"><i>${num(answeredCount)}</i><span><b>Audit รอตรวจ</b><small>มีคำชี้แจงหรือหลักฐานแล้ว · ยังไม่ปิดเคส</small></span><em>เปิดตรวจ →</em></button>
-        <button type="button" class="red" data-action-route="clarify"><i>${num(reviewCount)}</i><span><b>ต้องให้คุณตรวจ</b><small>ข้อมูลกำกวมหรือไฟล์อ่านไม่ได้</small></span><em>ดำเนินการ →</em></button>
-        <button type="button" class="green" data-action-route="daily-summary"><i>${num(autoClosedCount)}</i><span><b>ปิดเคสอัตโนมัติ</b><small>ยืนยันจากไฟล์ชี้แจงสำเร็จ</small></span><em>ดูสรุป →</em></button>
-      </div>
-    </section>
-    <section class="panel">
-      <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>เคสเดิมยังอยู่ในภาพรวมเสมอ · เลือก “ทั้งหมด” และ “ทุกสถานะ” เพื่อย้อนดูรวมปิดแล้ว · รอหัวหน้าตรวจได้ที่ “อนุมัติ / ปิดเคส”</p></div>
-      <div class="case-filter-fields">
-        <label class="case-filter-search" for="exSearch">ค้นหาเคสหรือบัญชี
-        <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / ท้าย 4 / ชื่อลูกค้า / สมาชิก / Provider" value="${h(x.q)}" /></label>
-        <label for="exStatus">สถานะงาน
-        <select id="exStatus">
-          <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>ยังต้องดำเนินการ (ไม่รวมปิดแล้ว)</option>
-          <option value="ALL" ${x.status === "ALL" ? "selected" : ""}>ทุกสถานะ · รวมปิดแล้ว</option>
-          <option value="CLOSURE_PENDING" ${x.status === 'CLOSURE_PENDING' ? 'selected' : ''}>รอหัวหน้าปิดเคส</option>
-          ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
-        </select></label>
-        <label for="exType">ประเภทปัญหาที่พบ
-        <select id="exType">
-          <option value="ALL">ทุกปัญหา</option>
-          ${allExceptionTypes().map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
-        </select></label>
-        <label for="exSeverity">ระดับความรุนแรง
-        <select id="exSeverity">
-          <option value="ALL">ทุกระดับ</option>
-          ${DB.severities.map((s) => `<option value="${s.code}" ${x.severity === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
-        </select></label>
-      </div>
-      <div class="case-filter-actions">
-        <label class="chk"><input type="checkbox" id="exSla" ${x.sla ? "checked" : ""} /> เฉพาะเคสเกินกำหนดตอบ (SLA)</label>
-        <button class="ghost-button sm" id="exReset">คืนค่าตัวกรองเคสเริ่มต้น</button>
-        <small>ไม่เปลี่ยนวันที่และบริษัท · กลับไปดูเคสที่ยังต้องดำเนินการ</small>
-      </div>
-      <div class="case-filter-current" role="status" aria-live="polite"><b>กำลังแสดง</b>
-        <span>${h(rangeLabel())} · ${h(state.filters.company === "ALL" ? "ทุกบริษัทตามสิทธิ์" : state.filters.company)}</span>
-        <span>${h(state.filters.direction === "ALL" ? "ทุกธุรกรรม" : state.filters.direction)}</span>
-        <span>${h(x.status === "ACTION" ? "ยังต้องดำเนินการ" : x.status === "ALL" ? "ทุกสถานะ รวมปิดแล้ว" : statusMeta(x.status).name)}</span>
-        <span>${h(x.type === "ALL" ? "ทุกปัญหา" : allExceptionTypes().find((t) => t.code === x.type)?.name || x.type)}</span>
-        <span>${h(x.severity === "ALL" ? "ทุกระดับ" : DB.severities.find((s) => s.code === x.severity)?.name || x.severity)}</span>
-        ${x.sla ? '<span>เกินกำหนดตอบเท่านั้น</span>' : ""}${query ? `<span>ค้นหา: ${h(query)}</span>` : ""}
-      </div>
-
-      <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
-        <div><b>บริษัท ${h(state.filters.company)} · โต๊ะตรวจเคส</b><small>ทุกชีทในหน้านี้เป็นของบริษัทนี้เท่านั้น</small><button type="button" class="ghost-button sm" id="reviewChangeCompany">เปลี่ยนบริษัท</button></div>
-        <div class="audit-view-switch" role="group" aria-label="ชีทการทำงาน">
-          <button type="button" data-review-sheet="all" aria-pressed="${state.reviewSheet === 'all'}" class="${state.reviewSheet === 'all' ? 'active' : ''}">ทั้งหมด · รวมรอปิดและประวัติ</button>
-          <button type="button" data-review-sheet="normal" aria-pressed="${state.reviewSheet === "normal"}" class="${state.reviewSheet === "normal" ? "active" : ""}">1. ตรวจปกติ</button>
-          <button type="button" data-review-sheet="clarification" aria-pressed="${state.reviewSheet === "clarification"}" class="${state.reviewSheet === "clarification" ? "active" : ""}">2. ต้องชี้แจง</button>
-        </div>
-        <div class="audit-view-switch" role="group" aria-label="แยกตรวจฝากและถอน">
-          ${[["ฝาก", "ชีทฝาก (ฝ)"], ["ถอน", "ชีทถอน (ถ)"], ["ALL", "ชีทรวม"]].map(([value, label]) => `<button type="button" data-review-direction="${value}" aria-pressed="${state.filters.direction === value}" class="${state.filters.direction === value ? "active" : ""}">${label}</button>`).join("")}
-        </div>
-        <div class="review-workbench-actions">
-          ${state.reviewSheet === "clarification" ? `<button class="ghost-button sm" data-review-status="clarifying">รอตอบ</button><button class="ghost-button sm" data-review-status="answered">ตอบแล้ว</button><button class="ghost-button sm" data-review-status="closed">ปิดแล้ว</button>` : `<button class="ghost-button sm" data-review-status="open">รอ Audit ตรวจ</button>`}
-          <button class="primary-button sm" id="reviewStart" ${sorted.length ? "" : "disabled"}>เริ่มตรวจ ${num(sorted.length)} เคสตามตัวกรอง</button>
-        </div>
-      </div>
-      <p class="head-sub">${state.reviewSheet === "clarification" ? "เคสที่ส่งชี้แจงแล้ว · ดูคำตอบและเปิดหลักฐานจากเคสเดิม · ตอบแล้วไม่ได้แปลว่าปิดเคส" : "ตรวจ BO เทียบ STM/PM ก่อน หากต้องถามจึงเปิดเคสแล้วกด “ส่งไปชีทชี้แจง” · หน้านี้แสดงเคสที่ต้องตรวจ ไม่ใช่รายการที่จับคู่สำเร็จทั้งหมด"}</p>
-      <div class="result-line">
-        พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
-        · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
-        ${query ? ` · ค้นจาก Supabase โดยตรง ${liveExceptionSearch.loading ? '<span class="badge blue">กำลังค้นหา...</span>' : liveExceptionSearch.error ? `<span class="badge red">${h(liveExceptionSearch.error)}</span>` : '<span class="badge green">ค้นแล้ว</span>'}` : ""}
-      </div>
-
-      <div class="audit-view-bar">
-        <div><b>รูปแบบการตรวจ</b><span>${state.exceptionView === "sheet" ? "ตารางรวมเหมือน Excel — ช่องว่างคือยังไม่พบคู่และต้องรอชี้แจง" : "คิวเคสสำหรับติดตาม SLA หลักฐาน และการอนุมัติ"}</span></div>
-        <div class="audit-view-switch" role="group" aria-label="เลือกรูปแบบการตรวจ">
-          <button type="button" class="${state.exceptionView === "sheet" ? "active" : ""}" data-ex-view="sheet">ตารางกระทบยอด</button>
-          <button type="button" class="${state.exceptionView === "cases" ? "active" : ""}" data-ex-view="cases">คิวเคส</button>
-        </div>
-      </div>
-
-      ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.batchCompany || file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
-
-      ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
-
-      <details class="review-groups">
-        <summary>ตรวจเป็นกลุ่ม · ${num(reviewGroups.length)} กลุ่ม / ${num(sorted.length)} เคสที่โหลด</summary>
-        <p>แยกบริษัท วัน บัญชี ฝาก/ถอน ประเภทปัญหา และสถานะเดียวกัน ไม่ใช่การยืนยันว่าเป็นสาเหตุเดียวกัน และไม่ปิดเคสรวม</p>
-        <div class="review-group-list">${reviewGroups.map((group, index) => `<article class="review-group"><div><b>${h(group.first.company)} · ${h(group.first.date)}</b><p>${h(group.first.account)} · ${h(group.first.direction)}</p><p>${h(group.first.typeName)} · ${h(statusMeta(group.first.status).name)}</p><small>${num(group.ids.length)} เคส · เกิน SLA ${num(group.overdue)} เคส</small></div><button class="primary-button sm" data-review-group="${index}">ตรวจกลุ่มนี้ →</button></article>`).join("") || "ไม่พบเคสตามตัวกรอง"}</div>
-      </details>
-      <div class="table-wrap ${state.exceptionView === "sheet" ? "reconciliation-sheet-wrap" : ""}">
-        ${state.exceptionView === "sheet" ? `<table class="rows reconciliation-sheet">
-          <thead><tr><th rowspan="2">สถานะ</th><th rowspan="2">วันที่</th><th rowspan="2">บริษัท</th><th rowspan="2">บัญชี / Provider</th><th colspan="2" class="sheet-group bo">ฝั่ง BO / ระบบ (ตั้งต้น)</th><th colspan="2" class="sheet-group stm">ฝั่ง STM / ธนาคาร</th><th rowspan="2" class="right">ต่างเวลา</th><th rowspan="2" class="right">ต่างยอด</th><th rowspan="2">ผลการจับคู่</th><th rowspan="2">คำชี้แจง / หมายเหตุ</th><th rowspan="2">ทำรายการ</th></tr><tr><th>วันที่ / เวลา</th><th class="right">ยอด</th><th>วันที่ / เวลา</th><th class="right">ยอด</th></tr></thead><tbody>${auditSheetRows}</tbody>
-        </table>` : `<table class="rows"><thead><tr>${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}<th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th></tr></thead><tbody>${caseQueueRows}</tbody></table>`}
-      </div>
-
-      <div class="pager">
-        ${state.dataset === "production" ? `<button class="ghost-button sm" id="loadMoreCases" ${moreCaseState.loading || liveOverviewState.auxiliaryLoading || !liveOverviewState.exceptionsReady || !moreCaseState.hasMore ? "disabled" : ""}>${moreCaseState.loading ? "กำลังโหลด…" : moreCaseState.hasMore ? "โหลดเคสถัดไปอีก 250" : "โหลดครบในขอบเขตนี้แล้ว"}</button><span role="status">${h(moreCaseState.error)}</span>` : ""}
-        <button class="ghost-button sm" id="pgPrev" ${state.page === 1 ? "disabled" : ""}>ก่อนหน้า</button>
-        <span>หน้า ${state.page} / ${pages}</span>
-        <button class="ghost-button sm" id="pgNext" ${state.page === pages ? "disabled" : ""}>ถัดไป</button>
-        <span class="grow"></span>
-        <button class="ghost-button sm" id="exExport">Export รายการนี้</button>
-      </div>
-    </section>`;
-
-  const rerender = () => {
-    state.page = 1;
-    render();
-  };
-  $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
-  if(state.dataset==='production'&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
-    const historyHost=document.createElement('section');historyHost.className='panel';historyHost.id='overviewClosureHistory';root.prepend(historyHost);CaseClosure.mountQueue(historyHost);
-  }
-  root.querySelectorAll('[data-review-sheet]').forEach((button) => button.addEventListener('click', () => {
-    state.reviewSheet = button.dataset.reviewSheet;
-    state.exFilter.status = state.reviewSheet === "normal" ? "ACTION" : "ALL";
-    reviewQueueIds = [];
-    rerender();
-  }));
-  $('#reviewChangeCompany')?.addEventListener('click', () => {
-    state.filters.company = "ALL";
-    reviewQueueIds = [];
-    rerender();
-  });
-  root.querySelectorAll('[data-review-direction]').forEach((button) => button.addEventListener('click', () => {
-    state.filters.direction = button.dataset.reviewDirection;
-    reviewQueueIds = [];
-    rerender();
-  }));
-  root.querySelectorAll('[data-review-status]').forEach((button) => button.addEventListener('click', () => {
-    state.exFilter.status = button.dataset.reviewStatus;
-    rerender();
-  }));
-  $('#reviewStart')?.addEventListener('click', () => {
-    reviewQueueIds = sorted.map((row) => row.id);
-    openException(reviewQueueIds[0]);
-  });
-  root.querySelectorAll('[data-review-group]').forEach((button) => button.addEventListener('click', () => {
-    const group = reviewGroups[Number(button.dataset.reviewGroup)];
-    if (!group) return;
-    reviewQueueIds = [...group.ids];
-    openException(reviewQueueIds[0]);
-  }));
-  $("#openDailyResult")?.addEventListener("click", () => {
-    state.dailySummary.date = state.filters.date || state.filters.to || DEFAULT_WORK_DATE;
-    if (state.filters.company !== "ALL") state.dailySummary.company = state.filters.company;
-    go("daily-summary");
-  });
-  $("#exSearch").addEventListener("input", (e) => {
-    state.exFilter.q = e.target.value;
-    clearTimeout(window.__q);
-    window.__q = setTimeout(() => {
-      const pos = e.target.selectionStart;
-      rerender();
-      const el = $("#exSearch");
-      el.focus();
-      el.setSelectionRange(pos, pos);
-    }, 260);
-  });
-  $("#exType").addEventListener("change", (e) => ((state.exFilter.type = e.target.value), rerender()));
-  $("#exSeverity").addEventListener("change", (e) => ((state.exFilter.severity = e.target.value), rerender()));
-  $("#exStatus").addEventListener("change", (e) => ((state.exFilter.status = e.target.value), rerender()));
-  $("#exSla").addEventListener("change", (e) => ((state.exFilter.sla = e.target.checked), rerender()));
-  $("#exReset").addEventListener("click", () => {
-    state.exFilter = { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false };
-    rerender();
-  });
-  $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
-  $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
-  $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
-  root.querySelectorAll("[data-ex-view]").forEach((button) => button.addEventListener("click", () => {
-    state.exceptionView = button.dataset.exView;
-    render();
-  }));
-  $("#searchGoFiles")?.addEventListener("click", () => go("cloud"));
-  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
-  bindStoredFileLinks(root);
-  root.querySelectorAll("th[data-sort]").forEach((thEl) =>
-    thEl.addEventListener("click", () => {
-      const k = thEl.dataset.sort;
-      state.sort = { key: k, dir: state.sort.key === k && state.sort.dir === "asc" ? "desc" : "asc" };
-      render();
-    }),
-  );
-  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", () => openException(tr.dataset.ex)));
-  root.querySelectorAll("[data-case-open]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openException(button.dataset.caseOpen);
-  }));
-  root.querySelectorAll("[data-case-files]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openException(button.dataset.caseFiles, { focusFiles: true });
-  }));
-  root.querySelectorAll("[data-case-quick-close]").forEach((button) => button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const exception = DB.exceptions.find((item) => item.id === button.dataset.caseQuickClose);
-    if (exception) confirmQuickClose(exception);
-  }));
-};
-
-/* =============================================================
-   Drawer: Exception detail + evidence timeline + close checklist
-   ============================================================= */
-function exceptionFileAttrs(file, e) {
-  return `data-storage-open="${h(file.storage_path || "")}" data-file-id="${h(file.id || "")}" data-file-name="${h(file.file_name || "ไฟล์ต้นฉบับ")}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || e.company || "")}" data-file-date="${h(e.date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"`;
-}
-
-function exceptionFilesMarkup(files, e) {
-  if (!files.length) return `<div class="case-files-empty"><b>ยังไม่พบไฟล์ที่ผูกกับผลรันนี้</b><span>ใช้ปุ่ม “ดูไฟล์และสถานะทั้งหมด” เพื่อตรวจไฟล์ของบริษัทและวันที่เดียวกัน</span><button class="ghost-button sm" id="caseGoAllFiles">ดูไฟล์และสถานะทั้งหมด</button></div>`;
-  return `<div class="case-file-list">${files.map((file) => {
-    const extension = String(file.file_name || "FILE").split(".").pop().toUpperCase().slice(0, 4);
-    const status = file.parsed ? "อ่านสำเร็จ" : file.parse_error ? statementReviewLabel(file) : "รอประมวลผล";
-    const tone = file.parsed ? "ok" : file.parse_error ? "bad" : "wait";
-    return `<button type="button" class="case-file-row" ${exceptionFileAttrs(file, e)} ${file.storage_path ? "" : "disabled"}><span class="case-file-icon">${h(extension)}</span><span class="case-file-main"><b title="${h(file.file_name)}">${h(file.file_name)}</b><small>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</small></span><span class="case-file-state ${tone}">${status}</span><span class="case-file-open">ดูไฟล์ →</span></button>`;
-  }).join("")}</div>`;
-}
-
-function exceptionSourceFileIds(e) {
-  const rows=e?.customerDetails?.source_rows;
-  if(!rows||typeof rows!=='object')return [];
-  return [...new Set(Object.values(rows).flatMap(row=>row&&typeof row==='object'?[row.fileId,row.sourceFileId]:[]).filter(Boolean))];
-}
-
-async function loadExceptionSupport(e, options = {}) {
-  const host = $("#caseSourceFiles");
-  if (!host || state.dataset !== "production" || !Sb.signedIn()) return;
-  const sourceFileIds=exceptionSourceFileIds(e);
-  const cacheKey = `${e.runId || ""}|${e.clarificationFileId || ""}|${sourceFileIds.sort().join(',')}`;
-  try {
-    const detailPromise = e._detailLoaded || !e.dbId ? Promise.resolve(null) : Sb.exceptionDetail(e.dbId);
-    const filesPromise = exceptionSupportCache.has(cacheKey)
-      ? Promise.resolve(exceptionSupportCache.get(cacheKey))
-      : (sourceFileIds.length
-        ? Sb.exceptionFiles(e.runId, e.clarificationFileId, sourceFileIds)
-        : Sb.exceptionFiles(e.runId, e.clarificationFileId))
-        .then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
-    const evidencePromise = e._caseEvidenceLoaded ? Promise.resolve(null) : Sb.caseEvidence(e.dbId);
-    const [detail, files, storedEvidence] = await Promise.all([detailPromise, filesPromise, evidencePromise]);
-    if (storedEvidence) {
-      e.evidence = storedEvidence.map(f => ({ id: f.id, name: f.file_name, size: f.size_bytes, at: f.created_at, storagePath: f.storage_path, correctionReason:f.correction_reason, replacesEvidenceId:f.replaces_evidence_id, replacesSourceFileId:f.replaces_source_file_id, uploadedBy:f.uploaded_by, replacedBy:storedEvidence.find(next=>next.replaces_evidence_id===f.id)?.id }));
-      e._caseEvidenceLoaded = true;
-    }
-    if (detail) {
-      const notes = e.notes || [];
-      const evidence = e.evidence || [];
-      // Preserve the drawer/queue key; dbId remains the database UUID.
-      Object.assign(e, mapLiveException(detail), { id: e.id, notes, evidence, _detailLoaded: true });
-      e.hasEvidence = e.hasEvidence || evidence.some(f => f.storagePath);
-      const stm = $("#caseRawStm");
-      const bo = $("#caseRawBo");
-      if (stm) stm.textContent = e.stmRaw || "— ไม่พบรายการฝั่ง STM —";
-      if (bo) bo.textContent = e.boRaw || "— ไม่พบรายการฝั่ง BO —";
-      // Recompute the closure checklist after loading actual transaction evidence.
-      if (state.selected === e.id && document.body.contains(host)) {
-        openException(e.id, options);
-        return;
-      }
-    }
-    if (!document.body.contains(host)) return;
-    if (storedEvidence && !detail && state.selected === e.id) {
-      e.hasEvidence = !!e.clarificationFileId || e.evidence.some(f => f.storagePath);
-      openException(e.id, options);
-      return;
-    }
-    host.className = 'case-files-ready';
-    host.innerHTML = exceptionFilesMarkup(files, e);
-    const selectedFile=files.find(f=>f.id===e.clarificationFileId);
-    e._clarificationFileName=selectedFile?.file_name||'';
-    if(selectedFile){
-      const summary=document.createElement('section');summary.className='case-selected-evidence';
-      summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.responseText || e.resolutionNote || 'ยังไม่มีข้อความชี้แจงที่บันทึกไว้')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>เอกสารเดิมยังอยู่ครบ · อ่านสาเหตุและข้อความเดิมในส่วนคำชี้แจงด้านล่าง · ไม่ใช่การอนุมัติปิดเคส</small>`;
-      host.prepend(summary);
-    }
-    const mailButton=document.createElement('button');
-    mailButton.id='caseMailEvidenceButton';mailButton.className='primary-button case-mail-open'; mailButton.textContent='เลือกเอกสารชี้แจงให้เคสนี้';
-    const evidenceRange=document.createElement('div');
-    evidenceRange.className='case-evidence-range';
-    const headFilePicker=['lead','admin'].includes(state.role);
-    const fileCompanies=headFilePicker?companyMaster():companyMaster().filter(c=>c.code===e.company);
-    evidenceRange.innerHTML=`<label>บริษัทเจ้าของไฟล์ <select aria-label="บริษัทเจ้าของไฟล์">${fileCompanies.map(c=>`<option value="${h(c.code)}" ${c.code===e.company?'selected':''}>${h(c.code)}</option>`).join('')}</select></label><label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
-    host.append(evidenceRange,mailButton);
-    mailButton.onclick=async()=>{
-      mailButton.disabled=true;
-      try {
-        const [from,to]=[...evidenceRange.querySelectorAll('input')].map(input=>input.value);
-        const fileCompany=evidenceRange.querySelector('select').value;
-        if(!canAccessCompany(fileCompany)||(!headFilePicker&&fileCompany!==e.company))throw new Error('ไม่มีสิทธิ์เลือกบริษัทเจ้าของไฟล์นี้');
-        if(!from||!to||from>to)throw new Error('กรุณาเลือกช่วงวันที่เอกสารให้ถูกต้อง');
-        const [candidateFiles,amountRecommendations]=await Promise.all([
-          Sb.evidenceFiles({from,to,company:fileCompany,includeSourceFiles:headFilePicker}),
-          Sb.evidenceRecommendations({from,to,company:fileCompany,limit:2000}),
-        ]);
-        const candidates=candidateFiles.filter(f=>(f.company||f.batch_company)===fileCompany);
-        const amountsByFile=new Map();
-        const rememberAmount=(fileId,value)=>{
-          const amount=Number(value);if(!fileId||!Number.isFinite(amount)||amount<=0)return;
-          const values=amountsByFile.get(fileId)||[];
-          if(!values.includes(amount))values.push(amount);
-          amountsByFile.set(fileId,values);
-        };
-        for(const recommendation of amountRecommendations||[])rememberAmount(recommendation.source_file_id,recommendation.amount);
-        // Only exact, current-case recommendation links; never browse every company's evidence.
-        const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
-        const recommended=new Map();
-        for(const link of linked){
-          const r=link.evidence_recommendations, c=link.exceptions;
-          if(link.exception_id!==e.dbId || c?.run_id!==e.runId || c?.company!==e.company || c?.business_date!==e.date
-            || r?.status!=='pending_audit' || r.business_date!==e.date
-            || ![r.company,r.payer_company].includes(e.company)
-            || !canAccessCompany(r.company) || !canAccessCompany(r.payer_company))continue;
-          const extra=await Sb.exceptionFiles(null,r.source_file_id);
-          for(const f of extra){
-            if(f.id!==r.source_file_id || f.kind!=='doc_clarify')continue;
-            if(!candidates.some(x=>x.id===f.id))candidates.push(f);
-            recommended.set(f.id,r.id);
-            rememberAmount(f.id,r.amount);
-          }
-        }
-        const list=document.createElement('section');list.className='case-mail-evidence';
-        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(displayTime(f.mail_batches?.received_at))}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
-        host.querySelector('.case-mail-evidence')?.remove();
-        mailButton.after(list);bindStoredFileLinks(list);
-        list.querySelector('h4').textContent=`ไฟล์ของ ${fileCompany} · ${from} ถึง ${to} (${candidates.length} ไฟล์) → เคส ${e.company} ${e.code||e.id}`;
-        list.querySelector('p').textContent=state.role==='shift_lead'?'เลือกไฟล์ไว้ก่อนได้โดยไม่ต้องกรอกเหตุผลตรงนี้ · จากนั้นกรอกสาเหตุและกดส่งคำชี้แจงพร้อมหลักฐานในขั้นตอนถัดไป':'แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
-        if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
-        const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
-        search.oninput=()=>{const q=normalizeEvidenceSearch(search.value);list.querySelectorAll('article').forEach(article=>{article.hidden=!!q&&!String(article.dataset.evidenceSearch||normalizeEvidenceSearch(article.textContent)).includes(q);});};
-        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent=state.role==='shift_lead'?'เลือกไฟล์เดิมนี้ (ยังไม่ส่ง)':'ใช้กับเคสนี้แล้ว';button.disabled=state.role!=='shift_lead';}});
-        try {
-          const uses=await Sb.evidenceUsage(candidates.filter(f=>(f.company||f.batch_company)===e.company).map(f=>f.id),e.company);
-          if(!document.body.contains(list))return;
-          list.querySelectorAll('[data-link-mail]').forEach(button=>{
-            const rows=uses.filter(row=>row.clarification_file_id===button.dataset.linkMail);
-            const detail=document.createElement('details');
-            detail.innerHTML=`<summary>ใช้เป็นหลักฐาน ${rows.length} เคสในบริษัทนี้ (รวมเคสปิดแล้ว)</summary>${rows.map(row=>`<p>${h(row.code)} · ${h(row.business_date)} · ${h(row.status)}</p>`).join('')}`;
-            button.closest('article').append(detail);
-          });
-        }catch(error){const note=document.createElement('p');note.textContent='ยังโหลดประวัติการใช้ไฟล์ไม่ได้: '+error.message;list.append(note);}
-        list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
-          if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
-          if(state.role==='shift_lead'){
-            if(!ClarificationFlow.canRespond(e.status,state.role))return toast('เคสนี้ไม่อยู่ในสถานะรับคำชี้แจง','warn');
-            const file=candidates.find(f=>f.id===b.dataset.linkMail);
-            if(!file||file.company!==e.company)return toast('เลือกหลักฐานของบริษัทเดียวกับเคสเท่านั้น','warn');
-            e._clarificationDraftText=$('#responseText')?.value||e._clarificationDraftText||'';
-            e._clarificationDraftFile=file;
-            await openException(e.id,{focusResponse:true});
-            return;
-          }
-          b.disabled=true;
-          const form=document.createElement('form');
-          form.className='case-mail-reason';
-          form.innerHTML='<label>เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)<textarea name="reason" required rows="3" aria-label="เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน"></textarea></label><p role="status"></p><button type="submit" class="ghost-button sm">ยืนยันผูกหลักฐาน</button><button type="button" class="ghost-button sm">ยกเลิก</button>';
-          form.querySelector('textarea').placeholder='ระบุรายการ ยอดเงิน วันที่ และเลขอ้างอิงที่เอกสารนี้ยืนยัน';
-          const formActions=document.createElement('div');formActions.className='case-mail-reason-actions';
-          form.querySelector('[type="submit"]').className='primary-button sm';
-          formActions.append(...form.querySelectorAll('button'));form.append(formActions);
-          b.closest('article').append(form);
-          const input=form.querySelector('textarea');
-          const submit=form.querySelector('[type="submit"]');
-          const cancel=form.querySelector('[type="button"]');
-          const status=form.querySelector('[role="status"]');
-          let saving=false;
-          cancel.onclick=()=>{if(!saving){form.remove();b.disabled=false;}};
-          input.focus();
-          form.onsubmit=async(event)=>{
-            event.preventDefault();
-            if(saving)return;
-            if(!can('attach')&&!can('note'))return deny('ผูกหลักฐาน');
-            if(state.selected!==e.id||!document.body.contains(form))return;
-            const note=input.value.trim();
-            if(!note){status.textContent='กรุณาระบุเหตุผลก่อนผูกหลักฐาน';input.focus();return;}
-            if((headFilePicker||e.type==='cross_day'&&e.status==='pending_next_day')&&(note.length<10||note.length>2000)){status.textContent='ระบุเหตุผลที่ไฟล์นี้ยืนยันรายการของเคส 10–2,000 ตัวอักษร';input.focus();return;}
-            saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
-            status.textContent='กำลังผูกหลักฐาน…';
-            try{
-              const recommendationId=recommended.get(b.dataset.linkMail);
-              if(e.type==='cross_day'&&e.status==='pending_next_day')await Sb.linkWaitingCrossDayFile(e.dbId,b.dataset.linkMail,note);
-              else if(headFilePicker)await Sb.linkSelectedCaseFile(e.dbId,b.dataset.linkMail,note);
-              else if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
-              else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
-              const saved=await Sb.exceptionDetail(e.dbId);
-              if(!saved||saved.clarification_file_id!==b.dataset.linkMail)throw new Error('ยังยืนยันไฟล์ที่ผูกกับเคสไม่ได้ กรุณาตรวจสถานะล่าสุดก่อนเลือกซ้ำ');
-              Object.assign(e,mapLiveException(saved),{id:e.id,notes:e.notes,evidence:e.evidence});
-              renderNav();
-              recordCaseUiResult(e, 'ผูกหลักฐานสำเร็จ — '+(candidates.find(f=>f.id===b.dataset.linkMail)?.file_name || '')+' · รอ Audit ตรวจ ยังไม่ปิดเคส');
-              exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
-              if(state.selected===e.id)await openException(e.id,{focusFiles:true});
-              showCaseSubmissionReceipt(e.status==='answered'?'clarification':'review_evidence',e.id);
-            }catch(err){status.textContent='ผูกหลักฐานไม่สำเร็จ: '+err.message;}
-            finally{saving=false;submit.disabled=false;cancel.disabled=false;input.disabled=false;}
-          };
-        });
-        mailButton.disabled=false;mailButton.textContent='ค้นหาใหม่ตามช่วงวันที่';
-      }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
-    };
-    if(e._openClarificationPicker){e._openClarificationPicker=false;setTimeout(()=>mailButton.click(),0);}
-    bindStoredFileLinks(host);
-    $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
-    if (options.focusFiles) setTimeout(() => host.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-  } catch (error) {
-    if (!document.body.contains(host)) return;
-    host.innerHTML = `<div class="case-files-empty bad"><b>โหลดไฟล์ประกอบไม่สำเร็จ</b><span>${h(error.message)}</span><button class="ghost-button sm" id="caseFilesRetry">ลองใหม่</button></div>`;
-    $("#caseFilesRetry")?.addEventListener("click", () => (exceptionSupportCache.delete(cacheKey), loadExceptionSupport(e, options)));
-  }
-}
-
-function clarificationReturnCommitted(id) {
-  const e=DB.exceptions.find(row=>row.dbId===id);if(e)e.status='clarifying';
-  if(responderQueueCache){
-    responderQueueCache.rows.forEach(row=>{if(row.id===id)row.status='clarifying';});
-    responderQueueCache.at=0;
-  }
-  $('#viewRoot')?.auditQueueUpdateInPlace?.();
-  renderNav();
-}
-async function openEvidenceRelatedCase(id, options = {}) {
-  const actor=Sb.authUser()?.id,role=state.role,route=state.route;
-  const row = await Sb.exceptionDetail(id);
-  if(actor!==Sb.authUser()?.id||role!==state.role||route!==state.route)return;
-  if (!row || !canAccessCompany(row.company)) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์เข้าถึงบริษัทนี้');
-  const item = mapLiveException(row);
-  item.id = row.id;
-  const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
-  if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
-  reviewQueueIds = [];
-  closeModal();
-  await openException(item.id, options);
-}
-async function openClosedEvidenceCorrection(e) {
-  if(state.dataset!=='production'||!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('เฉพาะหัวหน้า/ผู้ดูแลของบริษัทนี้เท่านั้น');
-  const [fresh,files]=await Promise.all([Sb.exceptionDetail(e.dbId),Sb.caseEvidence(e.dbId)]);
-  if(!fresh||!['closed','approved'].includes(fresh.status))throw new Error('สถานะล่าสุดไม่ใช่เคสปิดแล้ว กรุณาโหลดใหม่');
-  const replaced=new Set(files.map(f=>f.replaces_evidence_id).filter(Boolean));
-  const originals=files.filter(f=>!replaced.has(f.id)).map(f=>({value:'evidence:'+f.id,name:f.file_name}));
-  if(fresh.clarification_file_id&&!files.some(f=>f.replaces_source_file_id===fresh.clarification_file_id))originals.push({value:'source:'+fresh.clarification_file_id,name:'ไฟล์ชี้แจงเดิม · '+(e._clarificationFileName||fresh.clarification_file_id)});
-  openModal('แก้ไขหลักฐาน · '+h(e.code),
-    `<p>เคสปิดแล้ว · เก็บไฟล์เดิมและประวัติ · ไม่เปิดเคสใหม่ ไม่เปลี่ยนยอดหรือผลอนุมัติ</p>
-    <div class="evidence-correction-fields"><label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
-    ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้างหลักฐานทดแทนอัตโนมัติ</p>'}
-    <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
-    <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
-    <label class="evidence-correction-confirm"><input type="checkbox" id="correctionConfirm"><span>ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</span></label></div>
-    <p id="correctionProgress" role="status"></p>`,
-    '<button class="ghost-button" id="correctionCancel">ยกเลิก</button><button class="primary-button" id="correctionSave">ยืนยันบันทึกหลักฐานใหม่</button>');
-  $('#correctionCancel').onclick=closeModal;
-  $('#correctionSave').onclick=async()=>{
-    const button=$('#correctionSave'),progress=$('#correctionProgress');
-    try{
-      const original=$('#correctionOriginal').value,reason=$('#correctionReason').value.trim(),file=$('#correctionFile').files[0];
-      if(!originals.some(f=>f.value===original)||!reason||!file||!$('#correctionConfirm').checked)throw new Error('เลือกหลักฐานเดิม ระบุเหตุผล เลือกไฟล์ใหม่ และติ๊กยืนยันก่อนบันทึก');
-      if(!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('สิทธิ์ผู้ใช้งานเปลี่ยน กรุณาโหลดใหม่');
-      button.disabled=true;$('#correctionCancel').disabled=true;
-      const [kind,id]=original.split(':');
-      await Sb.uploadCaseEvidence(e.dbId,file,stage=>{progress.textContent=stage;},{reason,evidenceId:kind==='evidence'?id:null,sourceFileId:kind==='source'?id:null});
-      e._caseEvidenceLoaded=false;e._detailLoaded=false;
-      closeModal();toast('แก้หลักฐานแล้ว เก็บต้นฉบับและประวัติครบ — เคสยังปิดเดิม ยอดไม่เปลี่ยน');
-      await openException(e.id);
-    }catch(error){progress.textContent=error.message;button.disabled=false;$('#correctionCancel').disabled=false;}
-  };
-}
-
-const caseOpenDrafts = new Map();
-let caseOpenTicket = null;
-function caseOpenActor() { return `${state.dataset}|${typeof Sb!=='undefined'?Sb.authUser()?.id||'':''}|${state.role}`; }
-function caseOpenDraftKey(e) { return `${caseOpenActor()}|${caseUiKey(e)}`; }
-function captureCaseOpenDraft() {
-  const drawer=$('#drawer'),key=drawer?.dataset.caseDraftKey;
-  if(!key || !key.startsWith(caseOpenActor()+'|'))return;
-  const note=$('#noteText'),response=$('#responseText');
-  if(!note && !response)return;
-  caseOpenDrafts.set(key,{note:note?.value||'',response:response?.value||''});
-}
-function clearSavedCaseDraft(e,field,submitted) {
-  const key=caseOpenDraftKey(e),draft=caseOpenDrafts.get(key);
-  const input=$('#drawer')?.dataset.caseDraftKey===key?$(field==='note'?'#noteText':'#responseText'):null;
-  if(input && input.value.trim()===submitted.trim())input.value='';
-  if(draft && draft[field]?.trim()===submitted.trim())draft[field]='';
-}
-function showCaseOpenLoading(e,error) {
-  const drawer=$('#drawer'),overlay=$('#drawerOverlay');
-  clearTimeout(drawer._hideTimer);drawer._hideTimer=null;
-  delete drawer.dataset.caseDraftKey;
-  drawer.innerHTML=`<header class="drawer-head"><h2>${h(e.company)} · ${h(e.code||e.id)}</h2><button id="drawerClose" aria-label="ปิด">✕</button></header><div class="drawer-body"><div role="${error?'alert':'status'}" aria-live="polite" aria-busy="${!error}"><h3>${error?'ยังเปิดเคสไม่ได้':'กำลังโหลดรายละเอียดเคส…'}</h3><p>${h(error||'กำลังตรวจสถานะล่าสุด หลักฐาน และประวัติพร้อมกัน · ยังไม่มีการส่งคำขอหรือเปลี่ยนข้อมูล')}</p>${error?'<button id="caseOpenRetry" class="ghost-button">ลองโหลดเคสอีกครั้ง</button>':''}</div></div>`;
-  drawer.hidden=false;overlay.hidden=false;drawer.classList.add('on');AuditUi.open(drawer);
-  $('#drawerClose').onclick=closeDrawer;
-  overlay.onclick=closeDrawer;
-  if(error)$('#caseOpenRetry').onclick=()=>openException(e.id);
-}
-function loadCaseOpenSnapshot(e) {
-  // Start independent reads together. No completed-result cache; writes still
-  // validate current state at the server and invalidate transport flights.
-  return Promise.allSettled([
-    Sb.exceptionDetail(e.dbId),Sb.reviewHoldForCase(e.dbId),
-    state.role==='shift_lead'?Promise.resolve([]):Sb.caseNotes(e.dbId),
-    Sb.clarificationInstructions(e.dbId),Sb.clarificationHistory(e.dbId),Sb.caseEvidence(e.dbId),
-  ]);
-}
-function applyCaseOpenSnapshot(e,results) {
-  const [detail,hold,notes,instructions,history]=results;
-  if(detail.status==='rejected')throw detail.reason;
-  if(!detail.value)throw Error('ไม่พบเคสล่าสุด');
-  if(hold.status==='rejected')throw hold.reason;
-  const register=results[5];
-  if(register?.status==='rejected')throw register.reason;
-  Object.assign(e,mapLiveException(detail.value),{notes:e.notes||[],evidence:e.evidence||[],_detailLoaded:true});
-  e.reviewHold=hold.value;
-  if(register){
-    if(!Array.isArray(register.value))throw Error('อ่านทะเบียนหลักฐานไม่ครบ');
-    e.evidence=register.value.map(f=>({id:f.id,name:f.file_name,size:f.size_bytes,at:f.created_at,storagePath:f.storage_path,correctionReason:f.correction_reason,replacesEvidenceId:f.replaces_evidence_id,replacesSourceFileId:f.replaces_source_file_id,uploadedBy:f.uploaded_by,replacedBy:register.value.find(next=>next.replaces_evidence_id===f.id)?.id}));
-    e._caseEvidenceLoaded=true;
-  }
-  if(e._caseEvidenceLoaded)e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
-  e.notes=notes.status==='fulfilled'?notes.value:[];
-  e.clarificationInstructions=instructions.status==='fulfilled'?instructions.value:[];
-  e.clarificationInstructionsError=instructions.status==='rejected'?instructions.reason.message:null;
-  e.clarificationHistory=history.status==='fulfilled'?history.value:[];
-  e.clarificationHistoryError=history.status==='rejected'?history.reason.message:null;
-  if(notes.status==='rejected')toast('โหลด Note ส่วนกลางไม่สำเร็จ: '+notes.reason.message,'warn');
-}
-async function openException(id, options = {}) {
-  const e = DB.exceptions.find((x) => x.id === id);
-  if (!e) return toast('ไม่พบรายละเอียดเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
-  if (!canAccessCompany(e.company)) return toast('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท ' + e.company, 'warn');
-  captureCaseOpenDraft();
-  const actor=caseOpenActor(),route=state.route;
-  if(caseOpenTicket?.key===caseOpenDraftKey(e))return caseOpenTicket.promise;
-  const ticket={key:caseOpenDraftKey(e),promise:null};caseOpenTicket=ticket;
-  const current=()=>caseOpenTicket===ticket && caseOpenActor()===actor && state.route===route
-    && state.selected===id && canAccessCompany(e.company);
-  state.selected = id;
-  ticket.promise=(async()=>{
-  if (state.dataset === "production" && e.dbId) {
-    showCaseOpenLoading(e);
-    try {
-      const results=await loadCaseOpenSnapshot(e);
-      if(!current())return;
-      applyCaseOpenSnapshot(e,results);
-      try { await refreshQuickCloseEvidence(e); }
-      catch(err){e._quickSourceEvidence=false;toast('ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: '+err.message,'warn');}
-      if(!current())return;
-    }catch(err){if(current()){caseOpenTicket=null;showCaseOpenLoading(e,err.message);}return;}
-  }
-  if(!current())return;
-  const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
-  const queueIndex = queue.indexOf(id);
-  state.selected = id;
-  const drawer = $("#drawer");
-  const overlay = $("#drawerOverlay");
-  const closed = ["closed", "approved"].includes(e.status);
-  const sourceEvidence = !!e._quickSourceEvidence;
-  const amountOutcomeRecorded = hasRecordedAmountOutcome(e);
-  const checklist = [
-    { key: "raw", label: "โหลดรายละเอียดเคสและข้อมูลต้นทางที่มีอยู่แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
-    { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
-    { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
-    { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — คู่ตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
-    { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
-    { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : amountOutcomeRecorded ? "ยืนยันผลตรวจยอดแล้ว" : "ยังไม่ได้ยืนยันผลตรวจยอด — เลือกผลและติ๊กยืนยันในขั้นตอนถัดไป", ok: amountOutcomeRecorded },
-  ];
-  const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
-  const reviewPrerequisites = checklist.filter((item) => item.key !== "amount");
-  const closureReviewReady = !e.reviewHold && !closed && !e.closureRequestId && e.status!=='pair_pending'
-    && reviewPrerequisites.every((item) => item.ok) && (e.hasEvidence || sourceEvidence);
-  const closureActionReady = quickCloseEligible || closureReviewReady;
-  const missingChecks = closed || e.closureRequestId || e.status==='pair_pending' ? [] : reviewPrerequisites.filter((item) => !item.ok);
-  const lastUiResult = caseUiResults.get(caseUiKey(e));
-  const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
-
-  drawer.innerHTML = `
-    <header class="drawer-head">
-      <div>
-        <p class="eyebrow">${h(e.typeName)} · ${h(e.company)}</p>
-        <h2 id="drawerTitle">${h(caseLabel(e))} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></h2>
-      </div>
-      <button class="icon-btn" id="drawerClose" aria-label="ปิด">✕</button>
-    </header>
-
-    <div class="drawer-body">
-      ${can('request_clarify')?'<p><button type="button" class="ghost-button" id="caseNextQueue">ดูคิวเคสถัดไป (อ่านอย่างเดียว)</button></p>':''}
-      ${AccountReviewHolds.banner(e.reviewHold)}
-      <section class="case-work-status" aria-label="สถานะและหน้าที่ของผู้ใช้งาน">
-        <div><span>ผลระบบ</span><b>${e.status==='damage' ? 'ยืนยันความเสียหายแล้ว — ดูทะเบียนและหลักฐาน' : closed ? 'ดูผลและหลักฐานต้นทาง' : 'มีข้อผิดปกติให้ตรวจ — ยังไม่ยืนยันความเสียหาย'}</b></div>
-        <div><span>คำชี้แจง</span><b>${e.status==='answered' ? 'ตอบแล้ว — รอ Audit ตรวจคำตอบ' : e.status==='clarifying' ? 'รอผู้มีสิทธิ์ตอบชี้แจง' : e.responseText ? 'มีคำชี้แจงให้ตรวจ' : e.clarificationFileId ? 'มีเอกสารผูกแล้ว — ต้องอ่านและตรวจ' : 'ยังไม่มีคำชี้แจง'}</b></div>
-        <div><span>การปิดเคส</span><b>${closed ? 'ยืนยันปิดแล้ว' : 'ยังไม่ปิดเคส'}</b></div>
-        <p class="case-permission-help">หน้าที่ของคุณ: ${can('note') ? 'บันทึกผลตรวจได้' : 'ดูข้อมูลได้'} · ${can('respond') ? 'ตอบชี้แจงได้เมื่อเคสรอชี้แจง' : 'ส่งผู้มีสิทธิ์ตอบคำชี้แจง'} · ${can('approve') ? 'ยืนยันปิดได้เมื่อผ่านเกณฑ์' : 'ต้องส่งผู้มีสิทธิ์อนุมัติปิดเคส'}</p>
-      </section>
-      ${uiResult ? `<section class="case-save-result" role="status"><b>${h(uiResult.message)}</b><small>ผลบันทึกในการใช้งานครั้งนี้ · ${h(uiResult.actor)} · ${h(displayTime(uiResult.at))}</small></section>` : ''}
-      ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt ? displayTime(e.resolvedAt) : 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
-      ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
-      <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
-      <section class="clarification-instructions" aria-label="สิ่งที่ Audit ขอให้ชี้แจง">
-        <h3>สิ่งที่ Audit ขอให้ชี้แจง</h3>
-        ${e.clarificationInstructionsError?`<p role="alert">โหลดคำขอไม่สำเร็จ: ${h(e.clarificationInstructionsError)} กรุณาโหลดเคสใหม่ก่อนตอบ</p>`:(e.clarificationInstructions||[]).length?`<ol>${e.clarificationInstructions.map(n=>`<li><p class="clarification-request-text">${h(n.text)}</p><small>Audit ${h(n.by)} · ${h(displayTime(n.at))}</small></li>`).join('')}</ol>`:'<p>ยังไม่มีรายละเอียดคำขอชี้แจงที่บันทึกไว้ กรุณาสอบถาม Audit โดยอ้างอิงเลขเคสนี้</p>'}
-      </section>
-      <div class="case-summary-grid" id="caseSummarySection">
-        <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
-        <div><span>บริษัท</span><b>${h(e.company || "ไม่ระบุ")}</b></div>
-        <div><span>บัญชี / ทิศทาง</span><b>${h(e.account)} (${h(e.bank)}) · ${h(e.direction)}</b></div>
-        <div><span>ผลต่างเวลา</span><b>${h(exceptionTimeDiffLabel(e))}</b></div>
-        <div><span>ยอดระบบ (BO)</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
-        <div><span>ยอดธนาคาร (STM)</span><b>${e.bankAmount === null ? "ไม่พบรายการ" : money(e.bankAmount)}</b></div>
-        <div><span>ผลต่าง</span><b>${diffLabel(e)}</b></div>
-        <div class="case-summary-risk"><span>ยอดที่ต้องตรวจ</span><b class="danger">${e.riskAmount ? money(e.riskAmount) : "ไม่กระทบยอดเงิน"}</b></div>
-      </div>
-      <details class="case-meta-more"><summary>กำหนดส่งและผู้รับผิดชอบ</summary><div><span>พนักงาน <b>${h(e.employee || "ไม่ระบุ")}</b></span><span>SLA <b class="${e.overSla ? "danger" : ""}">${e.ageHours} ชม. / ${e.slaHours} ชม.</b></span><span>สายชี้แจง <b>${h(trackMeta(e.track).short)}${e.systemUnassigned ? " (ยังไม่กำหนดระบบ)" : ""}</b></span><span>กำหนดส่งคืน <b class="${e.overSla ? "danger" : ""}">${h(dueOf(e).short)}</b></span></div><p>${h(dueOf(e).detail)}</p></details>
-      ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
-      ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}<br>${e.status === "damage" ? "ผู้ตรวจยืนยันเป็นความเสียหายแล้ว" : "มีคำชี้แจงแล้ว — ยังไม่นับเป็นความเสียหาย จนกว่า Audit จะยืนยันและบันทึกเข้าทะเบียน"}</span></div>` : ""}
-
-      <section class="case-source-section" id="caseFilesSection">
-        <div class="case-section-head"><div><p class="eyebrow">ไฟล์ที่ใช้กระทบยอด</p><h3>ไฟล์ประกอบของเคสนี้</h3></div><button class="ghost-button sm" id="caseOpenAllFiles">ดูไฟล์ทั้งหมดของบริษัท/วัน</button></div>
-        <div id="caseSourceFiles" class="case-files-loading"><span class="spinner"></span><span>กำลังหาไฟล์ STM / BO / PM ที่ใช้สร้างเคส...</span></div>
-      </section>
-
-      <h3 class="drawer-h3">ข้อมูลที่ระบบใช้ตัดสิน</h3>
-      <ol class="timeline">
-        <li><span class="t-dot"></span><div><b>รายการฝั่ง STM / PM</b><code id="caseRawStm">${h(e.stmRaw)}</code></div></li>
-        <li><span class="t-dot"></span><div><b>รายการฝั่ง BO</b><code id="caseRawBo">${h(e.boRaw)}</code></div></li>
-        <li><span class="t-dot"></span><div><b>ผลการจับคู่</b><span>${
-          e.ruleBased
-            ? `ตรวจด้วยกฎธุรกิจจากรายงานหลังบ้าน (ไม่ต้องใช้ statement): ${h(e.typeName)}`
-            : `ไม่ผ่านเกณฑ์: ${h(e.typeName)} — tolerance ที่ใช้ ${e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit} วินาที`
-        }</span></div></li>
-        <li><span class="t-dot"></span><div><b>สาเหตุที่บันทึกไว้</b><span>${h(e.cause)}</span></div></li>
-        ${e.hasEvidence || sourceEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>${sourceEvidence ? "BO/PM ต้นทาง — ตรวจอ้างอิง ยอด วัน เวลา และคู่ซ้ำแล้ว" : "มีหลักฐานบันทึกในระบบ"}</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
-        ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(displayTime(n.at))}</b><span>${h(n.text)}</span></div></li>`).join("")}
-      </ol>
-
-      <section ${state.role==='shift_lead'?'hidden':''}>
-      <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
-      ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ใช้หลักฐานคู่ BO/PM ต้นทาง" : "คู่ BO/PM ตรงกัน ไม่พบคู่ซ้ำ — Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน"}</p>` : ""}
-      <ul class="close-check" id="caseChecklistSection">
-        ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
-      </ul>
-      ${closureReviewReady && !amountOutcomeRecorded ? `<p class="hint">มีข้อมูลและหลักฐานสำหรับตรวจต่อแล้ว · ต้องเลือกผลยอดและติ๊กยืนยันในหน้าต่างขั้นตอนถัดไปก่อนบันทึก</p>` : closureActionReady || closed ? "" : `<p class="hint">ยังเปิดขั้นตอนยืนยันผลไม่ได้จนกว่าข้อมูลและหลักฐานจะครบ</p>`}
-      </section>
-
-      <h3 class="drawer-h3">หลักฐานแนบ</h3>
-      ${state.dataset==='production'&&closed&&['lead','admin'].includes(state.role)?'<button class="ghost-button" id="btnCorrectClosedEvidence">แก้ไขหลักฐาน (เคสปิดแล้ว)</button><p class="hint">เก็บไฟล์เดิมและประวัติ · ต้องระบุเหตุผล · ไม่เปิดเคสใหม่หรือแก้ยอด</p>':''}
-      <p id="caseUploadProgress" role="status" aria-live="polite">${h(e._uploadResult || '')}</p>
-      ${state.dataset==='production'?(Sb.pendingCaseEvidence(e.dbId)||[]).map(p=>`<div class="alert warn"><p>${h(p.name)} · ${p.uploaded?'ไฟล์อยู่ในคลังแล้ว ยังรอยืนยันทะเบียน':'ยังรอตรวจผลส่งไฟล์'} · รหัส ${h(p.id)}</p><button class="ghost-button" data-resume-evidence="${h(p.id)}" ${p.busy?'disabled':''}>ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button><small>คำขอเดิมเก็บในหน้าต่างนี้ อย่ารีเฟรชหรือปิดหน้าต่างจนยืนยันผลได้</small></div>`).join(''):''}
-      <div class="evidence-box">
-        ${(e.evidence||[]).filter(f=>f.replacesSourceFileId).map(f=>`<p class="hint"><span class="badge amber">ไฟล์ชี้แจงเดิมแทนที่แล้ว · เก็บต้นฉบับ</span> ${h(f.replacesSourceFileId)} → ${h(f.name)}</p>`).join('')}
-        ${
-          (e.evidence || []).length
-            ? `<ul class="evidence-list">${e.evidence
-                .map(
-                  (f) =>
-                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b>${f.replacedBy?'<span class="badge amber">แทนที่แล้ว · เก็บต้นฉบับ</span>':''}${f.correctionReason?`<span class="badge blue">หลักฐานแก้ไขใหม่</span><small>เหตุผล: ${h(f.correctionReason)} · แทนไฟล์ ${h(f.replacesEvidenceId||f.replacesSourceFileId)} · โดย ${h(f.uploadedBy)}</small>`:''}<small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(displayTime(f.at))}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
-                )
-                .join("")}</ul>`
-            : `<p class="muted small-note">${state.dataset==='production' && Sb.pendingCaseEvidence(e.dbId).length ? "มีคำขอแนบไฟล์ค้างยืนยันทะเบียน — กดตรวจ / ลองบันทึกต่อด้านบน ไม่ต้องแนบซ้ำ และยังไม่นับเป็นหลักฐานที่ผูกเคสสำเร็จ" : e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
-        }
-        <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
-          <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.docx,.csv,.xlsx,.txt" ${can("attach") || can("note") ? "" : "disabled"} />
-          แนบเอกสาร / สลิป / ไฟล์ชี้แจง
-        </label>
-        <p class="muted small-note">แนบได้หลายไฟล์: PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT · ไฟล์ละไม่เกิน 20 MB · การแนบไม่ใช่การอนุมัติหรือปิดเคส</p>
-      </div>
-
-      <h3 class="drawer-h3" ${state.role==='shift_lead'?'hidden':''}>รายละเอียดที่ Audit ขอให้บริษัทชี้แจง</h3>
-      <p class="hint" ${state.role==='shift_lead'?'hidden':''}>ข้อความที่บันทึกจะแสดงแก่ผู้ชี้แจงของบริษัทนี้ เก็บประวัติเดิม ไม่ส่งคำตอบและไม่ปิดเคส หากยังไม่ส่งเคส ให้กดส่งขอชี้แจงต่อ</p>
-      <div class="note-form" ${state.role==='shift_lead'?'hidden':''}>
-        <textarea id="noteText" rows="3" maxlength="2000" placeholder="ระบุสิ่งที่ต้องชี้แจงและหลักฐานที่ต้องการ..." ${closed?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.note||'')}</textarea>
-        <button class="ghost-button" id="btnNote" ${closed?'disabled':''}>บันทึกรายละเอียดคำขอชี้แจง</button>
-      </div>
-      <section class="case-response-section" id="caseResponseSection">
-        <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>1 เลือกหลักฐาน → 2 ระบุสาเหตุ → 3 ส่งคำชี้แจงพร้อมหลักฐาน · การเลือกไฟล์อย่างเดียวยังไม่ส่งและไม่ปิดเคส</p>
-        ${ClarificationFlow.draftMarkup(e._clarificationDraftFile)}
-        ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(displayTime(e.respondedAt))}</small></div>` : ''}
-        ${e.clarificationHistoryError?`<p role="alert">ยังอ่านข้อความเดิมไม่สำเร็จ: ${h(e.clarificationHistoryError)} กรุณาเปิดเคสใหม่ก่อนส่ง</p>`:ClarificationFlow.historyMarkup(e.clarificationHistory,displayTime)}
-        <label ${!ClarificationFlow.canRespond(e.status,state.role)?'hidden':''}>ต้องการชี้แจงเคสนี้ โดยสาเหตุ…<textarea id="responseText" rows="4" maxlength="2000" placeholder="ระบุสาเหตุ ข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และสิ่งที่หลักฐานยืนยัน" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.response??e._clarificationDraftText??'')}</textarea></label>
-        <button class="primary-button" id="btnRespond" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
-        <small>ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบและหลักฐานพร้อมกัน เก็บข้อความเดิมและไฟล์เดิมครบ ยังไม่ปิดเคส</small>
-      </section>
-    <footer class="drawer-foot" id="caseActionSection">
-      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
-      <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากเป็นเคส BO กับ STM/PM คนละฝั่ง ให้ใช้ “จับคู่เอง” เลือกเคสคู่ เหตุผล และติ๊กยืนยัน ระบบจะตรวจสิทธิ์กับต้นทางจริงแยกจากเช็กลิสต์ปิดเคสทั่วไป ไม่ต้องกรอกข้อมูลสมมติหรือบันทึกความเสียหายเพื่อให้ผ่าน</p>
-      ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
-      ${['lead','admin'].includes(state.role)&&['closed','damage'].includes(e.status)?'<div class="alert warn"><b>ผลปิดผิดสามารถย้อนกลับได้โดยหัวหน้าออดิท/ผู้ดูแลระบบ</b><div class="inline-actions"><button class="ghost-button" id="btnReopenClosedCase">ยกเลิกผลปิด — คืน Audit ตรวจ</button><button class="ghost-button" id="btnReturnClosedCase">ตีกลับให้ชี้แจงเพิ่มเติม</button></div><small>ยอดและหลักฐานเดิมไม่ถูกลบ แต่จะเก็บเป็นประวัติที่ยกเลิกและไม่นับในยอดปัจจุบัน</small></div>':''}
-      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${closureActionReady ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : closureReviewReady ? "ตรวจผลและปิดเคส" : "ยังตรวจผลไม่ได้"}</button></div>
-      <div id="manualPairReview"></div>
-      <div id="caseClosureReview"></div>
-      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?`<button class="primary-button" id="btnSendClosure">${can('approve')?'ปิดเคส':'Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส'}</button>`:''}
-      <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
-    </footer>
-    </div>`;
-
-  drawer.dataset.caseDraftKey=caseOpenDraftKey(e);
-  $('#noteText').addEventListener('input',captureCaseOpenDraft);
-  $('#responseText').addEventListener('input',captureCaseOpenDraft);
-  drawer.hidden = false;
-  overlay.hidden = false;
-  requestAnimationFrame(() => drawer.classList.add("on"));
-  AuditUi.open(drawer);
-
-  $("#drawerClose").addEventListener("click", closeDrawer);
-  $('#btnReturnClarification')?.addEventListener('click',()=>ClarificationReturn.open(e).catch(err=>toast(err.message,'warn')));
-  $('#btnReopenClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'reopen_audit'));
-  $('#btnReturnClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'return_clarification'));
-  $('#caseNextQueue')?.addEventListener('click',()=>showReadOnlyCaseQueue(e));
-  $('#btnGoMissing')?.addEventListener('click',()=>{
-    const first=missingChecks[0]?.key;
-    const target=first==='raw'||first==='evidence'?'#caseFilesSection':first==='note'?'#noteText':'#caseChecklistSection';
-    $(target)?.scrollIntoView({behavior:'smooth',block:'center'});
-    if(first==='note')$('#noteText')?.focus();
-  });
-  const moveReview = (offset) => {
-    if (String($('#noteText')?.value || '').trim() || String($('#responseText')?.value || '').trim()) return toast('มีข้อความที่ยังไม่บันทึก กรุณาบันทึกหรือล้างข้อความก่อนเปลี่ยนเคส', 'warn');
-    const nextId = queue[queueIndex + offset];
-    if (nextId) openException(nextId);
-  };
-  $('#reviewPrevious')?.addEventListener('click', () => moveReview(-1));
-  $('#reviewNext')?.addEventListener('click', () => moveReview(1));
-  overlay.onclick=closeDrawer;
-  $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  $("#btnAttachQuick").addEventListener("click", () => closed?toast('เคสปิดแล้ว ต้องใช้ปุ่มแก้ไขหลักฐานสำหรับหัวหน้า/ผู้ดูแล','warn'):$("#evInput")?.click());
-  $('#btnCorrectClosedEvidence')?.addEventListener('click',()=>openClosedEvidenceCorrection(e).catch(err=>toast(err.message,'warn')));
-  $("#btnChooseClarification").addEventListener("click", () => {
-    if (!can("attach") && !can("note")) return deny("เลือกเอกสารชี้แจง");
-    $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    const picker = $("#caseMailEvidenceButton");
-    if (picker) picker.click();
-    else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
-  });
-  if(CrossDayWorkbench.eligible(e)){
-    $('#btnManualPair').disabled=false;
-    $('#btnManualPair').textContent='จับคู่ข้ามวัน / เตรียมหลายคู่';
-  }
-  $('#btnManualPair').addEventListener('click',()=>CrossDayWorkbench.eligible(e)?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
-  $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
-  if(['lead','admin'].includes(state.role)&&can('approve')&&!closed){
-    const headClose=document.createElement('button');
-    headClose.id='btnHeadClose';headClose.type='button';headClose.className='primary-button';
-    headClose.textContent='ปิดเคส (หัวหน้า / ผู้ดูแลระบบ)';
-    headClose.addEventListener('click',()=>{
-      if(!['lead','admin'].includes(state.role)||!can('approve'))return deny('ปิดเคส');
-      if(quickCloseEligible)return confirmQuickClose(e);
-      if(state.dataset==='production')return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
-      $('#btnApprove')?.click();
-    });
-    $('#btnCrossCompanyPair').after(headClose);
-  }
-  if(state.role!=='shift_lead'){
-    ManualPairing.mountReview(e,$('#manualPairReview'));
-    CaseClosure.mountReview(e,$('#caseClosureReview'));
-  }
-  $('#btnSendClosure')?.addEventListener('click',()=>CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn')));
-  $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
-  drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
-    const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : $("#caseSummarySection");
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }));
-  loadExceptionSupport(e, options);
-  if(state.dataset==='production' && e.dbId) EvidenceRecommendations.mountCaseBanner(drawer.querySelector('.drawer-body') || drawer, e, Sb, openStoredFilePreview, openEvidenceRelatedCase);
-  drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
-    button.disabled = true;
-    try {
-      const file = (e.evidence || []).find(f => f.storagePath === button.dataset.caseEvidence);
-      await openStoredFilePreview({path:button.dataset.caseEvidence, name:file?.name || 'หลักฐานจากเคส',
-        size:file?.size, company:e.company, date:e.date, kind:'doc_clarify', status:'parsed',
-        readOnly:true, caseCode:e.id, evidenceOrigin:'แนบผ่านเคส / ผู้ชี้แจง'});
-    } catch (error) { toast("เปิดหลักฐานไม่ได้: " + error.message, "warn"); }
-    finally { button.disabled = false; }
-  }));
-
-  const acceptStoredEvidence = file => {
-    e.evidence=e.evidence||[];
-    if(!e.evidence.some(item=>item.id===file.id))e.evidence.push({id:file.id,name:file.file_name,size:file.size_bytes,at:file.created_at||nowStamp(),storagePath:file.storage_path});
-    e.hasEvidence=true;
-  };
-  document.querySelectorAll('[data-resume-evidence]').forEach(button=>button.onclick=async()=>{
-    button.disabled=true;
-    try{acceptStoredEvidence(await Sb.resumeCaseEvidence(button.dataset.resumeEvidence));e._caseEvidenceLoaded=false;e._uploadResult='ยืนยันหลักฐานเดิมและผูกเคสสำเร็จแล้ว — ไม่อัปไฟล์ซ้ำ';toast(e._uploadResult);}
-    catch(error){e._uploadResult=error.message;toast(error.message,'warn');}
-    finally{if(state.selected===e.id)await openException(e.id);else button.disabled=false;}
-  });
-  $("#evInput").addEventListener("change", async (evt) => {
-    if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");
-    const files = [...evt.target.files];
-    if (!files.length) return;
-    if (state.dataset === "production") {
-      const input = evt.target;
-      input.disabled = true;
-      let saved = 0;
-      const uploadActor = Sb.authUser()?.id;
-      e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
-      let uploadComplete = false;
-      const uploadErrors = [];
-      try {
-        for (const [fileIndex,file] of files.entries()) {
-          if(Sb.authUser()?.id!==uploadActor)throw new Error('บัญชีผู้ใช้เปลี่ยนระหว่างแนบไฟล์ หยุดไฟล์ที่เหลือ ไม่ผูกเคสข้ามบัญชี');
-          try { acceptStoredEvidence(await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
-            e._uploadResult = `ไฟล์ ${fileIndex + 1}/${files.length}: ${file.name} · ${stage}`;
-            const progress = $('#caseUploadProgress');
-            if (progress && state.selected === e.id) progress.textContent = e._uploadResult;
-          }));
-          saved++;
-          } catch(error) { uploadErrors.push(`${file.name}: ${error.message}`); }
-        }
-        if(uploadErrors.length)throw new Error(uploadErrors.join('\n'));
-        uploadComplete = saved === files.length;
-        e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
-        recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
-        toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
-      } catch (error) {
-        e._uploadResult = `แนบสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message} · หากผลไม่แน่นอน โปรดตรวจทะเบียนหลักฐานก่อนอัปซ้ำ`;
-        toast(`ยืนยันสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message}`, "warn");
-      } finally {
-        input.value = "";
-        input.disabled = false;
-        e._caseEvidenceLoaded = false;
-        if (state.selected === e.id) {
-          await openException(e.id);
-          if (uploadComplete) showCaseSubmissionReceipt(['pair_pending','answered'].includes(e.status)?'additional_evidence':'evidence',e.id);
-        }
-      }
-      return;
-    }
-    e.evidence = e.evidence || [];
-    files.forEach((f) => e.evidence.push({ name: f.name, size: f.size, at: nowStamp(), url: URL.createObjectURL(f) }));
-    e.hasEvidence = true;
-    logAction("attach", "evidence", e.id, `แนบไฟล์ ${files.map((f) => f.name).join(", ")}`);
-    saveOverride(e);
-    recordCaseUiResult(e, `แนบหลักฐาน ${files.length} ไฟล์แล้ว — ยังไม่ปิดเคส`);
-    toast(`แนบหลักฐาน ${files.length} ไฟล์แล้ว`);
-    openException(id);
-  });
-
-  $("#btnNote").addEventListener("click", async () => {
-    if (!can("note")) return deny("เพิ่ม note");
-    const txt = $("#noteText").value.trim();
-    if (!txt) return toast("กรุณาพิมพ์ note ก่อน", "warn");
-    const button = $("#btnNote");
-    button.disabled = true;
-    try {
-      if (state.dataset === "production") {
-        if (!e.dbId) throw new Error("ไม่พบรหัสเคสฐานข้อมูล");
-        await Sb.appendCaseNote(e.dbId, txt);
-      } else {
-        e.notes.push({ by: currentUser().username, at: nowStamp(), text: txt });
-        logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
-        saveOverride(e);
-      }
-      recordCaseUiResult(e, 'บันทึกรายละเอียดคำขอแล้ว — ผู้ชี้แจงเห็นในเคสที่ส่งแล้ว ยังไม่ปิดเคส');
-      clearSavedCaseDraft(e,'note',txt);
-      toast("บันทึกรายละเอียดคำขอชี้แจงแล้ว");
-      if (state.selected === id) await openException(id);
-    } catch (err) {
-      toast("บันทึก Note ไม่สำเร็จ: " + err.message, "warn");
-    } finally {
-      button.disabled = false;
-    }
-  });
-  $("#btnDocReq").addEventListener("click", () => {
-    const d = dueOf(e);
-    issueRequestDoc([e], {
-      key: e.id,
-      shiftName: (DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift,
-      toName: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
-      periodLabel: `วันที่ ${e.date} · เคส ${e.id}`,
-    });
-  });
-  $("#btnDocClr").addEventListener("click", () =>
-    issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
-  );
-
-  $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
-  if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
-  $("#btnClarify").disabled = !["open", "pending_next_day"].includes(e.status);
-  const clarificationSendStatus = document.createElement('p');
-  clarificationSendStatus.id = 'clarificationSendStatus';
-  clarificationSendStatus.setAttribute('role','status');
-  clarificationSendStatus.setAttribute('aria-live','polite');
-  $('#btnClarify').parentElement.after(clarificationSendStatus);
-  $("#btnClarify").addEventListener("click", async (event) => {
-    if (!can("request_clarify")) return deny("ส่งชี้แจง");
-    if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
-    if (!["open", "pending_next_day"].includes(e.status)) return;
-    if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
-    const requestKey=caseUiKey(e);
-    if(clarificationRequestFlights.has(requestKey))return;
-    const context=captureClarificationRequestContext(e);
-    clarificationRequestFlights.add(requestKey);
-    const button = event.currentTarget;
-    button.disabled = true;
-    const sendStatus = $('#clarificationSendStatus');
-    if(sendStatus)sendStatus.textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
-    try {
-      const previousStatus=e.status;
-      let confirmedRequest;
-      const requestedAt = new Date().toISOString();
-      const requestedBy = state.dataset === "production" ? Sb.authUser()?.id : null;
-      if (state.dataset === "production") {
-        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
-        confirmedRequest=await Sb.requestClarification(e.dbId, e.status, {
-          status: "clarifying", requested_at: requestedAt, requested_by: requestedBy, updated_at: requestedAt,
-        });
-      }
-      e.status = "clarifying";
-      e.requestedAt = confirmedRequest?.requested_at || requestedAt;
-      e.requestedBy = confirmedRequest?.requested_by || requestedBy;
-      recordCaseUiResult(e, 'ส่งเข้าชีทรอชี้แจงสำเร็จ — รอผู้มีสิทธิ์ตอบพร้อมหลักฐาน');
-      saveOverride(e, false);
-      if(previousStatus!=='pending_next_day' || state.dataset!=="production") logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
-      toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
-      await showClarificationRequestReceipt(e,context);
-    } catch (err) {
-      const message = err.message.startsWith('ยังยืนยันการส่งไม่ได้') ? err.message : 'ยังยืนยันการส่งไม่ได้ — กรุณาเปิดเคสล่าสุดก่อนลองใหม่: ' + err.message;
-      if(sendStatus)sendStatus.textContent = message;
-      toast(message, "warn");
-      // Keep this attempt locked until a fresh case is loaded. A timeout can
-      // happen after commit, so an automatic or immediate retry is unsafe.
-    } finally {
-      clarificationRequestFlights.delete(requestKey);
-    }
-  });
-  $('#responseText').addEventListener('input',event=>e._clarificationDraftText=event.target.value);
-  if(options.focusResponse)setTimeout(()=>$('#caseResponseSection')?.scrollIntoView({behavior:'smooth',block:'start'}),100);
-  $("#btnRespond").disabled = !ClarificationFlow.canRespond(e.status,state.role) || !!e.clarificationInstructionsError || !!e.clarificationHistoryError || !can('respond');
-  $("#btnRespond").addEventListener("click", async (event) => {
-    if (!can("respond")) return deny("ตอบชี้แจง");
-    if (!ClarificationFlow.canRespond(e.status,state.role)) return;
-    if(e.clarificationInstructionsError) return toast('ยังอ่านคำขอชี้แจงไม่ได้ กรุณาโหลดเคสใหม่ก่อนตอบ','warn');
-    const answerText = $("#responseText").value.trim();
-    if (answerText.length<10||answerText.length>2000) return toast("กรอกสาเหตุ 10–2,000 ตัวอักษรก่อนส่ง", "warn");
-    const answeringRole=currentUser().role;
-    const response=['monitor','audit_assistant','lead','admin'].includes(answeringRole)
-      ? `[คำชี้แจงโดย ${answeringRole==='admin'?'แอดมินระบบ':'Audit'} — ไม่ใช่การอนุมัติปิดเคส]\n${answerText}` : answerText;
-    const selectedFileId=e._clarificationDraftFile?.id||e.clarificationFileId;
-    if (state.dataset === "production" && !selectedFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกในระบบ กรุณาเลือกไฟล์หรือแนบหลักฐานก่อนส่ง", "warn");
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      const stamp = new Date().toISOString();
-      if (state.dataset === "production") {
-        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
-        if(e.clarificationHistoryError)throw Error('ยังอ่านข้อความเดิมไม่สำเร็จ กรุณาเปิดเคสใหม่ก่อนส่ง');
-        const saved=await Sb.submitClarificationWithFile(e.dbId,response,selectedFileId,e.status,e.clarificationFileId);
-        if(saved.id!==e.dbId||saved.status!=='answered'||saved.response_text!==response)throw Error('ยังยืนยันการบันทึกคำตอบไม่ได้');
-        e.clarificationFileId=saved.clarification_file_id;
-      }
-      delete e._clarificationDraftFile;delete e._clarificationDraftText;
-      clearSavedCaseDraft(e,'response',answerText);
-      e.status = "answered";
-      e.responseText = response;
-      e.respondedAt = stamp;
-      e.respondedBy = Sb.authUser()?.id || currentUser().username;
-      recordCaseUiResult(e, 'ส่งคำชี้แจงสำเร็จ — รอ Audit ตรวจคำตอบ ยังไม่ปิดเคส');
-      saveOverride(e, false);
-      logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
-      render();
-      await openException(id);
-      showCaseSubmissionReceipt('clarification', e.id);
-    } catch (err) {
-      toast("ยังยืนยันการบันทึกไม่ได้: " + err.message, "warn");
-      button.disabled = false;
-    }
-  });
-  $("#btnDamage").addEventListener("click", async () => {
-    if (state.dataset === 'production' && ['monitor','audit_assistant','lead','admin'].includes(state.role)) return CaseClosure.openSubmit(e,'damage');
-    if (!can("close_case")) return deny("บันทึกความเสียหาย");
-    if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
-    if (e.status === "damage") return toast("เคสนี้บันทึกเป็นความเสียหายแล้ว");
-    openModal("ยืนยันความเสียหาย", `<p>ระบุยอดเสียหายที่ตรวจหลักฐานแล้ว ไม่ใช่ยอดถอนทั้งหมดหรือยอดที่ระบบยังจับคู่ไม่ได้</p>
-      <label>ประเภทความเสียหาย<select id="damageCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([key])=>!['unclassified','system'].includes(key)).map(([key,label])=>`<option value="${key}">${h(label)}</option>`).join('')}</select></label>
-      <div class="damage-form-grid"><label>พนักงาน / ผู้เกี่ยวข้อง<input id="damageEmployee" maxlength="200" placeholder="รอยืนยันผู้เกี่ยวข้อง — ไม่ระบุผู้รับผิดโดยเดา"></label>
-      <label>กะ / รหัสทีม<input id="damageShift" maxlength="32" placeholder="เช่น X1, X3, X5, X8 หรือเว้นไว้รอยืนยัน"></label>
-      <label>เวลาที่เกิดเหตุ<input id="damageTime" type="time" step="1" value="${h(/^\d{2}:\d{2}(:\d{2})?$/.test(e.time || '') ? e.time : '')}"></label></div>
-      <p class="hint">ตรวจสอบชื่อและกะจากหลักฐาน ณ วันที่เกิดเหตุ ไม่ใช้ผู้ตรวจหรือผู้แนบเอกสารแทนผู้เกี่ยวข้อง เวลาที่ไม่ทราบให้เว้นว่าง ไม่ใช้ 00:00 แทน</p>
-      <label>ยอดเสียหายที่ยืนยัน (บาท)<input id="damageConfirmedAmount" type="number" min="0.01" step="0.01" inputmode="decimal"></label>
-      <label>สาเหตุ / หลักฐานอ้างอิง<textarea id="damageConfirmedCause">${h(e.cause || '')}</textarea></label>
-      <p class="hint">บันทึกเข้าทะเบียนเท่านั้น ไม่ส่งข้อความให้บุคคลหรือการเงิน</p>`, `<button class="ghost-button" id="damageCancel">ยกเลิก</button><button class="primary-button" id="damageConfirm">ยืนยันบันทึก</button>`);
-    $("#damageCancel").addEventListener('click', closeModal);
-    $("#damageConfirm").addEventListener('click', async (event) => {
-    let confirmedCause;
-    const confirmedCents = DamageSummary.cents($("#damageConfirmedAmount").value);
-    if (confirmedCents === null || confirmedCents <= 0) return toast("กรอกยอดเสียหายมากกว่า 0 และไม่เกิน 2 ตำแหน่งทศนิยม", "warn");
-    try { confirmedCause = DamageSummary.encodeDetails($("#damageCategory").value, $("#damageConfirmedCause").value); }
-    catch (error) { return toast(error.message, "warn"); }
-    if ($('#damageCategory').value==='employee' && (!$('#damageEmployee').value.trim() || !$('#damageShift').value.trim()
-        || ['-','ไม่ระบุ','รอยืนยันผู้เกี่ยวข้อง'].includes($('#damageEmployee').value.trim())
-        || ['-','รอยืนยันกะ'].includes($('#damageShift').value.trim()))) return toast('ประเภทพนักงานต้องยืนยันชื่อและกะจากหลักฐานก่อน เพื่อไม่ระบุผิดคน','warn');
-    if (state.dataset === 'production' && (!Sb.signedIn() || !e.dbId)) return toast('ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน', 'warn');
-    event.currentTarget.disabled = true;
-    if (e.status !== "damage") {
-      const previousStatus = e.status;
-      const damage = {
-        id: "DMG-" + (e.dbId || e.id),
-        exceptionId: e.id,
-        date: e.date,
-        company: e.company,
-        employee: $("#damageEmployee").value.trim(),
-        shift: $("#damageShift").value.trim(),
-        time: $("#damageTime").value,
-        amount: confirmedCents / 100,
-        cause: confirmedCause,
-        cycle: Number(e.date?.slice(8,10)) <= 15 ? "C1" : Number(e.date?.slice(8,10)) <= 25 ? "C2" : "C3",
-        evidence: true,
-        hrStatus: "ยังไม่ส่งบุคคล",
-        financeStatus: "รอปิดรอบ",
-      };
-      if (state.dataset === "production" && Sb.signedIn()) {
-        try {
-          const saved = await Sb.confirmDamage(e.dbId, previousStatus, damage.amount, damage.cause, damage);
-          damage.dbId = saved.id;
-        } catch (err) {
-          toast("ยังยืนยันผลบันทึกไม่ได้ กรุณารีเฟรชทะเบียนก่อนลองใหม่: " + err.message, "warn");
-          closeModal();
-          openException(id);
-          return;
-        }
-        e.status = "damage";
-        recordCaseUiResult(e, 'บันทึกความเสียหายสำเร็จ — ดูรายการในทะเบียนความเสียหาย');
-        DB.damages.push(damage);
-        saveOverride(e, false);
-        logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
-        await loadLiveDamage(true).catch(() => toast('บันทึกแล้ว แต่โหลดทะเบียนใหม่ไม่ได้ กรุณารีเฟรช', 'warn'));
-        loadLiveOverview(true);
-        toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
-      } else {
-        e.status = "damage";
-        recordCaseUiResult(e, 'บันทึกความเสียหายในข้อมูลตัวอย่างแล้ว');
-        DB.damages.push(damage);
-        Store.data.extraDamages.push(damage);
-        saveOverride(e);
-        logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
-        toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
-      }
-    }
-    closeModal();
-    openException(id);
-    });
-  });
-  $("#btnApprove").addEventListener("click", async () => {
-    if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
-    if (quickCloseEligible) return confirmQuickClose(e);
-    if (state.dataset === 'production') {
-      if (!closureReviewReady) return toast("ข้อมูลหรือหลักฐานยังไม่ครบ เปิดขั้นตอนยืนยันผลไม่ได้", "warn");
-      return CaseClosure.openSubmit(e);
-    }
-    if (!closureActionReady) return toast("เช็กลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
-    if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
-    logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
-    toast("อนุมัติและปิดเคส " + e.id + " แล้ว");
-    render();
-    await openException(e.id);
-  });
-
-  const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve", btnDocReq: "request_clarify" };
-  if(e.reviewHold) for(const id of ['btnApprove','btnDamage']) {const button=$('#'+id);if(button){button.disabled=true;button.title=AccountReviewHolds.label;}}
-  Object.entries(gate).forEach(([btn, cap]) => {
-    const el = $("#" + btn);
-    if (!can(cap)) {
-      el.classList.add("locked");
-      el.disabled = true;
-      el.title = `ต้องมีสิทธิ์: ${cap} (บทบาทปัจจุบัน ${DB.roles[state.role].name} ไม่มีสิทธิ์นี้)`;
-    }
-  });
-  if(caseOpenTicket===ticket)caseOpenTicket=null;
-  })();
-  return ticket.promise;
-}
-async function openApprovalReview(exceptionId, kind, requestId) {
-  if (!can('approve')) return toast('เฉพาะหัวหน้าทีม / ผู้ดูแลระบบอนุมัติได้', 'warn');
-  const row = await Sb.exceptionDetail(exceptionId);
-  if (!row) throw new Error('ไม่พบเคสของคำขอนี้ กรุณารีเฟรชคิว');
-  const e = mapLiveException(row);
-  // The queue identifies a request, not just a case whose pointer may change.
-  if (kind === 'closure' && requestId) e.closureRequestId = requestId;
-  openModal('อนุมัติ', '<div id="approvalQueueReview"></div>', '<button class="ghost-button" id="approvalReviewEvidence">ดูรายละเอียดและหลักฐาน</button><button class="ghost-button" id="approvalReviewCancel">ยกเลิก</button>');
-  $('#approvalReviewCancel').onclick = closeModal;
-  $('#approvalReviewEvidence').onclick = async () => {
-    closeModal();
-    try { await openEvidenceRelatedCase(exceptionId, {focusFiles:true}); }
-    catch (err) { toast(err.message, 'warn'); }
-  };
-  const host = $('#approvalQueueReview');
-  await (kind === 'pair' ? ManualPairing : CaseClosure).mountReview(e, host);
-}
-
-async function refreshCaseView() {
-  const root = $('#viewRoot');
-  if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
-    root.auditQueueUpdateInPlace();return;
-  }
-  // The company review / Excel table is mounted inside auditViewBody.
-  // Refresh its existing instance rather than remounting the parent shell.
-  const workspace = typeof root?.auditRefreshInPlace === 'function'
-    ? root : root?.querySelector?.('#auditViewBody');
-  if (typeof workspace?.auditRefreshInPlace === 'function') {
-    await workspace.auditRefreshInPlace();
-    return; // Inactive/stale instance is not permission to redraw a new page.
-  }
-  const x = window.scrollX, y = window.scrollY;
-  render();
-  window.scrollTo(x, y);
-}
-async function finishApprovalReview() {
-  // A saved decision must not reopen the old case or send the head away
-  // from the queue. A refresh failure is not a failed database decision.
-  closeModal();
-  closeDrawer();
-  const savedRoute=state.route;
-  try {
-    if(typeof liveOverviewState!=='undefined'){
-      const deadline=Date.now()+30000;
-      while(liveOverviewState.loading||liveOverviewState.auxiliaryLoading){
-        if(Date.now()>deadline)throw Error('รอบโหลดก่อนหน้ายังไม่เสร็จ');
-        await new Promise(resolve=>setTimeout(resolve,100));
-      }
-    }
-    if(typeof liveQueueRoute==='function'&&liveQueueRoute()){
-      for(const queue of [CaseClosure,ManualPairing,CrossDayWorkbench])queue.queueState.at=0;
-    }
-    await loadLiveOverview(true);
-    if(state.route!==savedRoute)return true;
-    if(typeof liveQueueRoute==='function'&&liveQueueRoute()&&liveQueueProtected()){
-      liveQueueUpdatePending=true;return true;
-    }
-    await refreshCaseView();
-    return true;
-  }
-  catch (err) { toast('บันทึกอนุมัติแล้ว แต่โหลดภาพรวมใหม่ไม่ได้ กรุณารีเฟรชคิว: ' + err.message, 'warn'); return false; }
-}
-function closeDrawer() {
-  captureCaseOpenDraft();
-  caseOpenTicket=null;
-  const d = $("#drawer");
-  if (!d || d.hidden) return;
-  d.classList.remove("on");
-  $("#drawerOverlay").hidden = true;
-  AuditUi.close(d);
-  clearTimeout(d._hideTimer);
-  d._hideTimer = setTimeout(() => { d.hidden = true; d._hideTimer = null; }, 220);
-}
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (AuditUi.top()?.id === 'modal') closeModal();
-    else closeDrawer();
-  }
-});
-
-/* =============================================================
-   VIEW: 3-Point Match
-   ============================================================= */
-VIEWS.matching = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  const ruleEditable = can("rules") && state.dataset !== "production";
-  const list = scopedExceptions().filter((e) => e.type !== "missing_stm");
-  if (!list.length) {
-    root.innerHTML = `<div class="panel"><p class="empty">ไม่มีรายการให้ตรวจในตัวกรองนี้</p></div>`;
-    return;
-  }
-  state.matchIndex = Math.min(state.matchIndex, list.length - 1);
-  const e = list[state.matchIndex];
-  const tol = e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit;
-  const bankRule = (DB.banks.find((bank) => bank.code === e.bank) || {}).rule || "ใช้กฎมาตรฐานจากข้อมูลที่มีในไฟล์";
-  const ruleBreach = {
-    duplicate: "พบรายการยอดเดียวกันซ้ำในฝั่ง BO — เข้าเงื่อนไขเติมซ้ำ",
-    backdated: "รายการถูกบันทึกย้อนหลังหลังปิดยอดของช่วงเวลานั้น",
-    cross_day: "อยู่ในช่วง 23:00-23:59 ต้องตรวจร่วมกับไฟล์ของวันถัดไป",
-    wrong_bank: "ธนาคารปลายทางไม่ตรงกับที่ระบุในรายการ BO",
-    wrong_account: "บัญชีปลายทางไม่อยู่ใน master list ของบริษัท",
-    unexplained_out: "ยอดโอนออกยังไม่มีไฟล์ชี้แจงประกอบ",
-    missing_bo: "มีรายการฝั่ง STM แต่ไม่พบฝั่ง BO",
-    missing_stm: "มีรายการฝั่ง BO แต่ไม่พบฝั่ง STM",
-  };
-  const checks = [
-    { name: "Bank Account", ok: true, detail: `${e.account} ตรงกับ master list ของ ${e.company}` },
-    { name: "Time Window", ok: !hasComparableExceptionTimes(e) || e.timeDiffSec <= tol, detail: hasComparableExceptionTimes(e) ? `ต่างกัน ${e.timeDiffSec} วินาที · tolerance ${tol} วินาที` : "ต้นทางไม่มีเวลา — ไม่ใช้เวลาเป็นเงื่อนไข" },
-    {
-      name: "Amount",
-      ok: e.bankAmount !== null && e.systemAmount !== null && Math.abs(e.amountDiff) < DB.settings.diffAlert,
-      detail:
-        e.bankAmount === null
-          ? "ไม่พบรายการฝั่ง STM (BO มากกว่า STM)"
-          : e.systemAmount === null
-            ? "ไม่พบรายการฝั่ง BO (STM มากกว่า BO)"
-            : `ต่างกัน ${money(Math.abs(e.amountDiff))} บาท · เกณฑ์แจ้งเตือน ${DB.settings.diffAlert} บาท`,
-    },
-  ];
-  checks.push({
-    name: "Business Rule",
-    ok: !ruleBreach[e.type],
-    detail: ruleBreach[e.type] || "ผ่านกฎธนาคารและกฎธุรกิจเพิ่มเติมทั้งหมด",
-  });
-  const passed = checks.filter((c) => c.ok).length;
-
-  root.innerHTML = `
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">รายการที่ ${state.matchIndex + 1} จาก ${list.length}</p><h2>${h(caseLabel(e))} · ${h(e.typeName)}</h2></div>
-        <div class="inline-actions">
-          <button class="ghost-button sm" id="mPrev" ${state.matchIndex === 0 ? "disabled" : ""}>← ก่อนหน้า</button>
-          <button class="ghost-button sm" id="mNext" ${state.matchIndex === list.length - 1 ? "disabled" : ""}>ถัดไป →</button>
-          <button class="primary-button sm" id="mOpen">เปิดรายละเอียดเต็ม</button>
-        </div>
-      </div>
-
-      <div class="match-score ${passed === 4 ? "ok" : passed === 3 ? "warn" : "bad"}">
-        <strong>${passed}/4</strong><span>เกณฑ์ที่ผ่าน — 3 จุดหลัก (account / time / amount) และกฎธุรกิจเพิ่มเติม</span>
-      </div>
-
-      <div class="match-3">
-        ${checks
-          .map(
-            (c) => `<div class="match-card ${c.ok ? "ok" : "bad"}">
-          <i>${c.ok ? "✓" : "✕"}</i>
-          <strong>${h(c.name)}</strong>
-          <span>${h(c.detail)}</span>
-        </div>`,
-          )
-          .join("")}
-      </div>
-
-      <div class="compare">
-        <div class="compare-col">
-          <h3>ฝั่งธนาคาร (STM)</h3>
-          <code>${h(e.stmRaw)}</code>
-          <div class="kv-line"><span>เวลา</span><b>${e.bankAmount === null ? "-" : e.time}</b></div>
-          <div class="kv-line"><span>ยอด</span><b>${e.bankAmount === null ? "-" : money(e.bankAmount)}</b></div>
-          <div class="kv-line"><span>กฎที่ใช้</span><b>${h(bankRule)}</b></div>
-        </div>
-        <div class="compare-mid"><span>เทียบกับ</span></div>
-        <div class="compare-col">
-          <h3>ฝั่งระบบหลังบ้าน (BO)</h3>
-          <code>${h(e.boRaw)}</code>
-          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : h(exceptionSideTimestamp(e, "bo"))}</b></div>
-          <div class="kv-line"><span>ยอด</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
-          <div class="kv-line"><span>ผู้ทำรายการ</span><b>${h(e.employee)}</b></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Tolerance</p><h2>เกณฑ์จับคู่ที่ใช้งานอยู่</h2></div><span class="health ${ruleEditable ? "ok" : "attention"}">${ruleEditable ? "แก้ไขได้" : "ค่าที่ deploy · อ่านอย่างเดียว"}</span></div>
-        <div class="setting-list">
-          <label><span>Time tolerance ฝาก</span><input type="number" id="tolD" value="${DB.settings.toleranceDeposit}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>Time tolerance ถอน</span><input type="number" id="tolW" value="${DB.settings.toleranceWithdraw}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
-          <label><span>คู่ยอดตรงที่ไม่กำกวม</span><input type="number" value="${DB.settings.exactUniqueTolerance || 600}" disabled /><b>วินาที</b></label>
-          <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="tolA" value="${DB.settings.diffAlert}" ${ruleEditable ? "" : "disabled"} /><b>บาท</b></label>
-        </div>
-        <button class="primary-button" id="tolSave" ${ruleEditable ? "" : "disabled"}>บันทึกและคำนวณผลใหม่</button>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">ลำดับการจับคู่</p><h2>ระบบทำอะไรบ้าง</h2></div></div>
-        <ol class="step-list">
-          <li>เลือก business date และ company</li>
-          <li>ตรวจ source file completeness (quality gate)</li>
-          <li>Normalize STM และ BO เป็น schema เดียวกัน</li>
-          <li>Apply bank rule (X1/X2/XB, ยอดยกมา, รอบวันที่)</li>
-          <li>สร้าง candidate จาก account + amount</li>
-          <li>คำนวณ time difference และให้คะแนน</li>
-          <li>ถ้าบัญชี/Provider + ฝาก–ถอน + ยอดตรง และมีผู้สมัครเพียงคู่เดียว ระบบจับให้อัตโนมัติได้ถึง ${num(DB.settings.exactUniqueTolerance || 600)} วินาที</li>
-          <li>ถ้ามียอดซ้ำหลายรายการ ระบบไม่เดาคู่และยังส่งให้ Audit ตรวจ</li>
-          <li>ผ่าน threshold = matched, ไม่ผ่าน = exception</li>
-          <li>ส่ง exception เข้า workflow ชี้แจง</li>
-        </ol>
-      </div>
-    </section>`;
-
-  $("#mPrev").addEventListener("click", () => ((state.matchIndex = Math.max(0, state.matchIndex - 1)), render()));
-  $("#mNext").addEventListener("click", () => ((state.matchIndex = Math.min(list.length - 1, state.matchIndex + 1)), render()));
-  $("#mOpen").addEventListener("click", () => openException(e.id));
-  $("#tolSave").addEventListener("click", () => {
-      if (!ruleEditable) return deny("แก้ tolerance");
-    DB.settings.toleranceDeposit = +$("#tolD").value || 0;
-    DB.settings.toleranceWithdraw = +$("#tolW").value || 0;
-    DB.settings.diffAlert = +$("#tolA").value || 0;
-    Store.data.settings = { ...DB.settings };
-    Store.persist();
-    logAction("update", "settings", "tolerance", `ฝาก ${DB.settings.toleranceDeposit}s / ถอน ${DB.settings.toleranceWithdraw}s / diff ${DB.settings.diffAlert} บาท`);
-    toast("บันทึก tolerance แล้ว ระบบกำลังกระทบยอดใหม่ให้");
-    renormalizeAll();
-    scheduleAutoReconcile("เปลี่ยน tolerance");
-    render();
-  });
-};
-
-/* =============================================================
-   VIEW: Approvals
-   ============================================================= */
-VIEWS['audit-review'] = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  AuditReview.mount(root, {
-    get exceptions(){return DB.exceptions;}, get filters(){return state.filters;}, companies:companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany), canAccessCompany, h, money, caseLabel, openException, toast,
-    canReturn:e=>ClarificationReturn.eligible(e),returnCase:id=>{const e=DB.exceptions.find(x=>x.id===id);if(e)return ClarificationReturn.open(e).catch(err=>toast(err.message,'warn'));},
-    isActive:()=>state.route==='audit-review',
-    isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&liveOverviewState.key===`${state.filters.from}|${state.filters.to}|${state.filters.company}`),
-    loadMessage:()=>liveOverviewState.error||liveOverviewState.auxiliaryError||'กำลังโหลดคิวบริษัทที่เลือก ยังไม่สรุปว่าไม่มีเคส',
-    selectCompany:async company=>{if(company!=='ALL'&&!canAccessCompany(company))throw Error('ไม่มีสิทธิ์บริษัทนี้');state.filters.company=company;renderFilters();if(state.dataset==='production')await loadResponderQueue();},
-    openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
-    refresh: async () => { await loadLiveOverview(true); },
-  });
-  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
-};
-
-
-
-VIEWS.approvals = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  if(state.dataset==='production'&&!liveOverviewState.exceptionsReady){root.innerHTML='<section class="panel" role="status">กำลังโหลดคิวอนุมัติจริง… ยังไม่สรุปเป็นศูนย์</section>';return;}
-  const approvalCases = scopedExceptions();
-  const queue = approvalCases.filter((e) => !e.closureRequestId && e.status === 'damage');
-  root.innerHTML = `
-    <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(approvalCases.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
-    <section class="panel" id="pendingManualPairQueue"></section>
-    <section class="panel" id="pendingCrossDayQueue"></section>
-    <section class="panel" id="pendingDocumentClosureQueue"></section>
-    <section class="status-strip four">
-      <article><span>รอชี้แจง</span><strong>${num(approvalCases.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
-      <article class="warn"><span>Audit รอตรวจเอกสาร</span><strong>${num(AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length)}</strong><small><a href="#/audit-review">เปิดคิว Audit รอตรวจ →</a> · ยังไม่ใช่คำขอหัวหน้าปิด</small></article>
-      <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(approvalCases.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
-      <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(approvalCases.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Approval Queue</p><h2>รายการรอตรวจทานและอนุมัติ</h2></div>
-        <span class="health ${can("approve") ? "ok" : "attention"}">${can("approve") ? "คุณมีสิทธิ์อนุมัติ" : "บทบาทนี้อนุมัติไม่ได้"}</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>เคส</th><th>ประเภท</th><th class="right">ยอด Diff</th><th>ระดับ</th><th>หลักฐาน</th><th>สถานะ</th><th class="right">การทำงาน</th></tr></thead>
-          <tbody>
-            ${
-              queue
-                .slice(0, 20)
-                .map(
-                  (e) => `<tr>
-              <td><button class="link-btn" data-ex="${e.id}">${e.id}</button></td>
-              <td>${h(e.typeName)}</td>
-              <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
-              <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
-              <td>${e.clarificationFileId ? `<button class="ghost-button xs" data-review-evidence="${h(e.dbId||e.id)}">เปิดเอกสารที่เลือก</button>` : e.hasEvidence ? '<span class="badge green">มีหลักฐานแนบ</span>' : '<span class="badge red">ยังไม่มี</span>'}</td>
-              <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
-              <td class="right nowrap">
-                <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
-                <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'ปิดเคส'}</button>
-              </td>
-            </tr>`,
-                )
-                .join("") || `<tr><td colspan="7" class="empty">ไม่พบรายการรออนุมัติในข้อมูลที่โหลด — ยังไม่ใช่การยืนยันว่าไม่มีเคสค้างทั้งหมด</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </section>`;
-
-  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
-  root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
-  const approvalScope = {company:state.filters.company,from:state.filters.from,to:state.filters.to};
-  const draftKey=fastQueueDraftKey();
-  ManualPairing.mountQueue($('#pendingManualPairQueue'),null,approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
-  CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'),approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
-  CaseClosure.mountQueue($('#pendingDocumentClosureQueue'),{scope:approvalScope}).then(()=>restoreFastQueueDrafts(draftKey));
-  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
-  root.querySelectorAll("[data-approve]").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (!can("approve")) return deny("อนุมัติ");
-      const e=DB.exceptions.find(x=>x.id===b.dataset.approve);
-      if(!e)return toast('ไม่พบเคส กรุณาโหลดใหม่','warn');
-      if(e.manualPairId)return openApprovalReview(e.dbId,'pair').catch(err=>toast(err.message,'warn'));
-      if(e.closureRequestId)return openApprovalReview(e.dbId,'closure').catch(err=>toast(err.message,'warn'));
-      // Document review by a closer is one atomic close, not another pending queue.
-      CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
-    }),
-  );
-  root.querySelectorAll("[data-reject]").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (!can("approve")) return deny("ส่งกลับ");
-      const e = DB.exceptions.find((x) => x.id === b.dataset.reject);
-      if(e.status==='pair_pending') return openException(e.id);
-      e.status = "clarifying";
-      logAction("reject", "exception", e.id, "ส่งกลับให้ชี้แจงเพิ่ม");
-      saveOverride(e);
-      toast("ส่งกลับให้ชี้แจงเพิ่มแล้ว");
-      render();
-    }),
-  );
-};
-
-/* =============================================================
-   VIEW: Damage register
-   ============================================================= */
-/* ยอดความเสียหาย (บาท) */
-function dmgTHB(d) {
-  return d.amount;
-}
-function cycleQuoteLabel() {
-  return "";
-}
-
-const liveDamageState = {
-  rows: null,
-  evidence: null,
-  evidenceReady: false,
-  loading: false,
-  ready: false,
-  error: null,
-  key: "",
-  requestId: 0,
-  updatedAt: null,
-  category: "ALL",
-  shift: "ALL",
-  employee: "ALL",
-  collectionError: null,
-};
-
-function damageQueryKey() {
-  return `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
-}
-
-async function loadLiveDamage(force = false) {
-  const key = damageQueryKey();
-  if (liveDamageState.loading || (!force && liveDamageState.ready && liveDamageState.key === key)) return;
-  const changedFilter = liveDamageState.key !== key;
-  const requestId = ++liveDamageState.requestId;
-  liveDamageState.key = key;
-  liveDamageState.loading = true;
-  liveDamageState.ready = false;
-  liveDamageState.error = null;
-  if (changedFilter) {
-    liveDamageState.rows = null;
-    liveDamageState.evidence = null;
-    liveDamageState.evidenceReady = false;
-  }
-  if (state.route === "damage") render();
-  try {
-    const result = await Promise.allSettled([
-      Sb.damages({
-        from: state.filters.from,
-        to: state.filters.to,
-        company: state.filters.company,
-        limit: 5000,
-      }),
-      Sb.evidenceFiles({ from: state.filters.from, to: state.filters.to, limit: 2000 }),
-    ]);
-    if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
-    if (result[0].status === "rejected") throw result[0].reason;
-    liveDamageState.rows = (result[0].value || []).map(mapLiveDamage);
-    liveDamageState.collectionError = null;
-    try {
-      const ledger = await Sb.damageCollections(liveDamageState.rows.map(d=>d.dbId));
-      if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
-      for (const row of liveDamageState.rows) {
-        row.collectionReady=true;
-        const collection=ledger.collections.find(c=>c.damage_id===row.dbId);
-        row.receipts=ledger.receipts.filter(r=>r.damage_id===row.dbId);
-        if(collection) {
-          if(collection.company!==row.company || collection.category!==DamageSummary.classify(row.cause).category) throw new Error('บริษัทหรือประเภทเคสไม่ตรงยอดเรียกเก็บที่อนุมัติ ต้องตรวจสอบก่อน');
-          const paidCents=row.receipts.filter(r=>!r.voided_at).reduce((s,r)=>s+DamageSummary.cents(r.amount),0);
-          row.collection={...collection,paid_amount:(paidCents/100).toFixed(2)};
-          // Employee identity comes only from explicitly approved collection details.
-          if(collection.category==='employee') row.employeeCode=collection.party_code;
-        }
-      }
-    } catch(error) { liveDamageState.collectionError=error.message || 'โหลดสมุดยอดโอนคืนไม่สำเร็จ'; }
-    liveDamageState.evidence = result[1].status === "fulfilled" ? (result[1].value || []) : [];
-    liveDamageState.evidenceReady = result[1].status === "fulfilled";
-    liveDamageState.ready = true;
-    liveDamageState.updatedAt = new Date();
-    DB.damages = liveDamageState.rows.slice();
-  } catch (error) {
-    if (requestId !== liveDamageState.requestId) return;
-    liveDamageState.rows = null;
-    liveDamageState.error = error.message || "โหลดทะเบียนความเสียหายไม่สำเร็จ";
-  } finally {
-    if (requestId === liveDamageState.requestId) {
-      liveDamageState.loading = false;
-      if (state.route === "damage") render();
-    }
-  }
-}
-
-async function openDamageCollection(row) {
-  if (!can('close_case') || !Sb.signedIn()) return deny('อนุมัติยอดเรียกเก็บ');
-  if (!row.collectionReady || liveDamageState.collectionError) return toast('โหลดสมุดยอดโอนคืนให้ครบก่อน','warn');
-  const category=DamageSummary.classify(row.cause).category;
-  if (!['employee','backoffice','pm','game','external'].includes(category)) return toast('ประเภทเดิมยังไม่ชัดเจน ไม่เรียกเก็บอัตโนมัติ','warn');
-  const collection=row.collection;
-  if (!collection) {
-    openModal('อนุมัติผู้รับผิดชอบและยอดเรียกเก็บ', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(DamageSummary.categories[category])} · เสียหายเดิม ${money(row.amount)} บาท</p>
-      <p class="hint">ยืนยันจากหลักฐาน ไม่ใช้ชื่อผู้ตรวจหรือผู้ส่งเมลแทนผู้รับผิดชอบ หลังอนุมัติจะไม่เขียนทับตัวคนเดิม</p>
-      <label>รหัสพนักงาน / รหัสผู้รับผิดชอบ<input id="collectionPartyCode" maxlength="100" placeholder="รหัสประจำตัวที่ตรวจสอบแล้ว ไม่ใช้ชื่ออย่างเดียว"></label>
-      <label>ชื่อผู้รับผิดชอบ<input id="collectionPartyName" maxlength="200" value="${h(category==='employee'?row.employee:'')}" ${category==='employee'?'readonly':''}></label>
-      <label>กะ ณ วันเกิดเหตุ<input id="collectionShift" maxlength="32" value="${h(row.shift==='-'?'':row.shift)}" ${category==='employee'?'readonly':''}></label>
-      <label>ยอดอนุมัติให้เรียกเก็บ (บาท)<input id="collectionApproved" type="number" min="0" max="${h(row.amount)}" step="0.01"></label>
-      <label>เหตุผลและหลักฐานยืนยันตัวตน / ยอด<textarea id="collectionReason"></textarea></label>
-      <label><input type="checkbox" id="collectionIdentityChecked">ตรวจบริษัท รหัส ชื่อ กะ และยอดจากหลักฐานแล้ว เป็นผู้รับผิดชอบที่ถูกต้อง</label>`, '<button class="ghost-button" id="collectionCancel">ยกเลิก</button><button class="primary-button" id="collectionSave">อนุมัติยอดเรียกเก็บ</button>');
-    $('#collectionCancel').addEventListener('click',closeModal);
-    $('#collectionSave').addEventListener('click',async event=>{
-      if(!$('#collectionIdentityChecked').checked) return toast('ต้องตรวจและยืนยันตัวตนก่อน','warn');
-      const amount=DamageSummary.cents($('#collectionApproved').value);
-      if(amount===null || amount>DamageSummary.cents(row.amount)) return toast('ยอดเรียกเก็บไม่ถูกต้อง','warn');
-      const body={p_damage_id:row.dbId,p_party_code:$('#collectionPartyCode').value.trim(),p_party_name:$('#collectionPartyName').value.trim(),p_shift:$('#collectionShift').value.trim(),p_amount:amount/100,p_reason:$('#collectionReason').value.trim()};
-      if(!body.p_party_code || !body.p_party_name || body.p_reason.length<10 || (category==='employee' && (!body.p_shift || body.p_party_name==='ไม่ระบุ'))) return toast('รหัส ชื่อ กะ และเหตุผลต้องครบ ห้ามเดาตัวคน','warn');
-      event.currentTarget.disabled=true;
-      try { await Sb.approveDamageCollection(body); closeModal(); await loadLiveDamage(true); toast('อนุมัติยอดเรียกเก็บแล้ว ยังไม่มีการรับโอนคืน'); }
-      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันการอนุมัติไม่ได้ กรุณาตรวจทะเบียนก่อนลองใหม่: '+error.message,'warn'); }
-    });
-    return;
-  }
-  let files;
-  try { files=(await Sb.evidenceFiles({from:row.date,company:row.company,limit:2000})).filter(f=>f.company===row.company && f.storage_path && !f.is_archived); }
-  catch(error) { return toast('ยังโหลดหลักฐานโอนคืนไม่ได้: '+error.message,'warn'); }
-  const totals=DamageSummary.collectionTotals(row), requestId=crypto.randomUUID();
-  openModal('ตรวจยอดโอนคืน — ไม่ใช่คำสั่งโอนเงิน', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(collection.party_name)} · รหัส ${h(collection.party_code)} · กะ ${h(collection.shift || 'ไม่เกี่ยวกับกะ')}</p>
-    <p>อนุมัติ ${money(totals.approved)} · รับคืนแล้ว ${money(totals.paid)} · คงเหลือ ${money(totals.net)} บาท</p>
-    <p class="hint">เลือกเฉพาะสลิปหรือเอกสารที่ตรวจว่ารับเงินจริงแล้วของรายการนี้ รหัสโอนและไฟล์หลักฐานหนึ่งรายการหักได้ครั้งเดียว หากโอนรวมหลายเคสให้ส่งตรวจจัดสรร ไม่บันทึกซ้ำ</p>
-    <label>วันที่โอนคืน<input id="receiptDate" type="date" min="${h(row.date)}"></label>
-    <label>ยอดโอนคืนที่ยืนยัน (บาท)<input id="receiptAmount" type="number" min="0.01" max="${h(totals.net)}" step="0.01"></label>
-    <label>เลขอ้างอิงการโอนจากธนาคาร<input id="receiptReference" maxlength="200"></label>
-    <label>หลักฐานในระบบบริษัทเดียวกัน<select id="receiptEvidence"><option value="">เลือกไฟล์หลักฐานโอนคืน</option>${files.map(f=>`<option value="${h(f.id)}">${h(f.file_name)}</option>`).join('')}</select></label>
-    <button class="ghost-button sm" id="receiptPreview">เปิดหลักฐานโอนคืนในหน้าต่างใหม่</button>
-    <label>ผลตรวจหลักฐานและผู้ชำระ<textarea id="receiptNote"></textarea></label>
-    <label><input id="receiptChecked" type="checkbox">ตรวจว่ารับเงินจริงแล้ว และตรงบริษัท / ผู้รับผิดชอบ / เคสนี้ ไม่ใช่ยอดที่คาดว่าจะโอน</label>
-    <h3>ประวัติการรับคืน</h3>${(row.receipts || []).map(r=>`<p>${h(displayTime(r.paid_at))} · ${money(r.amount)} · ${h(r.transfer_reference)} · ${r.voided_at?'ยกเลิกแล้ว: '+h(r.void_reason):`ยืนยันแล้ว <button class="ghost-button sm" data-void-receipt="${h(r.id)}">ยกเลิกบันทึกผิด</button>`}</p>`).join('') || '<p>ยังไม่มีรายการโอนคืน</p>'}`, '<button class="ghost-button" id="receiptCancel">ยกเลิก</button><button class="primary-button" id="receiptSave">ยืนยันรับโอนคืนตามหลักฐาน</button>');
-  $('#receiptCancel').addEventListener('click',closeModal);
-  $('#receiptEvidence').addEventListener('change',()=>{ $('#receiptChecked').checked=false; });
-  $('#receiptPreview').addEventListener('click',async()=>{
-    const file=files.find(f=>f.id===$('#receiptEvidence').value);
-    if(!file) return toast('เลือกหลักฐานก่อน','warn');
-    const preview=window.open('about:blank','_blank');
-    if(preview) preview.opener=null;
-    try { const url=await Sb.signedUrl(file.storage_path); if(preview) preview.location.href=url; else toast('เบราว์เซอร์บล็อกหน้าต่าง กรุณาเปิดไฟล์จากกล่องหลักฐาน','warn'); }
-    catch(error) { if(preview) preview.close(); toast('เปิดหลักฐานไม่ได้: '+error.message,'warn'); }
-  });
-  document.querySelectorAll('[data-void-receipt]').forEach(button=>button.addEventListener('click',()=>{
-    const receiptId=button.dataset.voidReceipt;
-    openModal('ยกเลิกบันทึกโอนคืนผิด — เก็บประวัติเดิม', '<label>เหตุผลและหลักฐานที่ตรวจว่าบันทึกผิด<textarea id="receiptVoidReason"></textarea></label>', '<button class="ghost-button" id="receiptVoidCancel">ยกเลิก</button><button class="primary-button" id="receiptVoidSave">ยืนยันยกเลิกรายการ</button>');
-    $('#receiptVoidCancel').addEventListener('click',closeModal);
-    $('#receiptVoidSave').addEventListener('click',async event=>{
-      const reason=$('#receiptVoidReason').value.trim();
-      if(reason.length<10) return toast('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');
-      event.currentTarget.disabled=true;
-      try { await Sb.voidDamageReceipt(receiptId,reason); closeModal(); await loadLiveDamage(true); toast('ยกเลิกบันทึกผิดและเก็บประวัติแล้ว'); }
-      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันผลไม่ได้: '+error.message,'warn'); }
-    });
-  }));
-  $('#receiptSave').addEventListener('click',async event=>{
-    const amount=DamageSummary.cents($('#receiptAmount').value);
-    if(!$('#receiptChecked').checked || amount===null || amount<=0 || amount>DamageSummary.cents(totals.net)) return toast('ตรวจหลักฐานและระบุยอดไม่เกินคงเหลือ','warn');
-    const body={p_id:requestId,p_damage_id:row.dbId,p_paid_at:$('#receiptDate').value,p_amount:amount/100,p_reference:$('#receiptReference').value.trim(),p_source_file_id:$('#receiptEvidence').value,p_note:$('#receiptNote').value.trim()};
-    if(!body.p_paid_at || !body.p_reference || !body.p_source_file_id || body.p_note.length<10) return toast('วันที่ รหัสโอน หลักฐาน และเหตุผลต้องครบ','warn');
-    event.currentTarget.disabled=true;
-    try { await Sb.confirmDamageReceipt(body); closeModal(); await loadLiveDamage(true); toast('ยืนยันยอดโอนคืนแล้ว ไม่เปลี่ยนยอดเสียหายเดิม'); }
-    catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันยอดโอนไม่ได้ ตรวจทะเบียนก่อนบันทึกซ้ำ: '+error.message,'warn'); }
-  });
-}
-
-function renderLiveDamage(root) {
-  const key = damageQueryKey();
-  const stale = liveDamageState.key !== key;
-  if ((stale || !liveDamageState.ready) && !liveDamageState.loading && (!liveDamageState.error || stale)) loadLiveDamage(stale);
-  if (liveDamageState.loading && (stale || !liveDamageState.rows)) {
-    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังโหลดทะเบียนความเสียหายจริง</h2><p class="hint">อ่านเฉพาะข้อมูลที่ยืนยันเป็นความเสียหายแล้วจาก Supabase...</p></div></section>`;
-    return;
-  }
-  if (liveDamageState.error && !liveDamageState.rows) {
-    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดทะเบียนความเสียหายไม่สำเร็จ</strong><span>${h(liveDamageState.error)}</span><button class="ghost-button sm" id="damageRetry">ลองใหม่</button></div></section>`;
-    $("#damageRetry")?.addEventListener("click", () => loadLiveDamage(true));
-    return;
-  }
-  const scopedRows = (liveDamageState.rows || []).filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
-  const categoryRows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
-  const shiftRows = categoryRows.filter(d => !liveDamageState.shift || liveDamageState.shift === 'ALL' || DamageSummary.shiftLabel(d) === liveDamageState.shift);
-  const rows = shiftRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeKey(d) === liveDamageState.employee);
-  const classifiedSummary = DamageSummary.summarize(rows);
-  const drillTable = (records, field, title) => {
-    const summary = DamageSummary.groupBy(records, field);
-    return `<section class="panel damage-drill"><h2>${title}</h2><p class="hint">กดยอดรวมเพื่อดูจำนวนครั้ง วัน เวลา และหลักฐาน · ชื่อซ้ำแยกตามบริษัท รหัส และกะ · ไม่ทราบรหัสจะแยกไว้รายเคส ไม่รวมเป็นคนเดียวกัน</p><div class="table-wrap"><table><thead><tr><th>${field==='shift'?'กะ / รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส'}</th><th>จำนวนครั้ง</th><th>ยอดเสียหายเดิม</th>${Object.entries(DamageSummary.categories).filter(([key])=>!['system','unclassified'].includes(key)).map(([,label])=>`<th class="right">${h(label)}สุทธิคงเหลือ</th>`).join('')}<th>รับโอนคืนแล้ว</th><th>รอยืนยันยอดเรียกเก็บ</th></tr></thead><tbody>${summary.map(g=>`<tr><td>${h(g.label)}</td><td>${num(g.groups.reduce((s,c)=>s+c.count,0))}</td><td class="right"><button class="link-btn tnum" data-damage-drill="${field}" data-damage-value="${h(g.key)}">${money(g.total)}</button></td>${g.netGroups.filter(c=>!['system','unclassified'].includes(c.category)).map(c=>`<td class="right tnum">${liveDamageState.collectionError?'—':money(c.net)}${c.pending?`<small class="sub">รอยืนยัน ${num(c.pending)} เคส</small>`:''}</td>`).join('')}<td>${liveDamageState.collectionError?'—':money(g.netGroups.reduce((s,c)=>s+c.paid,0))}</td><td>${num(g.netGroups.reduce((s,c)=>s+c.pending,0))} เคส</td></tr>`).join('') || `<tr><td colspan="10" class="empty">ไม่มีรายการที่ยืนยันแล้ว</td></tr>`}</tbody></table></div></section>`;
-  };
-  const evidenceRows = (liveDamageState.evidence || []).filter((file) => {
-    const company = normalizeLiveCompanyCode(file.company || file.batch_company);
-    return file.business_date && inRange(file.business_date) && canAccessCompany(company) && (state.filters.company === "ALL" || company === state.filters.company);
-  });
-  const total = classifiedSummary.total;
-  const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
-  const open = rows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
-  const loadedAt = liveDamageState.updatedAt ? displayTime(liveDamageState.updatedAt) : "-";
-  root.innerHTML = `
-    <section class="panel damage-period"><div><h2>สรุปความเสียหายรายเดือน</h2><p class="hint">บริษัทตามตัวกรองด้านบน · ช่วงที่ใช้อยู่ ${h(rangeLabel())} · กันยายน 2569 แสดงตั้งแต่ 15/09 ตามขอบเขตระบบ</p></div><label>เลือกเดือน<input type="month" id="damageMonth" min="2026-09" value="${h(state.filters.from.slice(0,7))}"></label><button class="primary-button sm" id="damageMonthApply">แสดงทั้งเดือน</button><button class="ghost-button sm" id="damageDrillReset">ล้างตัวกรองรายละเอียด</button></section>
-    <section class="damage-definition panel">
-      <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)}</p></div>
-      <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
-    </section>
-    ${liveDamageState.collectionError ? `<div class="alert bad">ยังยืนยันยอดสุทธิไม่ได้: ${h(liveDamageState.collectionError)} · ไม่แสดงเป็นศูนย์และไม่อนุญาตบันทึกเพิ่มจนกว่าจะโหลดสมุดยอดสำเร็จ</div>` : ''}
-    <div class="alert">ยอดสุทธิคงเหลือ = ยอดอนุมัติเรียกเก็บ − ยอดโอนคืนที่ตรวจหลักฐานแล้ว · ยึดเดือนที่เกิดเหตุ แม้โอนคืนในเดือนถัดไป · รายการที่ยังไม่อนุมัติไม่ถือว่ายอดเรียกเก็บเป็นศูนย์</div>
-    ${classifiedSummary.issues.length ? `<div class="alert bad">พบ ${num(classifiedSummary.issues.length)} รายการรหัสหรือยอดไม่ถูกต้อง ยอดรวมด้านล่างยังไม่ครบ</div>` : ''}
-    ${scopedRows.length >= 5000 ? '<div class="alert warn">ถึงขีดจำกัด 5,000 รายการ กรุณาลดช่วงวันที่ก่อนสรุปหรือ Export</div>' : ''}
-    <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · กะ ${h(!liveDamageState.shift || liveDamageState.shift==='ALL' ? 'ทุกกะ' : liveDamageState.shift)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
-    ${drillTable(categoryRows, 'shift', 'ยอดรวมแยกกะ / รหัสทีม')}
-    ${drillTable(shiftRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
-    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แยกผู้รับผิดชอบเรียกเก็บจากผู้เกี่ยวข้อง · ผู้มีสิทธิ์ต้องตรวจหลักฐานก่อนอนุมัติ · ไม่หักยอดข้ามคนหรือข้ามเคส</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${rows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายที่ยืนยันแล้ว</td></tr>'}</tbody></table></div></section>
-    <section class="status-strip four">
-      <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
-      <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
-      <article class="${open ? "warn" : "ok"}"><span>ยังไม่ปิดทางการเงิน</span><strong>${num(open)}</strong><small>ตรวจจากสถานะจริง</small></article>
-      <article class="${evidenceRows.length ? "warn" : "ok"}"><span>หลักฐานรอตรวจ</span><strong>${liveDamageState.evidenceReady ? num(evidenceRows.length) : "—"}</strong><small>${liveDamageState.evidenceReady ? "ยังไม่ใช่ความเสียหายจนกว่าจะยืนยัน" : "โหลดรายการหลักฐานไม่สำเร็จ"}</small></article>
-    </section>
-    <section class="grid-2">
-      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany">${rows.length ? "" : '<div class="empty-box">ยังไม่มีข้อมูลสำหรับสร้างกราฟ</div>'}</div></div>
-      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">สาเหตุ</p><h2>รายการที่พบ</h2></div></div><div class="exception-summary">${Object.entries(rows.reduce((acc, row) => { const detail=DamageSummary.classify(row.cause).detail; acc[detail]=(acc[detail]||0)+1; return acc; }, {})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([cause,count])=>`<div><span>${h(cause)}</span><b>${num(count)}</b></div>`).join("") || `<p class="empty">ยังไม่มีรายการความเสียหายในช่วงนี้</p>`}</div></div>
-    </section>
-    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Evidence inbox</p><h2>หลักฐานที่ได้รับและรอผู้ตรวจยืนยัน</h2><small class="head-sub">รายการนี้แสดงว่าได้รับไฟล์แล้ว แต่ยังไม่ถือเป็นความเสียหายจนกว่าจะผูกกับเคสและผู้ตรวจยืนยัน</small></div><button class="ghost-button sm" id="damageGoClarify">เปิดหน้าติดตามเคส</button></div>
-      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>บริษัท</th><th>ไฟล์หลักฐาน</th><th>หัวข้อเมล</th><th>สถานะ</th></tr></thead><tbody>${evidenceRows.map((file) => {
-        const company = normalizeLiveCompanyCode(file.company || file.batch_company) || "ไม่ระบุ";
-        return `<tr><td>${h(file.business_date)}</td><td><b>${h(company)}</b></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="doc_clarify" data-file-company="${h(company)}" data-file-date="${h(file.business_date)}" data-file-status="evidence" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่างหลักฐาน</small></button></td><td>${h(file.subject || "-")}<small class="sub">${h(file.sender || "-")}</small></td><td><span class="badge amber">รอผูกและยืนยันเคส</span></td></tr>`;
-      }).join("") || `<tr><td colspan="5" class="empty">${liveDamageState.evidenceReady ? "ยังไม่มีไฟล์หลักฐานในช่วงนี้" : "ยังโหลดรายการไฟล์หลักฐานไม่สำเร็จ — กดรีเฟรชเพื่อลองใหม่"}</td></tr>`}</tbody></table></div>
-    </section>
-    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนความเสียหายจริง</h2></div><span class="health ok">ข้อมูลจริง</span></div>
-      <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
-      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="8"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้ตามตัวกรอง</strong><span>ลองล้างตัวกรอง หรือเปิดเคส ตรวจหลักฐาน แล้วเลือก “บันทึกเป็นความเสียหาย”</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
-    </section>`;
-  if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
-  $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
-  root.querySelectorAll('[data-damage-collection]').forEach(button=>button.addEventListener('click',()=>openDamageCollection(rows.find(d=>d.dbId===button.dataset.damageCollection))));
-  $("#damageMonthApply")?.addEventListener('click', () => {
-    try { const range=DamageSummary.monthRange($("#damageMonth").value); Object.assign(state.filters,range); liveDamageState.shift=liveDamageState.employee=liveDamageState.category='ALL'; render(); }
-    catch(error) { toast(error.message,'warn'); }
-  });
-  $("#damageDrillReset")?.addEventListener('click', () => { liveDamageState.shift=liveDamageState.employee=liveDamageState.category='ALL'; renderLiveDamage(root); });
-  root.querySelectorAll('[data-damage-drill]').forEach(button => button.addEventListener('click', () => {
-    liveDamageState[button.dataset.damageDrill]=button.dataset.damageValue;
-    if(button.dataset.damageDrill==='shift') liveDamageState.employee='ALL';
-    if(button.dataset.damageDrill==='category') liveDamageState.shift=liveDamageState.employee='ALL';
-    renderLiveDamage(root);
-  }));
-  $("#damageCategoryFilter")?.addEventListener('change', event => { liveDamageState.category=event.target.value; liveDamageState.shift=liveDamageState.employee='ALL'; renderLiveDamage(root); });
-  $("#damageExportLive")?.addEventListener('click', () => {
-    if (classifiedSummary.issues.length || liveDamageState.collectionError || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
-    exportSheets('confirmed-damages', [
-      {name:'สรุปประเภท',headers:['ประเภท','จำนวน','ยอดที่บันทึก (บาท)'],widths:[38,14,24],rows:classifiedSummary.groups.map(g=>[g.label,g.count,g.amount])},
-      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ / รหัสทีม'],widths:[16,14,42,42,30,18,24,60,14,24,16,24,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d)];})},
-      ...['shift','employee'].map(field=>({name:field==='shift'?'สรุปกะ':'สรุปพนักงาน',headers:[field==='shift'?'กะ / รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส',...Object.values(DamageSummary.categories),'เสียหายเดิมรวม',...Object.values(DamageSummary.categories).map(c=>c+'สุทธิคงเหลือ'),'โอนคืนแล้ว','รอยืนยัน (เคส)'],widths:[48,...Array(17).fill(24)],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total,...g.netGroups.map(c=>c.pending?`รอยืนยัน ${c.pending} เคส; คงเหลือยืนยันแล้ว ${c.net}`:c.net),g.netGroups.reduce((s,c)=>s+c.paid,0),g.netGroups.reduce((s,c)=>s+c.pending,0)])})),
-      {name:'เรียกเก็บรายเคส',headers:['เคส','บริษัท','ประเภท','ผู้รับผิดชอบ','รหัส','กะ','อนุมัติเรียกเก็บ','โอนคืนแล้ว','สุทธิคงเหลือ'],widths:[42,14,30,30,24,18,24,24,24],rows:rows.map(d=>{const t=DamageSummary.collectionTotals(d);return[d.id,d.company,DamageSummary.categories[DamageSummary.classify(d.cause).category],d.collection?.party_name || 'รอยืนยัน',d.collection?.party_code || '',d.collection?.shift || '',...['approved','paid','net'].map(k=>t[k]??'รอยืนยัน')];})},
-      {name:'ประวัติโอนคืน',headers:['เคส','บริษัท','วันที่โอน','ยอด','รหัสโอน','ไฟล์หลักฐาน ID','สถานะ','เหตุผลยกเลิก'],widths:[42,14,16,24,42,42,20,60],rows:rows.flatMap(d=>(d.receipts || []).map(r=>[d.id,d.company,r.paid_at,Number(r.amount),r.transfer_reference,r.source_file_id,r.voided_at?'ยกเลิกแล้ว':'ยืนยันแล้ว',r.void_reason || '']))}
-    ]);
-  });
-  $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));
-  $("#damageGoClarify")?.addEventListener("click", () => go("clarify"));
-  bindStoredFileLinks(root);
-  root.querySelectorAll("[data-damage-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.damageEx)));
-}
-
-VIEWS.damage = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveDamage(root);
-    return;
-  }
-  const sum = (arr) => arr.reduce((a, c) => a + dmgTHB(c), 0);
-  const byCycle = DB.damageCycles.map((c) => ({ ...c, records: DB.damages.filter((d) => d.cycle === c.code && inRange(d.date)) }));
-  const cycle = DB.damageCycles.find((c) => c.code === state.damageCycle) || DB.damageCycles[0];
-  const rows = DB.damages.filter((d) => d.cycle === cycle.code && inRange(d.date));
-  const byShift = DB.shifts.map((s) => ({ label: s.name, value: sum(rows.filter((d) => d.shift === s.code)) }));
-  const byEmp = Object.entries(
-    rows.reduce((a, d) => {
-      a[d.employee] = (a[d.employee] || 0) + dmgTHB(d);
-      return a;
-    }, {}),
-  )
-    .map(([k, v]) => ({ label: k, value: v }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  root.innerHTML = `
-    <section class="cycle-cards">
-      ${byCycle
-        .map(
-          (c) => `<article class="panel cycle ${c.status} ${c.code === cycle.code ? "selected" : ""}" data-cycle="${c.code}">
-        <p class="eyebrow">${c.status === "open" ? "รอบที่เปิดอยู่" : "ปิดรอบแล้ว"}</p>
-        <h2>${h(c.name)}</h2>
-        <strong>${money0(sum(c.records))} บาท</strong>
-        <small>${cycleQuoteLabel(c.records)}${c.records.length} เคส · ให้เวลาแนบหลักฐาน ${DB.settings.slaEvidenceDays} วัน</small>
-        ${
-          c.status === "open"
-            ? `<button class="primary-button sm" data-close-cycle="${c.code}">ปิดรอบและส่งการเงิน/บุคคล</button>`
-            : `<span class="lock-tag">🔒 ล็อกแล้ว แก้ย้อนหลังต้องมีเหตุผลและ approval ใหม่</span>`
-        }
-      </article>`,
-        )
-        .join("")}
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">ตามกะ</p><h2>ยอดความเสียหายแยกกะ</h2></div></div>
-        <div class="chart" id="chDmgShift"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">ตามพนักงาน</p><h2>ผู้ที่เกิดเคสซ้ำ</h2></div></div>
-        <div class="chart" id="chDmgEmp"></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Damage Register</p><h2>รายการความเสียหาย ${h(cycle.name)}</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}</small></div>
-        <div class="inline-actions">
-          <select id="dmgCycle" aria-label="เลือกรอบชี้แจง">
-            ${DB.damageCycles.map((c) => `<option value="${c.code}" ${c.code === cycle.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
-          </select>
-          <button class="ghost-button sm" id="dmgExport">Export ส่งการเงิน</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
-          <tbody>
-            ${rows
-              .map(
-                (d) => `<tr>
-              <td><b>${d.id}</b></td>
-              <td>${d.exceptionId === "-" ? '<span class="muted">-</span>' : `<button class="link-btn" data-ex="${d.exceptionId}">${d.exceptionId}</button>`}</td>
-              <td>${h(DB.companies.find((c) => c.code === d.company)?.name || d.company)}</td>
-              <td>${h(d.employee)}</td>
-              <td>${h(DB.shifts.find((s) => s.code === d.shift).name)}</td>
-              <td class="right tnum">${money(dmgTHB(d))}</td>
-              <td>${h(d.cause)}</td>
-              <td>${d.evidence ? '<span class="badge green">ครบ</span>' : '<span class="badge amber">รอ</span>'}</td>
-              <td>${h(d.hrStatus)}</td>
-            </tr>`,
-              )
-              .join("")}
-          </tbody>
-          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td colspan="3"></td></tr></tfoot>
-        </table>
-      </div>
-    </section>`;
-
-  Charts.draw("#chDmgShift", "bars", { label: "ความเสียหายตามกะ", items: byShift, color: "#d03b3b", money: true, metric: "ยอด (บาท)", height: 220 });
-  Charts.draw("#chDmgEmp", "hbars", { label: "ความเสียหายตามพนักงาน", items: byEmp, color: Charts.PALETTE.s2, money: true, metric: "ยอด (บาท)" });
-
-  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
-  root.querySelectorAll("[data-cycle]").forEach((c) =>
-    c.addEventListener("click", (evt) => {
-      if (evt.target.closest("button")) return;
-      state.damageCycle = c.dataset.cycle;
-      render();
-    }),
-  );
-  root.querySelectorAll("[data-close-cycle]").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (!can("close_cycle")) return deny("ปิดรอบความเสียหาย");
-      const c = DB.damageCycles.find((x) => x.code === b.dataset.closeCycle);
-      const noEvidence = DB.damages.filter((d) => d.cycle === c.code && !d.evidence).length;
-      if (noEvidence) return toast(`ยังมี ${noEvidence} เคสไม่มีหลักฐาน ปิดรอบไม่ได้`, "warn");
-      c.status = "locked";
-      logAction("close_cycle", "damage_cycle", c.code, "ปิดรอบและส่งสรุปให้การเงิน/บุคคล");
-      toast("ปิดรอบ " + c.name + " และล็อกข้อมูลแล้ว");
-      render();
-    }),
-  );
-  $("#dmgCycle").addEventListener("click", (e) => e.stopPropagation());
-  $("#dmgCycle").addEventListener("change", (e) => {
-    state.damageCycle = e.target.value;
-    render();
-  });
-  $("#dmgExport").addEventListener("click", () =>
-    exportSheets("ความเสียหาย_" + cycle.code, [
-      {
-        name: "ความเสียหาย " + cycle.code,
-        title: "ทะเบียนความเสียหาย " + cycle.name,
-        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "บริษัท", "พนักงาน", "กะ", "ยอดเสียหาย", "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
-        widths: [14, 12, 12, 14, 17, 10, 14, 32, 10, 16, 16],
-        rows: rows.map((d) => [d.id, d.exceptionId, d.date, (DB.companies.find((c) => c.code === d.company) || {}).name || d.company, d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift, d.amount, d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus]),
-      },
-    ]),
-  );
-};
-
-function pmProviderOf(value) {
-  const text = String(value || "").toUpperCase();
-  if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/.test(text)) return "ANT";
-  if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
-  if (/AZPAY/.test(text)) return "AZPAY";
-  if (/COREPAY|CP[ _-]?PAY/.test(text)) return "COREPAY";
-  if (/CPXM/.test(text)) return "COREPAY";
-  if (/CYBERPLUS|CYNERPLUS|\bCBY\b/.test(text)) return "CYBERPLUS";
-  if (/MYPAY/.test(text)) return "MYPAY";
-  if (/12PAY/.test(text)) return "12PAY";
-  return null;
-}
-
-/* =============================================================
-   VIEW: KPI
-   ============================================================= */
-function renderLiveKpi(root) {
-  if (!ensureLiveOverview(root)) return;
-  const ex = scopedExceptions();
-  const byCompany = companyMaster().map((company) => ({ label: company.code, value: ex.filter((e) => e.company === company.code).length })).filter((item) => item.value);
-  const byDirection = ["PM", "ฝาก", "ถอน"].map((direction) => ({ label: direction, value: ex.filter((e) => e.direction === direction).length }));
-  const employeeNames = [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))];
-  const employees = employeeNames.map((employee) => {
-    const rows = ex.filter((e) => (e.employee || "ไม่ระบุ") === employee);
-    return { employee, rows, critical: rows.filter((e) => e.severity === "critical").length, sla: rows.filter((e) => e.overSla).length, amount: sumRisk(rows) };
-  }).sort((a,b)=>b.rows.length-a.rows.length);
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article><span>เคสที่ระบบตรวจพบ</span><strong>${num(ex.length)}</strong><small>${h(rangeLabel())}</small></article>
-      <article class="bad"><span>Critical</span><strong>${num(ex.filter((e)=>e.severity==="critical").length)}</strong><small>ต้องตรวจเร่งด่วน</small></article>
-      <article class="warn"><span>เกิน SLA</span><strong>${num(ex.filter((e)=>e.overSla).length)}</strong><small>คำนวณจาก created_at จริง</small></article>
-      <article><span>ยอดเสี่ยงรวม</span><strong>${money0(sumRisk(ex))}</strong><small>บาท</small></article>
-    </section>
-    <section class="grid-2">
-      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">บริษัท</p><h2>Exception ตามบริษัท</h2></div></div><div class="chart" id="liveKpiCompany"></div></div>
-      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ประเภท</p><h2>PM / ฝาก / ถอน</h2></div></div><div class="chart" id="liveKpiDirection"></div></div>
-    </section>
-    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">ผู้เกี่ยวข้องจากข้อมูลจริง</p><h2>สรุปตาม employee ใน Exception</h2></div></div>
-      <div class="table-wrap"><table><thead><tr><th>ผู้เกี่ยวข้อง</th><th class="right">เคส</th><th class="right">Critical</th><th class="right">เกิน SLA</th><th class="right">ยอดเสี่ยง</th></tr></thead>
-      <tbody>${employees.slice(0,100).map((row)=>`<tr><td>${h(row.employee)}</td><td class="right tnum">${num(row.rows.length)}</td><td class="right tnum">${num(row.critical)}</td><td class="right tnum">${num(row.sla)}</td><td class="right tnum">${money(row.amount)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">ยังไม่มี Exception ในช่วงนี้</td></tr>`}</tbody></table></div>
-      <p class="hint">ตารางนี้ใช้ค่าที่อยู่ในฟิลด์ employee ของข้อมูลจริงเท่านั้น ไม่มีรายชื่อพนักงานตัวอย่าง</p>
-    </section>`;
-  Charts.draw("#liveKpiCompany", "hbars", { label: "Exception ตามบริษัท", items: byCompany, color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
-  Charts.draw("#liveKpiDirection", "bars", { label: "Exception ตามประเภท", items: byDirection, color: Charts.PALETTE.s3, metric: "จำนวนเคส", height: 230 });
-}
-
-VIEWS.kpi = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveKpi(root);
-    return;
-  }
-  const ex = scopedExceptions();
-  const byShift = DB.shifts.map((s) => ({
-    label: `${s.name}\n${s.range}`,
-    value: ex.filter((e) => e.shift === s.code).length,
-    code: s.code,
-  }));
-  const byEmp = Object.entries(
-    ex.reduce((a, e) => {
-      a[e.employee] = (a[e.employee] || 0) + 1;
-      return a;
-    }, {}),
-  )
-    .map(([k, v]) => ({ label: k, value: v }))
-    .sort((a, b) => b.value - a.value);
-  const byCompany = companyMaster().map((c) => ({ label: c.name, value: ex.filter((e) => e.company === c.code).length })).filter((x) => x.value);
-
-  root.innerHTML = `
-    <section class="grid-3">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Shift</p><h2>เคสตามกะ</h2></div></div>
-        <div class="chart" id="kShift"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Employee</p><h2>พนักงานที่เกิดเคสมากที่สุด</h2></div></div>
-        <div class="chart" id="kEmp"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Company</p><h2>เคสตามบริษัท</h2></div></div>
-        <div class="chart" id="kCompany"></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">KPI Table</p><h2>สรุปรายพนักงาน</h2></div>
-        <button class="ghost-button sm" id="kpiExport">Export CSV</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>พนักงาน</th><th>กะ</th><th class="right">เคสทั้งหมด</th><th class="right">Critical</th><th class="right">เกิน SLA</th><th class="right">ยอด diff รวม</th><th>ระดับความเสี่ยง</th></tr></thead>
-          <tbody>
-            ${DB.employees
-              .map((emp) => {
-                const rows = ex.filter((e) => e.employee === emp.username);
-                const crit = rows.filter((e) => e.severity === "critical").length;
-                const sla = rows.filter((e) => e.overSla).length;
-                const amt = sumRisk(rows);
-                const risk = crit >= 4 || sla >= 5 ? "สูง" : crit >= 2 ? "กลาง" : "ต่ำ";
-                const tone = risk === "สูง" ? "red" : risk === "กลาง" ? "amber" : "green";
-                return `<tr><td>${h(emp.username)}</td><td>${h(DB.shifts.find((s) => s.code === emp.shift).name)}</td>
-                  <td class="right tnum">${rows.length}</td><td class="right tnum">${crit}</td>
-                  <td class="right tnum ${sla ? "danger" : ""}">${sla}</td><td class="right tnum">${money0(amt)}</td>
-                  <td><span class="badge ${tone}">${risk}</span></td></tr>`;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-      <p class="chart-note">KPI นี้ใช้ประกอบการหาสาเหตุเชิงกระบวนการ ไม่ควรใช้ตัดสินลงโทษโดยไม่ผ่านการอนุมัติและตรวจหลักฐานตามรอบชี้แจง</p>
-    </section>`;
-
-  Charts.draw("#kShift", "bars", { label: "เคสตามกะ", items: byShift, color: Charts.PALETTE.s4, metric: "จำนวนเคส", height: 230 });
-  Charts.draw("#kEmp", "hbars", { label: "เคสตามพนักงาน", items: byEmp.slice(0, 8), color: Charts.PALETTE.s2, metric: "จำนวนเคส" });
-  Charts.draw("#kCompany", "hbars", { label: "เคสตามบริษัท", items: byCompany, color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
-
-  $("#kpiExport").addEventListener("click", () => exportSheets("KPI", [SHEET_BUILDERS.kpi.build()]));
-};
-
-/* =============================================================
-   VIEW: Reports
-   ============================================================= */
-function renderLiveReports(root) {
-  if (!ensureLiveOverview(root)) return;
-  const inScope = (row) => row.business_date >= state.filters.from && row.business_date <= state.filters.to && (state.filters.company === "ALL" || row.company === state.filters.company);
-  const quality = (liveOverviewState.quality || []).filter(inScope);
-  const operations = (liveOverviewState.operations || []).filter(inScope);
-  const exceptions = scopedExceptions();
-  const damages = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
-  const matched = quality.reduce((sum,row)=>sum+Number(row.matched||0),0);
-  const stm = quality.reduce((sum,row)=>sum+Number(row.stm_count||0),0);
-  const totalDamage = damages.reduce((sum,row)=>sum+Number(row.amount||0),0);
-  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
-  const operationsAvailable = Array.isArray(liveOverviewState.operations) && !hasLiveCoreError("คิวกระทบยอด");
-  const exceptionsAvailable = liveOverviewState.exceptionsReady;
-  const damagesAvailable = liveOverviewState.damagesReady;
-  const reportMetric = (available, value, formatter = num) => available ? formatter(value) : "—";
-  const allCompanyOverview = AuditCompanyOverview.build({groups:AUDIT_COMPANY_GROUPS,companies:companyMaster().filter(company=>canAccessCompany(company.code)&&(state.filters.company==='ALL'||company.code===state.filters.company)),quality,available:qualityAvailable});
-  const dateMap = new Map();
-  operations.forEach((row)=>{
-    const item=dateMap.get(row.business_date)||{date:row.business_date,mails:0,files:0,completed:0,review:0,waiting:0,error:0};
-    item.mails+=Number(row.mail_count||0); item.files+=Number(row.file_count||0);
-    if(row.status==="completed") item.completed++; else if(row.status==="waiting_files") item.waiting++; else if(row.status==="error") item.error++; else item.review++;
-    dateMap.set(row.business_date,item);
-  });
-  const daily=[...dateMap.values()].sort((a,b)=>b.date.localeCompare(a.date));
-  const monthMap=new Map();
-  damages.forEach((row)=>{const ym=String(row.date||"").slice(0,7);monthMap.set(ym,(monthMap.get(ym)||0)+Number(row.amount||0));});
-  const monthly=[...monthMap.entries()].sort().map(([label,value])=>({label,value}));
-  root.innerHTML=`
-    <section class="status-strip four action-tiles">
-      <article data-action-route="cloud"><span>รายการ STM จริง</span><strong>${reportMetric(qualityAvailable, stm)}</strong><small>${qualityAvailable ? `${quality.length} งาน` : "กำลังรอข้อมูลจริง"} · กดดูไฟล์ต้นทาง</small></article>
-      <article class="ok" data-action-route="daily-summary"><span>จับคู่สำเร็จ</span><strong>${reportMetric(qualityAvailable, matched)}</strong><small>${qualityAvailable ? `${stm?((matched/stm)*100).toFixed(2):"0.00"}%` : "กำลังรอข้อมูลจริง"} · กดดูผลรายวัน</small></article>
-      <article class="bad" data-action-route="exceptions"><span>Exception</span><strong>${reportMetric(exceptionsAvailable, exceptions.length)}</strong><small>${exceptionsAvailable ? `เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)}` : "กำลังรอข้อมูลจริง"} · กดตรวจเคส</small></article>
-      <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${reportMetric(damagesAvailable, totalDamage, money0)}</strong><small>${damagesAvailable ? `บาท · ${num(damages.length)} รายการ` : "กำลังรอข้อมูลจริง"} · กดดูทะเบียน</small></article>
-    </section>
-    <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
-    ${AuditCompanyOverview.markup(allCompanyOverview,{h,num})}
-    ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
-    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
-      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
-      <tbody>${daily.map((row)=>`<tr class="action-row" data-report-date="${h(row.date)}" role="link" tabindex="0"><td><b>${h(row.date)}</b><small class="sub">กดดูสรุปรายวัน</small></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">${operationsAvailable ? "ยังไม่มีข้อมูลในช่วงนี้" : "ข้อมูลคิวกระทบยอดยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"}</td></tr>`}</tbody></table></div>
-    </section>`;
-  if(monthly.length) Charts.draw("#liveReportDamage","bars",{label:"ความเสียหายรายเดือน",items:monthly,color:"#d03b3b",money:true,metric:"บาท",height:240});
-  $("#liveRepException")?.addEventListener("click",()=>exportSheets("Exception_ข้อมูลจริง",[{name:"Exception",title:`Exception ${rangeLabel()}`,headers:["วันที่","เวลา","บริษัท","ประเภท","ระดับ","สถานะ","ยอดเสี่ยง","สาเหตุ"],rows:exceptions.map((e)=>[e.date,e.time,e.company,e.typeName,e.severity,e.status,e.riskAmount,e.cause])}]));
-  $("#liveRepDamage")?.addEventListener("click",()=>exportSheets("ความเสียหาย_ข้อมูลจริง",[{name:"ความเสียหาย",title:`ความเสียหาย ${rangeLabel()}`,headers:["วันที่","รหัส","บริษัท","ผู้เกี่ยวข้อง","ยอด","สาเหตุ","หลักฐาน","สถานะการเงิน"],rows:damages.map((d)=>[d.date,d.id,d.company,d.employee,d.amount,d.cause,d.evidence?"มี":"รอ",d.financeStatus])}]));
-  root.querySelectorAll("[data-action-route]").forEach((item)=>item.addEventListener("click",()=>go(item.dataset.actionRoute)));
-  root.querySelectorAll("[data-report-date]").forEach((row)=>{
-    const open=()=>{state.dailySummary.date=row.dataset.reportDate;go("daily-summary");};
-    row.addEventListener("click",open);
-    row.addEventListener("keydown",(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();open();}});
-  });
-  root.querySelectorAll("[data-recon-company]").forEach((item) => {
-    const open = () => {
-      if (!item.dataset.reconDate) return;
-      state.dailySummary.company = item.dataset.reconCompany;
-      state.dailySummary.date = item.dataset.reconDate;
-      go("daily-summary");
-    };
-    item.addEventListener("click", open);
-    item.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
-    });
-  });
-}
-
-VIEWS.reports = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveReports(root);
-    return;
-  }
-  const all = DB.monthlyTrend;
-  const inMonths = all.filter((m) => m.ym >= state.filters.from.slice(0, 7) && m.ym <= state.filters.to.slice(0, 7));
-  const t = inMonths.length >= 2 ? inMonths : all;
-  const last = t[t.length - 1];
-  const prev = t[t.length - 2] || last;
-  const delta = prev === last ? "0.0" : (((last.damage - prev.damage) / prev.damage) * 100).toFixed(1);
-
-  root.innerHTML = `
-    <section class="panel export-bar no-capture">
-      <div>
-        <p class="eyebrow">Export</p>
-        <h2>ออกรายงานช่วง ${h(rangeLabel())}</h2>
-        <span class="muted">เลือกช่วงวันที่ได้จากแถบตัวกรองด้านบน · ไฟล์ Excel จะมีหลายชีตในไฟล์เดียว · ทุกการ์ดในหน้านี้มีปุ่มกล้องสำหรับบันทึกเฉพาะส่วนนั้นเป็นภาพ</span>
-      </div>
-      <div class="inline-actions">
-        <button class="ghost-button" id="repImage">บันทึกทั้งหน้าเป็นภาพ</button>
-        <button class="primary-button" id="repAll">เลือกชุดข้อมูล & Export Excel</button>
-      </div>
-    </section>
-
-    <section class="status-strip four">
-      <article><span>ความเสียหายเดือนนี้</span><strong>${money0(last.damage)}</strong><small>บาท · ${last.cases} เคส</small></article>
-      <article class="${delta < 0 ? "ok" : "bad"}"><span>เทียบเดือนก่อน</span><strong>${delta > 0 ? "+" : ""}${delta}%</strong><small>${delta < 0 ? "ลดลง" : "เพิ่มขึ้น"}จาก ${money0(prev.damage)} บาท</small></article>
-      <article class="ok"><span>มูลค่าที่ป้องกันได้</span><strong>${money0(last.prevented)}</strong><small>จากการตรวจพบเร็ว</small></article>
-      <article><span>เคสที่ยังไม่ปิด</span><strong>${num(DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status)).length)}</strong><small>ต้องระบุเหตุผลในรายงาน</small></article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Trend 12 เดือน</p><h2>ความเสียหายเทียบมูลค่าที่ป้องกันได้</h2></div><span class="health ok">${t.length} เดือน · ${h(rangeLabel())}</span></div>
-      <div class="chart" id="rTrend"></div>
-      <div class="c-legend static"><span class="c-leg"><i style="background:${Charts.PALETTE.s2}"></i>ความเสียหายจริง</span><span class="c-leg"><i style="background:${Charts.PALETTE.s3}"></i>มูลค่าที่ป้องกันได้</span></div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Daily Report</p><h2>รายงานช่วง ${h(rangeLabel())}</h2></div></div>
-        <ul class="report-list">
-          <li><span>รายการทั้งหมด</span><b>${num(DB.hourly.reduce((a, c) => a + c.total, 0))}</b></li>
-          <li><span>จับคู่สำเร็จ</span><b>${num(DB.hourly.reduce((a, c) => a + c.matched, 0))}</b></li>
-          <li><span>Exception</span><b>${num(DB.hourly.reduce((a, c) => a + c.exception, 0))}</b></li>
-          <li><span>ไฟล์ที่มีปัญหา</span><b>${DB.files.filter((f) => f.status !== "received").length}</b></li>
-          <li><span>เคสเกิน SLA</span><b>${DB.exceptions.filter((e) => e.overSla).length}</b></li>
-          <li><span>ยอดที่อาจเป็นความเสียหาย</span><b>${money0(DB.damages.reduce((a, c) => a + c.amount, 0))} บาท</b></li>
-        </ul>
-        <div class="inline-actions">
-          <button class="ghost-button" id="repDaily">Excel รายงานรายวัน</button>
-          <button class="ghost-button" id="repEx">Excel Exception</button>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Monthly Package</p><h2>ชุดรายงานส่งผู้บริหาร</h2></div></div>
-        <ul class="tick-list">
-          <li>มูลค่าความเสียหายจริงและที่ป้องกันได้</li>
-          <li>Top cause และ Top employee / shift risk</li>
-          <li>Trend เทียบเดือนก่อนและไตรมาสก่อน</li>
-          <li>เคสที่ยังไม่ปิดพร้อมเหตุผล</li>
-          <li>ข้อเสนอปรับ process เพื่อลดความผิดซ้ำ</li>
-        </ul>
-        <div class="inline-actions">
-          <button class="ghost-button" id="repMonthly">Excel สรุปรายเดือน</button>
-          <button class="primary-button" id="repSend">ส่งให้การเงิน / บุคคล</button>
-        </div>
-        <p class="hint">รายงานสำหรับ Finance / HR จะดึงเฉพาะ damage record ที่ปิดรอบแล้วเท่านั้น</p>
-      </div>
-    </section>`;
-
-  Charts.draw("#rTrend", "line", {
-    label: "แนวโน้มความเสียหายรายเดือน",
-    xLabels: t.map((x) => x.month),
-    short: true,
-    series: [
-      { name: "ความเสียหายจริง", color: Charts.PALETTE.s2, values: t.map((x) => x.damage), area: true },
-      { name: "ป้องกันได้", color: Charts.PALETTE.s3, values: t.map((x) => x.prevented) },
-    ],
-    height: 260,
-  });
-
-  $("#repDaily").addEventListener("click", () =>
-    exportSheets("รายงานรายวัน", [SHEET_BUILDERS.daily.build(), SHEET_BUILDERS.exceptions.build(), SHEET_BUILDERS.intake.build()]),
-  );
-  $("#repEx").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
-  $("#repMonthly").addEventListener("click", () =>
-    exportSheets("สรุปรายเดือน", [SHEET_BUILDERS.monthly.build(), SHEET_BUILDERS.damage.build(), SHEET_BUILDERS.kpi.build()]),
-  );
-  $("#repAll").addEventListener("click", openExportDialog);
-  $("#repImage").addEventListener("click", capturePage);
-  $("#repSend").addEventListener("click", () => {
-    if (!can("export")) return deny("ส่งรายงาน");
-    const open = DB.damageCycles.filter((c) => c.status === "open").length;
-    if (open) return toast("ยังมีรอบที่ไม่ได้ปิด — ปิดรอบก่อนจึงส่งการเงิน/บุคคลได้", "warn");
-    logAction("send_report", "report", "monthly", "ส่งสรุปความเสียหายให้การเงินและบุคคล");
-    toast("ส่งชุดรายงานให้การเงินและบุคคลแล้ว");
-  });
-};
-
-/* =============================================================
-   VIEW: Talk to Data
-   ============================================================= */
-const SUGGESTIONS = [
-  "บริษัทไหนมีรายการผิดปกติมากที่สุด",
-  "สาเหตุหลักในช่วงนี้คืออะไร",
-  "ไฟล์ไหนยังไม่ได้ส่ง",
-  "ความเสียหายเดือนนี้เท่าไหร่",
-  "เคสไหนเลย SLA บ้าง",
-  "บัญชีไหนเกิด diff บ่อยที่สุด",
-];
-
-function answerQuestion(q) {
-  const t = q.toLowerCase();
-  const live = state.dataset === "production" && Sb.signedIn();
-  const ex = live ? scopedExceptions() : DB.exceptions;
-  const has = (...w) => w.some((x) => t.includes(x));
-
-  if (has("บริษัท", "company")) {
-    const agg = Object.entries(ex.reduce((a,e)=>((a[e.company]=(a[e.company]||0)+1),a),{})).sort((a,b)=>b[1]-a[1]);
-    return {
-      text: agg.length ? `ช่วง ${rangeLabel()} บริษัทที่มี Exception มากที่สุดคือ ${agg.slice(0,3).map(([company,count])=>`${company} ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception ที่ระบุบริษัท`,
-      link: { label: "ดู KPI บริษัท", route: "kpi" },
-    };
-  }
-  if (has("สาเหตุ", "cause", "ทำไม")) {
-    const agg = Object.entries(ex.reduce((a, e) => ((a[e.cause] = (a[e.cause] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
-    return {
-      text: agg.length ? `สาเหตุอันดับต้นช่วง ${rangeLabel()} คือ ${agg.slice(0,3).map(([cause,count])=>`"${cause}" ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception`,
-      link: { label: "ดูรายการทั้งหมด", route: "exceptions" },
-    };
-  }
-  if (has("ไฟล์", "file", "stm", "bo ")) {
-    if (live) {
-      const ops=(liveOverviewState.operations||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
-      const bad=ops.filter((row)=>["waiting_files","needs_review","error"].includes(row.status));
-      return {text:bad.length?`ช่วง ${rangeLabel()} มี ${num(bad.length)} งานที่ต้องตาม: ${bad.slice(0,5).map((row)=>`${row.business_date} ${row.company} (${row.status})`).join(", ")}`:`ช่วง ${rangeLabel()} ไม่พบงานรอไฟล์หรือล้มเหลวใน Supabase`,link:{label:"เปิดหน้าตรวจไฟล์เข้า",route:"intake"}};
-    }
-    const bad = DB.files.filter((f) => f.status !== "received");
-    return {
-      text: bad.length
-        ? `ยังมีไฟล์ที่มีปัญหา ${bad.length} รายการ: ${bad.slice(0, 5).map((b) => `${b.companyName} - ${b.fileType} (${b.status === "missing" ? "ไม่ได้ส่ง" : b.status === "late" ? "ส่งช้า" : "ผิดบริษัท"})`).join(", ")}${bad.length > 5 ? " และอื่น ๆ" : ""}`
-        : "ไฟล์ครบทุกบริษัทและทุกประเภทแล้ว",
-      link: { label: "เปิดหน้า Intake Control", route: "intake" },
-    };
-  }
-  if (has("เสียหาย", "damage", "เดือนนี้")) {
-    const sum = DB.damages.reduce((a, c) => a + c.amount, 0);
-    if (live) return { text: `ช่วง ${rangeLabel()} มีความเสียหายที่บันทึกใน Supabase ${money0(sum)} บาท จาก ${num(DB.damages.length)} รายการ`, link: { label: "เปิดทะเบียนความเสียหาย", route: "damage" } };
-    const last = DB.monthlyTrend[DB.monthlyTrend.length - 1];
-    return {
-      text: `รอบ 1 (1-15 ส.ค. 2026) มีความเสียหายที่บันทึกแล้ว ${money0(sum)} บาท จาก ${DB.damages.length} เคส สำหรับทั้งเดือนล่าสุดในระบบอยู่ที่ ${money0(last.damage)} บาท ${last.cases} เคส และป้องกันได้ ${money0(last.prevented)} บาท`,
-      link: { label: "เปิดทะเบียนความเสียหาย", route: "damage" },
-    };
-  }
-  if (has("sla", "เลยกำหนด", "ช้า")) {
-    const over = ex.filter((e) => e.overSla);
-    return {
-      text: `มีเคสเกิน SLA ${over.length} รายการ แยกเป็น Critical ${over.filter((e) => e.severity === "critical").length}, High ${over.filter((e) => e.severity === "high").length}, Medium ${over.filter((e) => e.severity === "medium").length} เคสที่ค้างนานที่สุดคือ ${over.sort((a, b) => b.ageHours - a.ageHours)[0]?.id || "-"}`,
-      link: { label: "กรองเฉพาะเคสเลย SLA", route: "exceptions", exFilter: { sla: true } },
-    };
-  }
-  if (has("บัญชี", "account", "diff บ่อย")) {
-    const agg = Object.entries(ex.reduce((a, e) => ((a[e.account] = (a[e.account] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
-    return {
-      text: `บัญชีที่เกิด diff บ่อยที่สุดคือ ${agg[0][0]} จำนวน ${agg[0][1]} เคส รองลงมา ${agg[1][0]} ${agg[1][1]} เคส และ ${agg[2][0]} ${agg[2][1]} เคส ควรตรวจว่าเป็นปัญหาที่รูปแบบไฟล์ธนาคารหรือขั้นตอนการทำงานของทีม`,
-      link: { label: "ดูหน้า KPI", route: "kpi" },
-    };
-  }
-  if (has("matched", "จับคู่", "กี่รายการ", "วันนี้")) {
-    if (live) {
-      const q=(liveOverviewState.quality||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
-      const tot=q.reduce((sum,row)=>sum+Number(row.stm_count||0),0),m=q.reduce((sum,row)=>sum+Number(row.matched||0),0);
-      return {text:`ช่วง ${rangeLabel()} มีรายการ STM ${num(tot)} จับคู่สำเร็จ ${num(m)} คิดเป็น ${tot?((m/tot)*100).toFixed(2):"0.00"}% และมี Exception ${num(ex.length)} รายการ`,link:{label:"เปิดแดชบอร์ด",route:"dashboard"}};
-    }
-    const tot = DB.hourly.reduce((a, c) => a + c.total, 0);
-    const m = DB.hourly.reduce((a, c) => a + c.matched, 0);
-    return {
-      text: `วันที่ ${DB.BUSINESS_DATE} มีรายการทั้งหมด ${num(tot)} จับคู่สำเร็จ ${num(m)} คิดเป็น ${((m / tot) * 100).toFixed(2)}% เหลือ exception ${num(tot - m)} รายการที่ต้องตรวจ`,
-      link: { label: "เปิดแดชบอร์ด", route: "dashboard" },
-    };
-  }
-  return {
-    text: `ยังไม่มีข้อมูลตรงกับคำถามนี้ ลองถามเกี่ยวกับบริษัท สาเหตุ ไฟล์ที่ขาด ความเสียหาย SLA บัญชีที่เกิด diff บ่อย หรืออัตราจับคู่ในช่วง ${rangeLabel()}`,
-    link: null,
-  };
-}
-
-VIEWS.talk = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  root.innerHTML = `
-    <section class="grid-talk">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Talk to Data</p><h2>ถามข้อมูลที่ผ่าน reconcile แล้ว</h2></div>
-          <span class="health ok">ข้อมูล ${DB.BUSINESS_DATE}</span>
-        </div>
-        <div class="chat-box big" id="chatBox">
-          ${
-            state.chat.length
-              ? state.chat
-                  .map(
-                    (m) =>
-                      `<div class="message ${m.type}">${h(m.text)}${m.link ? `<button class="chat-link" data-route="${m.link.route}" data-payload='${h(JSON.stringify(m.link))}'>${h(m.link.label)} →</button>` : ""}</div>`,
-                  )
-                  .join("")
-              : `<div class="message system">ลองถามว่า "บริษัทไหนมีรายการผิดปกติมากที่สุด" หรือ "ไฟล์ไหนยังไม่ได้ส่ง" — ทุกคำตอบจะอ้างอิงข้อมูลจริงในช่วงที่เลือก</div>`
-          }
-        </div>
-        <form class="ask-form" id="askForm">
-          <input id="askInput" type="text" placeholder="พิมพ์คำถามถึงข้อมูล..." autocomplete="off" />
-          <button type="submit" class="primary-button">ถาม</button>
-        </form>
-        <div class="chips">${SUGGESTIONS.map((s) => `<button class="chip" data-q="${h(s)}">${h(s)}</button>`).join("")}</div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">ข้อกำหนด</p><h2>กติกาของคำตอบ</h2></div></div>
-        <ul class="tick-list">
-          <li>ตอบจากข้อมูลที่ผ่าน reconcile แล้วเท่านั้น</li>
-          <li>ต้องระบุตัวเลขและช่วงวันที่ชัดเจน</li>
-          <li>คำตอบที่กระทบการลงโทษหรือการเงิน ต้องมีลิงก์กลับไปหลักฐาน</li>
-          <li>ไม่ตอบจากข้อมูลดิบที่ยังไม่ผ่าน quality gate</li>
-        </ul>
-        <div class="panel-heading mt"><div><p class="eyebrow">ตัวอย่างที่ตอบได้</p><h2>ขอบเขตปัจจุบัน</h2></div></div>
-        <ul class="tick-list">
-          <li>ยอด Exception แยกตามบริษัท / ประเภท / บัญชี</li>
-          <li>ไฟล์ที่ขาดหรือส่งผิดบริษัท</li>
-          <li>ยอดความเสียหายและแนวโน้มรายเดือน</li>
-          <li>เคสที่เลย SLA และเคสที่ค้างนานที่สุด</li>
-        </ul>
-      </div>
-    </section>`;
-
-  const send = (q) => {
-    state.chat.push({ type: "user", text: q });
-    const a = answerQuestion(q);
-    state.chat.push({ type: "system", text: a.text, link: a.link });
-    logAction("query", "talk_to_data", q.slice(0, 40), a.text.slice(0, 80));
-    render();
-    const box = $("#chatBox");
-    if (box) box.scrollTop = box.scrollHeight;
-  };
-
-  $("#askForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = $("#askInput").value.trim();
-    if (v) send(v);
-  });
-  root.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => send(c.dataset.q)));
-  root.querySelectorAll(".chat-link").forEach((b) =>
-    b.addEventListener("click", () => {
-      const p = JSON.parse(b.dataset.payload);
-      go(p.route, { filters: p.filters, exFilter: p.exFilter });
-    }),
-  );
-  const box = $("#chatBox");
-  if (box) box.scrollTop = box.scrollHeight;
-};
-
-/* =============================================================
-   VIEW: Bank rules
-   ============================================================= */
-VIEWS.rules = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  const editable = can("rules") && state.dataset !== "production";
-  root.innerHTML = `
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Rule Engine</p><h2>กฎรายธนาคาร</h2></div>
-        <span class="health ${editable ? "ok" : "attention"}">${editable ? "แก้ไขได้" : "กฎที่ใช้งานจริง · อ่านอย่างเดียว"}</span>
-      </div>
-      <div class="rule-rows">
-        ${DB.settings.bankRules
-          .map(
-            (r) => `<div class="rule-row">
-          <label class="switch"><input type="checkbox" data-bank="${r.bank}" ${r.enabled ? "checked" : ""} ${editable ? "" : "disabled"} /><span></span></label>
-          <div><strong>${h(r.bank)}</strong><span>${h(r.detail)}</span></div>
-          <span class="badge ${r.enabled ? "green" : "grey"}">${r.enabled ? "เปิดใช้" : "ปิด"}</span>
-        </div>`,
-          )
-          .join("")}
-      </div>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Rule Preset</p><h2>กฎควบคุมการทำงาน</h2></div></div>
-        <div class="toggle-list">
-          ${[
-            ["crossDay", "ตรวจช่วงข้ามวัน 23:00-23:59 ร่วมกับวันถัดไป"],
-            ["lockDelete", "ห้ามลบข้อมูลหลัง import (ใส่ note ได้เท่านั้น)"],
-            ["requireEvidence", "บังคับแนบหลักฐานก่อนปิดเคส"],
-            ["pmSuccessOnly", "PM: กรองเฉพาะรายการสำเร็จ"],
-            ["filterCarryForward", 'กรอง "ยอดยกมา" และ "รอบวันที่" อัตโนมัติ'],
-            ["notifyTelegram", "แจ้งเตือน Telegram เมื่อ severity สูง"],
-          ]
-            .map(
-              ([k, label]) =>
-                `<label><input type="checkbox" data-rule="${k}" ${DB.settings.rules[k] ? "checked" : ""} ${editable ? "" : "disabled"} /> ${h(label)}</label>`,
-            )
-            .join("")}
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Taxonomy</p><h2>ประเภท exception และ SLA</h2></div></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>ประเภท</th><th>ระดับเริ่มต้น</th><th class="right">SLA (ชม.)</th><th class="right">เคสวันนี้</th></tr></thead>
-            <tbody>
-              ${DB.exceptionTypes
-                .map(
-                  (t) => `<tr><td>${h(t.name)}</td>
-                <td><span class="badge ${t.baseSeverity}">${h(sevMeta(t.baseSeverity).name)}</span></td>
-                <td class="right tnum">${sevMeta(t.baseSeverity).sla}</td>
-                <td class="right tnum">${DB.exceptions.filter((e) => e.type === t.code).length}</td></tr>`,
-                )
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>`;
-
-  root.querySelectorAll("[data-bank]").forEach((c) =>
-    c.addEventListener("change", () => {
-      const r = DB.settings.bankRules.find((x) => x.bank === c.dataset.bank);
-      r.enabled = c.checked;
-      logAction("update", "bank_rule", r.bank, (c.checked ? "เปิดใช้" : "ปิด") + "กฎธนาคาร");
-      toast(`${r.bank}: ${c.checked ? "เปิดใช้" : "ปิด"}กฎแล้ว`);
-      renormalizeAll();
-      scheduleAutoReconcile("เปลี่ยนกฎธนาคาร " + r.bank);
-      render();
-    }),
-  );
-  root.querySelectorAll("[data-rule]").forEach((c) =>
-    c.addEventListener("change", () => {
-      DB.settings.rules[c.dataset.rule] = c.checked;
-      Store.data.settings = { ...DB.settings };
-      Store.persist();
-      logAction("update", "rule_preset", c.dataset.rule, c.checked ? "เปิด" : "ปิด");
-      toast("บันทึกการตั้งค่ากฎแล้ว");
-      renormalizeAll();
-      scheduleAutoReconcile("เปลี่ยนกฎการทำงาน");
-    }),
-  );
-};
-
-VIEWS['account-holds'] = (root) => AccountReviewHolds.mountManager(root,{
-  actor:()=>Sb.authUser()?.id,
-  role:()=>state.role,
-  today:PROD_TODAY,
-  companies:Sb.reviewHoldRegistryCompanies,
-  accounts:()=>{const aliases={"7M":"UFABET7M"};return (loadRegistryAccounts()||[]).map(row=>({company:aliases[row.company]||row.company,bank:row.bank,account:row.id,account_name:row.holder}));},
-  scopes:Sb.reviewHoldScopes,
-  save:Sb.manageAccountReviewHold,
-});
-
-/* =============================================================
-   VIEW: Users & permission
-   ============================================================= */
-VIEWS['case-settings'] = (root) => CaseClosure.mountSettings(root);
-VIEWS.users = async (root) => {
-  if(state.role==='lead'){
-    root.innerHTML='<div class="feature-workspace" id="scopedUsersHost"></div>';
-    ScopedUserManagement.mount(root.querySelector('#scopedUsersHost'),{actor:()=>Sb.authUser()?.id,role:()=>state.role,load:Sb.leadUserManagementContext,update:Sb.leadUpdateUserAccess,create:Sb.leadCreateUser});
-    return;
-  }
-  const caps = [
-    ["view", "ดูหน้าที่ได้รับสิทธิ์ / dashboard"],
-    ["note", "ใส่ note"],
-    ["status", "เปลี่ยนสถานะ"],
-    ["request_clarify", "ส่งให้ชี้แจง"],
-    ["respond", "ตอบชี้แจง"],
-    ["attach", "แนบหลักฐาน"],
-    ["approve", "อนุมัติ"],
-    ["close_case", "ปิดเคส"],
-    ["close_cycle", "ปิดรอบความเสียหาย"],
-    ["rules", "แก้ rule / tolerance"],
-    ["users", "จัดการผู้ใช้"],
-    ["settings", "ตั้งค่าระบบ"],
-    ["export", "export รายงาน"],
-  ];
-  root.innerHTML = `<section class="panel"><div class="loading-block"><span class="spinner"></span><strong>กำลังโหลดผู้ใช้และสิทธิ์จริงจาก Supabase</strong></div></section>`;
-  let users = [];
-  let loadError = "";
-  try {
-    users = await Sb.adminUserAccess();
-    if (!Array.isArray(users)) users = users ? [users] : [];
-  } catch (error) {
-    loadError = error.message || "โหลดผู้ใช้ไม่สำเร็จ";
-  }
-  root.innerHTML = `
-    ${loadError ? `<section class="alert warn"><strong>ยังโหลดทะเบียนผู้ใช้ไม่ได้</strong><span>${h(loadError)}</span></section>` : ""}
-    <section class="panel access-admin-panel">
-      <div class="panel-heading"><div><p class="eyebrow">User access</p><h2 id="accessFormTitle">เพิ่มผู้ใช้ใหม่</h2><small class="head-sub">กรอกข้อมูลครั้งเดียว ระบบจะส่งอีเมลเชิญเข้าใช้งานและกำหนดสิทธิ์ให้ทันที ไม่ต้องเปิดหน้า Supabase</small></div>
-      <button class="primary-button" type="button" id="newAccessUser">+ เพิ่มผู้ใช้</button></div>
-      <form id="accessUserForm" class="access-user-form">
-        <p id="accessFormError" class="form-error" role="alert" tabindex="-1" hidden></p>
-        <label>วิธีสร้างบัญชี<select id="accessLoginMode"><option value="email">อีเมล / ส่งคำเชิญ</option><option value="username">ชื่อผู้ใช้ / ไม่ใช้อีเมล</option></select></label>
-        <label><span id="accessIdentityLabel">อีเมล</span><input id="accessEmail" type="email" required placeholder="name@company.com" autocomplete="off"></label>
-        <label id="accessPasswordLabel" hidden>รหัสผ่านบัญชีใหม่<input id="accessPassword" type="password" autocomplete="new-password" minlength="9" maxlength="128"><small>อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเดียวกับบัญชีอื่น</small></label>
-        <label>ชื่อที่แสดง<input id="accessName" type="text" required placeholder="ชื่อ-นามสกุล"></label>
-        <label>บทบาท<select id="accessRole">${Object.entries(DB.roles).map(([key, role]) => `<option value="${key}">${h(role.name)}</option>`).join("")}</select></label>
-        <label class="access-active"><input id="accessActive" type="checkbox" checked> เปิดใช้งาน</label>
-        <fieldset><legend>บริษัทที่รับผิดชอบ</legend><div class="company-access-grid">
-          ${companyMaster().map((company) => `<label><input type="checkbox" name="accessCompany" value="${h(company.code)}"> ${h(company.code)}</label>`).join("")}
-        </div><small>Audit Lead, ผู้บริหาร และผู้ดูแลระบบเห็นทุกบริษัทโดยตำแหน่งอยู่แล้ว</small></fieldset>
-        <div class="access-submit"><small id="accessSubmitHint">ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน</small><button class="primary-button" type="submit">ส่งคำเชิญและบันทึกสิทธิ์</button></div>
-      </form>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Permission Matrix</p><h2>สิทธิ์ตามบทบาท</h2></div>
-      <span class="health ok">ไม่มีบทบาทใดลบข้อมูลได้</span></div>
-      <div class="table-wrap">
-        <table class="matrix">
-          <thead><tr><th>ความสามารถ</th>${Object.values(DB.roles).map((r) => `<th class="center">${h(r.name)}</th>`).join("")}</tr></thead>
-          <tbody>
-            ${caps
-              .map(
-                ([k, label]) =>
-                  `<tr><td>${h(label)}</td>${Object.keys(DB.roles)
-                    .map((rk) => `<td class="center">${DB.roles[rk].can.includes(k) ? '<span class="yes">✓</span>' : '<span class="no">–</span>'}</td>`)
-                    .join("")}</tr>`,
-              )
-              .join("")}
-            <tr class="deny-row"><td>ลบ transaction / หลักฐาน</td>${Object.keys(DB.roles).map(() => `<td class="center"><span class="no">✕</span></td>`).join("")}</tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Users</p><h2>ผู้ใช้งานในระบบ</h2></div></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>ชื่อผู้ใช้ / อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>บริษัทที่รับผิดชอบ</th><th>สถานะ</th></tr></thead>
-          <tbody>
-            ${users
-              .map(
-                (u) => `<tr class="access-user-row" data-email="${h(u.email)}"><td class="mono">${h(Sb.displayLogin(u.email))}</td><td>${h(u.full_name || "-")}</td>
-              <td><span class="badge blue">${h(DB.roles[u.role]?.name || u.role)}</span></td>
-              <td>${(u.companies || []).length ? (u.companies || []).map((company) => `<span class="badge">${h(company)}</span>`).join(" ") : '<span class="muted">ทุกบริษัทตามบทบาท</span>'}</td>
-              <td>${u.active ? '<span class="badge green">ใช้งาน</span>' : '<span class="badge red">ระงับ</span>'}</td></tr>`,
-              )
-              .join("") || `<tr><td colspan="5" class="empty">ยังไม่มีผู้ใช้ในทะเบียนสิทธิ์</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    </section>`;
-
-  if(state.role==='admin'){
-    const passwordHost=document.createElement('div');root.prepend(passwordHost);
-    PasswordAccounts.mount(passwordHost,{users,companies:companyMaster().map(c=>c.code),actor:()=>Sb.authUser()?.id,role:()=>state.role,call:Sb.passwordAccount});
-  }
-  const setAccessMode = (editing=false) => {
-    const username = $('#accessLoginMode').value === 'username';
-    $('#accessEmail').type = username ? 'text' : 'email';
-    $('#accessIdentityLabel').textContent = username ? 'ชื่อผู้ใช้' : 'อีเมล';
-    $('#accessEmail').placeholder = username ? 'ชื่อผู้ใช้' : 'name@company.com';
-    $('#accessPasswordLabel').hidden = !username || editing;
-    $('#accessPassword').required = username && !editing;
-    $('#accessPassword').disabled = !username || editing;
-    $('#accessSubmitHint').textContent = editing ? 'บันทึกสิทธิ์โดยไม่เปลี่ยนรหัสผ่าน' : username ? 'สร้างชื่อผู้ใช้ทันที ไม่ส่งอีเมล / ลืมรหัสผ่านให้ติดต่อผู้ดูแล' : 'ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน';
-    $("#accessUserForm button[type='submit']").textContent = editing ? 'บันทึกการเปลี่ยนแปลง' : username ? 'สร้างผู้ใช้และบันทึกสิทธิ์' : 'ส่งคำเชิญและบันทึกสิทธิ์';
-  };
-  $('#accessLoginMode').onchange = () => { $('#accessPassword').value=''; setAccessMode(); };
-  const resetAccessForm = () => {
-    $("#accessUserForm").reset();
-    $("#accessActive").checked = true;
-    $("#accessRole").value = "monitor";
-    $("#accessEmail").readOnly = false;
-    $('#accessLoginMode').disabled=false;
-    setAccessMode();
-    $("#accessFormTitle").textContent = "เพิ่มผู้ใช้ใหม่";
-    $("#accessSubmitHint").textContent = "ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน";
-    $("#accessUserForm button[type='submit']").textContent = "ส่งคำเชิญและบันทึกสิทธิ์";
-  };
-  $("#newAccessUser")?.addEventListener("click", () => {
-    resetAccessForm();
-    $("#accessEmail").focus();
-  });
-  root.querySelectorAll(".access-user-row").forEach((row) => row.addEventListener("click", () => {
-    const user = users.find((item) => item.email === row.dataset.email);
-    if (!user) return;
-    $('#accessLoginMode').value = Sb.displayLogin(user.email) === user.email ? 'email' : 'username';
-    $('#accessLoginMode').disabled=true;
-    $("#accessEmail").value = Sb.displayLogin(user.email);
-    $('#accessPassword').value='';
-    setAccessMode(true);
-    $("#accessName").value = user.full_name || "";
-    $("#accessRole").value = user.role || "monitor";
-    $("#accessActive").checked = user.active !== false;
-    $("#accessEmail").readOnly = true;
-    $("#accessFormTitle").textContent = "แก้สิทธิ์ผู้ใช้";
-    $("#accessSubmitHint").textContent = "บันทึกการเปลี่ยนแปลงโดยไม่ส่งคำเชิญซ้ำ";
-    $("#accessUserForm button[type='submit']").textContent = "บันทึกการเปลี่ยนแปลง";
-    const selected = new Set(user.companies || []);
-    $$('[name="accessCompany"]', root).forEach((box) => { box.checked = selected.has(box.value); });
-    $("#accessEmail").scrollIntoView({ behavior: "smooth", block: "center" });
-  }));
-  $("#accessUserForm")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = event.submitter;
-    button.disabled = true;
-    button.textContent = "กำลังบันทึก...";
-    $('#accessFormError').hidden = true;
-    try {
-      const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
-      const usernameMode = $('#accessLoginMode').value === 'username';
-      const identity = $("#accessEmail").value.trim().toLowerCase();
-      const email = usernameMode ? Sb.loginIdentity(identity) : identity;
-      const existing = users.some((user) => String(user.email || "").toLowerCase() === email);
-      if (existing) {
-        await Sb.adminSaveUserAccess(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
-      } else if (usernameMode) {
-        await Sb.adminCreateUsernameUser(identity,$('#accessPassword').value,$('#accessName').value,$('#accessRole').value,$('#accessActive').checked,companies);
-        $('#accessPassword').value='';
-      } else {
-        await Sb.adminInviteUser(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
-      }
-      toast(existing ? "บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว" : usernameMode ? 'สร้างชื่อผู้ใช้และกำหนดสิทธิ์แล้ว' : "ส่งอีเมลเชิญและกำหนดสิทธิ์แล้ว");
-      logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
-      VIEWS.users(root);
-    } catch (error) {
-      const feedback = $('#accessFormError');
-      feedback.textContent = 'บันทึกสิทธิ์ไม่สำเร็จ: ' + error.message + ' — ข้อมูลในฟอร์มยังอยู่ กรุณาตรวจสอบก่อนลองอีกครั้ง';
-      feedback.hidden = false;
-      feedback.focus({preventScroll:true});
-      toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
-    } finally {
-      button.disabled = false;
-      setAccessMode($('#accessEmail').readOnly);
-    }
-  });
-};
-
-/* =============================================================
-   VIEW: Audit log
-   ============================================================= */
-VIEWS["audit-log"] = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  const logs = DB.auditLog.filter((l) => inRange(String(l.at).slice(0, 10)));
-  const logsAvailable = liveOverviewState.logsReady;
-  root.innerHTML = `
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Audit Log</p><h2>${logsAvailable ? `บันทึกทุกการเปลี่ยนแปลง (${logs.length} จาก ${DB.auditLog.length} รายการ)` : "กำลังรอบันทึกจากฐานข้อมูลจริง"}</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}${logsAvailable ? "" : " · ยังไม่สรุปเป็น 0"}</small></div>
-        <div class="inline-actions">
-          <input type="search" id="logSearch" placeholder="ค้นหา user / เคส / action" />
-          <button class="ghost-button sm" id="logExport">Export CSV</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table id="logTable">
-          <thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Action</th><th>Entity</th><th>เป้าหมาย</th><th>รายละเอียด</th></tr></thead>
-          <tbody>
-            ${logs
-              .map(
-                (l) => `<tr><td class="mono">${h(displayTime(l.at))}</td><td>${h(l.user)}</td>
-              <td><span class="badge blue">${h(l.action)}</span></td><td>${h(l.entity)}</td>
-              <td class="mono">${h(l.target)}</td><td class="muted">${h(l.detail)}</td></tr>`,
-              )
-              .join("") || `<tr><td colspan="6" class="empty">${logsAvailable ? "ยังไม่มีบันทึกในช่วงนี้" : "ข้อมูล Audit Log ยังโหลดไม่สำเร็จ — กดลองใหม่จากแถบแจ้งเตือนด้านบน"}</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-      <p class="hint">Audit log เขียนได้อย่างเดียว (append-only) ไม่มีบทบาทใดแก้หรือลบได้ ตามข้อกำหนด non-functional</p>
-    </section>`;
-
-  $("#logSearch").addEventListener("input", (e) => {
-    const q = e.target.value.toLowerCase();
-    $$("#logTable tbody tr").forEach((tr) => (tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none"));
-  });
-  $("#logExport").addEventListener("click", () =>
-    exportSheets("audit-log", [
-      {
-        name: "Audit Log",
-        title: "บันทึกการใช้งานระบบ",
-        headers: ["เวลา", "ผู้ใช้", "action", "entity", "target", "รายละเอียด"],
-        widths: [20, 18, 16, 16, 22, 60],
-        rows: logs.map((l) => [l.at, l.user, l.action, l.entity, l.target, l.detail]),
-      },
-    ]),
-  );
-};
-
-/* =============================================================
-   VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
-   ============================================================= */
-const cloudState = { batches: null, caseAttachments: null, evidenceError: null, daily: null, operations: null, loading: false, auxiliaryLoading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
-
-const cloudQueryKey = () => `${Sb.authUser()?.id || ''}|${state.role}|${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
-
-function isTransientFileError(error) {
-  return /timeout|timed out|abort|network|fetch|connection|temporar|gateway|database/i.test(String(error?.message || error || ""));
-}
-
-async function retryTransientFileRequest(action, attempts = 3) {
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try { return await action(); }
-    catch (error) {
-      lastError = error;
-      if (attempt >= attempts || !isTransientFileError(error)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
-    }
-  }
-  throw lastError;
-}
-
-function filePreviewTable(rows) {
-  const use = (rows || []).slice(0, 50).map((row) => (row || []).slice(0, 20));
-  const width = Math.max(1, ...use.map((row) => row.length));
-  return `<div class="file-preview-note">แสดงตัวอย่าง ${num(use.length)} แถวแรก · สูงสุด ${num(width)} คอลัมน์</div><div class="file-preview-table"><table><tbody>${use.map((row, index) => `<tr>${Array.from({ length: width }, (_, col) => `<${index === 0 ? "th" : "td"}>${h(row[col] ?? "")}</${index === 0 ? "th" : "td"}>`).join("")}</tr>`).join("") || `<tr><td class="empty">ไฟล์ไม่มีข้อมูลที่แสดงตัวอย่างได้</td></tr>`}</tbody></table></div>`;
-}
-
-function updateSourceFileCaches(fileId, changes) {
-  const seen = new Set();
-  [cloudState.batches, liveIntakeState.batches, dailyCompanyState.batches].forEach((batches) => {
-    if (!Array.isArray(batches) || seen.has(batches)) return;
-    seen.add(batches);
-    batches.forEach((batch) => (batch.source_files || []).forEach((file) => {
-      if (file.id === fileId) Object.assign(file, changes);
-    }));
-  });
-}
-
-function exportOcrExcel(meta, ocr) {
-  const parsedRows = Array.isArray(ocr.rows) ? ocr.rows : [];
-  let headers;
-  let rows;
-  if (parsedRows.length) {
-    headers = ["วันที่", "เวลา", "บริษัท", "ธนาคาร/ช่องทาง", "บัญชี", "ทิศทาง", "จำนวนเงิน", "ยอดคงเหลือ", "รายละเอียด", "แถวต้นฉบับ"];
-    const timeOf = (sec) => Number.isFinite(Number(sec)) ? Engine.hhmmss(Number(sec)) : "";
-    rows = parsedRows.map((row) => [
-      row.date || meta.date || "", timeOf(row.sec), row.subco || row.company || meta.company || "",
-      row.bank || row.channel || "", row.account || "", row.direction || "", row.amount ?? "",
-      row.balance ?? "", row.desc || row.detail || "", row.raw || "",
-    ]);
-  } else {
-    headers = ["ลำดับ", "ข้อความที่ OCR อ่านได้"];
-    rows = String(ocr.extracted_text || "").split(/\r?\n/).filter((line) => line.trim()).map((line, index) => [index + 1, line]);
-  }
-  const result = Exporter.workbook([{ name: "OCR", headers, rows, widths: headers.map((_, index) => index === headers.length - 1 ? 52 : 18) }],
-    `${String(meta.name || "pdf-ocr").replace(/\.pdf$/i, "")}-OCR.xlsx`,
-    { title: `ผล OCR: ${meta.name || "PDF"}`, subject: `Google Document AI · ความมั่นใจ ${Math.round(Number(ocr.confidence || 0) * 100)}%` });
-  if (!result.ok) throw new Error(result.reason || "สร้าง Excel ไม่สำเร็จ");
-}
-
-async function validateReplacementFile(file) {
-  if (!file || !file.size) throw new Error("ไฟล์ใหม่ไม่มีข้อมูล");
-  if (file.size > 50 * 1024 * 1024) throw new Error("ไฟล์ใหม่ต้องมีขนาดไม่เกิน 50 MB");
-  const ext = (String(file.name || "").split(".").pop() || "").toLowerCase();
-  if (!["xlsx", "xlsm", "csv", "txt", "pdf", "docx"].includes(ext)) {
-    throw new Error("รองรับไฟล์ XLSX, XLSM, CSV, TXT, PDF และ DOCX เท่านั้น");
-  }
-  const buffer = await file.arrayBuffer();
-  if (["xlsx", "xlsm"].includes(ext)) {
-    try { await XlsxReader.read(buffer); }
-    catch (error) { throw new Error("ไฟล์ Excel ใหม่ยังเปิดไม่ได้ กรุณาเปิดใน Excel แล้ว Save As เป็น .xlsx ก่อนอัปโหลด"); }
-  } else if (ext === "pdf") {
-    const signature = new TextDecoder("latin1").decode(new Uint8Array(buffer.slice(0, 5)));
-    if (signature !== "%PDF-") throw new Error("ไฟล์ที่เลือกใช้นามสกุล PDF แต่เนื้อหาไม่ใช่ PDF ที่สมบูรณ์");
-  } else if (ext === "docx") {
-    const bytes = new Uint8Array(buffer.slice(0, 2));
-    if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error("ไฟล์ DOCX ใหม่ไม่สมบูรณ์ กรุณาเปิดและบันทึกใหม่ก่อนอัปโหลด");
-  }
-  return true;
-}
-
-VIEWS["monthly-audit"] = async (root) => {
-  root.innerHTML='<div class="feature-workspace" id="monthlyAuditHost"></div>';
-  MonthlyAudit.mount(root.querySelector('#monthlyAuditHost'),{
-    actor:()=>Sb.authUser()?.id,role:()=>state.role,today:PROD_TODAY,
-    load:Sb.monthlyAuditContext,create:Sb.createMonthlyAuditSet,detail:Sb.monthlyAuditDetail,review:Sb.monthlyAuditItemReview,
-    assign:Sb.assignMonthlyAuditReviewer,save:Sb.saveMonthlyAuditAssessment,upload:Sb.uploadMonthlyAuditEvidence,
-    preview:meta=>openStoredFilePreview({id:meta.id,name:meta.file_name,path:meta.storage_path,size:meta.size_bytes,mime:meta.mime_type,company:meta.company,kind:meta.kind||'doc_clarify',readOnly:true}),
-  });
-};
-
-async function openStoredFilePreview(meta) {
-  const name = meta.name || "ไฟล์ต้นฉบับ";
-  const ext = (name.split(".").pop() || "").toLowerCase();
-  const sizeLabel = meta.size ? `${Math.round(Number(meta.size) / 1024).toLocaleString()} KB` : "ไม่ระบุขนาด";
-  const status = meta.status === "error" ? "อ่านไม่ได้" : meta.status === "parsed" ? "พร้อมใช้งาน" : "รอตรวจ";
-  const companyOptions = companyMaster().map((company) => company.code).filter((code, index, rows) => rows.indexOf(code) === index);
-  if (meta.company && !companyOptions.includes(meta.company)) companyOptions.unshift(meta.company);
-  const kindOptions = [
-    ["stm_pdf", "STM ฝาก-ถอน", "Statement หรือรายการเดินบัญชีธนาคาร"],
-    ["bo_main", "BO รายงานหลังบ้าน", "รายงานหน้า BO ของบริษัท"],
-    ["pm_statement", "PM ฝาก/ถอน", "AUTOPEER, AZPAY, CYBERPLUS, MYPAY หรือ 12PAY"],
-    ["manual_credit", "ฝากมือ - เครดิต", "รายการเติมเครดิตด้วยมือ"],
-    ["manual_payment", "ฝากมือ - Payment", "รายการฝากมือฝั่ง Payment"],
-    ["manual_bonus", "ฝากมือ - โบนัส", "รายการโบนัส"],
-    ["comm_req", "ถอนค่าคอมมิชชั่น", "รายการถอนคอมมิชชั่น"],
-    ["credit_out", "ถอนเครดิต", "รายงานถอนเครดิต"],
-    ["doc_clarify", "ไฟล์ชี้แจง/หลักฐาน", "เอกสารตอบข้อสงสัยหรือหลักฐานเพิ่มเติม"],
-    ["unknown", "ยังไม่ทราบประเภท", "ใช้เมื่อยังไม่สามารถยืนยันประเภทไฟล์ได้"],
-  ];
-  const selectedKindHelp = (kindOptions.find(([kind]) => kind === meta.kind) || kindOptions[kindOptions.length - 1])[2];
-  const canReclassify = !meta.readOnly && !String(meta.path || '').startsWith('case-evidence/') && state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
-  const canMatchClarification = canReclassify && meta.kind === "doc_clarify";
-  const clarificationPanel = canMatchClarification ? `<section class="file-clarification-match" id="fileClarificationMatch">
-    <div class="file-clarification-head"><div><small>ใช้ไฟล์นี้เป็นหลักฐาน</small><b>จับคู่กับเคสที่ยังไม่พบคู่ของ ${h(meta.company || "บริษัทนี้")}</b><span>เลือกได้หลายเคสหรือเลือกทั้งหมด ระบบจะส่งสถานะเป็น “มีคำชี้แจง—รอ Audit ตรวจ” และยังไม่ปิดเคสอัตโนมัติ</span></div><span class="spinner" id="fileClarificationSpinner"></span></div>
-    <div class="file-clarification-tools">
-      <label><input type="checkbox" id="fileClarificationSameDay" checked> เฉพาะวันที่ ${h(meta.date || "เดียวกับไฟล์")}</label>
-      <label><input type="checkbox" id="fileClarificationMissingOnly" checked> เฉพาะเคสที่ยังไม่พบคู่</label>
-      <button class="ghost-button" id="fileClarificationSelectAll" type="button">เลือกทั้งหมดที่แสดง</button>
-      <b id="fileClarificationCount">กำลังค้นหาเคส...</b>
-    </div>
-    <div class="file-clarification-list" id="fileClarificationList"><div class="empty">กำลังโหลดเคสของบริษัท...</div></div>
-    <label class="file-clarification-note">บันทึกสำหรับผู้ตรวจ<textarea id="fileClarificationNote" rows="2">แนบไฟล์ชี้แจงจากทีม — รอ Audit ตรวจสอบและอนุมัติ</textarea></label>
-  </section>` : "";
-  openModal(
-    h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${clarificationPanel}${canReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><div class="file-replacement-ready-head"><i aria-hidden="true">✓</i><div><b>ไฟล์ใหม่พร้อมตรวจ</b><small>ระบบยังเก็บไฟล์เดิมไว้ จนกว่าคุณจะกด “บันทึกและรันต่อ”</small></div></div><div class="file-replacement-compare"><div><small>ไฟล์เดิม</small><span>${h(name)}</span></div><i aria-hidden="true">→</i><div><small>ไฟล์ใหม่</small><span id="fileReplacementReadyName"></span></div></div></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
-    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
-  );
-  $("#modal").classList.add("file-preview-modal");
-  if(meta.readOnly) $('#filePreviewContent').insertAdjacentHTML('beforebegin',
-    `<section class="panel"><b>หลักฐานในคลัง · เปิดอ่านเท่านั้น</b><p>${h(meta.evidenceOrigin || 'หลักฐาน')} · ${h(meta.caseCode || 'ไฟล์จากเมล')} · ไม่อ่านเป็นรายการกระทบยอด</p>${meta.uploadedBy ? `<small>ผู้แนบ/ผู้ส่ง: ${h(meta.uploadedBy)} · เวลา: ${h(meta.uploadedAt || '—')}</small>` : ''}${meta.correctionReason ? `<p>เหตุผลแก้หลักฐาน: ${h(meta.correctionReason)}</p><small>อ้างถึงไฟล์เดิม: ${h(meta.replacesEvidenceId || meta.replacesSourceFileId || '—')} · ไฟล์เดิมยังอยู่ในคลัง</small>` : ''}</section>`);
-  if (canMatchClarification) EvidenceRecommendations.mount($("#modal .modal-body"), meta, companyOptions, Sb, openStoredFilePreview);
-  $("#filePreviewClose").addEventListener("click", closeModal);
-  let signedUrl = "";
-  let downloaded = null;
-  let pendingReplacementFile = null;
-  let pendingReplacementObjectUrl = "";
-  const getSigned = async () => signedUrl || (signedUrl = await retryTransientFileRequest(() => Sb.signedUrl(meta.path, 600)));
-  const getDownload = async () => downloaded || (downloaded = await retryTransientFileRequest(() => Sb.download(meta.path)));
-  if (canMatchClarification) {
-    const selectedCases = new Set();
-    let clarificationCandidates = [];
-    const isOpen = (row) => !["closed", "approved", "damage"].includes(row.status);
-    const isMissingPair = (row) => row.bankAmount == null || row.systemAmount == null || /ไม่พบ|มากกว่า|missing/i.test(`${row.type} ${row.typeName}`);
-    const visibleCandidates = () => clarificationCandidates.filter((row) => {
-      if (!isOpen(row)) return false;
-      if ($("#fileClarificationSameDay")?.checked && meta.date && row.date !== meta.date) return false;
-      if ($("#fileClarificationMissingOnly")?.checked && !isMissingPair(row)) return false;
-      return true;
-    });
-    const renderClarificationCandidates = () => {
-      const list = $("#fileClarificationList");
-      if (!list) return;
-      const visible = visibleCandidates();
-      list.innerHTML = visible.length ? visible.map((row) => `<label class="file-clarification-case ${selectedCases.has(row.dbId) ? "selected" : ""}">
-        <input type="checkbox" value="${h(row.dbId)}" ${selectedCases.has(row.dbId) ? "checked" : ""}>
-        <span><b>${h(row.id)}</b><small>${h(row.date)} · ${h(row.typeName)}</small></span>
-        <span><b>${h(row.account || row.bank || "-")}</b><small>${h(row.direction || "-")}</small></span>
-        <span class="file-clarification-amount"><b>STM ${row.bankAmount == null ? "—" : money(row.bankAmount)}</b><small>BO ${row.systemAmount == null ? "—" : money(row.systemAmount)}</small></span>
-      </label>`).join("") : `<div class="empty">ไม่พบเคสค้างตามตัวกรองนี้ ลองปิด “เฉพาะวันที่” หรือ “เฉพาะเคสที่ยังไม่พบคู่”</div>`;
-      list.querySelectorAll('input[type="checkbox"]').forEach((input) => input.addEventListener("change", () => {
-        if (input.checked) selectedCases.add(input.value); else selectedCases.delete(input.value);
-        renderClarificationCandidates();
-      }));
-      $("#fileClarificationCount").textContent = `เลือก ${num(selectedCases.size)} จาก ${num(visible.length)} เคสที่แสดง`;
-      $("#fileMatchClarification").disabled = selectedCases.size === 0;
-    };
-    $("#fileClarificationSameDay").addEventListener("change", renderClarificationCandidates);
-    $("#fileClarificationMissingOnly").addEventListener("change", renderClarificationCandidates);
-    $("#fileClarificationSelectAll").addEventListener("click", () => {
-      const visible = visibleCandidates();
-      const allSelected = visible.length && visible.every((row) => selectedCases.has(row.dbId));
-      visible.forEach((row) => allSelected ? selectedCases.delete(row.dbId) : selectedCases.add(row.dbId));
-      renderClarificationCandidates();
-    });
-    $("#fileMatchClarification").addEventListener("click", async (event) => {
-      const button = event.currentTarget;
-      const ids = [...selectedCases];
-      if (!ids.length) return;
-      button.disabled = true;
-      button.textContent = `กำลังจับคู่ ${num(ids.length)} เคส...`;
-      try {
-        const note = $("#fileClarificationNote").value.trim();
-        const result = await Sb.manualMatchClarificationFile(meta.id, ids, note);
-        DB.exceptions.forEach((row) => {
-          if (!ids.includes(row.dbId)) return;
-          Object.assign(row, {
-            status: "answered", hasEvidence: true, clarificationFileId: meta.id,
-            resolutionNote: note, resolvedBy: Sb.currentEmail() || "web-auditor", matchConfidence: 100,
-          });
-        });
-        exceptionSupportCache.clear();
-        logAction("clarification_manual_multi_match", "source_file", meta.id, `จับคู่ ${name} กับ ${ids.length} เคสของ ${meta.company}`);
-        closeModal();
-        render();
-        showCaseSubmissionReceipt('clarification',`ส่งเอกสารให้ตรวจ ${num(result?.matched_count || ids.length)} เคส`);
-        setTimeout(() => loadLiveOverview(true), 300);
-      } catch (error) {
-        button.disabled = false;
-        button.textContent = "จับคู่กับเคสที่เลือก";
-        toast(`จับคู่ไฟล์ชี้แจงไม่สำเร็จ: ${error.message}`, "warn");
-      }
-    });
-    const localRows = DB.exceptions.filter((row) => String(row.company).toUpperCase() === String(meta.company || "").toUpperCase());
-    clarificationCandidates = localRows;
-    renderClarificationCandidates();
-    Sb.currentExceptionsSummary({ from: VISIBLE_DATE_FROM, to: DEFAULT_WORK_DATE, company: meta.company, limit: 5000 })
-      .then((rows) => {
-        const merged = new Map(localRows.map((row) => [row.dbId, row]));
-        actionableAuditRows(rows).map(mapLiveException).forEach((row) => merged.set(row.dbId, row));
-        clarificationCandidates = [...merged.values()].sort((a, b) => (a.date === meta.date ? -1 : 0) - (b.date === meta.date ? -1 : 0) || String(b.date).localeCompare(String(a.date)) || String(a.time).localeCompare(String(b.time)));
-        $("#fileClarificationSpinner")?.remove();
-        renderClarificationCandidates();
-      })
-      .catch((error) => {
-        $("#fileClarificationSpinner")?.remove();
-        $("#fileClarificationCount").textContent = localRows.length ? `แสดงข้อมูลที่โหลดไว้ ${num(localRows.length)} เคส` : `โหลดเคสไม่สำเร็จ: ${error.message}`;
-      });
-  }
-  $("#fileOpenOriginal").addEventListener("click", async () => {
-    try {
-      window.open(await getSigned(), "_blank", "noopener");
-      logAction("view_file", "source_file", meta.id || meta.path, `เปิดไฟล์ต้นฉบับ ${name} ในแท็บใหม่`);
-    } catch (error) { toast(error.message, "warn"); }
-  });
-  $("#fileDownload").addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    const old = button.textContent;
-    button.disabled = true;
-    button.textContent = "กำลังดาวน์โหลด...";
-    try {
-      const buffer = await getDownload();
-      const blob = new Blob([buffer], { type: meta.mime || "application/octet-stream" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      setTimeout(() => { URL.revokeObjectURL(url); anchor.remove(); }, 1000);
-      logAction("download_file", "source_file", meta.id || meta.path, `ดาวน์โหลดไฟล์ ${name}`);
-      toast("เริ่มดาวน์โหลด " + name);
-    } catch (error) { toast(error.message, "warn"); }
-    button.disabled = false;
-    button.textContent = old;
-  });
-  if (canReclassify) $("#fileKindSelect").addEventListener("change", (event) => {
-    const option = kindOptions.find(([kind]) => kind === event.target.value);
-    $("#fileKindHelp").textContent = option ? option[2] : "ตรวจเนื้อหาไฟล์ก่อนยืนยันประเภท";
-  });
-  if (canReclassify) $("#fileReclassify").addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    const old = button.textContent;
-    const company = $("#fileCompanySelect").value;
-    const kind = $("#fileKindSelect").value;
-    button.disabled = true;
-    button.textContent = pendingReplacementFile ? "กำลังอัปโหลดและบันทึก..." : "กำลังบันทึก...";
-    try {
-      const replacement = pendingReplacementFile;
-      const result = replacement
-        ? await Sb.replaceSourceFile(meta.id, meta.path, replacement, company, kind)
-        : await Sb.reclassifySourceFile(meta.id, company, kind);
-      logAction(
-        replacement ? "replace_source_file_and_retry" : "reclassify_and_retry",
-        "source_file",
-        meta.id,
-        replacement ? `${name} → ${replacement.name}` : `${name} → ${company} / ${kind}`,
-      );
-      updateSourceFileCaches(meta.id, {
-        ...(replacement ? {
-          file_name: result?.file_name || replacement.name,
-          mime_type: result?.mime_type || replacement.type || "application/octet-stream",
-          size_bytes: result?.size_bytes || replacement.size,
-          storage_path: result?.storage_path,
-          checksum: result?.checksum || null,
-        } : {}),
-        company,
-        kind,
-        parsed: false,
-        parsed_at: null,
-        row_count: null,
-        parse_error: null,
-      });
-      closeModal();
-      const queued = result && result.queued;
-      toast(
-        replacement
-          ? (queued ? "แทนที่ไฟล์แล้ว และส่งไฟล์ใหม่เข้าคิวตรวจแล้ว" : "แทนที่ไฟล์แล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว")
-          : (queued ? "บันทึกแล้ว และส่งเข้าคิวกระทบยอดแล้ว" : "บันทึกแล้ว — ยังรอไฟล์บังคับให้ครบก่อนเข้าคิว"),
-        queued ? "ok" : "warn",
-      );
-      render();
-      // Save feels immediate; refresh only the page currently in use instead
-      // of reloading dashboard, intake, daily summary and cloud concurrently.
-      setTimeout(() => {
-        if (state.route === "cloud") cloudLoad();
-        else if (state.route === "daily-summary") loadDailyCompanySummary(true);
-        else if (state.route === "intake") loadLiveIntake(true);
-        else loadLiveOverview(true);
-      }, 300);
-    } catch (error) {
-      const action = pendingReplacementFile ? "แทนที่ไฟล์ไม่สำเร็จ" : "บันทึกประเภทไฟล์ไม่สำเร็จ";
-      const detail = String(error?.message || "เกิดข้อผิดพลาด กรุณาลองใหม่");
-      toast(`${action}: ${detail}`, "warn");
-      button.disabled = false;
-      button.textContent = old;
-    }
-  });
-  if (canReclassify) {
-    const replacementInput = $("#fileReplacementInput");
-    const replacementButton = $("#fileReplaceUpload");
-    replacementButton.addEventListener("click", () => {
-      replacementInput.value = "";
-      replacementInput.click();
-    });
-    replacementInput.addEventListener("change", async () => {
-      const file = replacementInput.files && replacementInput.files[0];
-      if (!file) return;
-      const saveButton = $("#fileReclassify");
-      const oldLabel = replacementButton.textContent;
-      try {
-        replacementButton.disabled = true;
-        saveButton.disabled = true;
-        replacementButton.textContent = "กำลังตรวจไฟล์ใหม่...";
-        await validateReplacementFile(file);
-        pendingReplacementFile = file;
-        const target = $("#filePreviewContent");
-        const replacementExt = (file.name.split(".").pop() || "").toLowerCase();
-        const buffer = await file.arrayBuffer();
-        target.innerHTML = `<span class="spinner"></span><p>กำลังแสดงตัวอย่างไฟล์ใหม่...</p>`;
-        if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
-        pendingReplacementObjectUrl = "";
-        if (replacementExt === "pdf") {
-          pendingReplacementObjectUrl = URL.createObjectURL(file);
-          target.innerHTML = `<iframe class="file-preview-frame" src="${h(pendingReplacementObjectUrl)}" title="ตัวอย่าง ${h(file.name)}"></iframe>`;
-        } else if (["xlsx", "xlsm"].includes(replacementExt)) {
-          target.innerHTML = filePreviewTable(await XlsxReader.read(buffer));
-        } else if (["csv", "txt"].includes(replacementExt)) {
-          const text = new TextDecoder("utf-8").decode(buffer);
-          target.innerHTML = filePreviewTable(replacementExt === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
-        } else if (replacementExt === "docx") {
-          const preview = await DocxReader.render(buffer);
-          target.replaceChildren(preview.element);
-          $("#modal")._contentCleanup = () => {
-            preview.cleanup();
-            if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
-          };
-        }
-        if (replacementExt !== "docx") $("#modal")._contentCleanup = () => {
-          if (pendingReplacementObjectUrl) URL.revokeObjectURL(pendingReplacementObjectUrl);
-        };
-        $("#modalTitle").textContent = file.name;
-        $("#filePreviewSize").textContent = `${Math.max(1, Math.round(file.size / 1024)).toLocaleString()} KB`;
-        $("#filePreviewStatus").textContent = "ไฟล์ใหม่พร้อมบันทึก";
-        $("#fileReplacementReadyName").textContent = file.name;
-        $("#fileReplacementReady").hidden = false;
-        replacementButton.textContent = "เปลี่ยนไฟล์ใหม่อีกครั้ง";
-        $("#fileOpenOriginal").textContent = "เปิดไฟล์เดิมในแท็บใหม่";
-        $("#fileDownload").textContent = "ดาวน์โหลดไฟล์เดิม";
-        toast("แสดงไฟล์ใหม่แล้ว ตรวจข้อมูลก่อนกดบันทึกและรันต่อ", "ok");
-      } catch (error) {
-        pendingReplacementFile = null;
-        toast("ตรวจไฟล์ใหม่ไม่สำเร็จ: " + error.message, "warn");
-      } finally {
-        if (replacementButton && document.body.contains(replacementButton)) {
-          replacementButton.disabled = false;
-          if (!pendingReplacementFile) replacementButton.textContent = oldLabel;
-        }
-        if (saveButton && document.body.contains(saveButton)) saveButton.disabled = false;
-      }
-    });
-  }
-
-  try {
-    const target = $("#filePreviewContent");
-    if (!target) return;
-    if (["pdf"].includes(ext) || String(meta.mime).includes("pdf")) {
-      if(meta.readOnly) {
-        // Render authenticated bytes in the app; do not depend on a browser PDF plug-in.
-        const cleanup = await StatementPreview.mount(target, {id:meta.id || meta.path, storage_path:meta.path});
-        if(target.isConnected) $('#modal')._contentCleanup = cleanup;
-        else cleanup?.();
-        logAction('preview_file','case_evidence',meta.id || meta.path,`ดู PDF หลักฐาน ${name}`);
-        return;
-      }
-      const originalUrl = await getSigned();
-      if (pendingReplacementFile) return;
-      target.innerHTML = `<iframe class="file-preview-frame" src="${h(originalUrl)}" title="ตัวอย่าง ${h(name)}"></iframe>`;
-      if (canReclassify && typeof Sb.fileOcr === "function") {
-        try {
-          const ocr = await Sb.fileOcr(meta.id);
-          if (pendingReplacementFile || !target.isConnected) return;
-          PdfReview.mount(target, { url: originalUrl, evidence: ocr, name });
-          if (meta.kind === 'stm_pdf' && ['monitor','audit_assistant','lead','admin'].includes(state.role)) {
-            PdfSourceApproval.mount(target, {
-              loadSource: () => Sb.recoverySource(meta.id),
-              download: getDownload,
-              approve: (payload, note) => {
-                if (pendingReplacementFile) throw new Error('กรุณาปิดไฟล์ที่เลือกแทนก่อนยืนยันต้นฉบับเดิม');
-                return Sb.approvePdfRecovery(payload, note);
-              },
-              onPage: page => { target.querySelector('iframe').src = originalUrl.split('#')[0] + '#page=' + page; },
-            });
-          }
-          if (ocr) {
-            const exportButton = document.createElement('button');
-            exportButton.className = 'ghost-button';
-            exportButton.textContent = 'ดาวน์โหลด Excel OCR';
-            exportButton.addEventListener('click', () => {
-              try { exportOcrExcel(meta, ocr); toast('สร้าง Excel จากผล OCR แล้ว', 'ok'); }
-              catch (error) { toast(error.message, 'warn'); }
-            });
-            target.querySelector('.pdf-review-heading').append(exportButton);
-          }
-        } catch (error) {
-          console.warn("Load OCR evidence failed", error);
-          if (target.isConnected && !pendingReplacementFile) target.insertAdjacentHTML("afterbegin", '<p role="alert">โหลดข้อมูลที่อ่านจาก PDF ไม่สำเร็จ ยังตรวจภาพต้นฉบับได้ และยังไม่ยืนยันว่าไม่มีรายการ</p>');
-        }
-      }
-    } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext) || String(meta.mime).startsWith("image/")) {
-      const originalUrl = await getSigned();
-      if (pendingReplacementFile) return;
-      target.innerHTML = `<img class="file-preview-image" src="${h(originalUrl)}" alt="ตัวอย่าง ${h(name)}" />`;
-    } else if (["xlsx", "xlsm"].includes(ext)) {
-      const originalRows = await XlsxReader.read(await getDownload());
-      if (pendingReplacementFile) return;
-      target.innerHTML = filePreviewTable(originalRows);
-    } else if (["csv", "txt"].includes(ext)) {
-      const text = new TextDecoder("utf-8").decode(await getDownload());
-      if (pendingReplacementFile) return;
-      target.innerHTML = filePreviewTable(ext === "csv" ? Engine.parseCSV(text) : text.split(/\r?\n/).map((line) => [line]));
-    } else if (ext === "docx" || String(meta.mime).includes("wordprocessingml")) {
-      const preview = await DocxReader.render(await getDownload());
-      if (pendingReplacementFile) { preview.cleanup(); return; }
-      target.replaceChildren(preview.element);
-      $("#modal")._contentCleanup = preview.cleanup;
-    } else {
-      target.innerHTML = `<div class="file-preview-unavailable"><b>ไฟล์ชนิดนี้ยังแสดงตัวอย่างในหน้าเว็บไม่ได้</b><span>ตรวจรายละเอียดด้านบน แล้วเลือก “เปิดต้นฉบับ” หรือ “ดาวน์โหลดไฟล์” เมื่อต้องการ</span></div>`;
-    }
-    logAction("preview_file", "source_file", meta.id || meta.path, `ดูตัวอย่างไฟล์ ${name}`);
-  } catch (error) {
-    const target = $("#filePreviewContent");
-    if (target) target.innerHTML = `<div class="file-preview-unavailable bad"><b>สร้างตัวอย่างไม่สำเร็จหลังลองใหม่ 3 ครั้ง</b><span>${h(error.message)}</span><small>ยังสามารถเปิดต้นฉบับหรือดาวน์โหลดได้จากปุ่มด้านล่าง หรือปิดแล้วเปิด Preview ใหม่</small></div>`;
-  }
-}
-
-function bindStoredFileLinks(root, selector = "[data-storage-open]") {
-  root.querySelectorAll(selector).forEach((button) => button.addEventListener("click", () => openStoredFilePreview({
-    path: button.dataset.storageOpen,
-    id: button.dataset.fileId,
-    name: button.dataset.fileName,
-    mime: button.dataset.fileMime,
-    size: button.dataset.fileSize,
-    kind: button.dataset.fileKind,
-    company: button.dataset.fileCompany,
-    date: button.dataset.fileDate,
-    status: button.dataset.fileStatus,
-  })));
-}
-
-function cloudMissingGroupsText(groups) {
-  const label = (group) => {
-    if (Array.isArray(group)) return group.map(label).join(" / ");
-    if (typeof group === "string") return group || "ไม่ระบุกลุ่มไฟล์";
-    if (!group || typeof group !== "object") return "ไม่ระบุกลุ่มไฟล์";
-    const names = Array.isArray(group.source_labels)
-      ? group.source_labels.filter((value) => typeof value === "string" && value.trim()).join(" / ") : "";
-    const account = names || (typeof group.label === "string" && group.label)
-      || (typeof group.identity === "string" && group.identity) || "ไม่ระบุบัญชี";
-    const direction = { deposit: "ฝาก", withdraw: "ถอน", ฝาก: "ฝาก", ถอน: "ถอน" }[group.direction] || "";
-    return [typeof group.kind === "string" ? group.kind : "", account, direction].filter(Boolean).join(" · ");
-  };
-  if (!Array.isArray(groups)) return "ยังไม่มีข้อมูลไฟล์ที่ขาด";
-  return groups.length ? groups.map(label).join(", ") : "ครบ";
-}
-
-async function cloudLoad(force = false) {
-  const key = cloudQueryKey();
-  // A new filter owns a new request even while the previous scope is pending.
-  // Otherwise its stale response returns without ever releasing the spinner.
-  if (cloudState.key === key && (cloudState.loading || cloudState.auxiliaryLoading) && !force) return;
-  if (!force && cloudState.key === key && cloudState.batches !== null) return;
-  const requestId = ++cloudState.requestId;
-  const changedFilter = cloudState.key !== key;
-  cloudState.key = key;
-  cloudState.loading = true;
-  cloudState.auxiliaryLoading = true;
-  cloudState.error = null;
-  cloudState.partialError = null;
-  cloudState.evidenceError = null;
-  cloudState.caseAttachments = null;
-  if (changedFilter) {
-    cloudState.batches = null;
-    cloudState.daily = null;
-    cloudState.operations = null;
-    cloudState.picked = {};
-  }
-  render();
-  const to = state.filters.to || DB.BUSINESS_DATE;
-  const from = state.filters.from || to;
-  const company = state.filters.company;
-  const current = () => !(requestId !== cloudState.requestId || key !== cloudQueryKey());
-  const failed = new Map();
-  const names = ["รายการเมล/ไฟล์", "สรุปรายวัน", "คิวกระทบยอด", "หลักฐานจากเคส"];
-  // Bound each read group, including multi-request primary overlays. No writes
-  // or reconciliation are retried here. Late responses cannot replace a scope.
-  const read = async (index, load, apply) => {
-    let timer;
-    try {
-      const value = await Promise.race([
-        Promise.resolve().then(load),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('หมดเวลารอข้อมูล กรุณารีเฟรช')), 35000); }),
-      ]);
-      if (current()) apply(value);
-    } catch (error) {
-      if (current()) failed.set(index, `${names[index]} (${error?.message || 'อ่านไม่สำเร็จ'})`);
-    } finally {
-      clearTimeout(timer);
-      if (current()) {
-        cloudState.partialError = failed.size ? `โหลดไม่สำเร็จ: ${[...failed.values()].join(", ")}` : null;
-        cloudState.error = failed.has(0) ? `${failed.get(0)} — ยังไม่แสดงจำนวนไฟล์เพื่อป้องกันยอดศูนย์ปลอม` : null;
-        if (index === 0) cloudState.loading = false;
-        if (index === 3 && failed.has(3)) cloudState.evidenceError = 'โหลดหลักฐานจากเคสไม่สำเร็จ กรุณารีเฟรช ไม่ใช่การยืนยันว่าไม่มีหลักฐาน';
-        if (state.route === 'cloud') render();
-      }
-    }
-  };
-  await Promise.all([
-    read(0, () => Sb.batches({from, to, company, force}), value => { cloudState.batches = value || []; }),
-    read(1, () => Sb.dailyStatus({from, to, company, limit:100}), value => { cloudState.daily = value || []; }),
-    read(2, () => Sb.operations({from, to, company, limit:200}), value => { cloudState.operations = value || []; }),
-    read(3, () => Sb.caseEvidenceLibrary({from, to, company}), value => { cloudState.caseAttachments = value; }),
-  ]);
-  if (!current()) return;
-  cloudState.auxiliaryLoading = false;
-  if (state.route === 'cloud') render();
-}
-
-/* โหลดไฟล์จาก Storage แล้วส่งเข้าตัวอ่านเดิม */
-async function cloudImport(files, opts = {}) {
-  if(files.some(file=>file.excluded))throw Error('มีไฟล์ที่ยกเว้นจากการรัน กรุณาโหลดทะเบียนล่าสุดและเลือกใหม่');
-  // Evidence must never enter parsers, markParsed or reconciliation, even if supplied manually.
-  files = files.filter(file => file.kind !== 'doc_clarify' && !String(file.storage_path || '').startsWith('case-evidence/'));
-  const blocked = files.filter((file) => file.parse_error || file.kind === "unknown");
-  files = files.filter((file) => !file.parse_error && file.kind !== "unknown");
-  if (blocked.length) toast(`พักไฟล์ปัญหา ${num(blocked.length)} ไฟล์ไว้ก่อน — ต้องแก้ประเภทหรือข้อผิดพลาดก่อนรัน`, "warn");
-  if (!files.length) {
-    if (opts.job) throw new Error(`พักคิวไว้ก่อน: มีไฟล์ปัญหา ${blocked.length} ไฟล์และยังไม่มีไฟล์พร้อมรัน`);
-    return toast("ยังไม่มีไฟล์ที่พร้อมรัน", "warn");
-  }
-  if (opts.clear) {
-    ImportState.files = [];
-    ImportState.lastRun = null;
-  }
-  cloudState.activeJob = opts.job || null;
-  showProgress("กำลังดึงไฟล์จากคลังและอ่านเข้าระบบ");
-  let ok = 0;
-  const failed = [];
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i];
-    setProgress((i + 1) / files.length, f.file_name);
-    try {
-      const buf = await Sb.download(f.storage_path);
-      const norm = await ingestRaw(f.file_name, buf, buf.byteLength, {
-        fileId: f.id,
-        storagePath: f.storage_path,
-        businessDate: opts.job?.business_date,
-      });
-      const n = norm.records.length + (norm.aux || []).length;
-      ok++;
-      Sb.markParsed(f.id, n, null).catch(() => {});
-    } catch (e) {
-      failed.push(`${f.file_name}: ${e.message}`);
-      Sb.markParsed(f.id, null, e.message).catch(() => {});
-    }
-  }
-  hideProgress();
-  logAction("cloud_import", "source_file", `${ok} ไฟล์`, `ดึงจากคลัง Supabase ${ok} ไฟล์${blocked.length ? ` · พักไฟล์ปัญหา ${blocked.length}` : ""}${failed.length ? ` · ผิดพลาด ${failed.length}` : ""}`);
-  toast(`อ่านเข้าระบบแล้ว ${ok} ไฟล์${blocked.length ? ` · พักไฟล์ปัญหา ${blocked.length}` : ""}${failed.length ? ` · ไม่สำเร็จ ${failed.length}` : ""}`);
-  if (failed.length) console.warn(failed);
-  cloudState.picked = {};
-  await runReconcileFromImport({ reason: opts.job ? "คิวกระทบยอดรายวัน" : "ดึงจากคลังไฟล์", job: opts.job || null });
-}
-
-VIEWS.cloud = (root) => {
-  const c = Sb.cfg();
-  const ready = Sb.configured();
-  const inSession = Sb.signedIn();
-
-  if (!ready || !inSession) {
-    showLoginGate();
-    root.innerHTML = "";
-    return;
-  }
-
-  /* หน้า Production ไม่เปิดให้แก้ URL/key จากหน้าเว็บ */
-  if (false) {
-    root.innerHTML = `
-      <section class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Cloud Inbox</p><h2>เชื่อมต่อคลังไฟล์</h2></div>
-          <span class="health ${ready ? "attention" : "attention"}">${ready ? "ยังไม่ได้ล็อกอิน" : "ยังไม่ได้ตั้งค่า"}</span>
-        </div>
-        <p class="hint">ไฟล์จากเมล <b>AUDIT 2</b> จะถูก n8n ดึงมาเก็บไว้ใน Supabase Storage และ Google Drive ให้อัตโนมัติ หน้านี้ใช้ดึงไฟล์เหล่านั้นเข้ามาตรวจโดยไม่ต้องดาวน์โหลดเอง</p>
-        <div class="setting-list mt">
-          <label><span>Supabase URL</span><input type="text" id="sbUrl" value="${h(c.url || "")}" placeholder="https://xxxx.supabase.co" /><b></b></label>
-          <label class="wide"><span>anon public key</span><input type="password" id="sbKey" value="${h(c.anonKey || "")}" placeholder="eyJhbGciOi..." /><b></b></label>
-          <label><span>Storage bucket</span><input type="text" id="sbBucket" value="${h(c.bucket || "audit-files")}" /><b></b></label>
-        </div>
-        <div class="setting-list">
-          <label><span>อีเมลผู้ใช้</span><input type="email" id="sbEmail" value="${h(c.email || "")}" placeholder="audit@company.com" /><b></b></label>
-          <label><span>รหัสผ่าน</span><input type="password" id="sbPass" placeholder="••••••••" /><b></b></label>
-        </div>
-        <div class="inline-actions">
-          <button class="primary-button" id="sbLogin">บันทึกและล็อกอิน</button>
-          <button class="ghost-button" id="sbPing">ทดสอบการเชื่อมต่อ</button>
-        </div>
-        <div id="sbPingOut"></div>
-        <p class="chart-note">ใส่ได้เฉพาะ <b>anon public key</b> เท่านั้น — <b>service_role key</b> ต้องอยู่ใน n8n เท่านั้น ห้ามใส่ในหน้าเว็บ เพราะจะข้าม RLS และเปิดข้อมูลลูกค้าทั้งหมด</p>
-      </section>`;
-
-    $("#sbLogin").addEventListener("click", async () => {
-      Sb.saveConfig({ url: $("#sbUrl").value.trim(), anonKey: $("#sbKey").value.trim(), bucket: $("#sbBucket").value.trim() || "audit-files" });
-      try {
-        await Sb.signIn($("#sbEmail").value.trim(), $("#sbPass").value);
-        startCloudWorker();
-        toast("ล็อกอิน Supabase สำเร็จ");
-        logAction("cloud_login", "supabase", $("#sbEmail").value.trim(), "เชื่อมต่อคลังไฟล์");
-        cloudLoad();
-      } catch (e) {
-        toast(e.message, "warn");
-      }
-    });
-    $("#sbPing").addEventListener("click", async () => {
-      Sb.saveConfig({ url: $("#sbUrl").value.trim(), anonKey: $("#sbKey").value.trim(), bucket: $("#sbBucket").value.trim() || "audit-files" });
-      const r = await Sb.ping();
-      $("#sbPingOut").innerHTML = `<ul class="tick-list mt">
-        <li class="${r.url ? "" : "no"}">URL ${r.url ? "ใส่แล้ว" : "ยังไม่ได้ใส่"}</li>
-        <li class="${r.key ? "" : "no"}">anon key ${r.key ? "ใส่แล้ว" : "ยังไม่ได้ใส่"}</li>
-        <li class="${r.auth ? "" : "no"}">ล็อกอิน ${r.auth ? "แล้ว" : "ยังไม่ได้ล็อกอิน"}</li>
-        <li class="${r.tables ? "" : "no"}">อ่านตารางทะเบียน ${r.tables ? "ได้" : "ไม่ได้"}</li>
-        <li class="${r.storage ? "" : "no"}">อ่าน bucket ${r.storage ? "ได้" : "ไม่ได้"}</li>
-        ${r.error ? `<li class="no">${h(r.error)}</li>` : ""}
-      </ul>`;
-    });
-    return;
-  }
-
-  if (cloudState.key !== cloudQueryKey() || (cloudState.batches === null && !cloudState.loading && !cloudState.error)) {
-    cloudLoad();
-  }
-
-  const batches = cloudState.batches || [];
-  const allFiles = batches.flatMap((b) => (b.source_files || []).map((f) => ({ ...f, business_date: b.business_date, company: f.company || b.company, subject: b.subject })));
-  const isProblemFile = (file) => Boolean((file.parse_error && !statementNeedsBoReview(file)) || file.kind === "unknown");
-  const isReadyFile = (file) => !statementNeedsBoReview(file) && !isProblemFile(file) && Boolean(file.parsed || file.kind === "doc_clarify");
-  const isWaitingFile = (file) => !statementNeedsBoReview(file) && !isProblemFile(file) && !isReadyFile(file);
-  const reviewFiles = allFiles.filter(statementNeedsBoReview);
-  const problemFiles = allFiles
-    .filter(isProblemFile)
-    .sort((a, b) => String(b.business_date || "").localeCompare(String(a.business_date || "")) || String(a.company || "").localeCompare(String(b.company || ""), "th") || String(a.file_name || "").localeCompare(String(b.file_name || ""), "th"));
-  const readable = allFiles.filter((f) => !f.excluded && /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify");
-  const readyFiles = allFiles.filter(isReadyFile);
-  const waitingFiles = allFiles.filter(isWaitingFile);
-  const queueableFiles = readable.filter((f) => !f.parsed && !f.parse_error && f.kind !== "unknown");
-  const pickedFiles = queueableFiles.filter((f) => cloudState.picked[f.id]);
-  const visibleFile = (file) => cloudState.fileView === "review"
-    ? statementNeedsBoReview(file)
-    : cloudState.fileView === "problem"
-    ? isProblemFile(file)
-    : cloudState.fileView === "ready"
-      ? isReadyFile(file)
-      : cloudState.fileView === "waiting"
-        ? isWaitingFile(file)
-        : true;
-  const visibleBatches = batches.map((batch) => ({ ...batch, source_files: (batch.source_files || []).filter(visibleFile) })).filter((batch) => batch.source_files.length);
-  const daily = cloudState.daily || [];
-  const operations = cloudState.operations || [];
-  const fileSnapshot = Sb.fileSnapshotInfo({
-    from: state.filters.from || state.filters.to || DB.BUSINESS_DATE,
-    to: state.filters.to || DB.BUSINESS_DATE,
-    company: state.filters.company,
-  });
-  const jobLabel = { waiting_files: "รอไฟล์", ready: "พร้อม", queued: "เข้าคิว", running: "กำลังรัน", completed: "สำเร็จ", needs_review: "ต้องตรวจสอบ", error: "ล้มเหลว" };
-  const jobTone = { waiting_files: "amber", ready: "blue", queued: "blue", running: "violet", completed: "green", needs_review: "red", error: "red" };
-
-  root.innerHTML = `
-    ${operations.some(j=>j.runNoticeError||j.runNotice?.hold?.paused||j.runNotice?.manualOnly||j.status==='error'||(['queued','error'].includes(j.status)&&Number(j.runNotice?.attempt_count)>=3))?`<section class="panel" aria-label="แจ้งเหตุที่งานยังไม่รัน"><h2>งานที่ต้องทราบก่อนรัน</h2><p>แยกคิวรอบหลักกับงานตรวจมือ · ตรวจเหตุผลและขั้นตอนต่อไปด้านล่าง</p>${operations.filter(j=>j.runNoticeError||j.runNotice?.hold?.paused||j.runNotice?.manualOnly||j.status==='error'||(['queued','error'].includes(j.status)&&Number(j.runNotice?.attempt_count)>=3)).map(j=>`<h3>${h(j.company)} · ${h(j.business_date)}</h3>${FileRunManagement.noticeHtml(j.runNotice)}`).join('')}<p>ผู้มีสิทธิ์สั่งตรวจใช้เมนู “รันมือ / จัดการไฟล์” · ผู้ชี้แจงแจ้ง Audit/หัวหน้าได้จากเหตุผลนี้</p></section>`:''}
-    <section class="panel" id="caseEvidenceLibraryPanel">
-      <div class="panel-heading"><div><p class="eyebrow">Evidence Library</p><h2>คลังหลักฐาน · เมลและผู้ชี้แจง</h2><small>ใช้บริษัทและวันที่เคสจากตัวกรองด้านบน · เก็บไฟล์เดิมและประวัติครบ · ไม่เข้ากระทบยอด</small></div></div>
-      ${cloudState.evidenceError ? `<p role="alert">${h(cloudState.evidenceError)}</p>` : cloudState.caseAttachments === null ? '<p role="status">กำลังโหลดหลักฐานจากเคส…</p>' : ''}
-      <div id="caseEvidenceLibrary"></div>
-    </section>
-    <section class="status-strip four action-tiles">
-      <article class="ok" data-scroll-cloud="cloudInbox"><span>เมลที่ดึงเข้ามาแล้ว</span><strong>${num(batches.length)}</strong><small>ช่วง ${h(rangeLabel())} · กดดูเมล</small></article>
-      <article data-cloud-view="all"><span>ไฟล์ทั้งหมด</span><strong>${num(allFiles.length)}</strong><small>กดดูทุกสถานะ</small></article>
-      <article class="${readyFiles.length ? "ok" : ""}" data-cloud-view="ready"><span>พร้อมใช้งาน</span><strong>${num(readyFiles.length)}</strong><small>อ่านสำเร็จ · กดดูรายการ</small></article>
-      <article data-cloud-view="waiting"><span>รอประมวลผล</span><strong>${num(waitingFiles.length)}</strong><small>ไม่ใช่ไฟล์เสีย · รอระบบอ่าน</small></article>
-      <article data-cloud-view="review"><span>อ่านแล้ว · รอเทียบ BO</span><strong>${num(reviewFiles.length)}</strong><small>ไม่พบรายการในวันตรวจ · ไม่ต้องรันไฟล์เดิมซ้ำ</small></article>
-      <article class="${problemFiles.length ? "danger" : ""}" data-cloud-view="problem"><span>มีปัญหาต้องแก้</span><strong>${num(problemFiles.length)}</strong><small>${problemFiles.length ? "ไม่ส่งไปรันจนกว่าจะแก้" : "ไม่มีปัญหา"}</small></article>
-    </section>
-
-    <section class="audit-file-guide action-guide">
-      <button type="button" data-scroll-cloud="cloudInbox"><i>1</i><span><b>เปิดไฟล์ที่ได้รับ</b><small>กดเพื่อไปยังไฟล์จากเมล</small></span></button>
-      <button type="button" data-scroll-cloud="${problemFiles.length ? "problemFileSummary" : "cloudInbox"}"><i>2</i><span><b>ดูไฟล์ปัญหาทั้งหมด</b><small>ตรวจรายชื่อและสาเหตุก่อนแก้ทีละไฟล์</small></span></button>
-      <button type="button" data-action-route="daily-summary"><i>3</i><span><b>ดูผลหลังบันทึก</b><small>ไปสรุป 1 บริษัท 1 วัน</small></span></button>
-    </section>
-
-    ${problemFiles.length ? `<section class="panel problem-file-summary" id="problemFileSummary">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Problem files</p><h2>ไฟล์ที่พบปัญหาทั้งหมด</h2><small class="head-sub">รวม ${num(problemFiles.length)} ไฟล์ในช่วง ${h(rangeLabel())} · ตรวจรายชื่อและสาเหตุก่อนเริ่มแก้</small></div>
-        <div class="inline-actions"><button class="primary-button sm" id="cReviewIssues">เริ่มตรวจทีละไฟล์</button><button class="ghost-button sm" type="button" data-scroll-cloud="cloudInbox">ดูไฟล์ทั้งหมดจากเมล</button></div>
-      </div>
-      <div class="table-wrap problem-file-table"><table>
-        <thead><tr><th>#</th><th>วันที่</th><th>บริษัท</th><th>ชื่อไฟล์</th><th>ประเภทปัจจุบัน</th><th>ปัญหาที่พบ</th><th></th></tr></thead>
-        <tbody>${problemFiles.map((file, index) => `<tr class="bad">
-          <td class="tnum">${num(index + 1)}</td><td><b>${h(file.business_date || "-")}</b></td><td>${h(file.company || "ไม่ระบุ")}</td>
-          <td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>${h(file.subject || "กดเพื่อดูตัวอย่าง")}</small></button></td>
-          <td>${h(KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</td>
-          <td><span class="badge red">${file.parse_error ? h(statementReviewLabel(file)) : "ยังไม่ทราบประเภท"}</span><small class="sub danger">${h(file.parse_error || "ต้องเปิด Preview แล้วเลือกประเภทไฟล์")}</small></td>
-          <td class="right"><button class="primary-button xs" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : "waiting"}" ${file.storage_path ? "" : "disabled"}>เปิดตรวจ</button></td>
-        </tr>`).join("")}</tbody>
-      </table></div>
-    </section>` : `<section class="panel problem-file-summary ok" id="problemFileSummary"><div class="panel-heading"><div><p class="eyebrow">Problem files</p><h2>ไม่พบไฟล์ที่มีปัญหา</h2><small class="head-sub">ไฟล์ทั้งหมดมีประเภทแล้วและไม่มีข้อผิดพลาดจากการอ่าน</small></div><button class="ghost-button sm" type="button" data-scroll-cloud="cloudInbox">ดูไฟล์ทั้งหมดจากเมล</button></div></section>`}
-
-    ${
-      operations.length
-        ? `<section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Daily Operations</p><h2>คิวกระทบยอดอัตโนมัติ</h2></div><span class="health ${operations.some((x) => x.status === "error" || x.status === "needs_review") ? "attention" : "ok"}">${operations.filter((x) => x.status === "queued" || x.status === "running").length} งานกำลังดำเนินการ</span></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>วันที่</th><th>บริษัท/ระบบ</th><th>สถานะ</th><th class="right">เมล</th><th class="right">ไฟล์</th><th>ไฟล์ที่ขาด</th><th>ผลล่าสุด</th></tr></thead>
-        <tbody>${operations
-          .map(
-            (j) => `<tr class="action-row" data-summary-company="${h(j.company)}" data-summary-date="${h(j.business_date)}" role="link" tabindex="0">
-            <td><b>${h(j.business_date)}</b>${j.late_file ? '<small class="sub danger">มีไฟล์มาช้า · ตรวจสถานะรันก่อน</small>' : ""}</td>
-            <td>${h(j.company)}${j.business_system ? `<small class="sub">${h(j.business_system)}</small>` : ""}</td>
-            <td><span class="badge ${j.runNotice?.hold?.paused||j.runNotice?.manualOnly?'amber':jobTone[j.status] || "grey"}">${h(j.runNotice?.hold?.paused||j.runNotice?.manualOnly?'พักบอทรอบหลัก':jobLabel[j.status] || j.status)}</span>${j.runNoticeError?'<small class="sub danger">ยังตรวจสถานะพักไม่ได้ · โหลดสถานะล่าสุดก่อนสั่งงาน</small>':j.runNotice&&(j.runNotice.hold?.paused||j.runNotice.manualOnly||j.status==='error'||Number(j.runNotice.attempt_count)>=3)?FileRunManagement.noticeHtml(j.runNotice):''}${j.last_error && !j.runNotice?.workerFailure && !j.last_error.includes("ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง") ? `<small class="sub danger" title="${h(j.last_error)}">${h(j.last_error.slice(0, 80))}</small>` : ""}</td>
-            <td class="right tnum">${num(j.mail_count)}</td><td class="right tnum">${num(j.file_count)}</td>
-            <td class="muted">${h(cloudMissingGroupsText(j.missing_groups))}</td>
-            <td>${j.match_rate == null ? "-" : `${Number(j.match_rate).toFixed(2)}% · exception ${num(j.exception_count)}`}</td>
-          </tr>`,
-          )
-          .join("")}</tbody>
-      </table></div>
-      <p class="hint">คิวรอบหลักกับงานตรวจมือเป็นคนละงาน · งานพัก/ไฟล์แก้ไขจะไม่รันหลักอัตโนมัติ เลือก “รันมือ / จัดการไฟล์” เพื่อดูเหตุผลและรันรายงานแยก</p>
-    </section>`
-        : ""
-    }
-
-    <section class="panel" id="cloudInbox">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Cloud Inbox</p><h2>ไฟล์จากเมล AUDIT 2</h2><small class="head-sub">ล็อกอินเป็น ${h(Sb.currentEmail())} · ${cloudState.error ? "โหลดข้อมูลไม่สำเร็จ" : cloudState.partialError ? h(cloudState.partialError) : "อัปเดตล่าสุด " + (c.lastSync ? displayTime(c.lastSync) : "-")}</small></div>
-        <div class="inline-actions">
-          <button class="ghost-button sm" id="cReload" ${cloudState.loading ? "disabled" : ""}>${cloudState.loading ? "กำลังโหลด..." : "รีเฟรช"}</button>
-          <button class="ghost-button sm" id="cEvidenceRecommendations">คู่แนะนำจากหลักฐาน</button>
-          <button class="ghost-button sm" id="cPickNew">เลือกเฉพาะไฟล์ที่พร้อมรัน</button>
-          <button class="primary-button sm" id="cImport" ${pickedFiles.length ? "" : "disabled"}>อ่านไฟล์ที่เลือก ${pickedFiles.length ? `(${pickedFiles.length})` : ""}</button>
-        </div>
-      </div>
-      <p class="hint" role="status">สแนปช็อตทะเบียนไฟล์ในแท็บนี้${fileSnapshot ? ' · บันทึกเมื่อ ' + h(displayTime(fileSnapshot.updatedAt)) : ''} · เปลี่ยนหน้าใช้ข้อมูลเดิม · ตัวอย่างต้นฉบับพักในหน่วยความจำไม่เกิน 5 นาที · กดรีเฟรชเพื่ออ่านทะเบียนล่าสุด · ไม่ใช่การยืนยันสถานะปิดเคส</p>
-      ${cloudState.auxiliaryLoading ? '<p role="status">กำลังโหลดสรุป/คิวและหลักฐานเพิ่มเติม · รายการไฟล์แสดงแยกได้ ไม่รันงาน</p>' : ''}
-      <div class="cloud-file-tabs" role="tablist" aria-label="กรองสถานะไฟล์">
-        ${[["all", "ทั้งหมด", allFiles.length], ["ready", "พร้อมใช้งาน", readyFiles.length], ["waiting", "รอประมวลผล", waitingFiles.length], ["review", "อ่านแล้ว · รอเทียบ BO", reviewFiles.length], ["problem", "มีปัญหาต้องแก้", problemFiles.length]].map(([value, label, count]) => `<button type="button" role="tab" data-cloud-file-view="${value}" aria-selected="${cloudState.fileView === value}" class="${cloudState.fileView === value ? "active" : ""}">${label} <b>${num(count)}</b></button>`).join("")}
-      </div>
-      ${cloudState.error ? `<p class="hint danger">${h(cloudState.error)}</p>` : cloudState.partialError ? `<p class="hint warn">${h(cloudState.partialError)} · ส่วนที่โหลดสำเร็จยังเปิดดูได้</p>` : ""}
-      ${
-        visibleBatches.length
-          ? visibleBatches
-              .map(
-                (b) => `<div class="mail-card">
-        <div class="mail-head">
-          <div>
-            <strong>${h(b.subject || "(ไม่มีหัวข้อ)")}</strong>
-            <span>${h(b.sender || "-")} · รับเมื่อ ${h(displayTime(b.received_at))}</span>
-          </div>
-          <div class="mail-tags">
-            ${b.company ? `<span class="badge violet">${h(b.company)}</span>` : ""}
-            ${b.business_date ? `<span class="badge blue">${h(b.business_date)}</span>` : ""}
-            ${b.is_supplement ? `<span class="badge amber">เพิ่มเติม</span>` : ""}
-            <span class="badge ${b.status === "stored" ? "green" : "grey"}">${h(b.status)}</span>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th style="width:34px"></th><th>ไฟล์</th><th>ชนิดที่ระบบเดา</th><th class="right">ขนาด</th><th>สถานะ</th><th></th></tr></thead>
-            <tbody>
-              ${(b.source_files || [])
-                .sort((x, y) => String(x.file_name).localeCompare(String(y.file_name), "th"))
-                .map((f) => {
-                  const canRead = /\.(xlsx|xlsm|xls|csv|txt|pdf)$/i.test(f.file_name) && f.kind !== "doc_clarify";
-                  const canQueue = canRead && !f.excluded && !f.parsed && !f.parse_error && f.kind !== "unknown";
-                  return `<tr class="${f.parse_error && !statementNeedsBoReview(f) ? "bad" : ""}">
-                  <td>${canQueue ? `<input type="checkbox" data-pick="${h(f.id)}" ${cloudState.picked[f.id] ? "checked" : ""} />` : ""}</td>
-                  <td><button class="file-name-link" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}" ${f.storage_path ? "" : "disabled"}><span>${h(f.file_name)}</span><small>กดดูตัวอย่าง ↗${f.checksum ? ` · checksum ${h(String(f.checksum).slice(0, 10))}…` : ""}</small></button>${f.from_zip ? `<small class="sub">จาก ${h(f.from_zip)}</small>` : ""}</td>
-                  <td>${h(KIND_LABEL[f.kind] || f.kind || "-")}${f.reference_date?`<small class="sub">วันอ้างอิง ${h(f.reference_date)}</small>`:''}${f.excluded?'<small class="sub">ยกเว้นจากการรัน · เก็บต้นฉบับ</small>':''}</td>
-                  <td class="right tnum">${f.size_bytes ? Math.round(f.size_bytes / 1024).toLocaleString() + " KB" : "-"}</td>
-                  <td>${
-                    f.excluded ? '<span class="file-state wait"><span><b>ยกเว้นจากการรัน</b><small>ไม่ลบไฟล์และไม่เปลี่ยนเคส</small></span></span>' : f.parse_error
-                      ? `<span class="file-state wait" title="${h(f.parse_error)}"><i>!</i><span><b>${h(statementReviewLabel(f))}</b><small>กดตรวจรายละเอียด — ยังไม่ยืนยันผลกระทบยอด</small></span></span>`
-                      : f.kind === "unknown"
-                        ? `<span class="file-state bad"><i>!</i><span><b>ยังไม่ทราบประเภท</b><small>ต้องเปิด Preview และเลือกประเภท</small></span></span>`
-                      : f.kind === "doc_clarify"
-                        ? `<span class="file-state ok"><i>✓</i><span><b>หลักฐานพร้อมตรวจ</b><small>ไม่ต้องส่งเข้าเครื่องอ่านรายการ</small></span></span>`
-                      : f.parsed
-                        ? `<span class="file-state ok"><i>✓</i><span><b>${h(parsedFileLabel(f))}</b><small>${isEmptyPmFile(f) ? "Provider ส่งไฟล์ว่าง — ไม่มีรายการในรอบนี้" : f.row_count ? `ระบบอ่าน ${num(f.row_count)} แถว` : "ระบบอ่านสำเร็จ"}</small></span></span>`
-                        : `<span class="file-state wait"><i>•</i><span><b>รอตรวจไฟล์</b><small>ยังไม่อ่านเข้าระบบ</small></span></span>`
-                  }</td>
-                  <td class="right"><div class="file-actions">${f.drive_url ? `<a class="ghost-button xs" href="${h(f.drive_url)}" target="_blank" rel="noopener">Drive</a>` : ""}<button class="primary-button xs" data-storage-open="${h(f.storage_path)}" data-file-id="${h(f.id)}" data-file-name="${h(f.file_name)}" data-file-mime="${h(f.mime_type || "")}" data-file-size="${h(f.size_bytes || "")}" data-file-kind="${h(f.kind || "")}" data-file-company="${h(f.company || b.company || "")}" data-file-date="${h(b.business_date || "")}" data-file-status="${f.parse_error ? "error" : f.parsed ? "parsed" : "waiting"}">ดูตัวอย่าง</button></div></td>
-                </tr>`;
-                })
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>`,
-              )
-              .join("")
-          : `<p class="empty-box">${cloudState.loading ? "กำลังโหลด..." : cloudState.fileView === "all" ? "ยังไม่มีเมลในช่วงวันที่นี้ — ลองขยายช่วงวันที่ในแถบตัวกรองด้านบน หรือตรวจว่า workflow ใน n8n รันแล้ว" : "ไม่มีไฟล์ในสถานะที่เลือก"}</p>`
-      }
-    </section>
-
-    ${
-      false && daily.length
-        ? `<section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Coverage</p><h2>ไฟล์เข้าครบรายวัน</h2></div><span class="health ok">${num(daily.length)} รายการ</span></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>วันที่</th><th>บริษัท</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">อ่านแล้ว</th><th class="right">มีปัญหา</th><th>เมลล่าสุด</th></tr></thead>
-          <tbody>
-            ${daily
-              .map(
-                (d) => `<tr>
-              <td><b>${h(d.business_date || "-")}</b></td>
-              <td>${h(d.company || "-")}</td>
-              <td class="right tnum">${num(d.mail_count)}</td>
-              <td class="right tnum">${num(d.file_count)}</td>
-              <td class="right tnum">${num(d.parsed_count)}</td>
-              <td class="right tnum ${d.error_count ? "danger" : ""}">${num(d.error_count)}</td>
-              <td class="muted">${h(displayTime(d.last_mail_at))}</td>
-            </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>`
-        : ""
-    }`;
-
-  if(cloudState.caseAttachments !== null) CaseEvidenceLibrary.mount($('#caseEvidenceLibrary'), CaseEvidenceLibrary.entries(cloudState.batches, cloudState.caseAttachments), openStoredFilePreview);
-  // Append a distinct metadata action; never reuse preview/import buttons.
-  if(FileExclusion.canManage(state.role)) root.querySelectorAll('tr').forEach(row=>{
-    const preview=row.querySelector('[data-file-id]');if(!preview)return;
-    const file=allFiles.find(f=>f.id===preview.dataset.fileId);if(!file)return;
-    const button=document.createElement('button');button.className='ghost-button xs';button.type='button';
-    button.textContent=file.excluded?'คืนไฟล์ให้เลือกใช้':'ยกเว้นไฟล์จากการรัน';
-    button.dataset.excludeFile=file.id;button.onclick=async()=>{if(await openFileExclusion(file.id))cloudLoad(true);};
-    row.querySelector('.file-actions')?.appendChild(button);
-  });
-  $("#cReload").addEventListener("click", () => cloudLoad(true));
-  $("#cEvidenceRecommendations").addEventListener("click", () => EvidenceRecommendations.browse(Sb, state.date || DEFAULT_WORK_DATE, openStoredFilePreview));
-  $("#cPickNew").addEventListener("click", () => {
-    cloudState.picked = {};
-    queueableFiles.forEach((f) => (cloudState.picked[f.id] = true));
-    render();
-  });
-  $("#cImport").addEventListener("click", () => cloudImport(pickedFiles));
-  $("#cReviewIssues")?.addEventListener("click", () => {
-    const first = problemFiles[0];
-    const button = Array.from(root.querySelectorAll("[data-storage-open][data-file-id]")).find((item) => item.dataset.fileId === first?.id);
-    if (!button) return toast("ยังไม่พบไฟล์ปัญหาในรายการปัจจุบัน", "warn");
-    button.scrollIntoView({ behavior: "smooth", block: "center" });
-    button.click();
-  });
-  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
-  AuditUi.tabs(root);
-  root.querySelectorAll("[data-cloud-view]").forEach((item) => item.addEventListener("click", () => {
-    cloudState.fileView = item.dataset.cloudView;
-    render();
-    requestAnimationFrame(() => document.getElementById(cloudState.fileView === "problem" ? "problemFileSummary" : "cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }));
-  root.querySelectorAll("[data-cloud-file-view]").forEach((item) => item.addEventListener("click", () => {
-    cloudState.fileView = item.dataset.cloudFileView;
-    render();
-    requestAnimationFrame(() => document.getElementById("cloudInbox")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }));
-  root.querySelectorAll("[data-scroll-cloud]").forEach((item) => item.addEventListener("click", () => document.getElementById(item.dataset.scrollCloud)?.scrollIntoView({ behavior: "smooth", block: "start" })));
-  root.querySelectorAll("[data-summary-company]").forEach((row) => {
-    const open = () => { state.dailySummary.date = row.dataset.summaryDate; state.dailySummary.company = row.dataset.summaryCompany; go("daily-summary"); };
-    row.addEventListener("click", open);
-    row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } });
-  });
-  root.querySelectorAll("[data-pick]").forEach((cb) =>
-    cb.addEventListener("change", () => {
-      cloudState.picked[cb.dataset.pick] = cb.checked;
-      render();
-    }),
-  );
-  bindStoredFileLinks(root);
-};
-
-const KIND_LABEL = {
-  bo_main: "รายงานบัญชีฝาก-ถอน",
-  pm_statement: "รายการเดินบัญชี PM",
-  manual_credit: "ฝากมือ - เครดิต",
-  manual_payment: "ฝากมือ - Payment",
-  manual_bonus: "ฝากมือ - โบนัส",
-  comm_req: "ขอถอนค่าคอมมิชชั่น",
-  credit_out: "รายงานถอนเครดิต",
-  stm_pdf: "Statement ธนาคาร (PDF)",
-  doc_clarify: "เอกสารชี้แจง",
-  unknown: "ยังระบุไม่ได้",
-};
-
-/* สถานะของหน้ารับไฟล์จริงและ progress overlay
-   ต้องประกาศก่อน startRealTest()/VIEWS.import ซึ่งเรียกใช้ค่าชุดนี้ */
-const ImportState = {
-  files: [],
-  lastRun: null,
-  inbox: null,
-  running: false,
-};
-
-function showProgress(title) {
-  $("#progTitle").textContent = title;
-  $("#progLabel").textContent = "เตรียมข้อมูล...";
-  $("#progFill").style.width = "0%";
-  $("#progPct").textContent = "0%";
-  $("#progressOverlay").hidden = false;
-}
-
-function setProgress(pct, label) {
-  const p = Math.round(Math.min(1, Math.max(0, pct)) * 100);
-  $("#progFill").style.width = p + "%";
-  $("#progPct").textContent = p + "%";
-  if (label) $("#progLabel").textContent = label;
-}
-
-function hideProgress() {
-  $("#progressOverlay").hidden = true;
-}
-
-function buildInbox() {
-  const set = Sample.buildFileSet(state.filters.date, 2400);
-  const expected = { ...set.scenario.expected };
-  Object.keys(set.pmScenario.expected).forEach((key) => (expected[key] += set.pmScenario.expected[key]));
-  ImportState.inbox = {
-    date: state.filters.date,
-    scenario: set.scenario,
-    pmScenario: set.pmScenario,
-    expected,
-    messages: set.files.map((file, index) => ({
-      id: "M" + (index + 1),
-      from:
-        [
-          "ops_scb@bank-report",
-          "ops_kbank@bank-report",
-          "ops_gsb@bank-report",
-          "ops_bbl@bank-report",
-          "backoffice@sys123",
-          "backoffice@sys123",
-          "report@autopeer",
-          "report@azpay",
-          "report@cyberplus",
-          "backoffice@sys123",
-        ][index] || "backoffice@sys123",
-      subject: `${file.kind} ประจำวันที่ ${state.filters.date}`,
-      file,
-      pulled: false,
-    })),
-  };
-  return ImportState.inbox;
-}
-
-
-/* บัญชีที่มี statement เข้ามา ถือเป็นบัญชีของบริษัทโดยอัตโนมัติ
-   ไม่งั้นกฎ "ลูกค้าฝากผิดบัญชี" จะฟ้องทุกแถวเพราะยังไม่มีในทะเบียนบัญชี */
-function registerAccountFromStatement(norm) {
-  const h = norm.header || {};
-  if (!h.account) return;
-  if (DB.accounts.some((a) => a.id === h.account)) return;
-  DB.accounts.push({
-    id: h.account,
-    bank: h.bank || "-",
-    company: norm.format.company || "-",
-    type: "deposit",
-    active: true,
-    holder: h.holder || "",
-    autoAdded: true,
-  });
-  logAction("account_add", "account", h.account, `เพิ่มบัญชีอัตโนมัติจาก statement ${h.bank || ""} ${h.holder || ""}`.trim());
-}
-
-/* โหลดบัญชีจริงจากทะเบียน (registry.js) มาเป็น master accounts ของระบบ */
-function loadRegistryAccounts() {
-  if (typeof Registry === "undefined" || !Registry.ACCOUNTS) return null;
-  const banks = Registry.ACCOUNTS.filter((a) => a.source === "bank" && a.account);
-  if (!banks.length) return null;
-  return banks.map((a) => ({ id: a.account, bank: a.bank, company: a.subco || a.provider || "-", type: a.type || "both", active: true, holder: a.name || "", fromRegistry: true }));
-}
-
-/* ล้างข้อมูลตัวอย่าง/เก่าทั้งหมด แล้วเริ่มสถานะสะอาดสำหรับเทสข้อมูลจริง */
-function startRealTest() {
-  Store.reset();
-  ImportState.files = [];
-  ImportState.lastRun = null;
-  ImportState.inbox = null;
-  DB.exceptions = [];
-  DB.damages = [];
-  DB.files = [];
-  DB.currentRun = null;
-  if (Array.isArray(DB.hourly)) DB.hourly.forEach((x) => { x.total = 0; x.matched = 0; x.exception = 0; });
-  const real = loadRegistryAccounts();
-  if (real) DB.accounts = real;
-  state.dataset = "imported";
-  if (typeof updateAutoStatus === "function") updateAutoStatus();
-  toast(`ล้างข้อมูลเก่าแล้ว — โหลดบัญชีจริง ${real ? real.length : 0} บัญชีจากทะเบียน · พร้อมนำเข้าไฟล์จริง`);
-  go("import");
-}
-
-function readFileText(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(new Error("อ่านไฟล์ไม่ได้"));
-    r.readAsText(file, "utf-8");
-  });
-}
-function readFileBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(new Error("อ่านไฟล์ไม่ได้"));
-    r.readAsArrayBuffer(file);
-  });
-}
-
-async function ingestRaw(name, text, size, meta = {}) {
-  let rows = [];
-  let norm;
-  const businessDate = meta.businessDate || state.filters.date;
-  if (/\.pdf$/i.test(name)) {
-    /* statement ธนาคารเป็น PDF — ใช้ตัวอ่านเฉพาะ */
-    norm = await PdfStm.parse(name, text, businessDate);
-    if (norm.quality && !norm.quality.complete) throw new Error(`PDF อ่านได้บางส่วน: ${norm.quality.unreadRows.length} บรรทัดยังอ่านไม่ได้ / ${norm.quality.invalidRows.length} รายการต้องยืนยัน — ส่งอ่านผ่าน OCR หรือตรวจต้นฉบับก่อนกระทบยอด`);
-    registerAccountFromStatement(norm);
-  } else {
-    if (/\.(xlsx|xlsm|xls)$/i.test(name)) rows = await Engine.parseSheet(text);
-    else {
-      /* ไฟล์ CSV/TXT ที่มาจาก input[type=file] ถูกอ่านเป็น string แต่ไฟล์จาก
-         Supabase Storage ถูกดาวน์โหลดเป็น ArrayBuffer — แปลงให้เป็นข้อความก่อน
-         ส่งเข้า parser เพื่อให้ทั้งสองเส้นทางใช้ตัวอ่านเดียวกันได้ */
-      const csvText = typeof text === "string" ? text : new TextDecoder("utf-8").decode(text);
-      rows = Engine.parseCSV(csvText);
-    }
-    norm = Engine.normalize(name, rows, DB.settings, businessDate);
-  }
-  /* แท็กด้วยทะเบียนบัญชี (บริษัทย่อย/บัญชี/ผู้ให้บริการ) + normalize เลขบัญชีให้เป็นรูปแบบเดียว
-     เพื่อให้ STM (ธนาคาร) กับ BO/PM จับคู่กันได้แม้เขียนเลขบัญชีต่างรูปแบบ (ขีด/เบอร์ TrueMoney) */
-  let tagSubco = "",
-    tagProvider = "",
-    tagAccount = "";
-  if (typeof Registry !== "undefined") {
-    let tag = null;
-    if (/\.pdf$/i.test(name) && norm.header && norm.header.account) {
-      tagAccount = Registry.normalizeAccount(norm.header.account, norm.header.bank);
-      tag = Registry.byAccount(tagAccount) || Registry.matchFile(name).match;
-    } else {
-      tag = Registry.matchFile(name).match;
-    }
-    const bk = (norm.format && norm.format.bank) || (tag && tag.bank) || (norm.header && norm.header.bank) || "";
-    (norm.records || []).forEach((r) => {
-      if (r.account && !r.isPmChannel && /\d/.test(String(r.account))) r.account = Registry.normalizeAccount(r.account, bk || r.bank);
-    });
-    tagSubco = (tag && tag.subco) || (norm.format && norm.format.company) || "";
-    const r0 = (norm.records || [])[0];
-    tagProvider = (r0 && r0.isPmChannel && r0.channel) || (tag && tag.provider) || "";
-    if (tagSubco) (norm.records || []).forEach((r) => { if (!r.subco) r.subco = tagSubco; });
-  }
-
-  ImportState.files = ImportState.files.filter((f) => (meta.fileId ? f.cloudFileId !== meta.fileId : f.name !== name));
-  ImportState.files.push({
-    name,
-    cloudFileId: meta.fileId || null,
-    storagePath: meta.storagePath || null,
-    businessDate,
-    size: size ?? (text.byteLength || text.length),
-    rowCount: rows.length,
-    rows, // เก็บแถวดิบไว้ เพื่อ normalize ใหม่เมื่อกฎธนาคารเปลี่ยน
-    format: norm.format,
-    records: norm.records,
-    aux: norm.aux || [],
-    dropped: norm.dropped,
-    warnings: norm.warnings,
-    subco: tagSubco,
-    provider: tagProvider,
-    tagAccount,
-  });
-  const kind = norm.format.realLabel || norm.format.source.toUpperCase() + (norm.format.bank ? " / " + norm.format.bank : "");
-  logAction("import", "source_file", name, `นำเข้า ${(norm.records.length || (norm.aux || []).length)} รายการ (${kind})`);
-  return norm;
-}
-
-/* อ่านไฟล์เดิมใหม่ด้วยกฎปัจจุบัน — ใช้เมื่อผู้ใช้เปลี่ยนกฎธนาคารหรือ tolerance */
-function renormalizeAll() {
-  ImportState.files = ImportState.files.map((f) => {
-    if (!f.rows || !f.rows.length) return f;
-    const norm = Engine.normalize(f.name, f.rows, DB.settings, f.businessDate || state.filters.date);
-    return { ...f, format: norm.format, records: norm.records, aux: norm.aux || [], dropped: norm.dropped, warnings: norm.warnings };
-  });
-}
-
-/* เงื่อนไขที่ทำให้ระบบกระทบยอดเองได้ */
-function autoReadiness() {
-  const files = ImportState.files;
-  const hasStm = files.some((f) => f.format.source !== "bo" && f.format.source !== "aux" && f.records.length);
-  const hasBo = files.some((f) => f.format.source === "bo" && f.records.length);
-  const hasAux = files.some((f) => (f.aux || []).length);
-  if (!files.length) return { ready: false, text: "รอไฟล์", tone: "idle", why: "ยังไม่มีไฟล์เข้าระบบ" };
-  if (!hasStm && (hasBo || hasAux))
-    return {
-      ready: true,
-      rulesOnly: true,
-      text: ImportState.lastRun ? "ตรวจกฎแล้ว" : "ตรวจกฎธุรกิจ",
-      tone: "wait",
-      why: "ยังไม่มีไฟล์ฝั่งธนาคาร — ระบบตรวจกฎธุรกิจจากรายงานหลังบ้านให้ก่อน (ค่าคอม/ตัดเครดิต/ข้ามวัน/ซ้ำ)",
-    };
-  if (!hasStm) return { ready: false, text: "รอ STM", tone: "wait", why: "ยังไม่มีไฟล์ฝั่งธนาคาร (STM หรือ PM)" };
-  if (!hasBo) return { ready: false, text: "รอ BO", tone: "wait", why: "ยังไม่มีไฟล์ฝั่งระบบหลังบ้าน (BO)" };
-  return { ready: true, text: ImportState.lastRun ? "กระทบยอดแล้ว" : "พร้อมกระทบยอด", tone: "ok", why: "ไฟล์ครบทั้งสองฝั่ง ระบบกระทบยอดให้อัตโนมัติ" };
-}
-
-/* รวบรวมผลตรวจกฎธุรกิจจากไฟล์รายงานหลังบ้าน (ไม่ต้องใช้ statement) */
-function runBusinessRules() {
-  if (typeof Rules === "undefined") return { exceptions: [], counts: {} };
-  const parsed = ImportState.files
-    .filter((f) => f.format && (f.format.source === "bo" || f.format.source === "aux"))
-    .map((f) => ({ records: f.format.source === "bo" ? f.records : [], aux: f.aux || [] }));
-  return Rules.run(parsed, DB.settings);
-}
-
-/* BO-first coverage: BO คือหลักฐานว่าบัญชี/Provider ใดถูกใช้จริงในวันนั้น
-   Google Sheet เป็นทะเบียนยืนยันชื่อมาตรฐาน ส่วนชื่อเมลและชื่อไฟล์เป็นเพียง hint */
-function buildBoFirstCoverage(stmRecords, boRecords) {
-  const clean = (value) => String(value || "").trim().toUpperCase();
-  const companyOf = (record) => normalizeLiveCompanyCode(record?.subco || record?.company) || clean(record?.subco || record?.company) || "ไม่ระบุบริษัท";
-  const direction = (record) => record?.direction === "withdraw" ? "withdraw" : record?.direction === "deposit" ? "deposit" : "unknown";
-  const identity = (record) => {
-    const raw = record?.channel || record?.account || record?.bank || "";
-    const pm = typeof Formats !== "undefined" && Formats.canonicalPm ? Formats.canonicalPm(raw) : "";
-    if (pm || record?.isPmChannel) return { kind: "PM", id: pm || clean(raw), label: pm || clean(raw) };
-    const account = String(record?.account || "").replace(/\D/g, "");
-    const bank = clean(record?.bank || record?.channel);
-    return { kind: "STM", id: account || bank, label: [bank, account ? `••${account.slice(-4)}` : ""].filter(Boolean).join(" ") };
-  };
-  const collect = (records) => {
-    const map = new Map();
-    (records || []).forEach((record) => {
-      const id = identity(record);
-      if (!id.id || id.id === "UNKNOWN") return;
-      const company = companyOf(record);
-      const system = businessSystemOfCompany(company);
-      const dir = direction(record);
-      const key = `${system}|${company}|${id.kind}|${id.id}|${dir}`;
-      const item = map.get(key) || { key, system, company, kind: id.kind, identity: id.id, label: id.label, direction: dir, rows: 0, amount: 0, source_files: [] };
-      item.rows += 1;
-      item.amount = Math.round((item.amount + Number(record?.amount || 0)) * 100) / 100;
-      const sourceFile = String(record?.source_file || record?.fileName || "").trim();
-      if (sourceFile && !item.source_files.includes(sourceFile)) item.source_files.push(sourceFile);
-      map.set(key, item);
-    });
-    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-  };
-  const required = collect(boRecords);
-  const received = collect(stmRecords);
-  const receivedKeys = new Set(received.map((item) => item.key));
-  const missing = required.filter((item) => !receivedKeys.has(item.key));
-  return {
-    method: "BO_FIRST",
-    registry_source: "https://docs.google.com/spreadsheets/d/1PlxeE2CIH9uh93xFJ0LHmo-9TI931chDJxdckBzfaME",
-    required,
-    received,
-    missing,
-    complete: required.length > 0 && missing.length === 0,
-  };
-}
-
-function updateAutoStatus() {
-  const el = $("#autoStatus");
-  if (!el) return;
-  const r = ImportState.running ? { text: "กำลังกระทบยอด", tone: "run", why: "" } : autoReadiness();
-  el.className = "auto-status " + r.tone;
-  $("#autoStatusText").textContent = r.text;
-  el.title = r.why || "ระบบกำลังจับคู่รายการอยู่";
-}
-
-/* ทริกเกอร์อัตโนมัติ — เรียกทุกครั้งที่ไฟล์เข้าหรือกฎเปลี่ยน */
-let autoTimer = null;
-function scheduleAutoReconcile(reason) {
-  clearTimeout(autoTimer);
-  updateAutoStatus();
-  if (!autoReadiness().ready || ImportState.running) return;
-  autoTimer = setTimeout(() => runReconcileFromImport({ auto: true, reason }), 350);
-}
-
-async function runReconcileFromImport(opts = {}) {
-  const stm = [];
-  const bo = [];
-  ImportState.files.forEach((f) => {
-    if (f.format.source === "aux") return;
-    if (f.format.source === "bo") bo.push(...f.records);
-    else stm.push(...f.records);
-  });
-  /* รายการเดียวกันอาจอยู่ในหลายรายงาน (บัญชีฝาก + ฝากมือ) ต้องยุบก่อนจับคู่ */
-  if (typeof Formats !== "undefined" && bo.some((r) => r.formatCode)) {
-    const m = Formats.merge(bo);
-    bo.length = 0;
-    m.sort((a, b) => (a.sec || 0) - (b.sec || 0)).forEach((r) => bo.push(r));
-  }
-  const ready = autoReadiness();
-  if (!ready.ready) {
-    if (opts.job) {
-      const message = `ไฟล์ในคิวไม่พร้อมกระทบยอด: ${ready.why}`;
-      await Sb.failJob(opts.job.id, message).catch(() => {});
-      cloudState.activeJob = null;
-    }
-    updateAutoStatus();
-    return;
-  }
-  ImportState.running = true;
-  updateAutoStatus();
-  showProgress(ready.rulesOnly ? "กำลังตรวจกฎธุรกิจจากรายงานหลังบ้าน" : "ระบบกำลังกระทบยอดให้อัตโนมัติ");
-  await new Promise((r) => setTimeout(r, 40));
-
-  const biz = runBusinessRules();
-  let result;
-  if (ready.rulesOnly) {
-    const hourlyStm = new Array(24).fill(0);
-    const hourlyMatched = new Array(24).fill(0);
-    bo.forEach((r) => hourlyStm[Math.floor(r.sec / 3600)]++);
-    result = {
-      matched: 0,
-      exceptions: [],
-      stmCount: 0,
-      boCount: bo.length,
-      elapsedMs: 0,
-      matchRate: 0,
-      nearTolerance: 0,
-      hourlyStm,
-      hourlyMatched,
-      crossDayWindow: bo.filter((r) => r.crossDay || r.lateNight).length,
-      noStmSide: [],
-      noStmCount: bo.length,
-      rulesOnly: true,
-    };
-  } else {
-    DB.settings.asOf = Date.now(); // คิดอายุ SLA จากเวลาจริงของการตรวจ
-    result = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (pct, label) => setProgress(pct, label));
-  }
-  /* รวม exception จากกฎธุรกิจเข้ากับผลจับคู่ แล้วออกรหัสใหม่ให้ต่อเนื่อง */
-  /* รวมแล้วยุบรายการที่ซ้ำกัน (กฎธุรกิจกับการจับคู่อาจจับเคสเดียวกัน) */
-  const bestEx = new Map();
-  result.exceptions.concat(biz.exceptions).forEach((e) => {
-    const k = [e.type, e.account, e.time, e.systemAmount ?? ""].join("|");
-    const prev = bestEx.get(k);
-    /* ถ้าซ้ำกัน เก็บอันที่มีคำอธิบายละเอียดกว่าไว้ */
-    if (!prev || (!prev.detail && e.detail)) bestEx.set(k, e);
-  });
-  result.exceptions = [...bestEx.values()].sort((a, b) => a.sortSec - b.sortSec);
-  result.exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
-  result.ruleExceptions = biz.exceptions.length;
-  result.auxCounts = biz.counts;
-  result.boFirst = buildBoFirstCoverage(stm, bo);
-
-  hideProgress();
-  ImportState.running = false;
-  applyRunResult(result, stm, bo);
-  if (opts.job) {
-    try {
-      result.businessDate = opts.job.business_date;
-      if (result.rulesOnly) {
-        await Sb.finishParseOnly(opts.job.id);
-        cloudState.activeJob = null;
-        cloudState.operations = null;
-        ImportState.lastRun.reason = opts.reason || "อ่าน BO เพื่อรอ STM";
-        updateAutoStatus();
-        toast(`อ่าน BO แล้ว · พบบัญชี/Provider ที่ใช้จริง ${num(result.boFirst.required.length)} กลุ่ม · ยังไม่สร้างผลกระทบยอดจนกว่า STM จะมา`);
-        if (state.route === "import" || opts.goDashboard) go("dashboard");
-        else render();
-        return;
-      }
-      const runId = await Sb.saveRun(result, result.exceptions, {
-        company: opts.job.company,
-        fileIds: ImportState.files.map((f) => f.cloudFileId).filter(Boolean),
-        summary: { reason: opts.reason || "คิวรายวัน", job_id: opts.job.id, late_file: !!opts.job.late_file, bo_first: result.boFirst },
-      });
-      await Sb.finishJob(opts.job.id, runId);
-      cloudState.activeJob = null;
-      cloudState.operations = null;
-    } catch (e) {
-      await Sb.failJob(opts.job.id, e.message).catch(() => {});
-      cloudState.activeJob = null;
-      toast(`บันทึกผลคิวรายวันไม่สำเร็จ: ${e.message}`, "warn");
-    }
-  }
-  ImportState.lastRun.reason = opts.reason || "ไฟล์เข้าใหม่";
-  updateAutoStatus();
-  toast(
-    result.rulesOnly
-      ? `ตรวจกฎธุรกิจแล้ว · พบ ${num(result.exceptions.length)} รายการต้องชี้แจง · ยังรอไฟล์ฝั่งธนาคารเพื่อจับคู่`
-      : `กระทบยอดอัตโนมัติแล้ว (${opts.reason || "ไฟล์เข้าใหม่"}) · จับคู่ ${num(result.matched)} รายการ · exception ${num(result.exceptions.length)} · ${result.elapsedMs} ms`,
-  );
-  if (state.route === "import" || opts.goDashboard) go("dashboard");
-  else render();
-}
-
-function applyRunResult(result, stm, bo) {
-  DB.exceptions = result.exceptions;
-  DB.hourly.forEach((x, i) => {
-    x.total = result.hourlyStm[i];
-    x.matched = result.hourlyMatched[i];
-    x.exception = 0;
-  });
-  result.exceptions.forEach((e) => DB.hourly[e.hour].exception++);
-  DB.damages = DB.damages.filter((d) => d.cycle !== "C1");
-  DB.currentRun = result;
-
-  // Intake checklist สะท้อนไฟล์ที่นำเข้าจริง
-  const srcLabel = { stm: "STM ธนาคาร", bo: "รายงาน BO", pm: "STM PM", unknown: "ไม่ทราบชนิด" };
-  DB.files = ImportState.files.map((f) => ({
-    id: f.name,
-    company: f.format.company || "SYS123",
-    companyName: (DB.companies.find((c) => c.code === (f.format.company || "SYS123")) || {}).name || f.format.company || "ระบบ 123",
-    fileType: srcLabel[f.format.source] + (f.format.bank ? ` (${f.format.bank})` : ""),
-    status: f.records.length ? "received" : "missing",
-    rows: f.records.length,
-    receivedAt: nowStamp().slice(11, 16),
-    sender: "email กลาง",
-    checksum: String(f.size).padStart(8, "0").slice(-8),
-  }));
-  ImportState.lastRun = {
-    at: nowStamp(),
-    ...result,
-    files: ImportState.files.map((f) => ({ name: f.name, source: f.format.source, bank: f.format.bank, records: f.records.length, dropped: f.dropped })),
-  };
-  state.dataset = "imported";
-  state.page = 1;
-  /* เลื่อนตัวกรองไปที่วันที่ของข้อมูลที่เพิ่งนำเข้า ไม่งั้นหน้าจอจะว่างเพราะกรองด้วยวันนี้ */
-  const dates = [...new Set(result.exceptions.map((e) => e.date).concat(stm.map((r) => r.date), bo.map((r) => r.date)).filter(Boolean))].sort();
-  if (dates.length) {
-    const main = dates[Math.floor(dates.length / 2)];
-    state.filters.date = main;
-    state.filters.from = dates[0];
-    state.filters.to = dates[dates.length - 1];
-    state.filters.preset = dates.length > 1 ? "custom" : "day";
-  }
-  logAction("auto_reconcile", "match_run", "MR-" + Date.now(), `กระทบยอดอัตโนมัติ: จับคู่ ${result.matched} รายการ, exception ${result.exceptions.length}, ${result.elapsedMs} ms`);
-  retagTracks();
-  runNotificationRules();
-  Store.persist();
-}
-
-VIEWS.import = (root) => {
-  const inbox = ImportState.inbox || buildInbox();
-  const files = ImportState.files;
-  const totalRecords = files.reduce((a, f) => a + f.records.length, 0);
-  const hasStm = files.some((f) => f.format.source !== "bo");
-  const hasBo = files.some((f) => f.format.source === "bo");
-  const ready = autoReadiness();
-  const srcName = { stm: "STM ธนาคาร", bo: "รายงาน BO", pm: "STM PM", aux: "รายงานประกอบ", unknown: "ไม่ทราบชนิด" };
-  /* ไฟล์จริงจากแผนกไม่มีข้อบกพร่องที่จงใจใส่ไว้ จึงไม่ต้องแสดงตารางเทียบของไฟล์ตัวอย่าง */
-  const usingRealFiles = files.some((f) => f.format.realCode);
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article><span>ไฟล์ในกล่องอีเมล</span><strong>${inbox.messages.length}</strong><small>วันที่ ${h(inbox.date)}</small></article>
-      <article class="${files.length ? "ok" : ""}"><span>ไฟล์ที่นำเข้าแล้ว</span><strong>${files.length}</strong><small>${hasStm ? "มีฝั่งธนาคาร" : "ยังไม่มีฝั่งธนาคาร"} · ${hasBo ? "มีฝั่ง BO" : "ยังไม่มีฝั่ง BO"}</small></article>
-      <article><span>รายการที่ normalize แล้ว</span><strong>${num(totalRecords)}</strong><small>ผ่านกฎธนาคารที่เปิดใช้</small></article>
-      <article class="${ImportState.lastRun ? "ok" : ready.ready ? "warn" : ""}"><span>ผลกระทบยอดล่าสุด</span><strong>${ImportState.lastRun ? ImportState.lastRun.matchRate.toFixed(2) + "%" : "-"}</strong><small>${ImportState.lastRun ? ImportState.lastRun.elapsedMs + " ms · " + ImportState.lastRun.at : h(ready.why)}</small></article>
-    </section>
-
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Email Ingestion</p><h2>กล่องอีเมลกลางของแผนก</h2></div>
-          <button class="ghost-button sm" id="pullAll">ดึงไฟล์ทั้งหมด</button>
-        </div>
-        <div class="inbox-list">
-          ${inbox.messages
-            .map(
-              (m) => `<div class="inbox-item ${m.pulled ? "pulled" : ""}">
-            <div>
-              <strong>${h(m.subject)}</strong>
-              <span>${h(m.from)} · ${h(m.file.name)}</span>
-              <small>${h(m.file.note)}</small>
-            </div>
-            <div class="inbox-actions">
-              <button class="link-btn" data-dl="${h(m.id)}">ดาวน์โหลด</button>
-              <button class="ghost-button xs" data-pull="${h(m.id)}" ${m.pulled ? "disabled" : ""}>${m.pulled ? "ดึงแล้ว" : "ดึงเข้าระบบ"}</button>
-            </div>
-          </div>`,
-            )
-            .join("")}
-        </div>
-        <p class="hint">ไฟล์เหล่านี้ถูกสร้างให้มีลักษณะเหมือนไฟล์จริง — มีบรรทัดยอดยกมา, บรรทัดรอบวันที่, marker X1/X2/XB, รายการ FAILED และวันที่ของวันอื่นปนมา เพื่อให้ทดสอบ parser และกฎธนาคารได้จริง ดาวน์โหลดไปเปิดดูหรืออัปโหลดกลับเข้ามาก็ได้</p>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Upload</p><h2>อัปโหลดไฟล์ของคุณเอง</h2></div></div>
-        <label class="dropzone" id="dropzone">
-          <input type="file" id="fileInput" multiple accept=".csv,.txt,.xlsx,.xls,.pdf" hidden />
-          <strong>ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์</strong>
-          <span>รองรับ .xlsx .csv และ statement ธนาคารที่เป็น .pdf — ระบบอ่านหัวคอลัมน์เองว่าเป็นรายงานบัญชีฝาก-ถอน, ฝากมือ, ขอถอนค่าคอม, ถอนเครดิต หรือ statement ของธนาคารไหน</span>
-        </label>
-
-        <div class="auto-banner ${ready.tone}">
-          <i></i>
-          <div>
-            <strong>${ready.ready ? "ระบบกระทบยอดให้อัตโนมัติ" : "ระบบยังกระทบยอดไม่ได้"}</strong>
-            <span>${h(ready.why)}</span>
-          </div>
-        </div>
-        <ul class="tick-list mt">
-          <li>ไฟล์เข้าระบบครบทั้งฝั่งธนาคารและฝั่ง BO — กระทบยอดทันที</li>
-          <li>มีไฟล์เพิ่มเข้ามาทีหลัง — กระทบยอดใหม่ทั้งชุดโดยอัตโนมัติ</li>
-          <li>เปลี่ยนกฎธนาคารหรือ tolerance — อ่านไฟล์เดิมใหม่แล้วกระทบยอดใหม่ให้เอง</li>
-          <li>ถึงเวลาตามตารางที่ตั้งไว้ — ดึงไฟล์จากอีเมลกลางแล้วกระทบยอดเอง</li>
-        </ul>
-        <div class="inline-actions mt">
-          <button class="ghost-button" id="clearFiles" ${files.length ? "" : "disabled"}>ล้างไฟล์ทั้งหมด</button>
-          <button class="ghost-button" id="backToDemo" ${state.dataset === "imported" ? "" : "disabled"}>กลับไปใช้ข้อมูลตัวอย่าง</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Parse Result</p><h2>ผลการอ่านไฟล์และกฎที่ถูกใช้</h2></div>
-        <span class="health ${files.length ? "ok" : "attention"}">${files.length ? num(totalRecords) + " รายการพร้อมจับคู่" : "ยังไม่มีไฟล์"}</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>ไฟล์</th><th>ชนิดที่ตรวจได้</th><th class="right">แถวดิบ</th><th class="right">ใช้จับคู่ได้</th><th>ถูกกรองออกด้วยกฎ</th><th></th></tr></thead>
-          <tbody>
-            ${
-              files
-                .map(
-                  (f) => `<tr>
-              <td><b>${h(f.name)}</b>${f.warnings.length ? `<small class="sub danger">${h(f.warnings[0])}</small>` : ""}</td>
-              <td>${h(f.format.realLabel || srcName[f.format.source] || "")}${f.format.bank ? ` <span class="badge blue">${h(f.format.bank)}</span>` : ""}${f.format.company ? ` <span class="badge violet">${h(f.format.company)}</span>` : ""}${f.subco || f.tagAccount || f.provider ? ` <span class="badge green" title="แท็กจากทะเบียนบัญชี">${h([f.subco, f.tagAccount || f.provider].filter(Boolean).join(" · "))}</span>` : ""}</td>
-              <td class="right tnum">${num(f.rowCount || (f.records.length + (f.aux || []).length))}</td>
-              <td class="right tnum">${num(f.records.length + (f.aux || []).length)}</td>
-              <td class="wrap">${Object.entries(f.dropped).map(([k, v]) => `<span class="drop-tag">${h(k)} ${v}</span>`).join("") || '<span class="muted">ไม่มี</span>'}</td>
-              <td><button class="link-btn" data-rm="${h(f.name)}">เอาออก</button></td>
-            </tr>`,
-                )
-                .join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ — ดึงจากกล่องอีเมลหรืออัปโหลดเอง</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    ${
-      ImportState.lastRun
-        ? `<section class="panel">
-      <div class="panel-heading"><div><p class="eyebrow">Match Run</p><h2>ผลการรันล่าสุด</h2></div><span class="health ok">${h(displayTime(ImportState.lastRun.at))}</span></div>
-      <div class="run-grid">
-        <div><span>รายการฝั่งธนาคาร</span><b>${num(ImportState.lastRun.stmCount)}</b></div>
-        <div><span>รายการฝั่ง BO</span><b>${num(ImportState.lastRun.boCount)}</b></div>
-        <div><span>จับคู่สำเร็จ</span><b>${num(ImportState.lastRun.matched)}</b></div>
-        <div><span>อัตราจับคู่</span><b>${ImportState.lastRun.matchRate.toFixed(2)}%</b></div>
-        <div><span>Exception</span><b>${num(ImportState.lastRun.exceptions.length)}</b></div>
-        <div><span>เวลาที่ใช้</span><b>${ImportState.lastRun.elapsedMs} ms</b></div>
-        <div><span>รายการช่วง 23:00-23:59</span><b>${num(ImportState.lastRun.crossDayWindow || 0)}</b></div>
-      </div>
-      <p class="chart-note">รายการช่วง 23:00-23:59 ต้องตรวจร่วมกับไฟล์ของวันถัดไป — ที่จับคู่ได้แล้วถือว่าปกติ ส่วนที่จับคู่ไม่ได้จะถูกยกเป็น exception ประเภท "รายการข้ามวัน"</p>
-      <div class="chart mt" id="runByType"></div>
-    </section>
-
-    ${
-      (ImportState.lastRun.noStmSide || []).length
-        ? `<section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Coverage</p><h2>ช่องทางที่ยังไม่มีไฟล์ฝั่งธนาคาร</h2></div>
-        <span class="health attention">${num(ImportState.lastRun.noStmCount || 0)} รายการยังตรวจไม่ได้</span>
-      </div>
-      <p class="chart-note">รายการเหล่านี้ <b>ไม่ถูกนับเป็น exception</b> เพราะยังไม่มีไฟล์ statement ของช่องทางนั้นให้เทียบ ถ้าได้ไฟล์ของ Cyberplus / AUTOPEER / AZPAY มาเพิ่ม ระบบจะจับคู่ให้ทันทีโดยไม่ต้องตั้งค่าอะไร</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>ช่องทาง</th><th>บริษัท</th><th class="right">จำนวนรายการ</th><th class="right">ยอดรวม (บาท)</th><th>บัญชี/เทอร์มินัล</th></tr></thead>
-          <tbody>
-            ${ImportState.lastRun.noStmSide
-              .map(
-                (g) => `<tr>
-              <td><b>${h(g.channel)}</b></td>
-              <td>${h(g.company)}</td>
-              <td class="right tnum">${num(g.count)}</td>
-              <td class="right tnum">${money(g.amount)}</td>
-              <td class="wrap"><span class="muted">${h(g.accounts.slice(0, 4).join(", "))}${g.accounts.length > 4 ? " +" + (g.accounts.length - 4) : ""}</span></td>
-            </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    </section>`
-        : ""
-    }
-
-    ${
-      usingRealFiles
-        ? ""
-        : `
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Engine Validation</p><h2>ตรวจว่าเครื่องจับคู่ทำงานถูกหรือไม่</h2></div>
-        <span class="health ok">เทียบกับข้อบกพร่องที่จงใจใส่ไว้ในไฟล์ตัวอย่าง</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>ประเภท exception</th><th class="right">ใส่ไว้ในไฟล์</th><th class="right">ระบบตรวจพบ</th><th>ผล</th></tr></thead>
-          <tbody>
-            ${Object.entries(inbox.expected)
-              .filter(([k]) => k !== "total" && k !== "cross_day")
-              .map(([k, v]) => {
-                const found = ImportState.lastRun.exceptions.filter((e) => e.type === k).length;
-                const ok = found >= v * 0.8 && found <= v * 1.6;
-                return `<tr><td>${h(Engine.TYPE_NAME[k] || k)}</td><td class="right tnum">${v}</td><td class="right tnum">${found}</td>
-                  <td><span class="badge ${ok ? "green" : "amber"}">${ok ? "ตรงตามที่ใส่ไว้" : "ต่างจากที่ใส่ไว้"}</span></td></tr>`;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-      <p class="chart-note">ตัวเลขสองฝั่งไม่จำเป็นต้องเท่ากันเป๊ะ เพราะข้อบกพร่องบางอย่างซ้อนกันได้ เช่น รายการที่ยอดไม่ตรงและอยู่ช่วงข้ามวันพร้อมกัน ระบบจึงยกเป็นเคสตามกฎที่รุนแรงกว่า</p>
-    </section>`
-    }`
-        : ""
-    }`;
-
-  if (ImportState.lastRun) {
-    const agg = {};
-    ImportState.lastRun.exceptions.forEach((e) => (agg[e.typeName] = (agg[e.typeName] || 0) + 1));
-    Charts.draw("#runByType", "hbars", {
-      label: "exception จากการรันล่าสุด",
-      items: Object.entries(agg).map(([k, v]) => ({ label: k, value: v })).sort((a, b) => b.value - a.value),
-      color: Charts.PALETTE.s2,
-      metric: "จำนวนเคส",
-    });
-  }
-
-  const pull = async (m) => {
-    await ingestRaw(m.file.name, m.file.content, m.file.content.length);
-    m.pulled = true;
-  };
-
-  $("#pullAll").addEventListener("click", async () => {
-    showProgress("กำลังดึงและ parse ไฟล์");
-    const pending = inbox.messages.filter((m) => !m.pulled);
-    for (let i = 0; i < pending.length; i++) {
-      setProgress((i + 1) / pending.length, pending[i].file.name);
-      await pull(pending[i]);
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    hideProgress();
-    toast(`ดึงและ parse ไฟล์แล้ว ${pending.length} ไฟล์`);
-    render();
-    scheduleAutoReconcile("ดึงไฟล์จากอีเมลกลาง");
-  });
-
-  root.querySelectorAll("[data-pull]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      const m = inbox.messages.find((x) => x.id === b.dataset.pull);
-      await pull(m);
-      toast(`นำเข้า ${m.file.name} แล้ว`);
-      render();
-      scheduleAutoReconcile("ไฟล์ " + m.file.name + " เข้าระบบ");
-    }),
-  );
-  root.querySelectorAll("[data-dl]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const m = inbox.messages.find((x) => x.id === b.dataset.dl);
-      downloadText(m.file.name, m.file.content);
-    }),
-  );
-  root.querySelectorAll("[data-rm]").forEach((b) =>
-    b.addEventListener("click", () => {
-      ImportState.files = ImportState.files.filter((f) => f.name !== b.dataset.rm);
-      render();
-    }),
-  );
-
-  const dz = $("#dropzone");
-  const input = $("#fileInput");
-  dz.addEventListener("click", () => input.click());
-  ["dragenter", "dragover"].forEach((ev) =>
-    dz.addEventListener(ev, (e) => {
-      e.preventDefault();
-      dz.classList.add("over");
-    }),
-  );
-  ["dragleave", "drop"].forEach((ev) =>
-    dz.addEventListener(ev, (e) => {
-      e.preventDefault();
-      dz.classList.remove("over");
-    }),
-  );
-  const handleFiles = async (list) => {
-    showProgress("กำลังอ่านไฟล์");
-    for (let i = 0; i < list.length; i++) {
-      const f = list[i];
-      setProgress((i + 1) / list.length, f.name);
-      try {
-        const payload = /\.(xlsx|xlsm|xls|pdf)$/i.test(f.name) ? await readFileBuffer(f) : await readFileText(f);
-        await ingestRaw(f.name, payload, f.size);
-      } catch (err) {
-        toast(`${f.name}: ${err.message}`, "warn");
-      }
-    }
-    hideProgress();
-    render();
-    scheduleAutoReconcile(`อัปโหลด ${list.length} ไฟล์`);
-  };
-  dz.addEventListener("drop", (e) => handleFiles([...e.dataTransfer.files]));
-  input.addEventListener("change", (e) => handleFiles([...e.target.files]));
-
-  $("#clearFiles").addEventListener("click", () => {
-    ImportState.files = [];
-    render();
-    updateAutoStatus();
-  });
-  $("#backToDemo").addEventListener("click", () => {
-    location.reload();
-  });
-};
-
-/* =============================================================
-   Phase 4 — การแจ้งเตือน
-   ============================================================= */
-
-function runNotificationRules() {
-  const r = Store.data.notifyRules;
-  if (r.fileMissing) {
-    const bad = DB.files.filter((f) => f.status === "missing" || f.status === "wrong_company");
-    if (bad.length) Store.notify("bad", `ไฟล์ยังไม่ครบ ${bad.length} รายการ`, bad.map((b) => `${b.companyName} - ${b.fileType}`).join(", "), "intake");
-  }
-  if (r.criticalException) {
-    const crit = DB.exceptions.filter((e) => e.severity === "critical" && !["closed", "approved"].includes(e.status));
-    if (crit.length) Store.notify("bad", `พบ exception ระดับ Critical ${crit.length} รายการ`, `ยอดที่ต้องตรวจรวม ${money0(sumRisk(crit))} บาท`, "exceptions");
-  }
-  if (r.slaBreach) {
-    const over = DB.exceptions.filter((e) => e.overSla && !["closed", "approved"].includes(e.status));
-    if (over.length) Store.notify("warn", `เคสเลย SLA ${over.length} รายการ`, "ต้องเร่งติดตามชี้แจงภายในวันนี้", "exceptions");
-  }
-  if (r.cycleDue) {
-    const open = DB.damageCycles.filter((c) => c.status === "open");
-    if (open.length) Store.notify("info", `รอบชี้แจง ${open[0].name} ยังไม่ปิด`, `มี ${DB.damages.filter((d) => d.cycle === open[0].code).length} เคสรอสรุป`, "damage");
-  }
-  updateBell();
-}
-
-function updateBell() {
-  const n = state.dataset === "production" && liveOverviewState.notifications ? liveOverviewState.notifications.filter((row) => !row.read_at).length : Store.unread();
-  const b = $("#bellCount");
-  if (!b) return;
-  b.textContent = n > 99 ? "99+" : n;
-  b.hidden = n === 0;
-}
-
-function renderLiveNotifications(root) {
-  if (!ensureLiveOverview(root)) return;
-  const list = liveOverviewState.notifications || [];
-  const tone = { info: "blue", warning: "amber", error: "red", success: "green" };
-  root.innerHTML = `<section class="panel">
-    <div class="panel-heading"><div><p class="eyebrow">Supabase recon_notifications</p><h2>การแจ้งเตือนจริง (${num(list.length)})</h2><small class="head-sub">ยังไม่อ่าน ${num(list.filter((row)=>!row.read_at).length)}</small></div><div class="inline-actions"><button class="ghost-button sm" id="liveNotifRefresh">รีเฟรช</button><button class="ghost-button sm" id="liveNotifRead">อ่านทั้งหมด</button></div></div>
-    <div class="notif-list">${list.map((row)=>`<div class="notif ${row.read_at?"":"unread"}"><span class="badge ${tone[row.level]||"grey"}">${h(row.level)}</span><div><strong>${h(row.title)}</strong><span>${h(row.detail||"")}</span><small>${h(displayTime(row.created_at))}${row.company?` · ${h(row.company)}`:""}</small></div>${row.business_date?`<button class="ghost-button xs" data-notif-date="${h(row.business_date)}" data-notif-company="${h(row.company||"ALL")}">เปิดดู</button>`:""}</div>`).join("")||`<p class="empty">ยังไม่มีการแจ้งเตือนจากระบบ</p>`}</div>
-    <p class="hint">รายการนี้อ่านจากฐานข้อมูลจริง การแจ้ง Telegram ทำงานจาก n8n ไม่ได้จำลองในเบราว์เซอร์</p>
-  </section>`;
-  $("#liveNotifRefresh")?.addEventListener("click",()=>loadLiveOverview(true));
-  $("#liveNotifRead")?.addEventListener("click",async()=>{
-    const unread=list.filter((row)=>!row.read_at); if(!unread.length)return toast("อ่านครบแล้ว");
-    await Promise.all(unread.map((row)=>Sb.patch("recon_notifications",`id=eq.${row.id}`,{read_at:new Date().toISOString()})));
-    await loadLiveOverview(true); toast("ทำเครื่องหมายอ่านแล้ว");
-  });
-  root.querySelectorAll("[data-notif-date]").forEach((button)=>button.addEventListener("click",()=>{state.filters.date=button.dataset.notifDate;state.filters.from=button.dataset.notifDate;state.filters.to=button.dataset.notifDate;state.filters.company=button.dataset.notifCompany||"ALL";state.filters.preset="day";go("dashboard");}));
-}
-
-VIEWS.notifications = (root) => {
-  if (state.dataset === "production" && Sb.signedIn()) {
-    renderLiveNotifications(root);
-    return;
-  }
-  const list = Store.data.notifications;
-  const rules = Store.data.notifyRules;
-  const kindTone = { bad: "red", warn: "amber", info: "blue", ok: "green", fx: "violet" };
-  const kindLabel = { bad: "ต้องแก้ทันที", warn: "เฝ้าระวัง", info: "แจ้งให้ทราบ", ok: "ปกติ" };
-
-  root.innerHTML = `
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Inbox</p><h2>การแจ้งเตือน (${list.length})</h2></div>
-          <div class="inline-actions">
-            <button class="ghost-button sm" id="nCheck">ตรวจเงื่อนไขเดี๋ยวนี้</button>
-            <button class="ghost-button sm" id="nRead">ทำเครื่องหมายอ่านแล้ว</button>
-          </div>
-        </div>
-        <div class="notif-list">
-          ${
-            list
-              .map(
-                (n) => `<div class="notif ${n.read ? "" : "unread"}">
-            <span class="badge ${kindTone[n.kind]}">${kindLabel[n.kind]}</span>
-            <div>
-              <strong>${h(n.title)}</strong>
-              <span>${h(n.detail)}</span>
-              <small>${h(displayTime(n.at))}</small>
-            </div>
-            ${n.link ? `<button class="ghost-button xs" data-nlink="${h(n.link)}">เปิดดู</button>` : ""}
-          </div>`,
-              )
-              .join("") || `<p class="empty">ยังไม่มีการแจ้งเตือน</p>`
-          }
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Rules</p><h2>เงื่อนไขและช่องทาง</h2></div></div>
-        <div class="toggle-list">
-          ${[
-            ["fileMissing", "แจ้งเมื่อไฟล์ขาดหรือส่งผิดบริษัท"],
-            ["criticalException", "แจ้งเมื่อพบ exception ระดับ Critical"],
-            ["slaBreach", "แจ้งเมื่อมีเคสเลย SLA"],
-            ["cycleDue", "แจ้งเมื่อใกล้ครบรอบชี้แจง"],
-          ]
-            .map(([k, l]) => `<label><input type="checkbox" data-nrule="${k}" ${rules[k] ? "checked" : ""} /> ${h(l)}</label>`)
-            .join("")}
-        </div>
-        <h3 class="drawer-h3">ช่องทางส่ง</h3>
-        <div class="toggle-list">
-          ${[
-            ["channelInApp", "แสดงในระบบ (กระดิ่งมุมบนขวา)"],
-            ["channelEmail", "ส่งอีเมลถึงผู้รับผิดชอบ"],
-            ["channelTelegram", "ส่ง Telegram เมื่อ severity สูง"],
-          ]
-            .map(([k, l]) => `<label><input type="checkbox" data-nrule="${k}" ${rules[k] ? "checked" : ""} /> ${h(l)}</label>`)
-            .join("")}
-        </div>
-        <p class="hint">ในระบบจริง ช่องทางอีเมลและ Telegram จะยิงจากฝั่ง backend ตอนนี้บันทึกการตั้งค่าไว้และแสดงผลในระบบเท่านั้น</p>
-      </div>
-    </section>`;
-
-  $("#nCheck").addEventListener("click", () => {
-    runNotificationRules();
-    toast("ตรวจเงื่อนไขและสร้างการแจ้งเตือนใหม่แล้ว");
-    render();
-  });
-  $("#nRead").addEventListener("click", () => {
-    Store.markAllRead();
-    updateBell();
-    render();
-  });
-  root.querySelectorAll("[data-nrule]").forEach((c) =>
-    c.addEventListener("change", () => {
-      Store.data.notifyRules[c.dataset.nrule] = c.checked;
-      Store.persist();
-      toast("บันทึกการตั้งค่าแจ้งเตือนแล้ว");
-    }),
-  );
-  root.querySelectorAll("[data-nlink]").forEach((b) => b.addEventListener("click", () => go(b.dataset.nlink)));
-};
-
-/* =============================================================
-   Phase 4 — ตั้งเวลา, retention, performance
-   ============================================================= */
-
-let scheduleTimer = null;
-let cloudWorkerTimer = null;
-
-function bangkokDate(offsetDays = 0) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-  const base = `${parts.find((p) => p.type === "year").value}-${parts.find((p) => p.type === "month").value}-${parts.find((p) => p.type === "day").value}`;
-  const d = new Date(base + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
-}
-
-async function cloudWorkerTick() {
-  // Cloud owns automatic jobs. Browsers must never claim the same queue:
-  // user-scoped RLS and stale tabs can otherwise fail a job before n8n sees it.
-  if (Sb.configured() && Sb.signedIn()) await Sb.queueDueJobs(bangkokDate(-14), bangkokDate(1));
-}
-
-function startCloudWorker() {
-  clearTimeout(cloudWorkerTimer);
-  // The published n8n schedule runs without an open browser.
-}
-
-function startScheduler() {
-  clearInterval(scheduleTimer);
-  const sc = Store.data.schedule;
-  if (!sc.enabled) return;
-  const ms = Math.max(1, sc.intervalMinutes) * 60000;
-  sc.nextRun = new Date(Date.now() + ms).toISOString();
-  Store.persist();
-  scheduleTimer = setInterval(async () => {
-    sc.lastRun = new Date().toISOString();
-    sc.nextRun = new Date(Date.now() + ms).toISOString();
-    Store.persist();
-    if (sc.autoIngest) {
-      const inbox = ImportState.inbox || buildInbox();
-      const pending = inbox.messages.filter((m) => !m.pulled);
-      for (const m of pending) {
-        await ingestRaw(m.file.name, m.file.content, m.file.content.length);
-        m.pulled = true;
-      }
-      if (pending.length) logAction("scheduled_ingest", "source_file", "inbox", `ดึงไฟล์จากอีเมลกลาง ${pending.length} ไฟล์`);
-    }
-    Store.notify("ok", "ทำงานตามตารางเวลาแล้ว", `ดึงไฟล์และกระทบยอดอัตโนมัติ · รอบถัดไปอีก ${sc.intervalMinutes} นาที`, "dashboard");
-    updateBell();
-    if (autoReadiness().ready) await runReconcileFromImport({ auto: true, reason: "ถึงเวลาตามตาราง" });
-    else if (state.route === "schedule") render();
-  }, ms);
-}
-
-VIEWS.schedule = (root) => {
-  const sc = Store.data.schedule;
-  const rt = Store.data.retention;
-  const editable = can("settings") || can("rules");
-  const fmtTime = (iso) => (iso ? displayTime(iso) : "ยังไม่เคยรัน");
-
-  root.innerHTML = `
-    <section class="grid-2">
-      <div class="panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">Scheduled Reconcile</p><h2>ดึงไฟล์และกระทบยอดตามเวลา</h2></div>
-          <span class="health ${sc.enabled ? "ok" : "attention"}">${sc.enabled ? "เปิดใช้งาน" : "ปิดอยู่"}</span>
-        </div>
-        <div class="toggle-list">
-          <label><input type="checkbox" id="scEnabled" ${sc.enabled ? "checked" : ""} ${editable ? "" : "disabled"} /> เปิดการทำงานตามตารางเวลา</label>
-          <label><input type="checkbox" id="scIngest" ${sc.autoIngest ? "checked" : ""} ${editable ? "" : "disabled"} /> ดึงไฟล์จากอีเมลกลางก่อนกระทบยอดทุกครั้ง</label>
-        </div>
-        <div class="setting-list mt">
-          <label><span>รันทุก</span><input type="number" id="scInterval" value="${sc.intervalMinutes}" min="1" ${editable ? "" : "disabled"} /><b>นาที</b></label>
-        </div>
-        <div class="run-grid">
-          <div><span>รันล่าสุด</span><b>${h(fmtTime(sc.lastRun))}</b></div>
-          <div><span>รอบถัดไป</span><b>${h(sc.enabled ? fmtTime(sc.nextRun) : "-")}</b></div>
-        </div>
-        <div class="inline-actions mt">
-          <button class="primary-button" id="scSave" ${editable ? "" : "disabled"}>บันทึกตารางเวลา</button>
-          <button class="ghost-button" id="scNow">ทำงานเดี๋ยวนี้</button>
-        </div>
-        <p class="hint">n8n ตรวจความครบถ้วนและจัดคิวถาวรทุก 10 นาที ส่วนตัวอ่าน PDF/XLSX จะรับงานจากคิวเมื่อหน้าเว็บที่ล็อกอินเปิดอยู่ · ไฟล์มาช้าจะถูกติดธงและรันซ้ำอัตโนมัติ</p>
-      </div>
-
-      <div class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Data Protection</p><h2>เก็บข้อมูล สำรอง และเข้ารหัส</h2></div></div>
-        <div class="setting-list">
-          <label><span>เก็บข้อมูลย้อนหลัง</span><input type="number" id="rtMonths" value="${rt.months}" min="1" ${editable ? "" : "disabled"} /><b>เดือน</b></label>
-        </div>
-        <div class="toggle-list">
-          <label><input type="checkbox" id="rtBackup" ${rt.backupDaily ? "checked" : ""} ${editable ? "" : "disabled"} /> สำรองข้อมูลอัตโนมัติทุกวัน</label>
-          <label><input type="checkbox" id="rtEncrypt" ${rt.encryptAtRest ? "checked" : ""} ${editable ? "" : "disabled"} /> เข้ารหัสข้อมูลการเงินขณะจัดเก็บ</label>
-          <label><input type="checkbox" id="rtMask" ${rt.maskAccount ? "checked" : ""} ${editable ? "" : "disabled"} /> ปิดบังเลขบัญชีสำหรับบทบาทที่ไม่จำเป็นต้องเห็น</label>
-        </div>
-        <ul class="tick-list mt">
-          <li>ไม่มี bot login mobile banking — รับข้อมูลจาก email / export เท่านั้น</li>
-          <li>ทุก action สำคัญมี audit log แบบเขียนได้อย่างเดียว</li>
-          <li>ไม่มีบทบาทใดลบ transaction หรือหลักฐานได้</li>
-        </ul>
-        <button class="ghost-button mt" id="rtSave" ${editable ? "" : "disabled"}>บันทึกนโยบาย</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Performance</p><h2>ทดสอบระดับ 100,000-200,000 รายการต่อวัน</h2></div>
-        <span class="health ok">เกณฑ์: daily report เสร็จใน 1-2 ชั่วโมง</span>
-      </div>
-      <div class="inline-actions">
-        <label class="chk-inline">จำนวนรายการที่จะทดสอบ
-          <select id="perfSize">
-            <option value="50000">50,000</option>
-            <option value="100000" selected>100,000</option>
-            <option value="200000">200,000</option>
-          </select>
-        </label>
-        <button class="primary-button" id="perfRun">เริ่มทดสอบ</button>
-      </div>
-      <div id="perfResult"></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Session</p><h2>การเก็บสถานะและการล้างข้อมูล</h2></div>
-        <span class="health ${Store.available ? "ok" : "attention"}">${Store.available ? "บันทึกในเครื่องได้" : "เบราว์เซอร์นี้บันทึกไม่ได้ ใช้หน่วยความจำชั่วคราว"}</span>
-      </div>
-      <div class="run-grid">
-        <div><span>บันทึกล่าสุด</span><b>${h(Store.data.lastSavedAt ? displayTime(Store.data.lastSavedAt) : "-")}</b></div>
-        <div><span>Audit log ที่เก็บไว้</span><b>${num(Store.data.auditLog.length)}</b></div>
-        <div><span>การแจ้งเตือน</span><b>${num(Store.data.notifications.length)}</b></div>
-        <div><span>สถานะเคสที่แก้ไว้</span><b>${num(Object.keys(Store.data.exOverrides).length)}</b></div>
-      </div>
-      <button class="ghost-button mt" id="wipe">ล้างข้อมูลที่บันทึกไว้ในเครื่อง</button>
-      <button class="primary-button mt" id="startReal">ล้างข้อมูลเก่า + เริ่มเทสข้อมูลจริง</button>
-      <p class="chart-note">ปุ่มนี้จะล้างข้อมูลตัวอย่าง/สถานะเก่าทั้งหมด และโหลดบัญชีจริงจากทะเบียนเป็น master แล้วพาไปหน้านำเข้าไฟล์ เพื่อเริ่มเทสด้วยไฟล์จริงจากศูนย์</p>
-    </section>`;
-
-  $("#scSave").addEventListener("click", () => {
-    if (!editable) return deny("แก้ตารางเวลา");
-    sc.enabled = $("#scEnabled").checked;
-    sc.autoIngest = $("#scIngest").checked;
-    sc.intervalMinutes = Math.max(1, +$("#scInterval").value || 60);
-    Store.persist();
-    startScheduler();
-    logAction("update", "schedule", "reconcile", `${sc.enabled ? "เปิด" : "ปิด"} · ทุก ${sc.intervalMinutes} นาที`);
-    toast("บันทึกตารางเวลาแล้ว");
-    render();
-  });
-  $("#scNow").addEventListener("click", () => {
-    sc.lastRun = new Date().toISOString();
-    Store.persist();
-    logAction("scheduled_run", "match_run", "MANUAL-" + Date.now(), "สั่งทำงานนอกตารางเวลา");
-    Store.notify("ok", "สั่งทำงานนอกตารางเวลา", "ดึงไฟล์และกระทบยอดจากหน้าตารางเวลา", "dashboard");
-    updateBell();
-    if (autoReadiness().ready) runReconcileFromImport({ auto: true, reason: "สั่งนอกตาราง" });
-    else {
-      toast("ยังไม่มีไฟล์ครบทั้งสองฝั่ง — ระบบจะกระทบยอดให้เมื่อไฟล์เข้าครบ", "warn");
-      render();
-    }
-  });
-  $("#rtSave").addEventListener("click", () => {
-    if (!editable) return deny("แก้นโยบายข้อมูล");
-    rt.months = Math.max(1, +$("#rtMonths").value || 12);
-    rt.backupDaily = $("#rtBackup").checked;
-    rt.encryptAtRest = $("#rtEncrypt").checked;
-    rt.maskAccount = $("#rtMask").checked;
-    Store.persist();
-    logAction("update", "settings", "retention", `เก็บ ${rt.months} เดือน`);
-    toast("บันทึกนโยบายข้อมูลแล้ว");
-  });
-  $("#perfRun").addEventListener("click", async () => {
-    const n = +$("#perfSize").value;
-    showProgress(`ทดสอบ performance ${num(n)} รายการ`);
-    setProgress(0.02, "สร้างชุดข้อมูลทดสอบ");
-    await new Promise((r) => setTimeout(r, 30));
-    const tGen = performance.now();
-    const scn = Sample.buildScenario(DB.BUSINESS_DATE, n, 7777);
-    const genMs = Math.round(performance.now() - tGen);
-    const toRec = (r, side) => ({
-      sec: r.sec,
-      date: DB.BUSINESS_DATE,
-      amount: r.amount,
-      direction: r.acc.direction,
-      account: r.acc.id,
-      bank: side === "bo" ? r.bank : r.acc.bank,
-      company: r.acc.company,
-      username: r.user,
-      ref: r.ref,
-      desc: "",
-      crossDay: r.sec >= 82800,
-      raw: "",
-    });
-    const stm = scn.stm.map((r) => toRec(r, "stm"));
-    const bo = scn.bo.map((r) => toRec(r, "bo"));
-    delete DB.settings.asOf; // scenario จำลองใช้สูตรอายุแบบปลายวัน ไม่ผูกเวลาจริง
-    const res = await Engine.reconcile(stm, bo, DB.settings, DB.accounts, (p, l) => setProgress(0.1 + p * 0.9, l));
-    hideProgress();
-    const perSec = Math.round((stm.length + bo.length) / (res.elapsedMs / 1000));
-    $("#perfResult").innerHTML = `
-      <div class="run-grid mt">
-        <div><span>รายการฝั่งธนาคาร</span><b>${num(stm.length)}</b></div>
-        <div><span>รายการฝั่ง BO</span><b>${num(bo.length)}</b></div>
-        <div><span>สร้างชุดทดสอบ</span><b>${genMs} ms</b></div>
-        <div><span>เวลาจับคู่</span><b>${res.elapsedMs} ms</b></div>
-        <div><span>ความเร็ว</span><b>${num(perSec)} รายการ/วินาที</b></div>
-        <div><span>อัตราจับคู่</span><b>${res.matchRate.toFixed(2)}%</b></div>
-        <div><span>Exception ที่พบ</span><b>${num(res.exceptions.length)}</b></div>
-        <div><span>ผลเทียบเกณฑ์</span><b class="${res.elapsedMs < 60000 ? "ok-txt" : "danger"}">${res.elapsedMs < 60000 ? "ผ่าน" : "ต้องปรับ"}</b></div>
-      </div>
-      <p class="chart-note">ทดสอบบนเครื่องผู้ใช้ด้วย JavaScript ล้วน ในระบบจริงงานนี้จะย้ายไปฝั่ง server พร้อม index ของฐานข้อมูล ซึ่งจะเร็วกว่านี้อีก</p>`;
-    logAction("perf_test", "match_run", "PERF-" + n, `${res.elapsedMs} ms · ${perSec} รายการ/วินาที`);
-    toast(`ทดสอบเสร็จ: ${num(perSec)} รายการ/วินาที`);
-  });
-  $("#wipe").addEventListener("click", () => {
-    Store.reset();
-    toast("ล้างข้อมูลที่บันทึกไว้แล้ว รีเฟรชหน้าเพื่อเริ่มใหม่");
-    render();
-  });
-  $("#startReal").addEventListener("click", () => {
-    if (!confirm("ล้างข้อมูลตัวอย่างและสถานะเก่าทั้งหมด แล้วเริ่มเทสด้วยข้อมูลจริง?\n(บัญชีจริงจากทะเบียนจะถูกโหลดเป็น master)")) return;
-    startRealTest();
-  });
-};
-
-function downloadBoWaitingCaseRequest(runId, rows) {
-  const blob = new Blob([JSON.stringify({run_id: runId, rows}, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob), link = document.createElement('a');
-  link.href = url; link.download = `bo-waiting-${rows[0]?.company || 'company'}-${rows[0]?.boDate || 'date'}.json`;
-  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-function downloadText(filename, text) {
-  const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8;" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 500);
-}
-
-
-
-/* =============================================================
-   งานชี้แจง — ระบบ XB (ส่งทุกวัน 17:00) และระบบ 123 (รวบเป็นรอบ 1-15 / 16-25 / 26-สิ้นเดือน)
-   ============================================================= */
-
-/* ---------------------------------------------------------------
-   2 ระบบที่แผนกตรวจ — สายชี้แจงมาจาก "ระบบต้นทางของบริษัท" ไม่ใช่ความรุนแรง
-     XB     -> ส่งหัวหน้ากะทุกวัน ทุกเคส
-     SYS123 -> ออดิท 1/2/3 รวบเป็นรอบแล้วตีไฟล์
-   --------------------------------------------------------------- */
-const sysMeta = (code) => DB.systems.find((x) => x.code === code) || null;
-const trackMeta = (code) => DB.systems.find((x) => x.track === code) || DB.systems[1];
-
-/* บริษัทนี้อยู่ระบบไหน (null = ยังไม่ได้กำหนด) */
-function systemOfCompany(code) {
-  const c = DB.companies.find((x) => x.code === code);
-  return c ? c.system || null : null;
-}
-function setCompanySystem(code, system) {
-  let c = DB.companies.find((x) => x.code === code);
-  if (!c) {
-    c = { code, name: code, type: "main", system: null };
-    DB.companies.push(c);
-  }
-  const old = c.system;
-  c.system = system || null;
-  Store.data.companySystems = Store.data.companySystems || {};
-  Store.data.companySystems[code] = c.system;
-  Store.persist();
-  logAction("set_system", "company", code, `กำหนดให้บริษัท ${code} อยู่ระบบ ${system ? sysMeta(system).short : "ยังไม่ระบุ"}${old ? ` (เดิม ${old})` : ""}`);
-  retagTracks();
-}
-
-/* คืนค่าสายชี้แจงของเคสหนึ่ง — ยังไม่ได้กำหนดระบบให้ถือเป็นรายรอบไว้ก่อนและติดธงไว้ */
-function trackOfException(e) {
-  const sys = systemOfCompany(e.company);
-  if (!sys) return { track: "cycle", system: null, unassigned: true };
-  const m = sysMeta(sys);
-  return { track: m.track, system: sys, unassigned: false };
-}
-
-/* เติม track ให้ทุกเคสตามระบบของบริษัท — เรียกทุกครั้งที่ข้อมูลหรือการแมปเปลี่ยน */
-function retagTracks() {
-  (DB.exceptions || []).forEach((e) => {
-    const t = trackOfException(e);
-    e.track = t.track;
-    e.system = t.system;
-    e.systemUnassigned = t.unassigned;
-  });
-}
-
-/* บริษัทที่โผล่ในข้อมูลแต่ยังไม่ได้บอกว่าอยู่ระบบไหน */
-function unassignedCompanies() {
-  const seen = new Set((DB.exceptions || []).map((e) => e.company).filter(Boolean));
-  ImportState.files.forEach((f) => f.format && f.format.company && seen.add(f.format.company));
-  return [...seen].filter((c) => c !== "-" && !systemOfCompany(c));
-}
-
-/* รอบชี้แจงที่วันที่นี้ตกอยู่ */
-function cycleOf(iso) {
-  const d = +String(iso).slice(8, 10);
-  const ym = String(iso).slice(0, 7);
-  if (d <= 15) return { code: "C1", name: "รอบ 1 (1-15)", from: ym + "-01", to: ym + "-15", closeDay: 15 };
-  if (d <= 25) return { code: "C2", name: "รอบ 2 (16-25)", from: ym + "-16", to: ym + "-25", closeDay: 25 };
-  const last = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate();
-  return { code: "C3", name: `รอบ 3 (26-${last})`, from: ym + "-26", to: `${ym}-${last}`, closeDay: last };
-}
-
-/* กำหนดส่งคืนของแต่ละสาย */
-function dueOf(e) {
-  if(e.documentDueAt){const label=displayTime(e.documentDueAt);return {label,short:label,detail:'SLA เอกสารตามบริษัท ณ วันส่งคำขอ ไม่เปลี่ยนเมื่อส่งซ้ำหรือแก้ตั้งค่า และไม่ยืนยันความเสียหายอัตโนมัติ'};}
-  const c = DB.settings.clarify;
-  const t = e.track || trackOfException(e).track;
-  if (t === "daily") {
-    return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ระบบ XB — ออดิทส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ จากนั้นชี้แจงกลับภายใน ${c.dailyRespondHours} ชม. (ส่งทุกเคส ไม่ดูความรุนแรง)` };
-  }
-  const cy = cycleOf(e.date);
-  const due = shiftDays(cy.to, c.cycleRespondDays);
-  return { label: `${due} (${cy.name})`, short: due, detail: `ระบบ 123 — ออดิท 1/2/3 รวบรวมถึงวันปิดรอบ ${cy.to} แล้วตีไฟล์ให้ชี้แจงภายใน ${c.cycleRespondDays} วัน`, cycle: cy };
-}
-
-/* เอกสาร: สร้างเลขที่ */
-function docNo(prefix, key) {
-  return `${prefix}-${String(state.filters.date).replace(/-/g, "")}-${key}`;
-}
-
-function issueRequestDoc(items, opts) {
-  if (!can("request_clarify") && !can("approve")) return deny("ออกใบขอให้ชี้แจง");
-  if (!items.length) return toast("ไม่มีรายการที่ต้องชี้แจงในกลุ่มนี้", "warn");
-  const shiftName = opts.shiftName || "ทุกกะ";
-  const due = dueOf(items[0]);
-  const html = Docs.requestHtml({
-    docNo: docNo("REQ", opts.key),
-    trackName: trackMeta(items[0].track).name,
-    issuedAt: state.filters.date,
-    periodLabel: opts.periodLabel,
-    dueLabel: due.label,
-    toName: opts.toName || "หัวหน้ากะ " + shiftName,
-    shiftName,
-    companyName: state.filters.company === "ALL" ? "ทุกบริษัท" : state.filters.company,
-    fromName: "แผนกออดิท",
-    issuer: currentUser().name + " (" + currentUser().username + ")",
-    items,
-    date: items[0].date || state.filters.date,
-    stamp: nowStamp(),
-  });
-  Docs.print(html, docNo("REQ", opts.key));
-  items.forEach((e) => {
-    if (e.status === "open") e.status = "clarifying";
-    saveOverride(e);
-  });
-  logAction("issue_doc", "clarification", docNo("REQ", opts.key), `ออกใบขอให้ชี้แจง ${items.length} รายการ · ${opts.periodLabel}`);
-  toast(`ออกใบขอให้ชี้แจง ${items.length} รายการแล้ว — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์`);
-  render();
-}
-
-function issueClarificationDoc(e, narrative) {
-  const cy = cycleOf(e.date);
-  const html = Docs.clarificationHtml({
-    docNo: docNo("CLR", e.id),
-    ex: e,
-    brand: (DB.companies.find((c) => c.code === e.company) || {}).name || e.company,
-    shiftName: (DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift,
-    trackName: trackMeta(e.track).name,
-    cycleName: cy.name,
-    title: `${e.typeName} — ${e.account} ยอด ${money(e.riskAmount || Math.abs(e.amountDiff))} บาท เวลา ${e.time}`,
-    severityName: sevMeta(e.severity).name,
-    statusName: caseStatusMeta(e).name,
-    damage: e.status === "damage",
-    narrative: narrative,
-    responder: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
-    issuer: currentUser().name + " (" + currentUser().username + ")",
-    issuedAt: state.filters.date,
-    stamp: nowStamp(),
-  });
-  Docs.print(html, docNo("CLR", e.id));
-  logAction("issue_doc", "clarification", docNo("CLR", e.id), "ออกเอกสารชี้แจงฉบับสมบูรณ์");
-  toast(`ออกเอกสารชี้แจง ${e.id} แล้ว — เลือก "บันทึกเป็น PDF" ในหน้าต่างพิมพ์`);
-}
-
-VIEWS.clarify = (root) => {
-  if (!ensureLiveOverview(root)) return;
-  if (state.dataset === "production" && Sb.signedIn()) {
-    if (!liveOverviewState.exceptionsReady) {
-      root.innerHTML = `<section class="panel" role="status" aria-busy="${liveOverviewState.loading || liveOverviewState.auxiliaryLoading}"><h2>${liveOverviewState.auxiliaryError ? 'ยังโหลดรายการเคสไม่สำเร็จ' : 'กำลังโหลดรายการเคสจริง…'}</h2><p>— ยังไม่สรุปว่าไม่มีเคสหรือยอดเป็นศูนย์ · คงบริษัทและช่วงวันที่ที่เลือก</p><p>${h(liveOverviewState.auxiliaryError || '')}</p><button class="ghost-button" id="clarifyLoadRetry">ลองโหลดรายการอีกครั้ง</button></section>`;
-      $('#clarifyLoadRetry').onclick = () => loadLiveOverview(true);
-      return;
-    }
-    const rows = scopedExceptions().filter((e) => !e.closureRequestId&&["open", "clarifying", "answered"].includes(e.status)&&(state.role!=='shift_lead'||!!e.requestedAt));
-    const newRows = rows.filter((e) => e.status === "open");
-    const waitingRows = rows.filter((e) => e.status === "clarifying");
-    const answeredRows = rows.filter((e) => e.status === "answered");
-    const groups = [...new Set(rows.map((e) => e.company || "ไม่ระบุ"))].sort((a, b) => a.localeCompare(b, "th"));
-    root.innerHTML = `
-      ${liveOverviewState.auxiliaryError ? `<section class="alert warn" role="status">ข้อมูลล่าสุดยังมาไม่ครบ · แสดงข้อมูลที่โหลดได้ครั้งก่อน ไม่ใช่ยอดศูนย์: ${h(liveOverviewState.auxiliaryError)}</section>` : ''}
-      ${moreCaseState.hasMore ? '<section class="alert warn">รายการที่โหลดอาจยังไม่ครบ กรุณากรองบริษัทหรือช่วงวันที่ให้แคบลงก่อนสรุปจำนวนรวม</section>' : ''}
-      <section class="status-strip four">
-        <article class="warn"><span>เคสใหม่ ยังไม่ได้ส่งชี้แจง</span><strong>${num(newRows.length)}</strong><small>ต้องตรวจและส่งให้ทีม</small></article>
-        <article><span>บริษัทที่เกี่ยวข้อง</span><strong>${num(groups.length)}</strong><small>ไม่แบ่งกะ</small></article>
-        <article><span>ส่งแล้ว รอทีมตอบ</span><strong>${num(waitingRows.length)}</strong><small>กำลังติดตามคำชี้แจง</small></article>
-        <article class="ok"><span>ทีมตอบแล้ว</span><strong>${num(answeredRows.length)}</strong><small>รอ Audit ตรวจและอนุมัติ</small></article>
-      </section>
-      <section class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Company workflow</p><h2>งานชี้แจงแยกตามบริษัท</h2><small class="head-sub">กดการ์ดบริษัทเพื่อเปิดรายการที่ต้องดำเนินการทั้งหมด</small></div><button class="primary-button sm" id="openApprovalQueue" ${answeredRows.length ? "" : "disabled"}>ตรวจคำชี้แจงที่ตอบแล้ว (${num(answeredRows.length)})</button></div>
-        <div class="company-overview-grid">${groups.map((company) => {
-          const own = rows.filter((e) => (e.company || "ไม่ระบุ") === company);
-          const ownNew = own.filter((e) => e.status === "open").length;
-          const ownWaiting = own.filter((e) => e.status === "clarifying").length;
-          const ownAnswered = own.filter((e) => e.status === "answered").length;
-          return `<article class="company-overview-card action-card" role="button" tabindex="0" data-clarify-company="${h(company)}" aria-label="เปิดเคสของบริษัท ${h(company)}"><div class="company-card-head"><div><strong>${h(company)}</strong><span>${num(own.length)} เคส</span></div><small class="${own.some((e) => e.overSla) ? "danger" : ""}">เกิน SLA ${num(own.filter((e) => e.overSla).length)}</small></div><div class="company-metrics"><span>ยังไม่ได้ส่ง <b>${num(ownNew)}</b></span><span class="warn">รอทีมตอบ <b>${num(ownWaiting)}</b></span><span class="ok">ตอบแล้ว <b>${num(ownAnswered)}</b></span><span class="bad">ยอดเสี่ยง <b>${money0(sumRisk(own))}</b></span></div><div class="company-card-action">ดูเคสทั้งหมด <span aria-hidden="true">→</span></div></article>`;
-        }).join("") || `<p class="empty-box">ไม่มีงานชี้แจงในช่วงที่เลือก</p>`}</div>
-      </section>
-      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายการจริง</p><h2>เคสที่ต้องติดตาม</h2></div></div><div class="table-wrap"><table><thead><tr><th>เคส</th><th>วันที่</th><th>บริษัท</th><th>ประเภท</th><th>ผู้เกี่ยวข้อง</th><th>สถานะ</th><th>SLA</th><th class="right">ยอดที่ต้องตรวจ</th></tr></thead><tbody>${rows.map((e) => `<tr><td><button class="link-btn" data-open-ex="${h(e.id)}">${h(e.id)}</button></td><td>${h(e.date)} ${h(e.time)}</td><td><b>${h(e.company)}</b></td><td>${h(e.typeName)}</td><td>${h(e.employee)}</td><td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td><td class="${e.overSla ? "danger" : ""}">${e.overSla ? "เกิน " : ""}${num(e.ageHours)}/${num(e.slaHours)} ชม.</td><td class="right tnum">${money0(e.riskAmount || Math.abs(e.amountDiff))}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">ไม่มีรายการ</td></tr>`}</tbody></table></div></section>`;
-    root.querySelectorAll("[data-open-ex]").forEach((button) => button.addEventListener("click", async () => {
-      const id=button.dataset.openEx;
-      // A company refresh may clear the row cache while its preserved DOM is
-      // still visible. Re-read the selected UUID under RLS instead of claiming
-      // the persisted case is missing. No extra read on the normal path.
-      try {
-        if(DB.exceptions.some(row=>row.id===id))await openException(id);
-        else await openEvidenceRelatedCase(id);
-      } catch(error) { toast('เปิดรายละเอียดเคสไม่ได้: '+error.message,'warn'); }
-    }));
-    const openCompanyCases = (company) => {
-      if (state.role === 'shift_lead') {
-        // Same-route hash assignment emits no hashchange. Repaint the already
-        // scoped read-only snapshot, keeping dates, drafts and case state.
-        state.filters.company = company;
-        render();
-        return;
-      }
-      go("exceptions", {
-        filters: { company },
-        exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false },
-      });
-    };
-    root.querySelectorAll("[data-clarify-company]").forEach((card) => {
-      card.addEventListener("click", () => openCompanyCases(card.dataset.clarifyCompany));
-      card.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openCompanyCases(card.dataset.clarifyCompany);
-        }
-      });
-    });
-    if(state.role==='shift_lead') $('#openApprovalQueue').hidden=true;
-    $("#openApprovalQueue")?.addEventListener("click", () => {if(state.role!=='shift_lead')go(can('approve')?"approvals":"audit-review");});
-    return;
-  }
-  retagTracks();
-  const all = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
-  const daily = all.filter((e) => e.track === "daily");
-  const cyc = all.filter((e) => e.track === "cycle");
-  const c = DB.settings.clarify;
-  const XB = sysMeta("XB");
-  const S123 = sysMeta("SYS123");
-  const known = [...new Set(companyMaster().map((x) => x.code).concat(all.map((e) => e.company)))].filter((x) => x && x !== "-");
-  const pending = known.filter((code) => !systemOfCompany(code));
-  const pendingActive = unassignedCompanies(); // ที่มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้กำหนด
-
-  /* ระบบ XB: จัดกลุ่มตามกะเพื่อส่งหัวหน้ากะแต่ละกะ */
-  const byShift = DB.shifts.map((s) => ({
-    shift: s,
-    items: daily.filter((e) => e.shift === s.code),
-    lead: DB.users.find((u) => u.role === "shift_lead" && u.shift === s.code),
-  }));
-
-  /* ระบบ 123: จัดกลุ่มตามรอบตีไฟล์ */
-  const cycles = {};
-  cyc.forEach((e) => {
-    const cy = cycleOf(e.date);
-    (cycles[cy.code] = cycles[cy.code] || { cy, items: [] }).items.push(e);
-  });
-  const cycleList = Object.values(cycles).sort((a, b) => a.cy.code.localeCompare(b.cy.code));
-
-  root.innerHTML = `
-    <section class="status-strip four">
-      <article class="${daily.length ? "warn" : "ok"}"><span>ระบบ XB (ส่ง ${h(c.dailyCutoff)} ทุกวัน)</span><strong>${num(daily.length)}</strong><small>ส่งหัวหน้ากะทุกเคส ไม่ดูความรุนแรง</small></article>
-      <article><span>ระบบ 123 (ตีไฟล์เป็นรอบ)</span><strong>${num(cyc.length)}</strong><small>ออดิท 1/2/3 รวบเป็นรอบ ให้เวลาชี้แจง ${c.cycleRespondDays} วัน</small></article>
-      <article><span>ชี้แจงกลับมาแล้ว</span><strong>${num(all.filter((e) => e.status === "answered").length)}</strong><small>รอออดิทตรวจทาน</small></article>
-      <article class="bad"><span>ค้างเกินกำหนด</span><strong>${num(all.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">System Mapping</p><h2>บริษัทไหนอยู่ระบบไหน</h2>
-        <small class="head-sub">สายชี้แจงมาจากระบบต้นทาง ไม่ใช่ความรุนแรง — ตั้งครั้งเดียว ระบบจำไว้ให้</small></div>
-        <span class="health ${pendingActive.length ? "attention" : pending.length ? "" : "ok"}">${pending.length ? `ยังไม่ได้กำหนด ${pending.length} บริษัท` : "กำหนดครบแล้ว"}</span>
-      </div>
-      ${pendingActive.length ? `<p class="hint danger">บริษัท <b>${h(pendingActive.join(", "))}</b> มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้บอกว่าอยู่ระบบไหน — ระบบจัดเป็นรายรอบไว้ก่อน กรุณาเลือกให้ถูก</p>` : ""}
-      <div class="sysmap">
-        ${known
-          .map((code) => {
-            const cur = systemOfCompany(code);
-            const co = DB.companies.find((x) => x.code === code) || { name: code };
-            const n = all.filter((e) => e.company === code).length;
-            return `<div class="sysmap-row ${cur ? "" : "todo"}">
-              <div><strong>${h(co.name || code)}</strong><span>${num(n)} เคสในช่วงนี้</span></div>
-              <div class="sysmap-btns">
-                <button class="chip-btn ${cur === "XB" ? "on amber" : ""}" data-sys="${h(code)}" data-val="XB">XB · รายวัน</button>
-                <button class="chip-btn ${cur === "SYS123" ? "on blue" : ""}" data-sys="${h(code)}" data-val="SYS123">123 · รายรอบ</button>
-                <button class="chip-btn ${cur ? "" : "on"}" data-sys="${h(code)}" data-val="">ยังไม่ระบุ</button>
-              </div>
-            </div>`;
-          })
-          .join("")}
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">${h(XB.name)}</p><h2>รายการที่ต้องส่งหัวหน้ากะวันนี้</h2>
-        <small class="head-sub">${h(XB.desc)}</small></div>
-        <span class="health ${daily.length ? "attention" : "ok"}">กำหนดส่ง ${h(c.dailyCutoff)} น. ของ ${h(state.filters.date)}</span>
-      </div>
-      <div class="track-grid">
-        ${byShift
-          .map(
-            (g) => `<div class="track-card ${g.items.length ? "" : "empty"}">
-          <div class="track-head">
-            <div><strong>${h(g.shift.name)}</strong><span>${h(g.shift.range)}</span></div>
-            <b>${g.items.length}</b>
-          </div>
-          <div class="track-body">
-            <div class="kv-line"><span>หัวหน้ากะ</span><b>${h(g.lead ? g.lead.name : "-")}</b></div>
-            <div class="kv-line"><span>ยอดที่ต้องตรวจ</span><b>${money0(sumRisk(g.items))} บาท</b></div>
-            <div class="kv-line"><span>Critical / High</span><b>${g.items.filter((e) => e.severity === "critical").length} / ${g.items.filter((e) => e.severity === "high").length}</b></div>
-          </div>
-          <button class="primary-button sm" data-req-shift="${g.shift.code}" ${g.items.length ? "" : "disabled"}>ออกใบขอให้ชี้แจง</button>
-        </div>`,
-          )
-          .join("")}
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">${h(S123.name)}</p><h2>รายการที่รวบเป็นรอบ</h2>
-        <small class="head-sub">${h(S123.desc)}</small></div>
-      </div>
-      ${
-        cycleList.length
-          ? `<div class="track-grid">${cycleList
-              .map((g) => {
-                const due = shiftDays(g.cy.to, c.cycleRespondDays);
-                const late = due < state.filters.date;
-                return `<div class="track-card">
-              <div class="track-head"><div><strong>${h(g.cy.name)}</strong><span>${h(g.cy.from)} ถึง ${h(g.cy.to)}</span></div><b>${g.items.length}</b></div>
-              <div class="track-body">
-                <div class="kv-line"><span>ปิดรอบ</span><b>${h(g.cy.to)}</b></div>
-                <div class="kv-line"><span>กำหนดชี้แจง</span><b class="${late ? "danger" : ""}">${h(due)}</b></div>
-                <div class="kv-line"><span>ยอดที่ต้องตรวจ</span><b>${money0(sumRisk(g.items))} บาท</b></div>
-              </div>
-              <button class="primary-button sm" data-req-cycle="${g.cy.code}">ออกใบขอให้ชี้แจงทั้งรอบ</button>
-            </div>`;
-              })
-              .join("")}</div>`
-          : `<p class="empty">ไม่มีรายการของระบบ 123 ตามตัวกรองนี้</p>`
-      }
-    </section>
-
-    <section class="panel">
-      <div class="panel-heading">
-        <div><p class="eyebrow">Clarification Queue</p><h2>รายการทั้งหมดพร้อมกำหนดส่ง</h2>
-        <small class="head-sub">กดที่เลขเคสเพื่อเปิดรายละเอียด · ปุ่มขวาสุดออกเอกสารชี้แจงรายเคสเป็น PDF</small></div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>เคส</th><th>สาย</th><th>เวลา</th><th>ประเภท</th><th class="right">ยอดที่ต้องตรวจ</th><th>กะ / ผู้เกี่ยวข้อง</th><th>กำหนดส่ง</th><th>สถานะ</th><th class="right">เอกสาร</th></tr></thead>
-          <tbody>
-            ${
-              all
-                .slice(0, 40)
-                .map((e) => {
-                  const d = dueOf(e);
-                  return `<tr>
-                <td><button class="link-btn" data-ex="${e.id}">${e.id}</button></td>
-                <td><span class="badge ${e.track === "daily" ? "amber" : "blue"}">${h(trackMeta(e.track).short)}</span></td>
-                <td class="tnum">${e.time}</td>
-                <td>${h(e.typeName)}</td>
-                <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
-                <td>${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift)}<small class="sub">${h(e.employee)}</small></td>
-                <td class="${e.overSla ? "danger" : ""}">${h(d.short)}</td>
-                <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
-                <td class="right nowrap"><button class="ghost-button xs" data-clr="${e.id}">เอกสารชี้แจง</button></td>
-              </tr>`;
-                })
-                .join("") || `<tr><td colspan="9" class="empty">ไม่มีรายการค้างชี้แจง</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-      ${all.length > 40 ? `<p class="hint">แสดง 40 รายการแรกจากทั้งหมด ${num(all.length)} รายการ — ใช้ตัวกรองด้านบนเพื่อลดขอบเขต</p>` : ""}
-    </section>`;
-
-  root.querySelectorAll("[data-sys]").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (!can("rules") && !can("settings") && !can("approve")) return deny("กำหนดระบบของบริษัท");
-      setCompanySystem(b.dataset.sys, b.dataset.val || null);
-      toast(`${b.dataset.sys} → ${b.dataset.val ? sysMeta(b.dataset.val).short : "ยังไม่ระบุ"}`);
-      render();
-    }),
-  );
-  root.querySelectorAll("[data-req-shift]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const g = byShift.find((x) => x.shift.code === b.dataset.reqShift);
-      issueRequestDoc(g.items, {
-        key: g.shift.code.toUpperCase(),
-        shiftName: g.shift.name,
-        toName: g.lead ? g.lead.name : "หัวหน้ากะ " + g.shift.name,
-        periodLabel: `วันที่ ${state.filters.date} (${g.shift.name} ${g.shift.range})`,
-      });
-    }),
-  );
-  root.querySelectorAll("[data-req-cycle]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const g = cycleList.find((x) => x.cy.code === b.dataset.reqCycle);
-      issueRequestDoc(g.items, { key: g.cy.code, shiftName: "ทุกกะ", periodLabel: `${g.cy.name} · ${g.cy.from} ถึง ${g.cy.to}` });
-    }),
-  );
-  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
-  root.querySelectorAll("[data-clr]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const e = DB.exceptions.find((x) => x.id === b.dataset.clr);
-      issueClarificationDoc(e, (e.notes || []).map((n) => n.text).join("\n"));
-    }),
-  );
-};
-
-/* =============================================================
-   Export: Excel หลายชีต + บันทึกเป็นภาพ
-   ============================================================= */
-
-function openModal(title, bodyHtml, footHtml) {
-  const m = $("#modal");
-  clearTimeout(m._hideTimer);
-  m._hideTimer = null;
-  if (typeof m._contentCleanup === "function") m._contentCleanup();
-  m._contentCleanup = null;
-  m.classList.remove("file-preview-modal");
-  m.innerHTML = `
-    <header class="modal-head">
-      <h2 id="modalTitle">${title}</h2>
-      <button class="icon-btn" id="modalClose" aria-label="ปิด">✕</button>
-    </header>
-    <div class="modal-body">${bodyHtml}</div>
-    ${footHtml ? `<footer class="modal-foot">${footHtml}</footer>` : ""}`;
-  m.hidden = false;
-  $("#modalOverlay").hidden = false;
-  requestAnimationFrame(() => m.classList.add("on"));
-  AuditUi.open(m);
-  $("#modalClose").addEventListener("click", closeModal);
-  $("#modalOverlay").addEventListener("click", closeModal, { once: true });
-}
-function closeModal() {
-  const m = $("#modal");
-  if (!m || m.hidden) return;
-  if (typeof m._contentCleanup === "function") m._contentCleanup();
-  m._contentCleanup = null;
-  m.classList.remove("on");
-  $("#modalOverlay").hidden = true;
-  AuditUi.close(m);
-  clearTimeout(m._hideTimer);
-  m._hideTimer = setTimeout(() => { m.hidden = true; m._hideTimer = null; }, 200);
-}
-
-// Reuse the exact visible/filter-scoped rows. Do not expand access or date scope on export.
-function buildReviewExportSheets() {
-  const combined = SHEET_BUILDERS.exceptions.build();
-  const directionColumn = combined.headers.indexOf("ทิศทาง");
-  const split = (name, direction) => ({ ...combined, name,
-    title: `${name} — ${combined.title}`,
-    rows: combined.rows.filter((row) => row[directionColumn] === direction) });
-  const sheets = [split("ฝาก (ฝ)", "ฝาก"), split("ถอน (ถ)", "ถอน")];
-  const unknown = combined.rows.filter((row) => !["ฝาก", "ถอน"].includes(row[directionColumn]));
-  if (unknown.length) sheets.push({ ...combined, name: "รอระบุประเภท", rows: unknown });
-  sheets.push({ ...combined, name: "รวม" });
-  return sheets;
-}
-
-/* ตัวสร้างชุดข้อมูลแต่ละชีต ตามช่วงวันที่ปัจจุบัน */
-const SHEET_BUILDERS = {
-  exceptions: {
-    label: "ตารางกระทบยอด / รายการผิดปกติ",
-    build: () => {
-      const rows = filteredExceptions();
-      return {
-        name: "กระทบยอด",
-        title: "ตารางกระทบยอด — ช่องว่างหมายถึงไม่พบคู่และรอชี้แจง",
-        headers: ["สถานะ", "เคส", "วันที่", "บริษัท", "ทิศทาง", "บัญชี / Provider", "BO วันที่ / เวลา", "BO ผู้ทำรายการ", "ยอด BO", "STM วันที่ / เวลา", "STM ธนาคาร", "ยอด STM", "ต่างเวลา (วิ)", "ต่างยอด", "ผลการจับคู่", "คำชี้แจง / หมายเหตุ", "ระดับ", "กำหนดส่ง", "เกิน SLA", "BO User", "BO บัญชีลูกค้า", "BO ชื่อลูกค้า", "BO ท้าย 4 ตัว", "BO รหัสอ้างอิง", "STM/PM User", "STM/PM บัญชีลูกค้า", "STM/PM ชื่อลูกค้า", "STM/PM ท้าย 4 ตัว", "STM/PM รหัสอ้างอิง"],
-        widths: [14, 11, 12, 12, 9, 18, 21, 15, 13, 21, 18, 13, 13, 13, 24, 42, 10, 14, 10, 18, 20, 25, 14, 35, 18, 20, 25, 14, 35],
-        rows: rows.map((e) => {
-          const hasStm = e.bankAmount !== null;
-          const hasBo = e.systemAmount !== null;
-          const explanation = e.resolutionNote || (e.notes || []).at(-1)?.text || "";
-          const result = hasStm && hasBo
-            ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
-            : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
-          return [
-            caseStatusMeta(e).name, e.id, e.date, e.company, e.direction, e.account,
-            hasBo ? exceptionSideTimestamp(e, "bo") : "", hasBo ? e.employee : "", hasBo ? e.systemAmount : "",
-            hasStm ? exceptionSideTimestamp(e, "stm") : "", hasStm ? e.bank : "", hasStm ? e.bankAmount : "",
-            hasStm && hasBo ? exceptionTimeDiffLabel(e) : "", hasStm && hasBo ? e.amountDiff : "", result,
-            explanation || "เว้นไว้รอชี้แจง", sevMeta(e.severity).name, dueOf(e).short, e.overSla ? "เกิน" : "ปกติ",
-            ...["bo", "stm"].flatMap((side) => { const c = reviewCustomer(e, side); return [c.user, c.account, c.name, c.tail, c.reference]; }),
-          ];
-        }),
-      };
-    },
-  },
-  damage: {
-    label: "ทะเบียนความเสียหาย",
-    build: () => {
-      const rows = DB.damages.filter((d) => inRange(d.date));
-      return {
-        name: "ความเสียหาย",
-        title: "ทะเบียนความเสียหาย",
-        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "รอบ", "บริษัท", "พนักงาน", "กะ", "ยอดเสียหาย (บาท)", "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
-        widths: [14, 12, 12, 8, 12, 17, 10, 17, 32, 10, 16, 16],
-        rows: rows.map((d) => {
-          return [
-            d.id, d.exceptionId, d.date, d.cycle,
-            (DB.companies.find((c) => c.code === d.company) || {}).name || d.company,
-            d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift,
-            dmgTHB(d),
-            d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus,
-          ];
-        }),
-      };
-    },
-  },
-  kpi: {
-    label: "KPI รายพนักงาน",
-    build: () => {
-      const ex = scopedExceptions();
-      return {
-        name: "KPI",
-        title: "KPI รายพนักงาน",
-        headers: ["พนักงาน", "บริษัท", "เคสทั้งหมด", "Critical", "High", "เกิน SLA", "ยอดที่ต้องตรวจ", "ระดับความเสี่ยง"],
-        widths: [18, 18, 12, 10, 10, 10, 16, 14],
-        rows: [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))].map((employee) => {
-          const r = ex.filter((e) => (e.employee || "ไม่ระบุ") === employee);
-          const crit = r.filter((e) => e.severity === "critical").length;
-          const sla = r.filter((e) => e.overSla).length;
-          return [employee, [...new Set(r.map((e) => e.company))].join(", "), r.length, crit, r.filter((e) => e.severity === "high").length, sla, sumRisk(r), crit >= 4 || sla >= 5 ? "สูง" : crit >= 2 ? "กลาง" : "ต่ำ"];
-        }),
-      };
-    },
-  },
-  daily: {
-    label: "สรุปการกระทบยอดรายวัน",
-    build: () => ({
-      name: "รายวัน",
-      title: "สรุปการกระทบยอดรายวันจาก Supabase",
-      headers: ["วันที่", "บริษัท", "ระบบ", "สถานะ", "ไฟล์", "อ่านสำเร็จ", "ข้อผิดพลาด", "ประเภทไฟล์ที่พบ"],
-      widths: [12, 16, 18, 16, 10, 12, 12, 40],
-      rows: (liveOverviewState.operations || []).filter((x) => inRange(x.business_date) && (state.filters.company === "ALL" || x.company === state.filters.company)).map((x) => [x.business_date, x.company, x.business_system || "", x.status || "", Number(x.file_count || 0), Number(x.parsed_count || 0), Number(x.error_count || 0), (x.present_kinds || []).join(", ")]),
-    }),
-  },
-  monthly: {
-    label: "แนวโน้มรายเดือน",
-    build: () => {
-      const byMonth = DB.damages.filter((d) => inRange(d.date)).reduce((acc, d) => {
-        const ym = String(d.date || "").slice(0, 7) || "ไม่ระบุ";
-        acc[ym] = acc[ym] || { amount: 0, cases: 0 };
-        acc[ym].amount += dmgTHB(d);
-        acc[ym].cases++;
-        return acc;
-      }, {});
-      return {
-        name: "แนวโน้มรายเดือน",
-        title: "แนวโน้มความเสียหายรายเดือน",
-        headers: ["เดือน", "ความเสียหายจริง (บาท)", "จำนวนเคส"],
-        widths: [14, 22, 12],
-        rows: Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([ym, m]) => [ym, m.amount, m.cases]),
-      };
-    },
-  },
-  intake: {
-    label: "สถานะไฟล์ที่รับ",
-    build: () => ({
-      name: "ไฟล์ที่รับ",
-      title: "สถานะไฟล์ประจำวัน",
-      headers: ["วันที่ธุรกิจ", "บริษัท", "ชื่อไฟล์", "ประเภท", "เวลาที่รับ", "สถานะอ่านไฟล์", "ข้อผิดพลาด", "Storage path"],
-      widths: [14, 16, 34, 18, 22, 16, 35, 45],
-      rows: (liveIntakeState.batches || []).flatMap((b) => (b.source_files || []).map((f) => [b.business_date, intakeCompanyOf(f, b) || b.company || "", f.file_name || "", f.kind || "", f.received_at || b.received_at || "", f.parsed ? "อ่านสำเร็จ" : "รออ่าน", f.parse_error || "", f.storage_path || ""])),
-    }),
-  },
-  audit: {
-    label: "Audit Log",
-    build: () => ({
-      name: "Audit Log",
-      title: "บันทึกการใช้งานระบบ",
-      headers: ["เวลา", "ผู้ใช้", "action", "entity", "target", "รายละเอียด"],
-      widths: [20, 18, 16, 16, 22, 60],
-      rows: DB.auditLog.filter((l) => inRange(String(l.at).slice(0, 10))).map((l) => [l.at, l.user, l.action, l.entity, l.target, l.detail]),
-    }),
-  },
-};
-
-const DEFAULT_SHEETS = { exceptions: true, damage: true, kpi: true, daily: true, monthly: false, intake: false, audit: false };
-const exportChoice = { ...DEFAULT_SHEETS };
-
-const FILE_SLUG = {
-  "รายงาน_Audit": "audit-report",
-  "รายการผิดปกติ": "exceptions",
-  KPI: "kpi",
-  "รายงานรายวัน": "daily-report",
-  "สรุปรายเดือน": "monthly-summary",
-  "audit-log": "audit-log",
-  "ความเสียหาย_C1": "damage-cycle-1",
-  "ความเสียหาย_C2": "damage-cycle-2",
-  "ความเสียหาย_C3": "damage-cycle-3",
-};
-function exportSheets(baseName, sheets, context = {}) {
-  if (!can("export")) return deny("export ข้อมูล");
-  const ascii =
-    FILE_SLUG[baseName] ||
-    baseName
-      .replace(/[^\x20-\x7E]+/g, "-")
-      .replace(/[^\w.-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "") ||
-    "report";
-  const stamp = context.date || (state.filters.from === state.filters.to ? state.filters.from : `${state.filters.from}_to_${state.filters.to}`);
-  const meta = `ช่วงข้อมูล ${context.date || rangeLabel()} · บริษัท ${context.company || (state.filters.company === "ALL" ? "ทุกบริษัท" : state.filters.company)} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
-  const res = Exporter.workbook(sheets, `${ascii}_${stamp}.xlsx`, meta);
-  if (res.ok) {
-    logAction("export", "report", baseName, `Excel ${sheets.length} ชีต · ${sheets.reduce((a, c) => a + c.rows.length, 0)} แถว · ${rangeLabel()}`);
-    toast(`ดาวน์โหลด ${ascii}_${stamp}.xlsx แล้ว (${sheets.length} ชีต · ${num(sheets.reduce((a, c) => a + c.rows.length, 0))} แถว)`);
-    return true;
-  }
-  // ออฟไลน์: ถอยเป็น CSV ของชีตแรก
-  const first = sheets[0];
-  Exporter.csv(first.headers, first.rows, `${ascii}_${stamp}.csv`);
-  logAction("export", "report", baseName, `CSV (ยังโหลดตัวเขียน Excel ไม่ได้) · ${first.rows.length} แถว`);
-  toast("ยังโหลดตัวเขียนไฟล์ Excel ไม่ได้ (ต้องต่ออินเทอร์เน็ต) — ดาวน์โหลดเป็น CSV ให้แทน", "warn");
-  return false;
-}
-
-async function openExportDialog() {
-  if (!can("export")) return deny("export ข้อมูล");
-  if (state.dataset === "production" && Sb.signedIn()) {
-    try {
-      if (!liveOverviewState.quality) {
-        toast("กำลังโหลดข้อมูลจริงก่อนเปิด Export...");
-        await loadLiveOverview(true);
-      }
-      if (!liveIntakeState.batches) {
-        liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company });
-      }
-    } catch (error) {
-      return toast("เตรียมข้อมูล Export ไม่สำเร็จ: " + error.message, "warn");
-    }
-  }
-  const f = state.filters;
-  openModal(
-    "Export รายงาน",
-    `
-    <div class="exp-section">
-      <h3>ช่วงวันที่</h3>
-      <div class="exp-range">
-        <label>ช่วงสำเร็จรูป
-          <select id="expPreset">${DATE_PRESETS.map((p) => `<option value="${p.code}" ${f.preset === p.code ? "selected" : ""}>${h(p.name)}</option>`).join("")}</select>
-        </label>
-        <label>ตั้งแต่<input type="date" id="expFrom" value="${f.from}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" /></label>
-        <label>ถึง<input type="date" id="expTo" value="${f.to}" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" /></label>
-      </div>
-      <p class="hint" id="expSummary"></p>
-    </div>
-
-    <div class="exp-section">
-      <h3>ชุดข้อมูลที่ต้องการ (แต่ละชุดเป็น 1 ชีตในไฟล์เดียว)</h3>
-      <div class="toggle-list">
-        ${Object.entries(SHEET_BUILDERS)
-          .map(([k, v]) => `<label><input type="checkbox" data-sheet="${k}" ${exportChoice[k] ? "checked" : ""} /> ${h(v.label)} <b class="sheet-count" data-count="${k}"></b></label>`)
-          .join("")}
-      </div>
-    </div>
-
-    <div class="exp-section">
-      <h3>รูปแบบไฟล์</h3>
-      <div class="seg">
-        <label><input type="radio" name="expFmt" value="xlsx" checked /> Excel (.xlsx) — แนะนำ</label>
-        <label><input type="radio" name="expFmt" value="csv" /> CSV (ชีตแรกเท่านั้น)</label>
-      </div>
-      <p class="hint">${Exporter.hasXLSX() ? "ไฟล์ Excel จะมี autofilter ทุกคอลัมน์ ตรึงหัวตาราง และตัวเลขเป็นตัวเลขจริงที่ SUM ได้ทันที" : "ยังโหลดตัวเขียนไฟล์ Excel ไม่ได้ — ต้องต่ออินเทอร์เน็ตครั้งแรก ระหว่างนี้จะได้ไฟล์ CSV แทน"}</p>
-    </div>`,
-    `<button class="ghost-button" id="expCancel">ยกเลิก</button>
-     <button class="primary-button" id="expGo">ดาวน์โหลด</button>`,
-  );
-
-  const refresh = () => {
-    Object.keys(SHEET_BUILDERS).forEach((k) => {
-      const el = $(`[data-count="${k}"]`);
-      if (el) el.textContent = `(${num(SHEET_BUILDERS[k].build().rows.length)} แถว)`;
-    });
-    const sum = $("#expSummary");
-    if (sum) sum.textContent = `ช่วงที่เลือก: ${rangeLabel()}`;
-  };
-  refresh();
-
-  $("#expPreset").addEventListener("change", (e) => {
-    applyPreset(e.target.value);
-    $("#expFrom").value = state.filters.from;
-    $("#expTo").value = state.filters.to;
-    refresh();
-  });
-  $("#expFrom").addEventListener("change", (e) => {
-    state.filters.from = visibleDate(e.target.value);
-    state.filters.preset = "custom";
-    refresh();
-  });
-  $("#expTo").addEventListener("change", (e) => {
-    state.filters.to = visibleDate(e.target.value);
-    state.filters.preset = "custom";
-    refresh();
-  });
-  $$("[data-sheet]").forEach((c) => c.addEventListener("change", () => (exportChoice[c.dataset.sheet] = c.checked)));
-  $("#expCancel").addEventListener("click", closeModal);
-  $("#expGo").addEventListener("click", () => {
-    const picked = Object.keys(SHEET_BUILDERS).filter((k) => exportChoice[k]);
-    if (!picked.length) return toast("เลือกอย่างน้อย 1 ชุดข้อมูล", "warn");
-    const fmt = $$('input[name="expFmt"]').find((r) => r.checked).value;
-    const sheets = picked.map((k) => SHEET_BUILDERS[k].build());
-    if (fmt === "csv") {
-      const first = sheets[0];
-      Exporter.csv(first.headers, first.rows, `audit-report_${state.filters.from}.csv`);
-      logAction("export", "report", "csv", `${first.rows.length} แถว · ${rangeLabel()}`);
-      toast("ดาวน์โหลด CSV แล้ว");
-    } else {
-      exportSheets("รายงาน_Audit", sheets);
-    }
-    closeModal();
-    render();
-  });
-}
-
-/* ---------- บันทึกเป็นภาพ ---------- */
-/* ชื่อไฟล์ต้องเป็น ASCII เท่านั้น ไม่งั้นเบราว์เซอร์จะตั้งชื่อไฟล์ให้เป็น "download" */
-function asciiSlug(t) {
-  return String(t || "")
-    .normalize("NFKD")
-    .replace(/[^A-Za-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase()
-    .slice(0, 40);
-}
-function panelFileName(panel) {
-  const eyebrow = asciiSlug((panel.querySelector(".eyebrow") || {}).textContent);
-  if (eyebrow.length >= 3) return `${state.route}_${eyebrow}`;
-  const idx = $$("#viewRoot .panel").indexOf(panel) + 1;
-  return `${state.route}_section-${idx}`;
-}
-async function capturePanel(panel) {
-  const title = (panel.querySelector("h2") || {}).textContent || ROUTE_MAP[state.route].title;
-  const name = `${panelFileName(panel)}_${state.filters.from}.png`;
-  toast("กำลังสร้างภาพ...");
-  const res = await Exporter.capture(panel, name, { background: "#ffffff" });
-  if (res.ok) {
-    logAction("export", "image", title, `บันทึกส่วนรายงานเป็นภาพ (${res.mode})`);
-    toast(res.mode === "chart-only" ? `บันทึกกราฟเป็นภาพแล้ว: ${name}` : `บันทึกภาพ ${name} แล้ว`);
-  } else {
-    toast("บันทึกภาพไม่สำเร็จ: " + res.reason, "warn");
-  }
-}
-async function capturePage() {
-  const root = $("#viewRoot");
-  const name = `${state.route}_full-page_${state.filters.from}.png`;
-  toast("กำลังสร้างภาพทั้งหน้า...");
-  if (Exporter.hasCanvas()) {
-    const res = await Exporter.capture(root, name, { background: "#f2f7fd", scale: 1.6 });
-    if (res.ok) {
-      logAction("export", "image", ROUTE_MAP[state.route].title, "บันทึกทั้งหน้าเป็นภาพ");
-      return toast(`บันทึกภาพ ${name} แล้ว`);
-    }
-  }
-  // ทางสำรอง: ต่อภาพทีละการ์ดเรียงลงมา ให้ผลแน่นอนกว่าการ render ทั้งหน้าในคราวเดียว
-  try {
-    const panels = $$("#viewRoot .panel, #viewRoot .status-strip, #viewRoot .pipeline").filter((el) => !el.classList.contains("no-capture") && !el.closest(".no-capture"));
-    const n = await Exporter.stitch(panels, name, {
-      background: "#f2f7fd",
-      scale: 1.6,
-      heading: ROUTE_MAP[state.route].title,
-      subheading: `ช่วงข้อมูล ${rangeLabel()} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`,
-    });
-    logAction("export", "image", ROUTE_MAP[state.route].title, `บันทึกทั้งหน้าเป็นภาพ ${n} ส่วน`);
-    toast(`บันทึกภาพ ${name} แล้ว (${n} ส่วน)`);
-  } catch (e) {
-    toast("บันทึกภาพไม่สำเร็จ: " + e.message, "warn");
-  }
-}
-
-/* ใส่ปุ่มกล้องให้ทุกการ์ดโดยอัตโนมัติหลัง render */
-function addPanelCaptureButtons() {
-  $$("#viewRoot .panel").forEach((panel) => {
-    if (panel.classList.contains("no-capture") || panel.querySelector(".panel-cam")) return;
-    const head = panel.querySelector(".panel-heading");
-    const btn = document.createElement("button");
-    btn.className = "panel-cam no-capture" + (head ? "" : " float");
-    btn.type = "button";
-    btn.title = "บันทึกส่วนนี้เป็นภาพ PNG";
-    btn.setAttribute("aria-label", "บันทึกส่วนนี้เป็นภาพ");
-    btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9Zm3 5.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>`;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      capturePanel(panel);
-    });
-    (head || panel).appendChild(btn);
-  });
-}
-
-/* =============================================================
-   Export helpers
-   ============================================================= */
-function downloadCSV(filename, headers, rows, sheetName) {
-  return exportSheets(filename.replace(/\.(csv|xlsx)$/i, ""), [
-    { name: sheetName || "ข้อมูล", title: sheetName || filename.replace(/\.(csv|xlsx)$/i, ""), headers, rows, widths: headers.map(() => 18) },
-  ]);
-}
-function exportExceptions() {
-  exportSheets("รายการผิดปกติ", buildReviewExportSheets());
-}
-
-/* =============================================================
-   Boot
-   ============================================================= */
-let productionDataReady = false;
-
-function prepareProductionData() {
-  if (productionDataReady) return;
-  productionDataReady = true;
-  DB.exceptions = [];
-  DB.damages = [];
-  DB.files = [];
-  DB.auditLog = [];
-  DB.currentRun = null;
-  if (Array.isArray(DB.hourly)) DB.hourly.forEach((x) => { x.total = 0; x.matched = 0; x.exception = 0; });
-  const accounts = loadRegistryAccounts();
-  if (accounts) DB.accounts = accounts;
-  state.dataset = "production";
-}
-
-async function applyAuthenticatedRole(entryAccess) {
-  const user = Sb.authUser() || {};
-  const email = String(user.email || "").toLowerCase();
-  const app = window.APP_CONFIG || {};
-  let access = null;
-  try {
-    if (entryAccess?.status === 'rejected') throw entryAccess.reason;
-    access = entryAccess?.status === 'fulfilled' ? entryAccess.value : await Sb.myAccess();
-    if (Array.isArray(access)) access = access[0] || null;
-  } catch (error) {
-    /* ช่วง deploy migration ให้บัญชี bootstrap เดิมยังเข้าไปติดตั้ง schema ได้
-       บัญชีอื่นจะไม่ถูกอนุญาตจากค่า default หรือ metadata ใน browser */
-    const bootstrapRole = app.roleByEmail?.[email];
-    if (!bootstrapRole) throw error;
-    access = { email, full_name: email, role: bootstrapRole, active: true, companies: ["*"], migration_pending: true };
-  }
-  if (!access?.active) {
-    const error = new Error("บัญชีนี้ถูกระงับหรือยังไม่ได้กำหนดสิทธิ์ กรุณาติดต่อผู้ดูแลระบบ");
-    error.code = 'APP_ACCESS_DENIED';
-    throw error;
-  }
-  const requested = ROUTE_ROLES[access.role] ? access.role : "monitor";
-  state.role = requested;
-  state.access = {
-    email: access.email || email,
-    fullName: access.full_name || access.email || email,
-    role: requested,
-    companies: Array.isArray(access.companies) ? access.companies.map((value) => String(value).toUpperCase()) : [],
-    active: true,
-    loaded: !access.migration_pending,
-  };
-  if (state.filters.company !== "ALL" && !canAccessCompany(state.filters.company)) state.filters.company = "ALL";
-  if (state.dailySummary.company && !canAccessCompany(state.dailySummary.company)) state.dailySummary.company = companyMaster()[0]?.code || "";
-  $("#signedUser").innerHTML = `${h(state.access.fullName)}<small>${h(DB.roles[state.role].name)}</small>`;
-}
-
-async function enterProductionApp() {
-  if (enterProductionApp.pending) return enterProductionApp.pending;
-  const pending = performProductionEntry();
-  enterProductionApp.pending = pending;
-  try { return await pending; }
-  finally { if (enterProductionApp.pending === pending) enterProductionApp.pending = null; }
-}
-
-async function readProductionEntryChecks() {
-  // Both checks must finish before admission. Settle access errors immediately
-  // even when the password gate is slower; no data prefetch before admission.
-  const [password, access] = await Promise.allSettled([
-    Sb.passwordChangeRequired(), Sb.myAccess(),
-  ]);
-  if (password.status === 'rejected') throw password.reason;
-  return { passwordRequired: password.value, access };
-}
-
-async function performProductionEntry() {
-  const user = Sb.authUser() || {};
-  const email = String(user.email || "").trim().toLowerCase();
-  const preserveWork = typeof state !== 'undefined' && state.access?.loaded && state.access.email?.toLowerCase() === email && $('#appShell').hidden === false;
-  const priorScope = preserveWork ? JSON.stringify([state.access.role, state.access.companies]) : null;
-  showConnectingGate('กำลังตรวจสิทธิ์ · เก็บหน้าทำงานและข้อความร่างไว้ ยังบันทึกไม่ได้จนกว่าจะตรวจสำเร็จ', null, preserveWork);
-  if (!email) {
-    Sb.signOut();
-    showLoginGate("ไม่พบอีเมลของบัญชี กรุณาเข้าสู่ระบบใหม่");
-    return false;
-  }
-  const accessWaitTimer = setTimeout(() => {
-    if (!$('#connectionGate').hidden) $('#connectionMessage').textContent = 'ฐานข้อมูลตรวจสิทธิ์ตอบกลับช้า กำลังรอแบบจำกัดเวลา — ยังไม่ได้ออกจากระบบ ไม่ต้องรีเฟรชหรือเข้าสู่ระบบซ้ำ';
-  }, 10000);
-  try {
-    const entryChecks = await readProductionEntryChecks();
-    if(entryChecks.passwordRequired){
-      $('#accessWaitNotice')?.remove?.();
-      for (const id of ['#drawer', '#modal', '#drawerOverlay', '#modalOverlay']) { const node = $(id); if (node) node.hidden = true; }
-      $('#connectionGate').hidden=true;$('#appShell').hidden=true;$('#loginGate').hidden=false;
-      $('#loginForm').hidden=true;$('#resetForm').hidden=false;
-      $('#resetForm').dataset.firstPassword='true';$('#resetError').hidden=true;
-      $('#resetForm h1, #resetForm h2').textContent='ตั้งรหัสผ่านส่วนตัวก่อนเริ่มใช้งาน';
-      $('#resetForm .login-lead').textContent='ตั้งรหัสใหม่อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเริ่มต้นเดิม ยังไม่เปิดข้อมูลจนกว่าจะบันทึกสำเร็จ';
-      return false;
-    }
-    await applyAuthenticatedRole(entryChecks.access);
-  } catch (error) {
-    if (error.code === 'APP_ACCESS_DENIED') {
-      Sb.signOut();
-      showLoginGate(error.message);
-    } else {
-      showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp(), preserveWork);
-    }
-    return false;
-  } finally { clearTimeout(accessWaitTimer); }
-  $('#accessWaitNotice')?.remove?.();
-  $('#appShell').inert = false;
-  for (const id of ['#drawer', '#modal']) { const node = $(id); if (node) node.inert = false; }
-  if (preserveWork && priorScope === JSON.stringify([state.access.role, state.access.companies])) return true;
-  prepareProductionData();
-  $('#connectionGate').hidden = true;
-  $("#loginGate").hidden = true;
-  $("#appShell").hidden = false;
-  state.route = parseHash();
-  if (!ROUTE_ROLES[state.role].includes(state.route)) state.route = "cloud";
-  if (!location.hash || parseHash() !== state.route) location.hash = "#/" + state.route;
-  cloudState.batches = null;
-  cloudState.caseAttachments = null;
-  cloudState.evidenceError = null;
-  cloudState.daily = null;
-  cloudState.operations = null;
-  cloudState.key = "";
-  cloudState.error = null;
-  cloudState.partialError = null;
-  liveOverviewState.daily = null;
-  liveOverviewState.operations = null;
-  liveOverviewState.quality = null;
-  liveOverviewState.checklist = null;
-  liveOverviewState.settings = null;
-  liveOverviewState.damages = null;
-  liveOverviewState.logs = null;
-  liveOverviewState.notifications = null;
-  liveOverviewState.matchEvidence = [];
-  liveOverviewState.matchedStaleExceptions = 0;
-  liveOverviewState.exceptionsReady = false;
-  liveOverviewState.damagesReady = false;
-  liveOverviewState.logsReady = false;
-  liveOverviewState.coreErrors = [];
-  liveOverviewState.key = "";
-  dailyCompanyState.date = "";
-  dailyCompanyState.company = "";
-  dailyCompanyState.batches = null;
-  dailyCompanyState.matchEvidence = [];
-  dailyCompanyState.matchedStaleExceptions = 0;
-  dailyCompanyState.quality = null;
-  dailyCompanyState.operations = null;
-  dailyCompanyState.checklist = null;
-  dailyCompanyState.boFirst = null;
-  dailyCompanyState.exceptions = null;
-  dailyCompanyState.damages = null;
-  dailyCompanyState.coreError = null;
-  dailyCompanyState.error = null;
-  updateBell();
-  render();
-  // A restored Google/Supabase session bypasses the legacy sign-in handler.
-  // Start the reconciliation worker for every authenticated app entry so
-  // queued jobs continue after a refresh, browser restart, or OAuth return.
-  startCloudWorker();
-  // The company worksheet loads its own committed run. Do not also start
-  // thirty days of all-company aggregates/evidence while opening that sheet.
-  // Other routes retain their normal overview loaders; unknown badges stay —.
-  if (!['exceptions', 'cloud', 'daily-summary', 'mc8-sheets', 'finance','source-upload','source-run'].includes(state.route)) loadLiveOverview().catch(() => {});
-  return true;
-}
-
-async function boot() {
-  applyStoredState();
-  let authCallback = null;
-  try {
-    authCallback = await Sb.consumeAuthHash();
-  } catch (e) {
-    showLoginGate(e.message);
-  }
-  let restored = false;
-  let restoreError = null;
-  if (!authCallback) {
-    try { restored = await Sb.restore(); }
-    catch (error) { restoreError = error; }
-  }
-  $("#loginEmail").value = Sb.cfg().email || "";
-  $("#loginForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = $("#loginSubmit");
-    const error = $("#loginError");
-    button.disabled = true;
-    button.textContent = "กำลังเข้าสู่ระบบ...";
-    error.hidden = true;
-    try {
-      await Sb.signIn($("#loginEmail").value.trim(), $("#loginPassword").value);
-      await enterProductionApp();
-    } catch (e) {
-      showLoginGate(e.message || "เข้าสู่ระบบไม่สำเร็จ");
-    } finally {
-      button.disabled = false;
-      button.textContent = "เข้าสู่ระบบด้วยรหัสผ่าน";
-    }
-  });
-  $("#googleLogin").addEventListener("click", () => {
-    const button = $("#googleLogin");
-    button.disabled = true;
-    $("#loginError").hidden = true;
-    try {
-      Sb.signInWithGoogle();
-    } catch (e) {
-      button.disabled = false;
-      showLoginGate(e.message || "เชื่อมต่อ Google ไม่สำเร็จ");
-    }
-  });
-  $("#forgotPassword").addEventListener("click", async () => {
-    const email = $("#loginEmail").value.trim();
-    const error = $("#loginError");
-    error.hidden = true;
-    if (!email) {
-      showLoginGate("กรุณากรอกอีเมลก่อนขอรหัสผ่านใหม่");
-      return;
-    }
-    try {
-      await Sb.requestPasswordReset(email);
-      showLoginGate("ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว กรุณาตรวจ Inbox หรือ Spam");
-    } catch (e) {
-      showLoginGate(e.message || "ส่งลิงก์ตั้งรหัสผ่านใหม่ไม่สำเร็จ");
-    }
-  });
-  $("#resetForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const password = $("#newPassword").value;
-    const confirm = $("#confirmPassword").value;
-    const error = $("#resetError");
-    const firstPassword=$('#resetForm').dataset.firstPassword==='true';
-    if (password.length < (firstPassword?9:8) || password !== confirm || (firstPassword&&(!/[a-z]/i.test(password)||!/[0-9]/.test(password)))) {
-      error.textContent = firstPassword ? 'รหัสใหม่ต้องมีอย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข และทั้งสองช่องตรงกัน' : password.length < 8 ? "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" : "รหัสผ่านทั้งสองช่องไม่ตรงกัน";
-      error.hidden = false;
-      return;
-    }
-    const button = $("#resetSubmit");
-    button.disabled = true;
-    try {
-      if(firstPassword){await Sb.passwordAccount({action:'change_first',password});delete $('#resetForm').dataset.firstPassword;}
-      else await Sb.updatePassword(password);
-      Sb.signOut();
-      $("#newPassword").value = "";
-      $("#confirmPassword").value = "";
-      showLoginGate("ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเข้าสู่ระบบ");
-    } catch (e) {
-      error.textContent = e.message;
-      error.hidden = false;
-    } finally {
-      button.disabled = false;
-    }
-  });
-  $("#btnBell").addEventListener("click", () => go("notifications"));
-  $("#btnExport").addEventListener("click", openExportDialog);
-  $("#btnLogout").addEventListener("click", () => {
-    Sb.signOut();
-    cloudState.batches = null;
-    cloudState.caseAttachments = null;
-    cloudState.evidenceError = null;
-    cloudState.requestId++;
-    cloudState.loading = false;
-    location.hash = "#/cloud";
-    showLoginGate();
-  });
-  $("#autoStatus").addEventListener("click", () => go("cloud"));
-  $("#navToggle").addEventListener("click", () => {
-    const sb = $("#sidebar");
-    if (window.matchMedia("(max-width: 1080px)").matches) {
-      sb.classList.toggle("open");
-      AuditUi.syncNav();
-      return;
-    }
-    setSidebarCollapsed(!$("#appShell").classList.contains("sidebar-collapsed"));
-    AuditUi.syncNav();
-  });
-
-  if (!window.matchMedia("(max-width: 1080px)").matches) {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem("audit-sidebar-collapsed") === "1"; } catch (_) {}
-    setSidebarCollapsed(collapsed);
-  }
-
-  AuditUi.syncNav();
-  window.matchMedia('(max-width: 1080px)').addEventListener('change', () => { $('#sidebar').classList.remove('open'); AuditUi.syncNav(); });
-  if (authCallback === "recovery") showPasswordResetGate();
-  else if (authCallback) await enterProductionApp();
-  else if (restored) await enterProductionApp();
-  else if (restoreError) showConnectingGate('คืนสถานะเข้าสู่ระบบยังไม่สำเร็จ — ไม่ได้ล้างล็อกอิน: ' + (restoreError.message || 'การเชื่อมต่อขัดข้อง'), async () => {
-    try {
-      if (await Sb.restore()) await enterProductionApp();
-      else showLoginGate('ไม่พบสถานะเข้าสู่ระบบที่ใช้ต่อได้ กรุณาเข้าสู่ระบบ');
-    } catch (error) {
-      $('#connectionMessage').textContent = 'ยังเชื่อมต่อไม่ได้ — เก็บสถานะเดิมไว้แล้ว: ' + (error.message || 'การเชื่อมต่อขัดข้อง');
-    }
-  });
-  else showLoginGate();
-  /* กู้การแมป "บริษัทไหนอยู่ระบบไหน" ที่ผู้ใช้ตั้งไว้ */
-  const savedSys = Store.data.companySystems || {};
-  Object.entries(savedSys).forEach(([code, sysCode]) => {
-    let c = DB.companies.find((x) => x.code === code);
-    if (!c) DB.companies.push((c = { code, name: code, type: "main", system: null }));
-    c.system = sysCode || null;
-  });
-  retagTracks();
-}
-document.addEventListener("DOMContentLoaded", boot);
-function statementNeedsBoReview(file) {
-  const reason = String(file.parse_error || "");
-  return /อ่านรายการได้ [1-9]\d* รายการ แต่ไม่มีรายการวันที่/.test(reason)
-    && !/อ่านได้บางส่วน|อ่านไฟล์ไม่สำเร็จ|อ่านไม่ได้|ไฟล์เสีย/.test(reason);
-}
-
-function statementReviewLabel(file) {
-  return statementNeedsBoReview(file)
-    ? "ได้รับไฟล์แล้ว — ไม่พบรายการในวันตรวจ รอเทียบ BO"
-    : "อ่านไฟล์ไม่สำเร็จ";
-}
-
+Y��x-���jם��i��+��j[h��ܢ��ۮ���zӝ��׬�h���KʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�]Y]RH�X�ۘ�[X][ۈH\X�][ۈ�[�H\���]\�8.`x.(�. x.*�.&x.bx.,�."8.+x."8.(�.-8.!�.`8.(x.-�.b8.+x. x.%8.`8.(x.&x..H
+��\���\���^�\[ۜ����B�H8.*�.-8.%�.&8.-8.c8.%x.,�.(H��K8.'�.,x.!�. x.c8."�.,x.&x.%�.,�.!�.,�.&x."8.(�.-8.!�.&�.&x. �.bx.+x.(x..x.)x."8.,�.)x.+x.!�]Y]��8.+x.,x.%x.`�.&x.(x.,x.%x.-�OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+��ʈKKKKKKKKKKKKKKKH][]Y\�KKKKKKKKKKKKKKKH
+��ۜ�	H
+��H��[Y[�
+HO���]Y\�T�[X�܊�N�ۜ�		H
+��H��[Y[�
+HO�ˋ����]Y\�T�[X�ܐ[
+�WN�ۜ�H
+�HO����[�������K��\X�J�ɏ���K��
+�HO�
+�������[\ȋ�����ȋ�������ȋ	ȉΈ��][�ȋ�Ȏ�����NȈV��JJN�ۜ�[ۙ^HH
+�HO��[X�\��
+K����[T��[���U��Z[�[][Q��X�[ۑY�]Έ�X^[][Q��X�[ۑY�]Έ�JN�ۜ�[ۙ^LH
+�HO��[X�\��
+K����[T��[���U��X^[][Q��X�[ۑY�]ΈJN�ۜ��[HH
+�HO��[X�\��
+K����[T��[���U�N�ۜ�\�^U[YHH�[YHO�]Y]\�^K�]U[YJ�[YJN�[��[ۈ�ܛX[^�Q]�Y[��T�X\��
+�[YJH�ۜ�ZQY�]�H��.d�����.dH���H��.d�������.dȎ��ȋ�.e�����.eH���H��.e�������.eȎ��ȋ�.f�����.fH���H�N�]\����[���[YH����K����[S��\��\�J�U�B���\X�J��.dx.fWK��
+Y�]
+HO�ZQY�]��Y�]JB���\X�J�����B���\X�J�������B���[J
+NB��[��[ۈ]�Y[��P[[�[�X�[
+�[YJH�ۜ�[[�[�H�[X�\���[���[YH����K��\X�J�����JN�]\���[X�\��\њ[�]J[[�[�
+H	��[[�[����8.(�.+x.%	�[[�[�����[T��[���[�UTȋ�Z[�[][Q��X�[ۑY�]Έ�X^[][Q��X�[ۑY�]Έ�J_H8.&�.,�.%�����B��ۜ�����[\H
+
+HO��ۜ�H�]�]J
+N�ۜ�H
+
+HO���[��
+K�Y�\�
+���N�]\��	���]�[YX\�
+_KI�
+��][۝
+
+H
+�J_KI�
+��]]J
+J_H	�
+��]�\��
+J_N��
+��]Z[�]\�
+J_N��
+��]�X�ۙ�
+J_XN�\�[���[��[ۈ��TZ[�^
+^
+H�ۜ��[YHH��[��^��N�H]�Z]�]�Y�]܋��\��\��ܚ]U^
+�[YJNH�]�
+�H�ۜ�[�]H��[Y[��ܙX]Q[[Y[�
+�^\�XH�N[�]��[YHH�[YN[�]��]]�X�]J��XYۛH���N[�]��[K���][ۈH��^Y�[�]��[K��X�]HH����[Y[����K�\[��[
+[�]
+N[�]��[X�
+
+N��[Y[��^X���[X[�
+���H�N[�]��[[ݙJ
+NB��]\���[YNB��ʈKKKKKKKKKKKKKKKH��]\�KKKKKKKKKKKKKKKH
+��ۜ�P�Ӕ�H\���\���L�L���݌L�LL�LZN�L�L��Z�M�ݍ��LL�Z��N�����[�Z�N��MM����L�M��L�L�L�����݋L����^�\[ۜΈ�LL��H�Z��L���L���HLZLL�L��KLHݍ��ML��L]����L�L����X]�[�Έ�M�݌����LZ݌��L֛NKNZ݌�MՍ��LZ݌�M݋L֛KL�M�Z���L��Lֈ��\�ݘ[Έ�NHM����L�LK�K�HNH�H�LK�LK�HM������[XY�N��LL�����L���LH�LR��LLV�KLHݍ��ML�������LL��LLLH�LLL��L�NHHM�HLM��KLK��݌K���LK�ˌ�L���KL������K�K�H������K�K��K�K��K�HK�H�KK�K�KLK�ˎKK�HLK��K�L��KL[LK��K��ˍ���K�HK�����K��NK���LK��K�KK����LK�H��L��LK�LKL��KL���L��KLKK��LK�K�KLK�LHK�K�K�K��K��K���K�K�[K��LK���K��K��LK��LKL���LK����LK�������Y��M��HNXM�H�HKK�N�NM��HMˍ�K����H��HHMˌ�HNR��V�MKN��Lˌ�ˌ�K�K�K��LK�ՌM���Lˌ�K��K��K�LK�Lˌ�Lˌ����N��L��N�Ռ֛L��L�ՎV�LL�ZN�V�L��ZN�MV����N��M�݋M��֛M��HՍL݌M��LM��݋LLZL݌LV����\ܝΈ�M���M�����M�K�U��ˍSL�ˍV�NLZ���L��L���L����[Έ�MM��LRM��L�݌�L��֛L��݋L�ֈ���[\Έ�MZM����V�L�L���L��L�M����L����\�\�Έ�LL�L�MHN�L��MN�N]�ZM��LX�L�MMKNMV����Έ�MH�M�NM�L�M�Ռ֛L������L���L�����][��Έ�LL�MHN�NHL��K�HK�KLK�HK�KLK�KK�SMHM�K�H�L��SL�M�LK�K�S��M�LK�K�SK��MK���HLˍHL݋L���KK�KK�KLK�S����K�K�SL��KL���SL��K�KK�SM�����K�HK�SN]�ֈ����YX\��L�ݍ�Ս�LLHݍMՍ�L�L�ݍ�݋M֛LLKLZݎZM݋NV���[\ܝ��LL�݌L��ˍ�Lˍ�K�K�M��M�M�K�LK�ˍ�ˍ�����MNZM����L�����[��LL���L���������L���K�L������L����M�MK�ՌLXM��MK��M���ՌˍXLK�K�HLˍ�����M��HL]�K��ˌ�N�]��ZMˍ��K�SNHM��ֈ�����Έ�LL��LLLH�LLL��LHL����LHK��MKLՍ����������\�Y�N��M�M��L�M�֛L�݌�L��֛L��݋L�֛LLK�H���NK�H��H�HM�MˍHN�HM����N��ۜ���UT�Hܛ�\��.!�.,�.&x.&�.(�.,8."8.,�.)�.,x.&H��][\Έ�Y��\���\��X�[��.`x.%8."�.&�.+x.(�.c8.%�X�ێ��\���\��]N��.`x.%8."�.&�.+x.(�.c8.%8.%x.(�.)�."8.*�.+x.&�.&�.(�.,8."8.,�.)�.,x.&H�\�Έ�.(8.,�.'�.(�.)�.(x.(�.,�.(�. x.,�.(�8.'8.)x."8.,x.&�.!8..x.b8.`x.)x.,8.(�.,�.(�. x.,�.(�.'8.-8.%8.&�. x.%x.-8.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%ȋ�[\�Έ�YHK��Y��Z[K\�[[X\�H�X�[��.*�.(�..8.&�.(�.,�.(�.)�.,x.&H�X�ێ���\ܝȋ]N��.*�.(�..8.&�H8.&�.(�.-8.*x.,x.%�H8.)�.,x.&H�\�Έ�.%8..x.a8.'�.)x.c8.%�.-x.b8.a8.%8.bx.(�.,x.&�8.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.`x.)x.,8.*�.%�.,�.&x.,8. x.,�.(�.`x. x.bx.a8. �.%�.,x.bx.!�.*�.(x.%8. �.+x.!�.&�.(�.-8.*x.,x.%�.`�.&x.)�.,x.&x.`8.%8.-x.(�.)�8.'�.(�.bx.+x.(H^ܝ��[\�Έ�[�HK��Y��X�\�Y]ȋX�[��."�.-x.%HUQU8.%�..8. x.&�.(�.-8.*x.,x.%ȋX�ێ���\ܝȋ]N��."�.-x.%HUQU8.%�..8. x.&�.(�.-8.*x.,x.%ȋ\�Έ�.'8.)x. x.(�.,8.%�.&�.(�.+x.%�H�H8. x.,x.&���8.`x.(�. HH8.%x.,�.(H�ݚY\�8.`x.)x.,8.`x.(�. H�H8.&8.&x.,�.!8.,�.(�.%�.-x.)x.,8.&�.,x.#x."�.-H8.'�.(�.bx.+x.(x.(�.+x.%8.(�.)�.(x.%�.bx.,�.(�.%x.,�.(�.,�.!ȋ�[\�Έ�[�HK��Y����Y�X�[��.a8.'�.)x.c8.`x.)x.,8.*�.%�.,�.&x.,�X�ێ����Y�]N��.%x.(�.)�."8.a8.'�.)x.c8."8.,�. x.`8.(x.)H�\�Έ�.`8.&�.-8.%8.%8..x.a8.'�.)x.c8.%x.bx.&x."x.&�.,x.&�8.%x.(�.)�."8.&�.(�.-8.*x.,x.%�8.&�.(�.,8.`8.(8.%�8.`x.)x.,8.*�.%�.,�.&x.,8.+x.b8.,�.&x.a8.'�.)x.c8."8.,�. H�\X�\�H8. x.b8.+x.&x. x.(�.,8.%�.&�.(�.+x.%��[\�Έ�YHK��Y����\��K]\�Y�X�[��.(�.,x.&�.`x.)x.,8."8.,x.%8.a8.'�.)x.c�X�ێ����Y�]N��.(�.,x.&�.a8.'�.)x.c8.`�.*�.bx.%�..x. H8. x.b8.+x.&x.`8.(�.-8.b8.(x.%x.(�.)�."�\�Έ�.+x.,x.&�.`�.*�.)x.%8.`x.(�. x.&�.(�.-8.*x.,x.%�8.)�.,x.&x.`x.)x.,8.&�.(�.,8.`8.(8.%�8.`8. x.a�.&�.%x.bx.&x."x.&�.,x.&�.`x.)x.,8.&�.(�.,8.)�.,x.%x.-8.`�.%8.(�.(�.,x.!�.a8.(x.b8.(�.,x.&H��[\�Έ�[�HK��Y����\��K\�[��X�[��.`8.%x.(�.-x.(�.(x.(�.,x.&x.(x.-�.+H�X�ێ��X]�[�ȋ]N��.`8.)x.-�.+x. x."�..8.%8.a8.'�.)x.c8.`x.)x.,8.`8.%x.(�.-x.(�.(x.(�.,x.&x.(x.-�.+H�\�Έ�.`8.)x.-�.+x. x."8.,�. x.`8.(x.)H8.+x.,x.&�.`�.*�.)x.%8.*�.(�.-�.+x.'8.*�.(x. x.,x.&H8.*�.b8.!�.`8."x.'�.,�.,8.a8.'�.)x.c8.%�.-x.b8.`8.)x.-�.+x. x.a8.&�.%�.&�.%�.)�.&x.(�.,x.&x.(�.+x.&�.`�.*�.(x.b��[\�Έ�[�HK��Y��[�Z�H�X�[��.%x.(�.)�."8.a8.'�.)x.c8.`8. �.bx.,��X�ێ��[�Z�H�]N��.%x.(�.)�."8.a8.'�.)x.c8. x.b8.+x.&x. x.(�.,8.%�.&�.(�.+x.%�\�Έ�.%8..x.a8.'�.)x.c8."8.(�.-8.!�.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%�.`x.)x.,8.&�.(�.,8.`8.(8.%�H�8.'x.,�. H�8.%�.+x.&H8.*�.,�. x.(�.,x.!�.+x.b8.,�.&x.a8.(x.b8.*�.,�.`8.(�.a�."8.(�.,8.&�.&�."8.,8.`x."8.bx.!�.`�.*�.bx.%x.(�.)�."8.%x.b8.+H��[\�Έ�YKY[���YHK��Y��^�\[ۜȋX�[��.'8.)x.%x.(�.)�."8.`x.)x.,8.`8.!8.*��X�ێ��^�\[ۜȋ]N��.(8.,�.'�.(�.)�.(x.'8.)x.%x.(�.)�."8.`x.)x.,8.`8.!8.*��\�Έ�.%8..x.!8..x.b8.*�.,�.`8.(�.a�."8.`x.)x.,8.(�.,�.(�. x.,�.(�.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."8.`x.(�. x.&�.(�.-8.*x.,x.%�8.)�.,x.&x.%�.-x.b8.'x.,�. x�$�.%�.+x.&H8.`x.)x.,8.*�.%�.,�.&x.,��[\�Έ�YHK��Y��X]�[�ȋX�[���T�[�X]��X�ێ��X]�[�ȋ]N��.%x.(�.)�."8. x.,�.(�."8.,x.&�.!8..x.b�8."8..8.%�\�Έ�.`8.%�.-x.(�.&�X���[�[YK[[�[�8.(�.,8.*�.)�.b8.,�.!��H8. x.,x.&���8.%�.-x.)x.,8.(�.,�.(�. x.,�.(�.'�.(�.bx.+x.(H�\�[��H8.%�.-x.b8.`�."�.bH��[\�Έ�YKY[���YHK�K�K�ܛ�\��.%x.(�.)�."8.*�.+x.&�.`x.)x.,8.+x.&x..8.(x.,x.%x.-��][\Έ�Y���\�Y�H�X�[��.%x.-8.%8.%x.,�.(x.!8.,�."�.-x.bx.`x."8.!ȋX�ێ���\�Y�H�]N��.!�.,�.&x."�.-x.bx.`x."8.!�.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%ȋ\�Έ�.*�.b8.!�.`x.)x.,8.%x.-8.%8.%x.,�.(x.`8.+x. x.*�.,�.(�."8.,�. x.'8..x.bx."�.-x.bx.`x."8.!�.%x.,�.(H�H8.&�.(�.-8.*x.,x.%�8.`8.(x.-�.b8.+x.*�.b8.!�. x.)x.,x.&�.`�.*�.bH]Y]8.%x.(�.)�."8.`�.&x.*�.&x.bx.,�]Y]8.(�.+x.%x.(�.)�."��[\�Έ�YHK��Y��]Y]\�]�Y]ȋX�[��]Y]8.(�.+x.%x.(�.)�."�X�ێ��^�\[ۜȋ]N��]Y]8.(�.+x.%x.(�.)�."8.`8.+x. x.*�.,�.(ȋ\�Έ�.`8.+x. x.*�.,�.(�.*�.(�.-�.+x.!8.,�.%x.+x.&�."8.,�. x.'8..x.bx."�.-x.bx.`x."8.!�. x.)x.,x.&�.(x.,�.`x.)x.bx.)�8.%x.(�.)�."8.`�.&x.`8.!8.*�.`8.%8.-8.(x. x.b8.+x.&x.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�.+x.&x..8.(x.,x.%x.-8.&�.-8.%��[\�Έ�YHK��Y��\�ݘ[ȋX�[��.+x.&x..8.(x.,x.%x.-�8.&�.-8.%8.`8.!8.*��X�ێ��\�ݘ[ȋ]N��.!8.,�. �.+x.(�.+x.+x.&x..8.(x.,x.%x.-�\�Έ�.(�.,�.(�. x.,�.(�.%�.-x.b8."�.-x.bx.`x."8.!�.`x.)x.bx.)�.(�.+H]Y]XY8.%x.(�.)�."8.%�.,�.&H8.+x.&x..8.(x.,x.%x.-8.*�.(�.-�.+x.*�.b8.!�. x.)x.,x.&���[\�Έ�YHK��Y��[XY�H�X�[��.%�.,8.`8.&�.-x.(�.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(��X�ێ��[XY�H�]N��[XY�H�Y�\�\��\�Έ�.&�.,x.&x.%�.-�. x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.(�.,�.(�.)�.,x.&H8.`x.(�. x.%x.,�.(x.(�.+x.&�."�.-x.bx.`x."8.!�KLMKM�L�K��x.*�.-8.bx.&x.`8.%8.-�.+x.&H��[\�Έ�YHK�K�K�ܛ�\��.(�.,�.(�.!�.,�.&H��][\Έ�Y���[�[��H�X�[��. x.,�.(�.`8.!�.-8.&H	�8.'8..x.bx.&�.(�.-8.*�.,�.(ȋX�ێ���H�]N��. x.,�.(�.`8.!�.-8.&x.`x.)x.,8.(8.,�.'�.(�.)�.(x.'8..x.bx.&�.(�.-8.*�.,�.(ȋ\�Έ���8.!8.)�.,�.(x.`8.*�.-x.b8.(�.!�8.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�8.'�.&x.,x. x.!�.,�.&H8.`x.)x.,X�[ۈ8.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%�.%�.-x.b8.(x.-x.*�.-8.%�.&8.-8.c0��8.a8.(x.b8.`x. x.bx.(�.+x.%8.*�.(�.-�.+x.*�.%�.,�.&x.,8.`8.!8.*���[\�Έ�[�HK��Y��[۝KX]Y]�X�[��.*�..8.b8.(x.%x.(�.)�."8.(�.,�.(�.`8.%8.-�.+x.&H�X�ێ���\ܝȋ]N��.*�..8.b8.(x.%x.(�.)�."]Y]8.(�.,�.(�.`8.%8.-�.+x.&H�\�Έ�.`8. x.a�.&�."�..8.%8.*�..8.b8.(H8.'8..x.bx.%x.(�.)�."8.'8.)x.&�.(�.,8.`8.(x.-8.&H8.*�.(x.,�.(�.`8.*�.%x..8.*�.)x.,x. x.$8.,�.&H8.`x.)x.,8.&�.(�.,8.)�.,x.%x.-8.`x.(�. x.&�.(�.-8.*x.,x.%��.`8.%8.-�.+x.&H��[\�Έ�[�HK��Y���H�X�[���H8.&�.(�.-8.*x.,x.%ȋX�ێ���H�]N���H8.%x.,�.(x.&�.(�.-8.*x.,x.%�.`x.)x.,8.'�.&x.,x. x.!�.,�.&H�\�Έ�.!8.)�.,�.(x.'8.-8.%8.'�.)x.,�.%8.%x.,�.(x.&�.(�.-8.*x.,x.%�8.&�.(�.,8.`8.(8.%�8.`x.)x.,8.'8..x.bx.%x.(�.)�."8.`8.'�.-�.b8.+x.`�."�.bx.&�.(�.,8.`8.(x.-8.&x.`x.)x.,8.)x.%8.!8.)�.,�.(x.'8.-8.%8."�.bx.,ȋ�[\�Έ�YKY[���YHK��Y���\ܝȋX�[��.(�.,�.(�.!�.,�.&H	�^ܝ�X�ێ���\ܝȋ]N��.(�.,�.(�.!�.,�.&x.(�.,�.(�.)�.,x.&H�8.(�.,�.(�.`8.%8.-�.+x.&H�\�Έ�.*�.(�..8.&�.'8.)x.%x.(�.)�."8.`x.&x.)�.`�.&x.bx.(x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�8.`x.)x.,^ܝ8.`�.*�.bx. x.,�.(�.`8.!�.-8.&H�8.&�..8.!8.!8.)H��[\�Έ�YHK��Y��[ȋX�[��[��]H�X�ێ��[ȋ]N��.%�.,�.(x. �.bx.+x.(x..x.)x.%8.bx.)�.(�.(8.,�.*x.,�.a8.%�.(��\�Έ�.%�.,�.(x."8.,�. x. �.bx.+x.(x..x.)x.%�.-x.b�X�ۘ�[H8.`x.)x.bx.)�8.%�..8. x.!8.,�.%x.+x.&�.+x.bx.,�.!�.+x.-8.!�.%x.,x.)�.`8.)x. �8."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.`x.)x.,8.)x.-8.!�. x.c8. x.)x.,x.&�.*�.)x.,x. x.$8.,�.&H��[\�Έ�[�KY[���YHK�K�K�ܛ�\��.(�.,8.&�.&���][\Έ�Y���[\ȋX�[���[���[\ȋX�ێ���[\ȋ]N��. x.#�.&8.&x.,�.!8.,�.(�.`x.)x.,�\�[��H�\�Έ�.&�.(�.,x.&�. x.#�.(�.,�.(�.&8.&x.,�.!8.,�.(�.a8.%8.bx.`�.%8.(�.a8.(x.b8.%x.bx.+x.!�.`x. x.bx.`�.&�.(�.`x. x.(�.(H8.%�..8. x. x.,�.(�.`8.&�.)x.-x.b8.(�.&x.%�..x. x.&�.,x.&x.%�.-�. x.`�.&H]Y]�ȋ�[\�Έ�[�HK��Y��X���[�Z�ȋX�[��.'�.,x. x.&�.,x.#x."�.-H�H�X�ێ�����ȋ]N��."8.,x.%8. x.,�.(�.&�.,x.#x."�.-x.'�.,x. x.%x.(�.)�."�8.(�.+H�H�\�Έ�.*�.,x.)�.*�.&x.bx.,�.+x.+x.%8.-8.%�.`x.)x.,8.'8..x.bx.%8..x.`x.)x.(�.,8.&�.&�.`8.&�.-8.%8.*�.(�.-�.+x.&�.)x.%8.'�.,x. x.&�.,x.#x."�.-x.%�.-x.b8.%�..x. x.(�.,8.!�.,x.&�8.`�.%8.(�.a8.(x.b8.(�.,x.&x."�.bx.,�.*�.(�.-�.+x.`8.&�.)x.-x.b8.(�.&x.(�.+x.%8.`x.)x.,8.*�.%�.,�.&x.,8.`8.!8.*���[\�Έ�[�HK��Y����Y�X�][ۜȋX�[��. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&H�X�ێ���[�]N��.*8..x.&x.(�.c8. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&H�\�Έ�.`x."8.bx.!�.`8.(x.-�.b8.+x.a8.'�.)x.c8. �.,�.%8.'�.&�^�\[ۈ8.(�.,8.%8.,x.&�.*�..x.!�8.`8.)x.(��H8.*�.(�.-�.+x.`�. x.)x.bx.!8.(�.&�.(�.+x.&�."�.-x.bx.`x."8.!�8.'�.(�.bx.+x.(x.%x.,x.bx.!�. x.#�.`x.)x.,8."�.b8.+x.!�.%�.,�.!�.a8.%8.bH��[\�Έ�[�HK��Y��]Y][�ȋX�[��]Y]�ȋX�ێ���ȋ]N��.&�.,x.&x.%�.-�. x. x.,�.(�.`�."�.bx.!�.,�.&x.(�.,8.&�.&��\�Έ�.%�..8. H��K�]\�\�ݘ[8. x.,�.(�.%x.,x.bx.!�.!8.b8.,�8.%�..x. x.&�.,x.&x.%�.-�. x.'�.(�.bx.+x.(x.`8.)�.)x.,�.`x.)x.,8.'8..x.bx.%�.,�.(�.,�.(�. x.,�.(ȋ�[\�Έ�YHK��Y��XZ[Z[�Z�H�X�[��.%x.(�.)�."8.`8.(x.)x.`8. �.bx.,��X�ێ��[�Z�H�]N��.%x.(�.)�."8.'8..x.bx.*�.b8.!�.`x.)x.,8.%8.-�.!�.`8.(x.)x.`8. �.bx.,�.!8.)x.,x.!ȋ\�Έ�.`8.'�.-8.b8.(x.+x.-x.`8.(x.)x.'8..x.bx.*�.b8.!�.`x.)x.,8.*�.,x.b8.!�.%8.-�.!�.`8.(x.)x.%�.-x.b8.%x. x.*�.)x.b8.&x.`8. �.bx.,�.!8.)x.,x.!�8.`x.(�. x."8.,�. x. x.,�.(�.(�.,x.&x.*�.(�.-�.+x.(�.-�.&x.(�.,x.&x.'8.)x. x.(�.,8.%�.&�.(�.+x.%��[\�Έ�[�HK��Y��\�\�ȋX�[��.'8..x.bx.`�."�.bx.`x.)x.,8.*�.-8.%�.&8.-8.c�X�ێ��\�\�ȋ]N��.'8..x.bx.`�."�.bH8.&�.%�.&�.,�.%�8.`x.)x.,8.&�.(�.-8.*x.,x.%ȋ\�Έ�. x.,�.*�.&x.%8.*�.&x.bx.,�.%�.-x.b8.`x.)x.,8.&�.(�.-8.*x.,x.%�.%�.-x.b8.'8..x.bx.`�."�.bx.`x.%x.b8.)x.,8.!8.&x.(�.,x.&�.'8.-8.%8."�.+x.&�8.*�.-8.%�.&8.-8.c8.%�..x. x.&�.,x.!�.!8.,x.&�."�.bx.,�.%�.-x.b8.$8.,�.&x. �.bx.+x.(x..x.)H��[\�Έ�[�HK��Y���\�K\�][��ȋX�[��.%x.,x.bx.!�.!8.b8.,�.`8.!8.*���H�X�ێ���[\ȋ]N��.%x.,x.bx.!�.!8.b8.,��H8.`x.(�. x.&�.(�.-8.*x.,x.%ȋ\�Έ�. x.,�.*�.&x.%8.`8.)�.)x.,�. �.+x.`8.+x. x.*�.,�.(�. �.+x.!�.`x.%x.b8.)x.,8.&�.(�.-8.*x.,x.%�8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x. x.,�.*�.&x.%8.`8.!8.*�.`8. x.b8.,�.`x.)x.,8.a8.(x.b8.&�.-8.%8.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.+x.,x.%x.`�.&x.(x.,x.%x.-��[\�Έ�[�HK�K�K�N�ۜ���UW�PTH�N��UT˙�ܑXX�
+
+�HO�˚][\˙�ܑXX�
+
+]
+HO�
+��UW�PT�]�YHH]
+JJN�ʈ8.`�.!8.(�.!�.*�.(�.bx.,�.!�.`8.!8.(�.-�.+x.&�.(�.-8.*x.,x.%�.`x.)x.,8. x.#�.%x.(�.)�."8.%�.-x.b]Y]8.+x.&x..8.(x.,x.%x.-8.`x.)x.bx.)8.`x.%x.b8.)x.,8.`8.!8.(�.-�.+x.`�."�.bx. x.#�. �.+x.!�.%x.,x.)�.`8.+x.!�8.*�.bx.,�.(x.(�.-�.(x. x.#�. �.bx.,�.(x.`8.!8.(�.-�.+H
+��ۜ�UQU���TS�W�ԓ�T�Hؚ�X����Y^�JY������[YN��.`8.!8.(�.-�.+H����]\Έ�X�]�H����\[�Y\ΈȌ����P���T�H�����T�H�K��[\Έ�."8.,x.&�.!8..x.b�H�H8. x.,x.&���8.(8.,�.(�.`�.&x.&�.(�.-8.*x.,x.%�8.&�.,x.#x."�.-K��ݚY\�8.%�.-8.*8.%�.,�.!�8.`x.)x.,8.(�.+x.%8.`8.%8.-x.(�.)�. x.,x.&H8.`�.%8.(�.a8.(x.b8. �.bx.,�.(x.&�.(�.-8.*x.,x.%ȋ��H8.'x.,�. N�8.`�."�.bH^[Y[�[YH8. x.b8.+x.&N�8.`�."�.bH^\�Y[YH8.`8."x.'�.,�.,8.`8.(x.-�.b8.+x.a8.(x.b8.(x.-H^[Y[�[YH0��H8.%�.+x.&N�8.`�."�.bH\]U[YH���.(�.+x.%8.'x.,�. x.%�..8. H�ݚY\�8.`�."�.bH�X[[[�[�0��8.(�.+x.%8.%�.+x.&HU�H8.`�."�.bH�[�ٙ\��Y[[�[�0��8.(�.+x.%8.%�.+x.&HV����8.`�."�.bH[[�[����H8. �.+x.!�.%�..8. H�ݚY\�8.`8. x.a�.&�.(�.*�.,x.*�.*�.+x.!�."�.b8.+x.!�.`x.(�. x. x.,x.&N�Y8.`8.&�.a�.&x.(�.*�.,x.*�.&8..8.(�. x.(�.(�.(H8.`8."�.b8.&H�ˋ��8.`x.)x.,�Y8.`8.&�.a�.&x.(�.*�.,x.*��XK����8.'x.,x.b8.!���8.`x.(�. x.`8."x.'�.,�.,8.(�.*�.,x.*��XK���8.*�.)x.,x.!��\[����X[��8.`8.*�.(x.-�.+x.&H^���[[��8.`x.)x.,8.%x.,x.%8.!8.,�.+x.&8.-8.&�.,�.(�.%�.-x.b8.%x.,�.(x.*�.)x.,x.!�.+x.+x. H���. x.#��\[���Y8.`�."�.bx. x.,x.&�H8.%�.+x.&x. �.+x.!��8.%�.-x.b8.(x.-H�Y8.a8.%8.bx.`x. x.bU�V����K���Y8.'x.,x.b8.!�H8.%x.bx.+x.!�.%x.(�.!�. x.,x.&�.(�.*�.,x.*�.%�.-x.b8.`x.(�. x."8.,�. x.*�.(x.,�.(�.`8.*�.%x..��8.`x.)x.,8.(�.+x.%8."8.(�.-8.!�.%x.bx.+x.!�.%x.(�.!�. x.,x.&x.`x.&�.&�.!8..x.bN�H8."8.-�.!�.&�.-8.%8.a8.%8.bH8.`x.(x.bx.`8.)�.)x.,��."�.-�.b8.+H�ݚY\�8.`8.%8.-8.(x.!8.)x.,�.%8.`8.!8.)x.-�.b8.+x.&H�����8.`8.&�.-8.%8.`�."�.bH��SVH8.'x.,�. K�.%�.+x.&H
+8.'x.,�. x.`�."�.bH�X[[[�[�0��8.%�.+x.&x.`�."�.bH[[�[�
+H0��TVH8.(�.,x.&�.a8.'�.)x.c8.a8.)�.bx.a8.%8.bx.`x.%x.b8.(�.,x.!�.a8.(x.b8.&x.,�.(x.,�. x.(�.,8.%�.&�.(�.+x.%8."8.&x. x.)�.b8.,�.`x.+x.%8.(x.-8.&x.`8.&�.-8.%8.`�."�.bH���.(�.,�.(�. x.,�.(�. �.bx.,�.(x.)�.,x.&x.`8.&�.-8.%8.`8.&�.a�.&H8�'8.!8.bx.,�.!�.(�.+x. �.bx.+x.(x..x.)x. �.bx.,�.(x.)�.,x.&x�'N�8.`8.(x.-�.b8.+x.)�.,x.&x.%�.,x.%8.a8.&�."8.,x.&�.!8..x.b8.`x.&�.&�N�H8.a8.%8.bx."8.-�.!�.&�.-8.%8.!�.,�.&x.!8.bx.,�.!�.`x.)x.,8.`8. x.a�.&�]Y]�ȋ��.(�.+x.%8.*�..x.!�.`x.)x.,8.`8.)�.)x.,�.!8.)x.,�.%8.`8.!8.)x.-�.b8.+x.&x.%�.-x.b8."8.,x.&�.!8..x.b8.a8.%8.bx.%x.,�.(x. x.#�.`8.&�.a�.&x.*�.%�.,�.&x.,8.`x."8.bx.!�.'8.)H8.a8.(x.b8.*�.b8.!�.`�.*�.bH]Y]8.(�.-�.&x.(�.,x.&N�8.!8..x.b8."�.bx.,�.*�.(�.-�.+x.!8.)x..8.(x.`8.!8.(�.-�.+x."8.,8.a8.(x.b8.&�.-8.%8.+x.,x.%x.`�.&x.(x.,x.%x.-����H8.&8.&x.,�.!8.,�.(�. �.+x.!��8.(�.)�.(x.(�.,�.(�. x.,�.(�.'x.,�. x.`x.)x.,8.%�.+x.&H
+U�H8.a8.)�.bx."�.-x.%x.`8.%8.-x.(�.)�.%x.b8.+x.&�.,x.#x."�.-H8.`8."�.b8.&HЈHU�8.*�.(�.-�.+H�Ј�Uȋ�K�K��Y���T�L�ȋ�[YN��.`8.!8.(�.-�.+HL�ȋ�]\Έ�X�]�H���\[�Y\ΈȐU���������K�[\Έ�UU�QT�8.'x.,�. K�.%�.+x.&N�8.(�.*�.,x.*�.*�.(x.,�."�.-8. H8��8.*�.(x.,�."�.-8. H��8.`8.)x. �.&�.,x.#x."�.-x.*�.(x.,�."�.-8. H8��8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,���8.`x.)x.,8.(�.+x.%8.'x.,�. K�.%�.+x.&H8��8."8.,�.&x.)�.&x.`8.!�.-8.&x.'x.,�. K�."8.,�.&x.)�.&x.`8.!�.-8.&x.%�.+x.&x."8.(�.-8.!��ȋ��V�VH8.'x.,�. N�8.(�.*�.,x.*�.*�.(x.,�."�.-8. H
+�8.`8.)x. �.&�.,x.#x."�.-x.*�.(x.,�."�.-8. H
+�8."8.,�.&x.)�.&x.`8.!�.-8.&x.'x.,�. H8.%x.bx.+x.!�.%x.(�.!�. x.,x.&�8.*�.(x.,�."�.-8. H
+�8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,�
+�8."8.,�.&x.)�.&x.`8.!�.-8.&x.'x.,�. H��
+8.(�.,x.!�.a8.(x.b8.`8.&�.-8.%8. x.#�.%�.+x.&JH����ԑTVH8.'x.,�. K�.%�.+x.&N�8.(�.*�.,x.*�.*�.(x.,�."�.-8. H
+�8.`8.)x. �.&�.,x.#x."�.-x.*�.(x.,�."�.-8. H
+�8.(�.+x.%8.'x.,�. K�.%�.+x.&H8.%x.bx.+x.!�.%x.(�.!�. x.,x.&�.*�.(x.,�."�.-8. H
+�8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,�
+�8.(�.+x.%8."8.(�.-8.!�.'x.,x.b8.!��ȋ���P�T�T�8.'x.,�. x.`�."�.bH�8."8..8.%8.`8.*�.(x.-�.+x.&H�ԑTVN��P�T�T�8.%�.+x.&x.`�."�.bH�8."8..8.%8.!8.-�.+x.(�.*�.,x.*�.*�.(x.,�."�.-8. x.`x.)x.,8."8.,�.&x.)�.&x.`8.!�.-8.&x.%�.+x.&x."8.(�.-8.!�8.`�.%8.(�.a8.(x.b8.&�.,x.!�.!8.,x.&�.`8.)x. �.&�.,x.#x."�.-x.*�.(x.,�."�.-8. H�����SVH8.'x.,�. K�.%�.+x.&N�8.(�.*�.,x.*�.*�.(x.,�."�.-8. H
+�8.`8.)x. �.&�.,x.#x."�.-x.*�.(x.,�."�.-8. H
+�8.(�.+x.%8.'x.,�. K�.%�.+x.&H8.%x.bx.+x.!�.%x.(�.!�. x.,x.&�.*�.(x.,�."�.-8. H
+�8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,�
+�8.(�.+x.%8."8.(�.-8.!�.'x.,x.b8.!��ȋ��.%�..8. x.!8..x.b8.%x.bx.+x.!�.+x.(�..x.b8.&�.(�.-8.*x.,x.%��ݚY\�8.`x.)x.,8.%�.-8.*8.%�.,�.!�.`8.%8.-x.(�.)�. x.,x.&N�8.`8.)x. �.&�.,x.#x."�.-x.`8.%x.a�.(x."8.,x.&�. x.,x.&�8.*�.)x.,x. x.%�.bx.,�.(�.a8.%8.bx.`8.(x.-�.b8.+x.*�.(x.,�."�.-8. x.`x.)x.,8.(�.+x.%8.%x.(�.!�. x.,x.&H���.%�.bx.,�.*�.(x.,�."�.-8. x.*�.(�.-�.+x.`8.)x. �.&�.,x.#x."�.-x. �.,�.%8.`8.'�.-x.(�.!�.*�.&x.-�.b8.!�.'x.,x.b8.!�8.(�.,8.&�.&�.`�."�.bx."8..8.%8.%�.-x.b8.`8.*�.)x.-�.+x.(�.b8.)�.(x. x.,x.&�.(�.+x.%8.`x.)x.,8.!8..x.b8.`8.)�.)x.,�.`�. x.)x.bx.%�.-x.b8.*�..8.%8.a8.(x.b8.`8. x.-8.&HL8.&x.,�.%�.-x.`x.&�.&��X�\���[N�N�8. �.bx.+x.(x..x.)x. �.,x.%8. x.,x.&H8.!8..x.b8.`8.)�.)x.,�.`8.*�.(x.+H8.*�.(�.-�.+x.(x.-x.`x.%x.b8.(�.+x.%8."8.,8.a8.(x.b8.&�.-8.%���.(�.,�.(�. x.,�.(�."�.bx.,�. x.b8.+x.&K�.*�.)x.,x.!�.`8.%�.-x.b8.(�.!�.!8.-�.&x."8.,x.&�.%x.b8.+x.a8.%8.bx.`8.(x.-�.b8.+HY[�]H8.%x.(�.!�.`x.)x.,8.`8.&�.a�.&x.!8..x.b8.`8.)�.)x.,�.`�. x.)x.bx.%�.-x.b8.*�..8.%8.(8.,�.(�.`�.&H�8.&x.,�.%�.-N�8.`8. x.a�.&�.*�.)x.,x. x.$8.,�.&x. �.bx.,�.(x.)�.,x.&x.`�.&H]Y]�ȋ���H8.&8.&x.,�.!8.,�.(�.&�. x.%x.-8."8.,x.&�.`8.)�.)x.,�. x.,x.&�.!8.+x.)x.,x.(x.&x.c8.)�.,x.&x.%�.-x.b8.&8.&x.,�.!8.,�.(�.`�.&x.(�.,�.(�.!�.,�.&x.'x.,�. K�.%�.+x.&N���8.`x.)x.,�Ј8.%�.-x.b8.a8.(x.b8.(x.-x.`8.)�.)x.,�.`�."�.bx.&�.,x.#x."�.-J�.)�.,x.&J�.%�.-8.*8.%�.,�.!��.(�.+x.%���.(�.,�.(�. x.,�.(���8.`8.)�.)x.,��ΌL�΍NH8.%�.-x.b8.&8.&x.,�.!8.,�.(�.)x.!�.)�.,x.&x.%�.-x.b8.%�.,x.%8.a8.&�8.`8. x.a�.&�.`8.&�.a�.&H�[�Y]H8.`x.)x.,8.&�.-8.%8.a8.%8.bx.`8."x.'�.,�.,8.`8.(x.-�.b8.+x.&�.,x.#x."�.-H8.%�.-8.*8.%�.,�.!�8.(�.+x.%8.`x.)x.,8.`8.)�.)x.,�.&8.&x.,�.!8.,�.(�.`8.&�.a�.&x.!8..x.bN�H8. x.,x.&���8. �.+x.!�.)�.,x.&x. x.b8.+x.&x.*�.&x.bx.,����.(�.+x.%8.%x.(�.!�.%�.-x.b8.`8.)�.)x.,�.`x.%x. x.%x.b8.,�.!�.`x.%x.b8.(�.,8.&�..8.!8..x.b8.a8.%8.bx."�.,x.%8.`8."8.&x.`8.&�.a�.&x.'8.)x. x.,�.(�."8.,x.&�.!8..x.b8.a8.(x.b8.*�.b8.!�.`�.*�.bH]Y]8.(�.-�.&x.(�.,x.&N�8.*�.)x.,x. x.$8.,�.&x. �.,x.%8. x.,x.&x.*�.(�.-�.+x.!8..x.b8. x.,�. x.)�.(x.(�.,x.!�.!8.!�.`8.&�.a�.&x.`8.!8.*����.(�.,�.(�. x.,�.(�.'x.,�. x.(x.-�.+x.&8.&x.,�.!8.,�.(�.&�. x.%x.-�8.`�."�.bx.(�.+x.%8. x.,x.&�.`8.)�.)x.,�.&8.&x.,�.!8.,�.(�.`�.&H��8."8.,x.&�.!8..x.b�N�8.%�.bx.,�.(�8.%x.,x.)�.`x.)x.,8."�.-�.b8.+x.)x..x. x.!8.bx.,�.`�."�.bx."�.b8.)�.(�.`x.(�. x.(�.,�.(�. x.,�.(�."�.bx.,�8.`x.)x.,8."8.,8.a8.(x.b8.`8.&�.-8.%8.`8.!8.*�.`8.'�.-x.(�.!�.`8.'�.(�.,�.,8.(�.,8.&�..8.)�.b8.,�.`8.%x.-8.(x.(x.-�.+H�������Ј8.%�.-x.b�H8.a8.(x.b8.(x.-x.`8.)�.)x.,��U��8.&x.(�.)�.(�.'x.,�. KU��8.`8.&�.#x."8.'�.(�.'x.,�. H8.`x.)x.,����8.%8.)x.(�.,�.'x.,�. x.(�.,x.!�.`�."�.bx. x.#�.`8."x.'�.,�.,8.`x.&�.&�.(�.+x.%8.a8.(x.b8."�.bx.,�8.!8.&x.)x.,8.(�..x.*�8.`x.)x.,8.(�.+x.%��8.a8.(x.b8.`8. x.-8.&H�H����H8.&8.&x.,�.!8.,�.(�.&�. x.%x.-8.`x.(�. x."�.-x.%x.%x.,�.(x.&�.,x.#x."�.-x.`x.)x.,8.`x.(�. x.'x.,�. H
+
+H�8.%�.+x.&H
+�H��HK��Y���T��H��[YN��.`8.!8.(�.-�.+H�H��]\Έ�X�]�H���\[�Y\ΈȕQ�P�U�H�K�[\Έ�H8.'x.,�. x.`x.)x.,8.%�.+x.&x.%x.bx.+x.!�."8.,x.&�.!8..x.b�8."8..8.%��Y�ԙY�Y8.`�.&H�HH8. x.,x.&���H8. �.+x.!���\�\��\�\��[YH8. x.,x.&�\�\�8.`�.&H��8.`x.)x.,8.(�.+x.%8.%x.,�.(x."�.b8.+x.!�.`8.!�.-8.&x."8.(�.-8.!�. �.+x.!��ݚY\�8. x.,x.&�.(�.+x.%�ȋ��U8.'x.,�. x.`�."�.bx.(�.+x.%8.`�.+x.&x."8.(�.-8.!�0��U8.%�.+x.&x.`�."�.bx.(�.+x.%�8."8.b8.,�.(�����ԑTVH8.`x.)x.,�P�T�T�8.'x.,�. x.`�."�.bH8."8.,�.&x.)�.&x.%�.-x.b8.a8.%8.bx.(�.,x.&�0��8.%�.+x.&x.`�."�.bH8."8.,�.&x.)�.&x.`8.!�.-8.&H���V�VH8.'x.,�. x.`�."�.bH8."8.,�.&x.)�.&x.`8.!�.-8.&H0��VTVH8.`x.)x.,��SVH8.'x.,�. K�.%�.+x.&x.`�."�.bH8."8.,�.&x.)�.&x.`8.!�.-8.&x.%x.,�.(x."�.b8.+x.!�.(�.,�.(�. x.,�.(ȋ����H8. �.+x.!���8.+x.,�."8.(x.-x.!8.,�.+x.&8.-8.&�.,�.(�8.`8."�.b8.&H�8.*�.,�.`8.(�.a�."8."8.,�. x.(�.,�.(�. x.,�.(���8.*�.(�.-�.+H^T^H8.*�.,�.`8.(�.a�."8."8.,�. x.(�.,�.(�. x.,�.(�8.(�.,8.&�.&�.%x.bx.+x.!�.!8.bx.&x.*�.,��Y�8.(8.,�.(�.`�.&x. �.bx.+x.!8.)�.,�.(H8.a8.(x.b8.`8.%�.-x.(�.&�.%�.,x.bx.!�."�.b8.+x.!�.`x.&�.&�.%x.(�.!�.%x.,x.)ȋ��.`8.)�.)x.,�.`8.&�.a�.&x. �.bx.+x.(x..x.)x.&�.(�.,8. x.+x.&�8.a8.(x.b8.`�."�.b8.!8.-x.(�.c8.*�.)x.,x. H8.%�.bx.,��Y�
+�\�\�
+�8.(�.+x.%8.`8.!�.-8.&x.%x.(�.!�. x.,x.&x.`�.*�.bx.&�.-8.%8.a8.%8.bH8.`x.(x.bx.`8.)�.)x.,�.%x.b8.,�.!�. x.,x.&N�8.%�.bx.,�\�\�8.a8.(x.b8.!8.(�.&�8.`�."�.bH�Y�
+�8.(�.+x.%8.`8.!�.-8.&x.a8.%8.bx.`8.(x.-�.b8.+x.`8.&�.a�.&x.!8..x.b8.`8.%8.-x.(�.)�.%�.-x.b8.a8.(x.b8."�.bx.,ȋ��.!8.bx.&x.*�.,�.!8..x.b8. �.bx.,�.(x.`x.%�.)��. �.bx.,�.(x."�.-x.%x.a8.%8.bH8.`x.%x.b8.!8..x.b8."�.bx.,�.*�.(�.-�.+x.!8.)x..8.(x.`8.!8.(�.-�.+x."8.,8.!8.!�.a8.)�.bx.`�.*�.bx.%x.(�.)�."8.`8.'�.-8.b8.(H8.a8.(x.b8.&�.-8.%8."8.,�. x.`8.)�.)x.,�.`�. x.)x.bx.`8.!8.-x.(�.!�.`8.'�.-x.(�.!�.+x.(�.b8.,�.!�.`8.%8.-x.(�.)ȋ���H8.&8.&x.,�.!8.,�.(�.&�. x.%x.-8."8.,x.&�.!8..x.b8.%8.bx.)�.(�.(�.+x.%8.`8.!�.-8.&x.`x.)x.,8.'x.,�. K�.%�.+x.&x.(8.,�.(�.`�.&x.&�.,x.#x."�.-x.`8.%8.-x.(�.)�. x.,x.&H8.(�.+x.!�.(�.,x.&�����H8.`8.(�.-x.(�.!�.`x.%�.)�.a8.(x.b8.%x.(�.!�. x.,x.&H8.`�.%8.(�.`�."�.bx.`8.)�.)x.,�.%�.-x.b8.`�. x.)x.bx.%�.-x.b8.*�..8.%8."�.b8.)�.(�.`8.)x.-�.+x. x.!8..x.b���.`8."x.'�.,�.,S�8.`x.(�. x."�.-x.%x.'x.,�. H
+
+H8.`x.)x.,8.%�.+x.&H
+�N��H8.&8.&x.,�.!8.,�.(�.&�. x.%x.-8.+x.-�.b8.&x.(�.)�.(x.'x.,�. Kx.%�.+x.&H
+U�H8.a8.)�.bx."�.-x.%x.`8.%8.-x.(�.)�.%x.b8.+x.&�.,x.#x."�.-N�8.`x.*�.%8.!�.*�.%�.,�.&x.,8.)�.-8.&8.-x."8.,x.&�.!8..x.b8.`8.*�.%x..8.'8.)H8.`x.)x.,8.(�.+x.%8.(�.)�.(x.%�.bx.,�.(�."�.-x.%H��HK�JN��[��[ۈ]Y]��\[�Qܛ�\ي��\[�JH�ۜ���HH��[����\[�H��K��[J
+K��\\��\�J
+N�]\��UQU���TS�W�ԓ�T˙�[�
+
+ܛ�\
+HO�ܛ�\���\[�Y\˚[��Y\���JJNB���[��[ۈܛ�\Y��\[�S�[ۜ���\��[X�Y
+H�ۜ�]�Z[X�HH�]��]
+
+��\��JK�X\
+
+��JHO���[����H��K��[J
+K��\\��\�J
+JK��[\����X[�JN�ۜ�ܛ�\�HUQU���TS�W�ԓ�T˛X\
+
+ܛ�\
+HO��ۜ�Y[X�\��Hܛ�\���\[�Y\˙�[\�
+��JHO�]�Z[X�K�\���JJNY�
+[Y[X�\�˛[��
+H�]\�����]\���ܛ�\X�[H��
+ܛ�\��[YJ_I�ܛ�\��]\�OOH�[�[�Ȉ��0��8.(�.+x.`8.!�.-�.b8.+x.&x.a8. �����H���Y[X�\�˛X\
+
+��JHO��[ۈ�[YOH��
+��J_H�	���HOOH�[X�Y���[X�Y����O��
+��J_O��[ۏ�
+K���[���_O��ܛ�\�JK���[���N�ۜ�ܛ�\YH�]��]
+UQU���TS�W�ԓ�T˙�]X\
+
+ܛ�\
+HO�ܛ�\���\[�Y\�JN�ۜ�[�ܛ�\YHˋ��]�Z[X�WK��[\�
+��JHO�Yܛ�\Y�\���JJK��ܝ
+
+K�HO�K���[P��\\�J���JN�]\��ܛ�\�
+�
+[�ܛ�\Y�[����ܛ�\X�[H�.(�.,x.!�.a8.(x.b8."8.,x.%8.`8.!8.(�.-�.+H���[�ܛ�\Y�X\
+
+��JHO��[ۈ�[YOH��
+��J_H�	���HOOH�[X�Y���[X�Y����O��
+��J_O��[ۏ�
+K���[���_O��ܛ�\����NB���[��[ۈ�]�Y]���\[�Qܛ�\�X\��\
+��\[�Y\�H�ۜ�]�Z[X�HH�]�X\
+
+��\[�Y\��JK�X\
+
+��\[�JHO����[����\[�K���H��K��[J
+K��\\��\�J
+K��\[�WJJN�ۜ��ۙ�Y�\�YH�]��]
+UQU���TS�W�ԓ�T˙�]X\
+
+ܛ�\
+HO�ܛ�\���\[�Y\�JN�ۜ�ܛ�\�\��HUQU���TS�W�ԓ�T˛X\
+
+ܛ�\
+HO��ۜ�Y[X�\��Hܛ�\���\[�Y\˛X\
+
+��JHO�]�Z[X�K��]
+��JJK��[\����X[�NY�
+[Y[X�\�˛[��
+H�]\�����]\��\�X�H�\��H���\[�KYܛ�\X�\��]�Y]�X��\[�KYܛ�\	�ܛ�\��]\�OOH�[�[�Ȉ��[�[�Ȉ��X�]�H�H���]��\��H���\[�KYܛ�\ZXY��]����ۙω�
+ܛ�\��[YJ_O���ۙϏ�[��۝[JY[X�\�˛[��
+_H8.&�.(�.-8.*x.,x.%���[���]���[��\��H��Y�H	�ܛ�\��]\�OOH�X�]�H���ܙY[����ܙ^H�H���ܛ�\��]\�OOH�X�]�H���.`�."�.bx. x.#�.`x.)x.bx.)Ȉ��.(�.+x.`8.!�.-�.b8.+x.&x.a8. ��O��[���]���]��\��H���\[�K\�X���\[�K[\����Y[X�\�˛X\
+
+��\[�JHO��]ۈ\OH��]ۈ��\��H���\[�K\�X���\[�H�]K\�]�Y]�X��\[�OH��
+��\[�K���J_H���[�����
+��\[�K���J_O؏��X[��
+��\[�K��[YH��\[�K���J_O��X[���[��O�.`8.&�.-8.%8."�.-x.%�. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bO�O�؝]ۏ�
+K���[���_O�]���	�ܛ�\��]\�OOH�X�]�H��]Z[��\��H���\[�K\�[KY]Z[Ȉ�[���[[X\�O�.`8.!�.-�.b8.+x.&x.a8. �.%x.(�.)�."8. �.+x.!��
+ܛ�\��[YJ_O��[[X\�O����ܛ�\��[\˛X\
+
+�[JHO�O��
+�[J_O�O�
+K���[���_O����.`�."�.bx. x.,x.&�	۝[JY[X�\�˛[��
+_H8.&�.(�.-8.*x.,x.%�.`�.&x. x.)x..8.b8.(x.&x.-x.bH0��8.*�.)x.,x. x.$8.,�.&x.a8.(x.b8.!8.(�.&�.*�.(�.-�.+x.(x.-x.*�.)x.,�.(�.!8..x.b8.%x.bx.+x.!�.!8.!�.`8.!8.*�.`�.*�.bH]Y]8.%x.(�.)�."���]Z[Ϙ�]��\��H���\[�KYܛ�\\[�[�ȏ���.(�.,x.!�.a8.(x.b8.`8.&�.-8.%8. x.#�.+x.,x.%x.`�.&x.(x.,x.%x.-؏��[��.(�.+x.`8.!�.-�.b8.+x.&x.a8. �."8.,�. H]Y]8.`x.)x.,8."8.,8.a8.(x.b8.`�."�.bx. x.#�. �.+x.!�. x.)x..8.b8.(x.+x.-�.b8.&x.`x.%�.&O��[���]��B��\�X�O�JK���[���N�ۜ�[�ܛ�\YHˋ��]�Z[X�K�[��Y\�
+WK��[\�
+���WJHO�X�ۙ�Y�\�Y�\���JJK�X\
+
+���\[�WJHO���\[�JN�ۜ�[�ܛ�\Y�\�H[�ܛ�\Y�[���\�X�H�\��H���\[�KYܛ�\X�\��]�Y]�X��\[�KYܛ�\[�[�ȏ�]��\��H���\[�KYܛ�\ZXY��]����ۙϸ.(�.,x.!�.a8.(x.b8."8.,x.%8.`8.!8.(�.-�.+O���ۙϏ�[��۝[J[�ܛ�\Y�[��
+_H8.&�.(�.-8.*x.,x.%���[���]���[��\��H��Y�Hܙ^H��.(�.+x."8.,x.%8. x.)x..8.b8.(O��[���]��]��\��H���\[�K\�X���\[�K[\����[�ܛ�\Y�X\
+
+��\[�JHO��]ۈ\OH��]ۈ��\��H���\[�K\�X���\[�H�]K\�]�Y]�X��\[�OH��
+��\[�K���J_H���[�����
+��\[�K���J_O؏��X[��
+��\[�K��[YH��\[�K���J_O��X[���[��O�.`8.&�.-8.%8."�.-x.%�. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bO�O�؝]ۏ�
+K���[���_O�]���\�X�O�����]\��ܛ�\�\��
+�[�ܛ�\Y�\�B���[��[ۈ]Y]�[P����X\��\
+�[X�Y��\[�HH��H�ۜ��[X�Yܛ�\H]Y]��\[�Qܛ�\ي�[X�Y��\[�JN�ۜ�X�]�Qܛ�\�HUQU���TS�W�ԓ�T˙�[\�
+ܛ�\
+HO�ܛ�\��]\�OOH�X�]�H�N�]\���X�[ۈ�\��H�[�[]Y]\�[KX���Ȉ\�XK[X�[H�.`8.!�.-�.b8.+x.&x.a8. �. x.,�.(�. x.(�.,8.%�.&�.(�.+x.%8.%�.-x.b8.(�.,8.&�.&�.`�."�.bx."8.(�.-8.!ȏ��]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�. x.%x.-8. x.,�.%�.-x.b8.(�.,8.&�.&�.`�."�.bx."8.(�.-8.!�����.`8.!�.-�.b8.+x.&x.a8. �. x.(�.,8.%�.&�.(�.+x.%�0��L��0���O����X[�\��H�XY\�X���.`x.*�.%8.!�. x.#�.%�.-x.b8.`8.&�.-8.%8.`�."�.bx.!�.,�.&x.`x.)x.bx.)�.`8.%�.b8.,�.&x.,x.bx.&H0��8.!8..x.b8."�.bx.,�8.*�.)x.,x. x.$8.,�.&x.a8.(x.b8.!8.(�.&�8.*�.(�.-�.+x. �.bx.+x.(x..x.)x. �.,x.%8. x.,x.&x."8.,8.a8.(x.b8.%�..x. x.&�.-8.%8.+x.,x.%x.`�.&x.(x.,x.%x.-��X[��]���[��\��H�X[�ȏ�۝[JX�]�Qܛ�\˛[��
+_H8.`8.!8.(�.-�.+x.`8.&�.-8.%8.`�."�.bO��[���]���]��\��H�]Y]\�[KX����YܚY���	�X�]�Qܛ�\˛X\
+
+ܛ�\
+HO�\�X�H�\��H�]Y]\�[KX����X�\�	��[X�Yܛ�\˚YOOHܛ�\�Y���[X�Y����H���XY\��]����ۙω�
+ܛ�\��[YJ_O���ۙϏ�X[��
+ܛ�\���\[�Y\˚��[��0���J_O��X[��]���[��\��H��Y�HܙY[���.`�."�.bx. x.#�.`x.)x.bx.)���[���XY\������ܛ�\��[\˛X\
+
+�[JHO�O��
+�[J_O�O�
+K���[���_O�����\�X�O�
+K���[���_B��]���]��\��H�ܛ���Y^K\�[KY��ȏ����ۙϸ.)�.!�."8.(�.(�.,�.(�. x.,�.(�. �.bx.,�.(x.)�.,x.&O���ۙς��[����O؏�8.)�.,x.&x.`x.(�. N�8.!8.bx.,�.!�.(�.+x. �.bx.+x.(x..x.)x. �.bx.,�.(x.)�.,x.&x.`x.)x.,8.`x."8.bx.!�]Y]��[���O�����O���[�����؏�8.)�.,x.&x.%�.,x.%8.a8.&Έ8.!8.bx.&x.*�.,�.!8..x.b8.`8.%8.-8.(x.%8.bx.)�.(�.&�.,x.#x."�.-K��ݚY\�8.%�.-8.*8.%�.,�.!�8.(�.+x.%8.`x.)x.,8.*�.)x.,x. x.$8.,�.&x.+x.bx.,�.!�.+x.-8.!���[���O�����O���[�����؏�8.'�.&�.!8..x.b8.`8.%8.-x.(�.)Έ8.&�.-8.%8.(�.,�.(�. x.,�.(�.!8.bx.,�.!�8.&x.,�.+x.+x. x."8.,�. x.!8.-8.)�8.`x.)x.,8.`8. x.a�.&�.&�.(�.,8.)�.,x.%x.-8.`�.&H]Y]����[���[O�.a8.(x.b8.'�.&�.!8..x.b8.*�.(�.-�.+x.'�.&�.*�.)x.,�.(�.!8..x.b�8.!8.!�.a8.)�.bx.`�.*�.bH]Y]8.%x.(�.)�."8.a8.(x.b8.&�.,x.!�.!8.,x.&�.&�.-8.%�[O���]�����X�[ۏ�B��ʈ8.*�.&x.bx.,�.%�.-x.b8.`x.%x.b8.)x.,��H8.(x.+x.!�.`8.*�.a�.&H
+��ۜ���UWԓ�T�H[ۚ]܎�Ș��Y��\���\���Z[K\�[[X\�H��X�\�Y]ȋ�^�\[ۜȋ�X]�[�ȋ��\�Y�H��]Y]\�]�Y]ȋ��\ܝȋ�[۝KX]Y]����Y�X�][ۜȗK�]Y]�\��\�[��Ș��Y��\���\���Z[K\�[[X\�H��X�\�Y]ȋ�^�\[ۜȋ�X]�[�ȋ��\�Y�H��]Y]\�]�Y]ȋ�\�ݘ[ȋ��\ܝȋ�[۝KX]Y]����Y�X�][ۜȗK�XY�Ș��Y��\���\���Z[K\�[[X\�H��X�\�Y]ȋ�[�Z�H��^�\[ۜȋ�X]�[�ȋ��\�Y�H��]Y]\�]�Y]ȋ�\�ݘ[ȋ�[XY�H���H���\ܝȋ�[۝KX]Y]��[ȋ��[\ȋ�X���[�Z�ȋ���Y�X�][ۜȋ�]Y][�ȋ��\�K\�][��ȋ�\�\�ȋ��[�[��H�K��Y��XY�Ș��Y��Z[K\�[[X\�H���\�Y�H����Y�X�][ۜȗK�^XΈș\���\���Z[K\�[[X\�H���H���\ܝȋ�[XY�H����Y�X�][ۜȋ��[�[��H�K�ʈ8.'8..x.bx.%8..x.`x.)x.(�.,8.&�.&�.%x.bx.+x.!�.%x.(�.)�."8.*�.+x.&�.`x.)x.,8."�.b8.)�.(�.!�.,�.&x.a8.%8.bx.%�..8. x.*�.&x.bx.,�8.(�.)�.(x.*�.&x.bx.,�.)�.-8.`8.!8.(�.,�.,8.*�.c8.%�.-x.b8."�.b8.+x.&x."8.,�. x.&�.%�.&�.,�.%�.%�.,x.b8.)�.a8.&�
+�YZ[��ؚ�X���^\���UW�PT
+K�N�܊�ۜ���Hو��[ۚ]܉�	�]Y]�\��\�[�	�	�XY	�JT��UWԓ�T�ܛ�WK�\�
+	���\��K]\�Y	�	���\��K\�[��N��UWԓ�T˛XY�\�
+	�XZ[Z[�Z�I�N�ʈKKKKKKKKKKKKKKKH�]HKKKKKKKKKKKKKKKH
+��ۜ�����VHH
+
+
+HO��ۜ�\��H�]�[��]U[YQ�ܛX]
+	�[�P�I��[YV�ۙN�	�\�XKИ[������YX\��	۝[Y\�X��[۝�	̋YY�]	�^N�	̋YY�]	�JK��ܛX]�\���]�]J
+JN�ۜ��[YHH\HO�\�˙�[�
+\�O�\��\HOOH\JK��[YN�]\��	ݘ[YJ	�YX\��_KIݘ[YJ	�[۝	�_KIݘ[YJ	�^I�_XJJ
+N�ۜ��T�US����T��UHH����LL����\�^H���HۛN��]Z[��\���\��\��܈ܛ���Y^HX]�[��[�]�Y[��K�������\H\���[�\�H�[��\�[ۈ܈�X�ۘ�[X][ۈ��\��H���\˂��ۜ��T�P�W�UWє��HH����LKLMH��ۜ��T�P�W�UW��H�NNNKLL�L�H��[��[ۈ�\�X�Q]J�[YJH�]\��]�[YH�[YH�T�P�W�UWє��H��T�P�W�UWє��H��[YH��T�P�W�UW����T�P�W�UW����[YNB��ۜ�Q�US��Ԓ��UHH
+
+
+HO��ۜ��YX\�[۝^WHH����VK��]
+	�I�K�X\
+�[X�\�N�]\���\�X�Q]J�]�]J]K�U�YX\�[۝HK^HHJJK��T����[��
+K��X�JL
+JNJJ
+N���\��]ۙH^K�\�ܚX�[�[��\��[XZ[�^X�]H�[X�X�N���\��B���[��\�[ۈ[�Y�X�[�Y^HX]�[��\�H���\��X�Y�H\�RHY�][���ۜ�Q�USԐS��Wє��HHQ�US��Ԓ��UN�ۜ��]HH��]N����Y����N��XY���[\�Έ�]N�Q�US��Ԓ��UK���N�Q�USԐS��Wє��KΈQ�US��Ԓ��UK�\�]���\��H���\[�N��S�\�X�[ێ��S�K��[\���[���[�K�^�[\���N���\N��S��]�\�]N��S��]\Έ�P�Sӈ��N��[�HK��]�Y]��Y]��[��]Y]��[Y[��Y]Έ�^�[��^�\[ە�Y]Έ��Y]���ܝ���^N��[YH�\���\�ȈK�Y�N�K�\�Y�N�L���[X�Y��[�X]�[�^��[XY�P�X�N���H��Z[T�[[X\�N��]N�Q�US��Ԓ��UK��\[�N�����K�]\�]����X�[ۈ��X��\�Έ�[XZ[����[�[YN�����N��[ۚ]܈���\[�Y\Έ�KX�]�N��[�K�YY��[�HK��]��K�N��ۜ��[�H
+�\
+HO�����\���]K���WK��[��[��Y\��\
+N�ۜ��[�X��\����\[�HH
+��\[�JHO��ۜ���HH��[����\[�H��K��[J
+K��\\��\�J
+NY�
+�]K�]\�]OOH���X�[ۈ�țXY��^Xȋ�YZ[��K�[��Y\��]K���JJH�]\���YN�]\���]K�X��\�˘��\[�Y\˚[��Y\����H�]K�X��\�˘��\[�Y\˚[��Y\���JNN�ۜ���\[�SX\�\�H
+
+HO��ۜ�����H�]K�]\�]OOH���X�[ۈ�������\[�Y\˛X\
+
+��\[�JHO���\[�K���HOOH��H��������\[�K��N��Q�P�U�H��[YN��Q�P�U�H�H���\[�JB������\[�Y\��]\�����˙�[\�
+��\[�JHO��[�X��\����\[�J��\[�K���JJNN�ʈ8.(�.,�.(�."�.-�.b8.+x.&�.(�.,8.`8.(8.%�^�\[ۈ8.%�.,x.bx.!�.*�.(x.%H8.%�.-x.b8.%x.,x.bx.!�.a8.)�.bx.`�.&x.(�.,8.&�.&�
+�8.%�.-x.b8.`8. x.-8.%8."8.(�.-8.!�."8.,�. x. x.#�.&8..8.(�. x.-8."
+��[��[ۈ[^�\[ە\\�
+H�ۜ��]H��^�\[ە\\˛X\
+
+
+HO�
+���N����K�[YN���[YHJJN�ۜ��Y[�H�]��]
+�]�X\
+
+
+HO����JJN��^�\[ۜ˙�ܑXX�
+
+JHO�Y�
+�Y[��\�K�\JJH�]\���Y[��Y
+K�\JN�]�\�
+���N�K�\K�[YN�K�\S�[YHK�\HJNJN�]\���]B��ۜ��\��[�\�\�H
+
+HO�
+\�\��[YN��]K�X��\�˙[XZ[
+\[و؈OOH�[�Y�[�Y��؋��\��[�[XZ[
+
+H���H�.'8..x.bx.`�."�.bx.!�.,�.&x.(�.,8.&�.&����[YN��]K�X��\�˙�[�[YH�]K�X��\�˙[XZ[�.'8..x.bx.`�."�.bx.!�.,�.&x.(�.,8.&�.&�����N��]K���K��Y�����JN�ʈKKKKKKKKKKKKKKKH]Y]��
+��\�KKKKKKKKKKKKKKKH
+��[��[ۈ��X�[ۊX�[ۋ[�]K\��]]Z[
+H�ۜ�[��HH�]�����[\
+
+K\�\���\��[�\�\�
+K�\�\��[YKX�[ۋ[�]K\��]]Z[N��]Y]�˝[��Y�
+[��JNY�
+\[و�ܙHOOH�[�Y�[�Y�H�ܙK�]K�]Y]�˝[��Y�
+[��JN�ܙK�\��\�
+
+NB�Y�
+�]K�]\�]OOH���X�[ۈ�	��\[و؈OOH�[�Y�[�Y�	��؋��YۙY[�
+JH؋���
+�]Y]��ȋ��X�܎�؋��\��[�[XZ[
+
+H�\��[�\�\�
+K�\�\��[YKX�[ۋ[�]K\��]���[��\��]��K]Z[���[��]Z[��HWK��]\��[Z[�[X[�K��]�
+
+JHO��ۜ��K��\���]Y]�ȋJJNB�B��ʈ8.&�.,x.&x.%�.-�. x.*�.%�.,�.&x.,8.`8.!8.*�.%�.-x.b8.%�..x. x.`x. x.bH8.`�.*�.bx.+x.(�..x.b8.(�.+x.%8. �.bx.,�.(x. x.,�.(�.(�.-x.`8.'�.(�."�
+��[��[ۈ�]�Sݙ\��YJK\��\��[[�HH�YJH�ܙK�]K�^ݙ\��Y\��K�YHH�]\ΈK��]\��\�]�Y[��N�K�\�]�Y[��K���\ΈK���\���\��][ۓ��N�K��\��][ۓ��H����\���Y]�K��\���Y]�[��\���Y�N�K��\���Y�H�[�]�Y[��N�
+K�]�Y[��H�JK�X\
+
+�HO�
+��[YN����[YK�^�N����^�K]���]JJK�N�ܙK�\��\�
+
+NY�
+\��\��[[�H	���]K�]\�]OOH���X�[ۈ�	��\[و؈OOH�[�Y�[�Y�	��؋��YۙY[�
+H	��K��Y
+H�ۜ�]]YH؋�]]\�\�
+O˚Y�[�ۜ��[\H�]�]J
+K��T����[��
+N�ۜ�^[�YH��]\ΈK��]\�\]Y�]��]�]J
+K��T����[��
+HNY�
+K��]\�OOH��\�Y�Z[�ȊHؚ�X��\��Yۊ^[�Y�\]Y\�Y؞N�K��\]Y\�Y�H]]Y��\]Y\�Y�]�K��\]Y\�Y]�[\�JNY�
+K��]\�OOH�[���\�Y�Hؚ�X��\��Yۊ^[�Y�\�ۜ�W�^�K��\�ۜ�U^K��\��][ۓ��H
+K���\��JK�X\
+
+��JHO���K�^
+K��[\����X[�K���[����H�."�.-x.bx.`x."8.!�.'�.(�.bx.+x.(x.*�.)x.,x. x.$8.,�.&H���\�ۙY؞N�K��\�ۙY�H]]Y��\�ۙY�]�K��\�ۙY]�[\�JNY�
+Ș\�ݙY�����Y�K�[��Y\�K��]\�JHؚ�X��\��Yۊ^[�Y\�ݙY؞N�K�\�ݙY�H]]Y�\�ݙY�]�K�\�ݙY]�[\�JNY�
+K��]\�OOH����Y�	��K��\��][ۓ��JHؚ�X��\��Yۊ^[�Y�\��][ۗۛ�N�K��\��][ۓ��K��\���Y�]�K��\���Y]�]�]J
+K��T����[��
+K��\���Y؞N�K��\���Y�H؋��\��[�[XZ[
+
+H�\��[�\�\�
+K�\�\��[YK�JN؋�]�
+�^�\[ۜȋYY\K��[���UT�P��\ۙ[�
+K��Y
+_X^[�Y
+K��]�
+
+\��HO��\�
+�.&�.,x.&x.%�.-�. x.*�.%�.,�.&x.,8. x.)x.,x.&��\X�\�H8.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\���Y\��Y�K��\���NJNB�B��[��[ۈ\T�ܙY�]J
+H�ۜ�݈H�ܙK�]K�^ݙ\��Y\��N��^�\[ۜ˙�ܑXX�
+
+JHO��ۜ��Hݖ�K�YNY�
+[�H�]\��K��]\�H˜�]\���K��]\�K�\�]�Y[��HH˚\�]�Y[��H��K�\�]�Y[��NK���\�H˛��\�K���\�K��\��][ۓ��HH˜�\��][ۓ��HK��\��][ۓ��NK��\���Y]H˜�\���Y]K��\���Y]K��\���Y�HH˜�\���Y�HK��\���Y�NK�]�Y[��HH˙]�Y[��HK�]�Y[��NJNY�
+�ܙK�]K��][���Hؚ�X��\��Yۊ���][����ܙK�]K��][���NY�
+�ܙK�]K�]Y]�˛[��
+H��]Y]��H�ܙK�]K�]Y]�˘�ۘ�]
+��]Y]��K��X�JL
+N
+�ܙK�]K�^�Q[XY�\��JK��ܑXX�
+
+
+HO�Y�
+Q��[XY�\˜��YJ
+
+HO��YOOH�Y
+JH��[XY�\˜\�
+
+NJNB��[��[ۈ�\�
+\���[�H��ȊH�ۜ�ܘ\H	
+���\�ܘ\�N�ۜ�[H��[Y[��ܙX]Q[[Y[�
+�]��N[��\�Ә[YHH�\�	��[�X[�^�۝[�H\��ܘ\�\[��[
+[
+N�][Y[�]
+
+
+HO�[��\��\��Y
+�ۈ�KL
+N�][Y[�]
+
+
+HO�[��\��\���[[ݙJ�ۈ�N�][Y[�]
+
+
+HO�[��[[ݙJ
+K�
+NK̌
+NB��[��[ۈ[�J�]
+H�\�
+8.*�.-8.%�.&8.-8.c	�����\���]K���WK��[Y_H8.a8.(x.b8.*�.,�.(x.,�.(�.%���]x.a8.%8.bX��\���NB��ʈKKKKKKKKKKKKKKKH]H�[X�ܜ�KKKKKKKKKKKKKKKH
+��[��[ۈ�[ۙ����\�Y�X�][۔�Y]
+JH�]\��YK����\�T�\]Y\�Y	�����X[�K��\]Y\�Y]K��\�ۙY]Ș�\�Y�Z[�ȋ�[���\�Y�K�[��Y\�K��]\�JNB��[��[ۈ�[\�Y^�\[ۜ���\��HH��^�\[ۜ�H�ۜ��H�]K��[\���ۜ�H�]K�^�[\��]\����\��K��[\�
+JHO�Y�
+X�[�X��\����\[�JK���\[�JJH�]\���[�NY�
+�]K���]HOOH�^�\[ۜȈ	���]K��]�Y]��Y]OOH�[�	���[ۙ����\�Y�X�][۔�Y]
+JHOOH
+�]K��]�Y]��Y]OOH��\�Y�X�][ۈ�JH�]\���[�NY�
+Z[��[��JK�]JJH�]\���[�NY�
+����\[�HOOH�S�	��K���\[�HOOH����\[�JH�]\���[�NY�
+��\�X�[ۈOOH�S�	��K�\�X�[ۈOOH��\�X�[ۊH�]\���[�NY�
+�\HOOH�S�	��K�\HOOH�\JH�]\���[�NY�
+��]�\�]HOOH�S�	��K��]�\�]HOOH��]�\�]JH�]\���[�NY�
+��]\�OOH�P�Sӈ�	��Ș���Y��\�ݙY��[XY�H�K�[��Y\�K��]\�JH�]\���[�NY�
+��]\�OOH	����T�W�S�S���	��JK����\�T�\]Y\�Y	��K��]\�OOH	�[���\�Y	�JH�]\���[�NY�
+V��S	�	�P�SӉ�	����T�W�S�S���K�[��Y\���]\�H	��K��]\�OOH��]\�H�]\���[�NY�
+��H	��YK�ݙ\��JH�]\���[�NY�
+�JH�ۜ�HH�K����\��\�J
+N�ۜ��ݚY\�H\[وT�ݚY\�وOOH��[��[ۈ��T�ݚY\�ي	�K�X���[�H	�K�]Z[H	�K��T�]�H	�K��Ԙ]�X
+H������ۜ��\�L���\��Y\�Y��HȐU���������K�[��Y\���[��K���\[�H��K��\\��\�J
+JB����Ӌ���[��Y�JK��\��Y\�]Z[��JH����ۜ�^HH	�K�YH	�K���H��H	��\�SX�[
+J_H	�K���\[�_H	�K�X���[�H	�K�[\�YY_H	�K�Y[X�\�H	�K�\_H	�K�\S�[Y_H	�K��]\�_H	�K��[��H	�K�\�X�[۟H	�K�]Z[H	�K��T�]�H	�K��Ԙ]�H	��ݚY\�H	��\�L���\��Y\�Y��X����\��\�J
+NY�
+Z^K�[��Y\�JJH�]\���[�NB��]\���YNJNB��[��[ۈ���Y^�\[ۜ�
+H�ۜ��H�]K��[\���]\����^�\[ۜ˙�[\��
+JHO���[�X��\����\[�JK���\[�JH	���[��[��JK�]JH	���
+����\[�HOOH�S�K���\[�HOOH����\[�JH	���
+��\�X�[ۈOOH�S�K�\�X�[ۈOOH��\�X�[ۊK�
+NB�ʈKKKKKKKKKKKKKKKH8."�.b8.)�.!�.)�.,x.&x.%�.-x.bKKKKKKKKKKKKKKKH
+��ۜ�UW��T�U�H���N��^H��[YN��.)�.,x.&x.%�.-x.b8.%x.(�.)�."
+8.)�.,x.&x.`8.%8.-x.(�.)�H�K����N��\�ȋ�[YN���8.)�.,x.&x.)x.b8.,�.*�..8.%�K����N��\����[YN���8.)�.,x.&x.)x.b8.,�.*�..8.%�K����N��\�[۝��[YN��.`8.%8.-�.+x.&x.&x.-x.bH�K����N��\�[۝��[YN��.`8.%8.-�.+x.&x. x.b8.+x.&H�K����N��\�]X\�\���[YN��.a8.%x.(�.(x.,�.*�.&x.-x.bH�K����N��\�YX\���[YN��.&�.-x.&x.-x.bH�K����N���\��H��[YN��. x.,�.*�.&x.%8.`8.+x.!ȈK�N�[��[ۈ�Y�^\�\���H�ۜ��KKHH\�˜�]
+�H�K�X\
+�[X�\�N�ۜ�H�]�]J]K�U�KHHK
+��JN�ۜ�H
+
+HO���[��
+K�Y�\�
+���N�]\��	���]Uѝ[YX\�
+_KI�
+��]U�[۝
+
+H
+�J_KI�
+��]U�]J
+J_XB��[��[ۈ[۝��[��\��[۝ٙ��]
+H�ۜ��KWHH\�˜�]
+�H�K�X\
+�[X�\�N�ۜ��\�H�]�]J]K�U�KHHH
+�[۝ٙ��]JJN�ۜ�[�H�]�]J]K�U�KH
+�[۝ٙ��]
+JN�ۜ�H
+
+HO���[��
+K�Y�\�
+���N�]\��	��\���]Uѝ[YX\�
+_KI�
+�\���]U�[۝
+
+H
+�J_KLX�	�[���]Uѝ[YX\�
+_KI�
+[���]U�[۝
+
+H
+�J_KI�
+[���]U�]J
+J_X�NB��[��[ۈ\T�\�]
+�\�]
+H�ۜ��\�HH�]K��[\�˙]N�ۜ��H�]K��[\�����\�]H�\�]Y�
+�\�]OOH�^H�Hً����K���HHؘ\�K�\�WN[�HY�
+�\�]OOH�\�ȊHً����K���HH��Y�^\��\�KM�K�\�WN[�HY�
+�\�]OOH�\���Hً����K���HH��Y�^\��\�KL�JK�\�WN[�HY�
+�\�]OOH�\�[۝�Hً����K���HH[۝��[���\�K
+N[�HY�
+�\�]OOH�\�[۝�Hً����K���HH[۝��[���\�KLJN[�HY�
+�\�]OOH�\�]X\�\��H�ۜ�HH
+ؘ\�K��]
+�H�V�WN�ۜ�T�\�HX]���܊
+HHJH��H
+��
+�N�ۜ�HH�\�K��]
+�H�V�N�ۜ��[�HH[۝��[��	�_KI���[��T�\�
+��K�Y�\�
+���_KLX
+Nً����K���HH�	�_KI���[��T�\�
+K�Y�\�
+���_KLX[�NH[�HY�
+�\�]OOH�\�YX\��H�ۜ�HH�\�K��]
+�H�V�Nً����K���HH�	�_KLKLX	�_KLL�L�XNB���]HH�\�X�Q]J��]JN�����HH�\�X�Q]J�����JN���H�\�X�Q]J���NB��ۜ�[��[��HH
+
+HO�Y�
+YOOH�H�H�]\���YN�ۜ�^HH��[��
+K��X�JL
+N�]\��^H�H�T�P�W�UWє��H	��^HH�T�P�W�UW��	��^H�H�]K��[\�˙���H	��^HH�]K��[\�˝�N�ۜ��[��SX�[H
+
+HO���]K��[\�˙���HOOH�]K��[\�˝���]K��[\�˙���H�	��]K��[\�˙���_H8.%�.-�.!�	��]K��[\�˝�X�ʈ8.`x.*�.%8.!�.'8.)x.%x.b8.,�.!�.`�.*�.bx.%x.(�.!�. x.,x.&�.!8.)�.,�.(x.*�.(x.,�.(�. �.+x.!�^�\[ۈ8.`x.%x.b8.)x.,8.&�.(�.,8.`8.(8.%�
+��[��[ۈY��X�[
+JH��]�
+K�\JH�\�H�[[�[��Y������]\���[��\��H�[��\����[ۙ^JK�[[�[�Y��_O��[���\�H�[YW�Y������]\��	�K�[YQY���X�H8.)�.-�\�H�ܛ����^H����]\���[��\��H�]]Y��. �.bx.,�.(x.)�.,x.&H	�K�[YQY���X�H8.)�.-��[���\�H�Z\��[��؛Ȏ���]\���[��\��H�[��\���.a8.(x.b8.'�.&�.`�.&H����[���\�H�Z\��[����H����]\���[��\��H�[��\���.a8.(x.b8.'�.&�.`�.&H�O��[���\�H�\X�]H����]\���[��\��H�[��\���."�.bx.,�	�[ۙ^JK��\��[[�[�
+_O��[��Y�][���]\���[��\��H�[��\����[ۙ^JK��\��[[�[�
+_O��[��B�B��[��[ۈ\���\\�X�Q^�\[ە[Y\�JH�]\��HJH	��K���[YH	��K��U[YH	��K���[YHOOH�H�	��K��U[YHOOH�H�NB��[��[ۈ^�\[ە[YQY��X�[
+JH�]\��\���\\�X�Q^�\[ە[Y\�JH�	۝[JK�[YQY���X�_H8.)�.-��.a8.(x.b8.(x.-x.`8.)�.)x.,��B��[��[ۈ]�Y[��U[YQY��X�[
+JH�]\��O˘��˛��[YHO˜�O˛��[YHS�[X�\��\њ[�]J�[X�\�O˝[YQY��\�[��T�X�ۙ�JB���.a8.(x.b8.(x.-x.`8.)�.)x.,����	۝[JK�[YQY��\�[��T�X�ۙ�_H8.)�.-8.&x.,�.%�.-XB��ۜ��[T�\��H
+\�
+HO�\���YX�J
+K�HO�H
+�
+˜�\��[[�[�
+K
+N�ۜ��]�\�]P��܈H
+�HO��\�˔�UT���H����XL���ۜ��]\�Y]HH
+��JHO����]\�\˙�[�
+
+�HO�˘��HOOH��JH��[YN���KۙN��ܙ^H�N�ۜ��\�T�]\�Y]HH
+JHO�
+K��]�Y]���[��ːX���[��]�Y]���˛X]�
+JJH�ۘ[YN�X���[��]�Y]��˛X�[ۙN��[X�\��H�K����\�T�\]Y\�Y	��K��]\�OOH	�[���\�Y	��ۘ[YN��.(�.+x.*�.,x.)�.*�.&x.bx.,�.&�.-8.%8.`8.!8.*��ۙN��ܙ^I�H��]\�Y]JK��]\�N�ۜ��]�Y]HH
+��JHO����]�\�]Y\˙�[�
+
+�HO�˘��HOOH��JH��[YN���HN�ۜ�\�[\TQ�[HH
+�[JHO��[O˜\��Y	��Y�[O˜\��W�\��܈	���[O˚�[�OOH�W��][Y[��	���[X�\��[O˜������[�
+HOOH	���[X�\��[O˜�^�W؞]\�
+HHM��ۜ�\��Y�[SX�[H
+�[JHO�\�[\TQ�[J�[JH��.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�
+
+H���.'�.(�.bx.+x.(x.`�."�.bx.!�.,�.&H��ʈ8.&�.-8.%8.%8.b8.)�.&x.a8.%8.bx.`8.(x.-�.b8.+x.(x.-x.(�.,�.(�. x.,�.(�.!8.(�.&�.%�.,x.bx.!�.*�.+x.!�.'x.,x.b8.!�.`x.)x.,8.(�.+x.%8.`8.%�.b8.,�. x.,x.&H8.'8..x.bx.%x.(�.)�."8.(�.,x.!�.%x.bx.+x.!�. x.%8.(�.-�.&x.(�.,x.&x.`8.+x.!�
+��[��[ۈ\�]ZX�����Q[Y�X�JJHY�
+\[و�]HOOH�[�Y�[�Y�	���]K�]\�]OOH���X�[ۈ�H�]\��HYO˗�]ZX����\��Q]�Y[��H	��K��]\�OOH��[���ۜ��X[]�Y[��HH
+�]�HO��ۜ��[YHH��[���]���K��[J
+N�]\���[YK�[���H	��Kז��%8�$�W_8.a8.(x.b8.'�.&�.(�.,�.(�. x.,�.(�8.a8.(x.b8.%x.bx.+x.!�.`�."�.bWʜ�][Y[�8.%x.(�.)�."8."8.,�. x.(�.,�.(�.!�.,�.&x.*�.)x.,x.!�.&�.bx.,�.&_8.(�.+x. �.bx.+x.(x..x.)_8.a8.(x.b8.(x.-x. �.bx.+x.(x..x.)K�K�\�
+�[YJNN�]\��B�	��VȘ���Y��\�ݙY��[XY�H�K�[��Y\�K��]\�B�	��K��[��[[�[�OOH�[	��K��[��[[�[�OOH[�Y�[�Y�	��K��\�[P[[�[�OOH�[	��K��\�[P[[�[�OOH[�Y�[�Y�	��K��[��[[�[�OOH��	��K��\�[P[[�[�OOH���	���[X�\��\њ[�]J�[X�\�K��[��[[�[�
+JH	���[X�\��\њ[�]J�[X�\�K��\�[P[[�[�
+JB�	��HYK��]Z[�YY�	���X[]�Y[��JK��T�]�B�	���X[]�Y[��JK��Ԙ]�B�	��X]�X���[X�\�K��[��[[�[�
+HH�[X�\�K��\�[P[[�[�
+JH�NB���[��[ۈ\ԙX�ܙY[[�[��]��YJJH�]\��HYK����\�T�\]Y\�YK��]\�OOH�Z\��[�[�Ȉș[XY�H��\�ݙY�����Y�K�[��Y\�K��]\�NB��\�[���[��[ۈ�Y��\�]ZX�����Q]�Y[��JJHK��]ZX����\��Q]�Y[��HH�[�NY�
+�]K�]\�]OOH���X�[ۈ�YK��YYK��]Z[�YY
+H�]\����ۛH�[�����Y��\]HZ\���[�\��H^\�[����\��KY]�Y[��B����X��
+���Y\�\�^K[ۛJK���\��KY^H�XY��܈�\��\�\˂�Y�V���[��	����Y	�K�[��Y\�K��]\�HK��[��[[�[�O[�[K��\�[P[[�[�O[�[�K��[��[[�[�OOI��K��\�[P[[�[�OOI��S�[X�\��\њ[�]J�[X�\�K��[��[[�[�
+JB�S�[X�\��\њ[�]J�[X�\�K��\�[P[[�[�
+JHX]�X���[X�\�K��[��[[�[�
+KS�[X�\�K��\�[P[[�[�
+JO�L�J\�]\���ۜ��]K[���HH]�Z]��Z\�K�[
+؋��X�ۘ�[X][ۓݙ\��Y]�K���\[�KK�]JK�؋�]�Y[��P�\�T�X��[Y[�][ۜ���\�RY�K��YJK�JN�ۜ����H]K��\�\�˙�[�
+���O���˚YOOHK��Y
+N���Z[���Y�܈[��Y�\�Y�X�][ۋ�ܛ���X��\[�H�\�\�[�[���\]H]Y\�Y\˂�Y�
+\�����˘��\[�HOOHK���\[�HP\��^K�\�\��^J[���H[��˛[���Vț�[������Y�K�[��Y\���˜�]\�JH�]\���ۜ��]�Y]�Hˋ��]K�\�\Ι]K��\�\˛X\
+][HO�][K�YOOH��˚Y�ˋ��][K�]\Έ��[��H�][J_NK��]ZX����\��Q]�Y[��HH�[[Z[�\�T�]�Y]˛X[�X[�[�Y]\��]�Y]�K�\���˚Y
+NK��]ZX�ՙ\�Y�YY�]\�H��˜�]\�B������\][ۈ\�H��]]�H\��\�[ێ�X��[�٘Z[Y]Y\�Y\�]\��]�\���[�\�\��Y�X��˂��[��[ۈZ[P��\][ې����\��]JH�ۜ�����\��H�NY�
+Y]K��[\˛[��
+H����\�˜\�
+�.(�.,x.!�.a8.(x.b8.a8.%8.bx.(�.,x.&�.a8.'�.)x.c�NY�
+Y]K��X��\�
+H����\�˜\�
+��X��\�8.(�.,x.!�.`�.*�.)x.%8.a8.(x.b8.!8.(�.&��NY�
+Y]K��X�ۘ�[X][ۑ�[\˛[��]K��X�ۘ�[X][ۑ�[\˜��YJ
+�HO�Y��\��Y��\��W�\��܊JH����\�˜\�
+�.(�.,x.!�.+x.b8.,�.&x.a8.'�.)x.c8. x.(�.,8.%�.&�.(�.+x.%8.a8.(x.b8.!8.(�.&��NY�
+Y]K�]X[]K�[��]K�]X[]K���YJ
+�HO�\���[��Y���]\�OOH���\]Y�JH����\�˜\�
+�.(�.,x.!�.a8.(x.b8.(x.-x.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.*�.,�.`8.(�.a�."8.!8.(�.&��NY�
+Y]K��њ\��]K��њ\�����\]HOOH�YH
+]K��њ\���Z\��[���JK�[��
+H����\�˜\�
+�.(�.,x.!�.%x.(�.)�."8.!8..x.b�K�H8.%x.,�.(H��8.a8.(x.b8.!8.(�.&��NY�
+
+]K��X��\�˛Z\��[���][\��JK�[��
+H����\�˜\�
+�.(x.-x.`8.+x. x.*�.,�.(�.%�.-x.b8.%x.bx.+x.!�.%x.-8.%8.%x.,�.(H�NY�
+]K��[�[��
+H����\�˜\�
+8.(�.,x.!�.(x.-H	�]K��[�[�H8.`8.!8.*�.!8.bx.,�.!�
+N�]\������\��B���ۜ��\�UZT�\�[�H�]�X\
+
+N�[��[ۈ�\�UZR�^JJH��]\��K��Y�K���\[�KK�]KK��[�YK�YK���[�	�	�N�B��[��[ۈ�X�ܙ�\�UZT�\�[
+KY\��Y�JH�\�UZT�\�[˜�]
+�\�UZR�^JJK�Y\��Y�K�]\ΙK��]\�X�܎�\[و؈OOH	�[�Y�[�Y	�	��؋��\��[�[XZ[
+
+JH�\��[�\�\�
+K�\�\��[YK]�����[\
+
+_JNB��ۜ��\�Y�X�][۔�\]Y\��Y��H�]��]
+
+N�[��[ۈ\�[��[��\�Y�X�][ې�\�J���H�]\�����[��	�[�[��ۙ^�^I�K�[��Y\���˜�]\�H	��\��˜�\]Y\�Y]	��\��˜�\�ۙY]	��\��˘���\�T�\]Y\�YB��[��[ۈ�\�Y�X�][ېX���[��^J���H��]\����[����˘X���[�	��K��[J
+K��\\��\�J
+N�B��[��[ۈ�\\�P�\�Y�X�][۔�\]Y\��۝^
+JH�ۜ����H	
+	�ݚY]ԛ��	�N�ۜ��ܛ��H\��^K����J���˜]Y\�T�[X�ܐ[
+	ʉ�H�JK��[\�[O�[��ܛ��[��ܛ�Y�
+K�X\
+[O��ۜ�\��V�N�]��OY[�[J��H	����HOO\���
+^�\�˝[��Y�
+	ۛ�K�YӘ[YK����\��\�J
+_N��X�[
+	�\��^K����J��K�\�[�[[Y[���[�[�K�[�^ي��JJ�_JX
+Nۛ�O[��K�\�[�[[Y[��B��]\����[X�܎�\�˚��[�	��	�K��[��ܛ��Y��[��ܛ�Y�NJN���Y]�[\��]�H[��YHP�]�T�Y]����]K�^�[\��H�Y]�\�B���X^H�HHۛH���Y�]Y[����^�\[ۜ����]�\�[��\�^]\�[ۂ������H]\�X[[��[]Y\����ۜ�����\�]K���]OOOI�X�\�Y]����N��[\�Y^�\[ۜ�
+N�ۜ�[�^\���˙�[�[�^
+���O��\�UZR�^J���OOOX�\�UZR�^JJJN�ۜ�ܙ\�YZ[�^ܛ��Μ���˜�X�J[�^
+�JK��ۘ�]
+���˜�X�J[�^
+JN�ۜ��[�Y]\�[ܙ\�Y��[\����O���˘��\[�OOOYK���\[�H	���\�UZR�^J���HOOX�\�UZR�^JJB�	��\�[��[��\�Y�X�][ې�\�J���H	���[�X��\����\[�J��˘��\[�JJN�ۜ�X���[�X�\�Y�X�][ېX���[��^JJN�ۜ��[YPX���[�\���O�X���[�	���\�Y�X�][ېX���[��^J���OOOXX���[��]\�����\[�N�K���\[�K]N�K�]K��]N��]K���]KX�܎�؋�]]\�\�
+O˚Y�[�X���[��K�X���[���[��˜�ܛ�N��[��˜�ܛ�K�ܛ����^�^\Ζˋ���[�Y]\˙�[\��[YPX���[�
+K����[�Y]\˙�[\����O�\�[YPX���[�
+���JWK�X\
+�\�UZR�^J_NB��[��[ۈ�\�ܙP�\�Y�X�][۔�\]Y\��ܛ�
+�۝^
+H�ۜ��\�ܙOJ
+OO��܊�ۜ��]�Yو�۝^��ܛ��^��ۜ�[I
+	�ݚY]ԛ��	�O˜]Y\�T�[X�܊�]�Y��[X�܊N�Y�[
+^�[��ܛ��\�]�Y���[��ܛ�Y�\�]�Y�Y��_B��[��˜�ܛ���Y���۝^����۝^�K�Z]�[܎��[��[�	�JNN�\�ܙJ
+Nܙ\]Y\�[�[X][ۑ��[YJ
+
+OO��\]Y\�[�[X][ۑ��[YJ�\�ܙJJNB�\�[���[��[ۈ�Y�\�Y�X�][۔�X�Z\�[�Y]\�K�۝^
+HY�
+�۝^���]HOOI�X�\�Y]�ɉ�X�۝^��XYۛT]Y]YJ_�]K�]\�]OOI���X�[ۉ�\�]\��Y�X�۝^�]_X�[�X��\����\[�J�۝^���\[�JJ]���\��܊	�.a8.(x.b8.'�.&�. �.+x.&�.`8. �.%x.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&x.%�.-x.b8. �.+x.!�.`8.!8.*��N�ۜ�ܘ]����\�OX]�Z]��Z\�K�[
+؋��\��[�^�\[ۜ����\[�N��۝^���\[�K���N��۝^�]KΘ�۝^�]K[Z]�LJK�؋��]�Y]�����\�
+K�JNY�P\��^K�\�\��^J�]�_�]˛[���LLP\��^K�\�\��^J���\�J]���\��܊	�.(�.,x.!�.`�.*�.)x.%8.(�.,�.(�. x.,�.(�.`8.!8.*�.&�.,x."8."8..8.&�.,x.&x.a8.(x.b8.!8.(�.&�8. x.(�..8.$�.,�.)x.+x.!�.%x.(�.)�."8.+x.-x. x.!8.(�.,x.bx.!��NY��۝^�X�܈OOJ؋�]]\�\�
+O˚Y�[
+_�۝^���]HOO\�]K���]J]���\��܊	�.'8..x.bx.`�."�.bx.*�.(�.-�.+x.*�.&x.bx.,�.(�.,�.(�. x.,�.(�.`8.&�.)x.-x.b8.(�.&x.`x.)x.bx.)��NX���[��]�Y]��˜�]
+���\�N�ۜ�����\�]˛X\
+X\]�Q^�\[ۊK��[\����O���˘��\[�OOOX�۝^���\[�I����˙]OOOX�۝^�]JN�ۜ�[�^\���˙�[�[�^
+���O��\�UZR�^J���OOOX�\�UZR�^JJJN�ۜ�ܙ\�YZ[�^ܛ��Μ���˜�X�J[�^
+�JK��ۘ�]
+���˜�X�J[�^
+JN�ۜ��[�Y]\�[ܙ\�Y��[\����O��\�UZR�^J���HOOX�\�UZR�^JJI��\�[��[��\�Y�X�][ې�\�J���I��PX���[��]�Y]��˛X]�
+���JNY��۝^��XYۛT]Y]YJ^�ۜ��Y��X]�Z]؋��\�Q]�Y[��Q�Y���[�Y]\˛X\
+���O���˙�Y
+JNY��۝^�X�܈OOJ؋�]]\�\�
+O˚Y�[
+_�۝^���]HOO\�]K���]J]���\��܊	�.'8..x.bx.`�."�.bx.*�.(�.-�.+x.*�.&x.bx.,�.(�.,�.(�. x.,�.(�.`8.&�.)x.-x.b8.(�.&x.`x.)x.bx.)��N�܊�ۜ����و�[�Y]\�\��˚\�]�Y[��OHH\��˘�\�Y�X�][ۑ�[RYHY�Y��ܛ�˙�YN�۝^�]Y]YT�]�^��[����˛[��[����˙�[\����O�X���[��]�Y]��˛X]�
+���JK�[��NB��ۜ��[YO\���O��\�Y�X�][ېX���[��^J���OOOX�\�Y�X�][ېX���[��^JJN�۝^��^�^\�Vˋ���[�Y]\˙�[\��[YJK����[�Y]\˙�[\����O�\�[YJ���JWK�X\
+�\�UZR�^JN�܊�ۜ����و����^�ۜ�^\�[��Q��^�\[ۜ˙�[�
+][OO��\�UZR�^J][JOOOX�\�UZR�^J���JNY�^\�[��Sؚ�X��\��Yۊ^\�[�����ۛ�\Ι^\�[�˛��\��K]�Y[��N�^\�[�˙]�Y[��_�_JN[�H��^�\[ۜ˜\�
+���NB�B�\�[���[��[ۈ��ԙXYۛP�\�T]Y]YJJHY�X�[�	ܙ\]Y\���\�Y�I�_X�[�X��\����\[�JK���\[�JJ\�]\��[�J	�.%8..x.!8.-8.)�.`8.!8.*�.%�.,x.%8.a8.&��NY��]K�]\�]OOI���X�[ۉɉ�T؋��YۙY[�
+J\�]\��[�J	�.%8..x.!8.-8.)�.`8.!8.*�.%�.,x.%8.a8.&��N�\\�P�\�S�[��Y�
+
+N�ۜ��۝^X�\\�P�\�Y�X�][۔�\]Y\��۝^
+JN�۝^��XYۛT]Y]YO]�YN�]\������\�Y�X�][۔�\]Y\��X�Z\
+K�۝^ܙXYۛN��Y_JNB�\�[���[��[ۈ����\�Y�X�][۔�\]Y\��X�Z\
+K�۝^ܙXYۛOY�[�_HH�JH�ۜ��^J
+OO��۝^��^�^\˛X\
+�^OO���^�\[ۜ˙�[�
+���O��\�UZR�^J���OOOZ�^JJK��[�
+���O���	����˘��\[�OOOX�۝^���\[�H	��\�[��[��\�Y�X�][ې�\�J���B�	���[�X��\����\[�J��˘��\[�JJN�[�[�[
+�XYۛO��.%8..x.!8.-8.)�.`8.!8.*�.%�.,x.%8.a8.&�8�%8.+x.b8.,�.&x.+x.(�.b8.,�.!�.`8.%8.-x.(�.)�Ή�.*�.b8.!�. �.+x."�.-x.bx.`x."8.!�.*�.,�.`8.(�.a�."8.`x.)x.bx.)��]���OH��]\ȏ����ۙω�
+K���\[�J_H0��	�
+K�]_	��_H0��	�
+K���_K�Y	�.%�..8. x.&�.,x.#x."�.-I�_O���ۙϏ���ܙXYۛO��.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!�.!8.,�. �.+x.`�.%8.a�0��8.`8.&�.-8.%8.%8..x.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8.`8.%�.b8.,�.&x.,x.bx.&H8.a8.(x.b8.*�.(�.bx.,�.!�.`8.!8.*�8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x.(�.+x.%8.`x.)x.,8.a8.(x.b8.&�.-8.%8.`8.!8.*�Ή�.*�.b8.!�.!8.,�. �.+x.`�.*�.bx.'8..x.bx."�.-x.bx.`x."8.!�.`�.&x.`8.!8.*�.`8.%8.-8.(x.`x.)x.bx.)�8.a8.(x.b8.*�.(�.bx.,�.!�.`8.!8.*�."�.bx.,�8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x.(�.+x.%8.`x.)x.,8.(�.,x.!�.a8.(x.b8.&�.-8.%8.`8.!8.*��O��YH��\]Y\��X�Z\�]\ȏ�. x.,�.)x.,x.!�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�."8.,�. x.'8.)x.*�.)x.,x. x.)x.b8.,�.*�..8.%8�)����X[�.!8.!�.&�.(�.-8.*x.,x.%�8.)�.,x.&x.%�.-x.b8.%x.,x.)�. x.(�.+x.!�8.*�.&x.bx.,�.(�.,�.(�. x.,�.(�8.`x.)x.,8.%x.,�.`x.*�.&x.b8.!�.`8.)x.-�.b8.+x.&x.`8.%8.-8.(H0��8.!8.-8.)�.!8.(�.+x.&�.!8.)x..8.(x.%�..8. x.&�.,x.#x."�.-x.`�.&x.&�.(�.-8.*x.,x.%��.)�.,x.&x.`8.%8.-x.(�.)�. x.,x.&H8.%x.(�.)�."8.&�.,x.#x."�.-x.`8.%8.-8.(x. x.b8.+x.&H0��8.a8.'�.)x.c8.`x.&x.&�.+x.(�.b8.,�.!�.`8.%8.-x.(�.)�.(�.,x.!�.%�.-�.+x.)�.b8.,�.(�.,x.!�.a8.(x.b8.*�.b8.!���X[��]��ܙXYۛO��]�YH��XYۛP�\�T]Y]YH�\�XK[X�[H�.)x.,�.%8.,x.&�.`8.!8.*�.%�.,x.%8.a8.&ȏ��]��Ή��X��]ۈ�\��H����X�]ۈ�YH��\]Y\��X�Z\�]\����ܙXYۛO��. x.)x.,x.&�.`8.!8.*��8.(�.,�.(�. x.,�.(�.`8.%8.-8.(IΉ�. x.)x.,x.&�.*�.&x.bx.,�.(�.,�.(�. x.,�.(��O؝]ۏ��]ۈ�\��H��[X\�KX�]ۈ�YH��\]Y\��X�Z\�^�\�X�Y�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bO؝]ۏ�
+N�ۜ��^�]ۏI
+	�ܙ\]Y\��X�Z\�^	�K�]\�I
+	�ܙ\]Y\��X�Z\�]\��N]X�YY�[�K�\�OY�[�K�Z[YY�[�N	
+	��[�[	�K���۝[��X[�\J
+OO��X�Y]�YN�N�ۜ�X�]�OJ
+OO�XX�Y	���]K���]OOOX�۝^���]I��؋�]]\�\�
+O˚Y�[
+OOOX�۝^�X�܉��
+	�ܙ\]Y\��X�Z\�^	�OOO[�^�]ێ�ۜ��]\���\�J
+OO�����S[�[
+
+N�Y�\�XYۛJX���Q�]�\�
+N�Y�\�XYۛI���۝^���]HOOI�X�\�Y]��\�[�\�
+Nܙ\�ܙP�\�Y�X�][۔�\]Y\��ܛ�
+�۝^
+N�N�ۜ��Y��\�X\�[��
+OO��\�O]�YNۙ^�]ۋ�\�X�Y]�YN��]\˝^�۝[�I�. x.,�.)x.,x.!�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�."8.,�. x.'8.)x.*�.)x.,x. x.)x.b8.,�.*�..8.%8�)���^]�Z]�Y�\�Y�X�][۔�X�Z\�[�Y]\�K�۝^
+NY�XX�]�J
+J\�]\���Z[YY�[�N��ۜ����[�^
+
+Nۙ^�]ۋ�\�X�YH\���ۙ^�]ۋ�^�۝[�\�XYۛO��.`8.&�.-8.%8.%8..x.`8.!8.*�.%�.,x.%8.a8.&�
+8.a8.(x.b8.*�.b8.!�.!8.,�. �.+JIΉ�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bI��]\˝^�۝[�\����8.`8.!8.*�.%�.,x.%8.a8.&Έ	ܛ�˘��_��˚YH0��	ܛ�˘X���[�	�.a8.(x.b8.(�.,8.&�..	�H0��	�X�\�Y�X�][ېX���[��^JJO��.`8.(�.-8.b8.(x."8.,�. x.!8.-8.)�. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bIΘ�\�Y�X�][ېX���[��^J���OOOX�\�Y�X�][ېX���[��^JJO��.%x.(�.)�."8.&�.,x.#x."�.-x.`8.%8.-8.(x.%x.b8.+IΉ�.&�.,x.#x."�.-x.`8.%8.-8.(x.a8.(x.b8.(x.-x.`8.!8.*�.%�.-x.b8.*�.b8.!�.%x.b8.+x.a8.%8.bH8.a8.&�.&�.,x.#x."�.-x.+x.-�.b8.&x. �.+x.!�.&�.(�.-8.*x.,x.%�.&x.-x.bI�X��.a8.(x.b8.(x.-x.`8.!8.*�.%�.-x.b8.(�.,x.!�.a8.(x.b8.*�.b8.!�. �.+x."�.-x.bx.`x."8.!�.`�.&x. �.+x.&�.`8. �.%x.&x.-x.bx.`x.)x.bx.)�
+8.a8.(x.b8.(�.)�.(x.`8.!8.*�.'�.,x. x.%x.(�.)�."
+I�Y��XYۛJ^�ۜ�]Y]YOX�۝^��^�^\˛X\
+�^OO���^�\[ۜ˙�[�
+���O��\�UZR�^J���OOOZ�^JJK��[\����O���ɉ���˘��\[�OOOX�۝^���\[�I���[�X��\����\[�J��˘��\[�JI��\�[��[��\�Y�X�][ې�\�J���JN�ۜ��]�X�۝^�]Y]YT�]��N	
+	�ܙXYۛP�\�T]Y]YI�K�[��\�SX�.`8.!8.*�.`�.&x.'8.)x.*�.)x.,x. H	۝[J�]˝�[
+_H0��8.'�.,x. x.%x.(�.)�."	۝[J�]˚[
+_H0��8.!8.-8.)�.%�.,x.%8.a8.&�	۝[J]Y]YK�[��
+_H
+8.a8.(x.b8.(�.)�.(x.`8.!8.*�.%�.-x.b8. x.,�.)x.,x.!�.`8.&�.-8.%
+O��]��\��H�X�K]ܘ\��X�O�XY����.)x.,�.%8.,x.&����.`8.!8.*����.&�.,x.#x."�.-O���.*�.)x.,x. x.$8.,�.&O������XY���O��]Y]YK��X�JL
+K�X\
+
+���JOO��]K[�^\]Y]YKX�\�OH��
+��˙�Y��˚Y
+_H����J�_I��\�Y�X�][ېX���[��^J���OOOX�\�Y�X�][ېX���[��^JJO��0��8.&�.,x.#x."�.-x.`8.%8.-8.(IΉ��O����
+��˘��_��˚Y
+_O����
+��˘X���[�	�.a8.(x.b8.(�.,8.&�..	�_O���ܛ�˚\�]�Y[��O��.`x.&x.&�.`x.)x.bx.)�8�%8.(�.,x.!�.a8.(x.b8.*�.b8.!�Ή�.(�.,x.!�.a8.(x.b8.`x.&x.&�8�%8.(�.,x.!�.a8.(x.b8.*�.b8.!��O�����
+K���[�	��_	������[�H���.a8.(x.b8.(x.-x.`8.!8.*�.%�.,x.%8.a8.&�.%�.-x.b8.*�.b8.!�.%x.b8.+x.a8.%8.bO������O���O��X�O��]���]Y]YK�[���L���.`x.*�.%8.!�L8.`8.!8.*�.`x.(�. x."8.,�. x.!8.-8.)�.%�.,x.bx.!�.*�.(x.%0��8.&�..8.b8.(x.%�.,x.%8.a8.&�.`�."�.bx.!8.-8.)�.!8.(�.&�.%�..8. x.`8.!8.*���Ή��XB�X�]�
+\��܊^�Y�X�]�J
+J^٘Z[Y]�YN��]\˝^�۝[�I�.(�.,x.!�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�.a8.(x.b8.*�.,�.`8.(�.a�."�	��\��܋�Y\��Y�J��XYۛO��0��8.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!�.!8.,�. �.+IΉ�0��8.!8.,�. �.+x.`8.%8.-8.(x.*�.b8.!�.*�.,�.`8.(�.a�."8.`x.)x.bx.)�8.a8.(x.b8.%x.bx.+x.!�.*�.b8.!�."�.bx.,��Nۙ^�]ۋ�\�X�YY�[�Nۙ^�]ۋ�^�۝[�I�.)x.+x.!�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&�.+x.-x. x.!8.(�.,x.bx.!���Y��XYۛJI
+	�ܙXYۛP�\�T]Y]YI�K�[��\�SI���_B��[�[^؝\�OY�[�N�B�N	
+	�ܙ\]Y\��X�Z\�]\���K�ۘ�X��J
+OO��Y�X�Y
+\�]\���X�Y]�YNܙ]\���\�
+
+N�N	
+	�ܙ\]Y\��X�Z\�^	�K�ۘ�X��X\�[��
+OO�Y�XX�]�J
+_�\�J\�]\��Y�X�[�	ܙ\]Y\���\�Y�I�J\�]\��[�J	�.%x.(�.)�."8.`8.!8.*�.%�.,x.%8.a8.&��NY��Z[Y
+\�]\���Y��\�
+
+N���K\�XYHX��\Y�\��[��\�H�]ۈ�]�Y�][ۋ��[��\��[���]�Z]�Y��\�
+
+N�Y�XX�]�J
+_�Z[Y
+\�]\���ۜ����[�^
+
+N�Y�\���^�
+	�ܙ\]Y\��X�Z\�^	�K�\�X�Y]�YNܙ]\���\�
+	�.a8.(x.b8.(x.-x.`8.!8.*�.%�.,x.%8.a8.&�.`�.&x.&�.(�.-8.*x.,x.%�.`x.)x.,8.%x.,x.)�. x.(�.+x.!�.`8.%8.-8.(x.`x.)x.bx.)��	��\���N�B�X�Y]�YN�Y��XYۛJX�\\�P�\�S�[��Y�
+
+Nܙ]\���\�
+
+N�]�Z]�[�^�\[ۊ��˚Y
+NN]�Z]�Y��\�
+
+NB��[��[ۈ����\�T�X�Z\��[۔�X�Z\
+�[�X�[H	��H�ۜ��X�Z\�H�\]Y\����.*�.b8.!�. �.+x.+x.&x..8.(x.,x.%x.-8.&�.-8.%8.`8.!8.*�.`8.(�.-x.(�.&�.(�.bx.+x.(��	�.!8.,�. �.+x.&�.-8.%8.`8.!8.*�.%�..x. x.&�.,x.&x.%�.-�. x.`x.)x.,8.*�.b8.!�.`8. �.bx.,�.!8.-8.)�.*�.,x.)�.*�.&x.bx.,�.`x.)x.bx.)�8.`8.!8.*�.(�.,x.!�.a8.(x.b8.&�.-8.%8."8.&x. x.)�.b8.,�.*�.,x.)�.*�.&x.bx.,�."8.,8.%x.(�.)�."8.`x.)x.,8.+x.&x..8.(x.,x.%x.-8.*�.,�.`8.(�.a�."	�K��\�Y�X�][ێ���.*�.b8.!�.!8.,�."�.-x.bx.`x."8.!�.'�.(�.bx.+x.(x.*�.)x.,x. x.$8.,�.&x.`8.(�.-x.(�.&�.(�.bx.+x.(�8�%8.(�.+H]Y]8.%x.(�.)�."	�	�.!8.,�."�.-x.bx.`x."8.!�.'�.(�.bx.+x.(x.*�.)x.,x. x.$8.,�.&x.%�..x. x.&�.,x.&x.%�.-�. x.`x.)x.bx.)�8.`x.%x.b8.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!�.!8.,�. �.+x.`�.*�.bx.*�.,x.)�.*�.&x.bx.,�.&�.-8.%8.`8.!8.*�8.`�.*�.bH]Y]8.%x.(�.)�."8.`8.+x. x.*�.,�.(�.`x.)x.,8.'8.)x.(�.+x.%8.`x.)x.bx.)�. x.%8.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�.(�.+x.&�.-8.%8.`8.!8.*�8.`8.!8.*�.`8.%8.-8.(x.(�.,x.!�.+x.(�..x.b8.`�.&x.(8.,�.'�.(�.)�.(I�K�]�Y[��N���.`x.&x.&�.*�.)x.,x. x.$8.,�.&x.`8.(�.-x.(�.&�.(�.bx.+x.(��	�.&�.,x.&x.%�.-�. x.a8.'�.)x.c8.`x.)x.,8.'8..x. x. x.,x.&�.`8.!8.*�.`x.)x.bx.)�8.`x.%x.b8. x.,�.(�.`x.&x.&�.a8.'�.)x.c8.*�.(�.-�.+x.&�.,x.&x.%�.-�. H��H8.+x.(�.b8.,�.!�.`8.%8.-x.(�.)�.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!�.!8.,�. �.+x.&�.-8.%8.`8.!8.*�8.`�.*�.bx.*�.b8.!�.!8.,�."�.-x.bx.`x."8.!�.*�.(�.-�.+x.!8.,�. �.+x."8.,x.&�.!8..x.b8.%x.,�.(x.&�.(�.,8.`8.(8.%�.`8.!8.*��K�Y][ۘ[�]�Y[��N���.`8.'�.-8.b8.(x.*�.)x.,x. x.$8.,�.&x.`�.&x.`8.!8.*�.(�.+x.+x.&x..8.(x.,x.%x.-8.`8.(�.-x.(�.&�.(�.bx.+x.(��	�.&�.,x.&x.%�.-�. x.*�.)x.,x. x.$8.,�.&x.`8.'�.-8.b8.(x.`x.)x.bx.)�8.!8.,�. �.+x.`8.%8.-8.(x.(�.,x.!�.(�.+x.*�.,x.)�.*�.&x.bx.,�.%x.(�.)�."8.a8.(x.b8.%x.bx.+x.!�.*�.b8.!�."�.bx.,�8.`x.)x.,8.(�.,x.!�.a8.(x.b8.`�."�.b8. x.,�.(�.&�.-8.%8.`8.!8.*��K��]�Y]��]�Y[��N���.*�.b8.!�.*�.)x.,x. x.$8.,�.&x.`8. �.bx.,�.!8.-8.)�.%x.(�.)�."8.`8.(�.-x.(�.&�.(�.bx.+x.(��	�.'8..x. x.`8.+x. x.*�.,�.(�. x.,x.&�.`8.!8.*�.`x.)x.,8.(�.+x.'8..x.bx.%x.(�.)�."8.%�.,�.&x.`x.)x.bx.)�8.(�.,x.!�.a8.(x.b8.`�."�.b8. x.,�.(�.(�.-�.&x.(�.,x.&x.(�.+x.%8.*�.(�.-�.+x.+x.&x..8.(x.,x.%x.-8.&�.-8.%8.`8.!8.*��K�N�ۜ��X�Z\H�X�Z\���[�NY�
+\�X�Z\
+H����]�\��܊	�[�ۛ�ۈ�\�H�X�Z\��[ۈ�X�Z\	�N�[�[�[
+�X�Z\�K]���OH��]\ȏ���
+X�[
+_O����
+�X�Z\�WJ_O���. x.)x.,x.&�.a8.&�.*�.&x.bx.,�.(8.,�.'�.(�.)�.(x.`8.!8.*�.`8.'�.-�.b8.+x.%8.,�.`8.&x.-8.&x. x.,�.(�.`8.!8.*�.%�.,x.%8.a8.&����]��	��]ۈ�\��H����X�]ۈ�YH��X�Z\�Y]��\�H��.%8..x.`8.!8.*�.&x.-x.bx.%x.b8.+O؝]ۏ��]ۈ�\��H��[X\�KX�]ۈ�YH��X�Z\ݙ\��Y]ȏ�. x.)x.,x.&�.a8.&�.*�.&x.bx.,�.(8.,�.'�.(�.)�.(x.`8.!8.*�؝]ۏ��N	
+	�ܙX�Z\�Y]��\�I�K�ۘ�X��H���S[�[	
+	�ܙX�Z\ݙ\��Y]��K�ۘ�X��H
+
+HO�����S[�[
+
+N����Q�]�\�
+N��]K��]�Y]��Y]I�[	���]K�^�[\���]\�I�S	����	�^�\[ۜ��N�NB�\�[���[��[ۈ\��\��\�P���\�JK��JHY�
+K�����[��H�]\���[�NK�����[��H�YN�H�ۜ��[\H�]�]J
+K��T����[��
+N�ۜ�X�܈H
+\[و؈OOH�[�Y�[�Y�	��؋��\��[�[XZ[
+
+JH�\��[�\�\�
+K�\�\��[YNY�
+�]K�]\�]OOH���X�[ۈ�HY�
+\[و؈OOH�[�Y�[�Y�T؋��YۙY[�
+HYK��Y
+H����]�\��܊�.(�.,x.!�.(�.-�.&x.(�.,x.&x.&�.,x.#x."�.-x.'8..x.bx.`�."�.bx.*�.(�.-�.+x.`8.!8.*�.%x.bx.&x.%�.,�.!�.a8.(x.b8.a8.%8.bH�N]�Z]؋����Q^�\[ۊK��YK��]\��\��][ۗۛ�N���K�\���Y�]��[\�\���Y؞N�X�܋�\�ݙY؞N�؋�]]\�\�
+O˚Y\�ݙY�]��[\\]Y�]��[\�JNB�ؚ�X��\��YۊK��]\Έ����Y��\��][ۓ��N���K�\���Y]��[\�\���Y�N�X�܈JN�X�ܙ�\�UZT�\�[
+K	�.(�.-�.&x.(�.,x.&x.&�.-8.%8.`8.!8.*�.*�.,�.`8.(�.a�."8�%8.%x.(�.)�."8.*�.)x.,x. x.$8.,�.&x.`x.)x.,8.&�.(�.,8.)�.,x.%x.-8. x.,�.(�.&�.-8.%8.a8.%8.bx.`�.&x.`8.!8.*�.&x.-x.bI�NY�
+�]K�]\�]OOH���X�[ۈ�H�]�Sݙ\��YJJN[�H[]H�ܙK�]K�^ݙ\��Y\��K�YN�ܙK�\��\�
+
+NB��]\���YNH�]�
+\��H�\�
+�.(�.,x.!�.a8.(x.b8.(�.-�.&x.(�.,x.&x. x.,�.(�.&�.-8.%8.`8.!8.*���
+�\���Y\��Y�H
+��8�%8.(�.-x.`8.'�.(�."�.`8.'�.-�.b8.+x.%x.(�.)�."8.*�.%�.,�.&x.,8."8.(�.-8.!ȋ��\���N�]\���[�NH�[�[HK�����[��H�[�NB�B��\�[���[��[ۈ��\]T]ZX�����JJHY�
+X�[��\�ݙH�JH�]\��[�J�.&�.-8.%8.`8.!8.*��N�H�]�Z]�Y��\�]ZX�����Q]�Y[��JJN�B��]�
+\��H��]\���\�
+�.%x.(�.)�."8.*�.)x.,x. x.$8.,�.&x.)x.b8.,�.*�..8.%8.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\���Y\��Y�K��\���N�B�Y�
+�]K�]\�]OOH���X�[ۈ�	��K��]ZX�ՙ\�Y�YY�]\�OOH��[��H�]\���\�
+�.*�.%�.,�.&x.,8.`8.!8.*�.`8.&�.)x.-x.b8.(�.&x.`x.)x.bx.)�8. x.(�..8.$�.,�.`8.&�.-8.%8.%x.(�.)�."8.`�.*�.(x.b���\���NY�
+Z\�]ZX�����Q[Y�X�JJJH�]\���\�
+�.`8.!8.*�.&x.-x.bx.(�.,x.!�.&�.-8.%8.%8.b8.)�.&x.a8.(x.b8.a8.%8.bH8. x.(�..8.$�.,�.%x.(�.)�."8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8. x.b8.+x.&H���\���N�ۜ���HH�]Y]8.(�.-�.&x.(�.,x.&x.!8..x.b���H8.`x.)x.,8.&�.-8.%8.`8.!8.*�8�%8.(�.+x.(x.(�.,x.&�.`8.)�.)x.,�.%x.b8.,�.!�.*�.(�.-�.+x. �.bx.,�.(x.)�.,x.&H8.%x.(�.)�."8.(�.+x.%8.+x.bx.,�.!�.+x.-8.!�.`x.)x.,8.!8..x.b8."�.bx.,�.`x.)x.bx.)��8.(�.+x.%�
+�K��\�[P[[�[�
+��8.&�.,�.%��8.`8.)�.)x.,��
+�^�\[ە[YQY��X�[
+JH
+����Έ�
+�K��Ԙ]�
+���N��
+�K��T�]�Y�
+X]�Z]\��\��\�P���\�JK��JJH�]\��K��\��][ۓ��HH��NK��\���Y]H�]�]J
+K��T����[��
+NK��\���Y�HH
+\[و؈OOH�[�Y�[�Y�	��؋��YۙY[�
+H�؋��\��[�[XZ[
+
+H���H�\��[�\�\�
+K�\�\��[YNK���\�HK���\��NK���\˜\�
+��N��\��[�\�\�
+K�\�\��[YK]�����[\
+
+K^���HJN��X�[ۊ�]ZX������H��^�\[ۈ�K�Y	ۛ�_H0���H	�[ۙ^JK��[��[[�[�
+_H0����	�[ۙ^JK��\�[P[[�[�
+_H0��8.`8.)�.)x.,�	�^�\[ە[YQY��X�[
+J_X
+N���S[�[
+
+N�\�
+8.&�.-8.%8.`8.!8.*�	�K�YH8.`x.)x.bx.)�8�%8.(�.+x.%8.*�.+x.!�.'x.,x.b8.!�.%x.(�.!�. x.,x.&X
+N�[�\��]�
+N]�Z]�Y��\��\�U�Y]�
+N]�Z]�[�^�\[ۊK�Y
+NB��]�[��\�P\�ݘ[�[��[��H�[�N]]Y]�]\И]��[��[��H�[�N�[��[ۈ�ۙ�\�P]Y]�]\И]�
+][\����\[�K]Kې��\]_JHY�]Y]�]\И]��[��[��Z][\˛[��
+\�]\���ۜ�ۘ\��Z][\˛X\
+
+ܛ��X�[۟JOO�ܛ�Μ����ˋ�����N��[X�[۟JJN�[�[�[
+	�.&�.,x.&x.%�.-�. x.*�.%�.,�.&x.,8.%�.-x.b8.`8.%x.(�.-x.(�.(x.a8.)�.bI���
+��\[�J_H0��	�
+]J_H0��	�ۘ\���[��H8.(�.,�.(�. x.,�.(����.%x.(�.)�."8.*�.%�.,�.&x.,8.)x.b8.,�.*�..8.%8. x.b8.+x.&x.&�.,x.&x.%�.-�. x.%�.-x.)x.,8.(�.,�.(�. x.,�.(�8.(�.,�.(�. x.,�.(�.%�.-x.b8.a8.(x.b8.'8.b8.,�.&x."8.,8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x.*�.%�.,�.&x.,8.a8.(x.b8.*�.b8.!�. �.bx.+x.!8.)�.,�.(x.(8.,�.(�.&x.+x. O���ۘ\���X\
+
+ܛ��X�[۟JOO���
+���˘��_	�.a8.(x.b8.'�.&�.`8.!8.*��_H8���	�X�[ۏOOI����I���.(�.-�.&x.(�.,x.&x.&�.-8.%8.`8.!8.*�Ή�.*�.b8.!�.`8. �.bx.,�."�.-x.%�.(�.+x."�.-x.bx.`x."8.!��O��
+K���[�	��_OYH�]Y]�]���ܙ\�Ȉ��OH��]\ȏ���	��]ۈYH�]Y]�]��[��[��\��H����X�]ۈ��.(�. x.`8.)x.-8. O؝]ۏ��]ۈYH�]Y]�]��ۙ�\�H��\��H��[X\�KX�]ۈ��.(�.-�.&x.(�.,x.&x.&�.,x.&x.%�.-�. x.%�.,x.bx.!�.*�.(x.%؝]ۏ��N]�[��[YY�[�N�
+	��[�[	�K���۝[��X[�\J
+OO���[��[Y]�YN�N	
+	��]Y]�]��[��[	�K�ۘ�X��X���S[�[	
+	��]Y]�]��ۙ�\�I�K�ۘ�X��X\�[��
+OO�Y�]Y]�]\И]��[��[��\�]\��]Y]�]\И]��[��[��]�YN�
+	��]Y]�]��ۙ�\�I�K�\�X�Y]�YN�ۜ��\�[�V�N�H�܊�ۜ�ܛ��X�[۟Hوۘ\��
+^Y��[��[Y
+X��XZ��^Y�T؋��YۙY[�
+J]����]�\��܊	�.`8."�.*�."�.,x.&x.*�.(x.%8.+x.,�.(�..8. x.(�..8.$�.,�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.`�.*�.(x.b	�NY�\���]����]�\��܊	�.a8.(x.b8.'�.&�.`8.!8.*�.`�.&x."�..8.%8. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%8. x.(�..8.$�.,�.`8.)x.-�.+x. x.`8.!8.*�.`�.*�.(x.b	�NY���˘��\[�HOOX��\[�J]����]�\��܊8.`8.!8.*�.`8.&�.a�.&x. �.+x.!�	ܛ�˘��\[�_H8.a8.(x.b8.`�."�.b	���\[�_X
+NY���˘�\�[�\���]HOOY]J]����]�\��܊8.`8.!8.*�.+x.(�..x.b8.)�.,x.&x.%�.-x.b	ܛ�˘�\�[�\���]_H8.`x.%x.b8. x.,�.)x.,x.!�.%x.(�.)�."8.)�.,x.&x.%�.-x.b	�]_H8. x.(�..8.$�.,�.`8.&�.-8.%8.)�.,x.&x.%�.-x.b8. �.+x.!�.`8.!8.*�
+NY�X�[ۏOOI����I�^�ۜ��\�[X]�Z]�[��\�T�]�Y]˜�[�ܛ��K���\[�K]_K�[��Y�
+OO��[�	�\�ݙI�I��؋��YۙY[�
+K�[��[Y�
+OO��[��[Y�Y�؋��X�ۘ�[X][ۓݙ\��Y]��[�Y]\Δ�[[Z[�\�T�]�Y]˛X[�X[�[�Y]\�[��ΚYO�؋�]�Y[��P�\�T�X��[Y[�][ۜ���\�RY�YJK��ܙ\�Ί
+OO��K�]�N�\�[����\�O��ۜ�O[X\]�Q^�\[ۊ��\�
+N�K�YY��\��Y�]\��\��\��\�P���\�JK]Y]8.(�.-�.&x.(�.,x.&x.&�.-8.%8."8.,�. x.%x.,�.(�.,�.!�8�%8.!8..x.b���H8.(�.+x.%8.`x.)x.,8.%x.,x.)�.%x.&x.%x.(�.!�8.a8.(x.b8."�.bx.,�8.(�.+x.(x.(�.,x.&�.`8.)�.)x.,�.%x.b8.,�.!�.*�.(�.-�.+x. �.bx.,�.(x.)�.,x.&N��Έ	�K��Ԙ]�N�N�	�K��T�]�X
+N_JN�\�[˜\�
+���N���˘��K�Μ�\�[�O˜�]\�OOI����Y	�Y\��Y�N��\�[�O˜�]\�OOI����Y	���.&�.-8.%8.`8.!8.*�.`x.)x.bx.)�Μ�\�[�O˜�X\�۟	�.(�.,x.!�.a8.(x.b8.&�.-8.%	�JNY[�HY�X�[ۏOOI��\�Y�I�^Y�X�[�	ܙ\]Y\���\�Y�I�J]����]�\��܊	�.a8.(x.b8.(x.-x.*�.-8.%�.&8.-8.c8.*�.b8.!�."�.-x.bx.`x."8.!��N�ۜ���\�X]�Z]؋�^�\[ۑ]Z[
+��˚Y
+NY�Y��\���\����\[�HOOX��\[�_��\���\�[�\���]HOOY]_��\���[��YOO\��˜�[��Y��\���]\�OO\��˜�]\�V���[��	�[���\�Y	�	�[�[��ۙ^�^I�K�[��Y\���\���]\�J]����]�\��܊	�. �.bx.+x.(x..x.)x.`8.!8.*�.`8.&�.)x.-x.b8.(�.&x.`x.)x.bx.)�8. x.(�..8.$�.,�.%x.(�.)�."8.`�.*�.(x.b	�NY��[��[Y
+X��XZ��ۜ�][�]�]J
+K��T����[��
+N]�Z]؋��\]Y\��\�Y�X�][ۊ��˚Y��\���]\�ܙ\]Y\�Y�]�]�\]Y\�Y؞N�؋�]]\�\�
+O˚Y\]Y�]�]JN�\�[˜\�
+���N���˘��K�Ν�YKY\��Y�N��.*�.b8.!�.`8. �.bx.,�."�.-x.%�.(�.+x."�.-x.bx.`x."8.!�.`x.)x.bx.)��JNY[�H����]�\��܊	�.a8.(x.b8.(�.+x.!�.(�.,x.&�.*�.%�.,�.&x.,8.&x.-x.bI�NX�]�
+\��܊^ܙ\�[˜\�
+���N����˘��K�Ι�[�KY\��Y�N�\��܋�Y\��Y�_JN�B�Y�X�[��[Y	��
+	��]Y]�]���ܙ\���JI
+	��]Y]�]���ܙ\���K�^�۝[�X8.%x.(�.)�."8.`x.)x.bx.)�	ܙ\�[˛[��K��ۘ\���[��XB�]�Z]ې��\]J
+NY��[��[Y
+\�]\���\�
+8.&�.,x.&x.%�.-�. x.*�.,�.`8.(�.a�."	ܙ\�[˙�[\��O�����K�[��H8.(�.,�.(�. x.,�.(�8�%8.*�.(�..8.%8.(�.,�.(�. x.,�.(�.%�.-x.b8.`8.*�.)x.-�.+x.`x.)x.bx.)�
+N�[�[�[
+	�.'8.)x.&�.,x.&x.%�.-�. x.*�.%�.,�.&x.,	��.*�.,�.`8.(�.a�."	ܙ\�[˙�[\��O�����K�[��K��ۘ\���[��H8.(�.,�.(�. x.,�.(���ܙ\�[˛X\
+�O���
+����J_H8�%	�
+��Y\��Y�J_O��
+K���[�	��_X	��]ۈYH�]Y]�]�ۙH��\��H��[X\�KX�]ۈ��.`8.*�.(�.a�."8.*�.-8.bx.&O؝]ۏ��N	
+	��]Y]�]�ۙI�K�ۘ�X��X���S[�[H�[�[H�]Y]�]\И]��[��[��Y�[�N�B�NB��[��[ۈ�ۙ�\�P�[��\�P���J�������\[�K]Kې��\]_JHY�
+X�[��\�ݙH�JH�]\��[�J�.&�.-8.%8.`8.!8.*��NY�
+�[��\�P\�ݘ[�[��[��\���˛[���]K�]\�]OOH���X�[ۈ�H�]\���ۜ�ۘ\��H��Ӌ�\��J��Ӌ���[��Y�J����JN�ۜ��[Hۘ\����YX�J
+�[K���OO��[J�X]���[�
+�[X�\���˜�\�[W�[[�[�
+J�L
+K
+K�L�[�[�[
+8.(�.-�.&x.(�.,x.&x.&�.-8.%	۝[Jۘ\���[��
+_H8.`8.!8.*�.%�.-x.b8.`8.)x.-�.+x. X���
+��\[�J_H0��	�
+]J_H0��8.(�.)�.(H	�[ۙ^J�[
+_H8.&�.,�.%����.%x.(�.)�."8.+x.bx.,�.!�.+x.-8.!����H8.(�.+x.%8.%x.,x.)�.%x.&H8.`x.)x.,8.!8..x.b8."�.bx.,�.+x.-x. x.!8.(�.,x.bx.!�8.`�.%8.(�.(�.+x.(x.(�.,x.&�.`8.)�.)x.,�.%x.b8.,�.!�.*�.(�.-�.+x. �.bx.,�.(x.)�.,x.&x. x.b8.+x.&x.&�.,x.&x.%�.-�. x.`x.%x.b8.)x.,8.(�.,�.(�. x.,�.(�8.`8.!8.*�.%�.-x.b8.`8.&�.)x.-x.b8.(�.&x.*�.%�.,�.&x.,8.*�.(�.-�.+x.(x.-x.*�.)x.,x. x.$8.,�.&x.`8."�.-�.b8.+x.(x.`�.(�.!�."8.,8. �.bx.,�.(x.a8.)�.bH8.a8.(x.b8.*�.b8.!�. �.bx.+x.!8.)�.,�.(x.`x.)x.,8.a8.(x.b8.&�.,x.&x.%�.-�. x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���]Z[Ϗ�[[X\�O�.(�.,�.(�. x.,�.(�.%�.-x.b8.`8.)x.-�.+x. O��[[X\�O��ۘ\���X\
+���O���
+��˘��H��˚Y
+_H0��	�[ۙ^J��˜�\�[W�[[�[�
+_H8.&�.,�.%���
+K���[�	��_O�]Z[ϏYH��[��\�T��ܙ\�Ȉ��OH��]\ȏ����	��]ۈYH��[��\�P�[��[��\��H����X�]ۈ��.(�. x.`8.)x.-8. O؝]ۏ��]ۈYH��[��\�P�ۙ�\�H��\��H��[X\�KX�]ۈ��.(�.-�.&x.(�.,x.&x.+x.&x..8.(x.,x.%x.-8.`x.)x.,8.&�.-8.%8.(�.,�.(�. x.,�.(�.%�.-x.b8.'8.b8.,�.&x.`8. x.$�.$x.c؝]ۏ��N]�[��[YH�[�N	
+��[�[�K���۝[��X[�\H
+
+HO���[��[YH�YN�N	
+�؝[��\�P�[��[�K�ۘ�X��H���S[�[	
+�؝[��\�P�ۙ�\�H�K�ۘ�X��H\�[��
+
+HO�Y�
+�[��\�P\�ݘ[�[��[��H�]\���[��\�P\�ݘ[�[��[��H�YN	
+�؝[��\�P�ۙ�\�H�K�\�X�YH�YN	
+�؝[��\�P�[��[�K�^�۝[�H	�.*�.(�..8.%8.(�.,�.(�. x.,�.(�.%�.-x.b8.`8.*�.)x.-�.+I��H�ۜ��\�[�H]�Z]�[��\�T�]�Y]˜�[�ۘ\�����\[�K]_K[��Y�
+OO��[�	�\�ݙI�H	��؋��YۙY[�
+K�[��[Y�
+OO��[��[Y��Y�؋��X�ۘ�[X][ۓݙ\��Y]��[�Y]\Δ�[[Z[�\�T�]�Y]˛X[�X[�[�Y]\��[��ΚYO�؋�]�Y[��P�\�T�X��[Y[�][ۜ���\�RY�YJK���ܙ\�ΊۙK��[�
+OO��Y�X�[��[Y	��	
+	�؝[��\�T��ܙ\���JH	
+	�؝[��\�T��ܙ\���K�^�۝[�X8.%x.(�.)�."8.`x.)x.bx.)�	�ۙ_K����[�H8.(�.,�.(�. x.,�.(��K��]�N�\�[�����O��ۜ�O[X\]�Q^�\[ۊ���N�K�Y\��˚Y�ۜ���OX]Y]8.(�.-�.&x.(�.,x.&x.`x.&�.&�.*�.)x.,�.(�.(�.,�.(�. x.,�.(�8�%8.!8..x.b���H8.(�.+x.%8.`x.)x.,8.%x.,x.)�.%x.&x.%x.(�.!�8.a8.(x.b8."�.bx.,�8.(�.+x.(x.(�.,x.&�.`8.)�.)x.,�.%x.b8.,�.!�.*�.(�.-�.+x. �.bx.,�.(x.)�.,x.&N�8.(�.+x.%	�K��\�[P[[�[�H8.&�.,�.%��8.`8.)�.)x.,�	�^�\[ە[YQY��X�[
+J_N��Έ	�K��Ԙ]�N�N�	�K��T�]�X�]\��\��\��\�P���\�JK��JNK�JN�ۜ����Y\�\�[˙�[\��O����]\�OOI����Y	�K��\Y\�\�[˙�[\��O����]\�OOI����Y	�N]�Z]ې��\]J
+NY��[��[Y
+H�]\���\�
+8.&�.-8.%8.`x.)x.bx.)�	����Y�[��H8.`8.!8.*�0��8.a8.(x.b8.&�.-8.%	���\Y�[��H8.`8.!8.*�
+N�[�[�[
+	�.'8.)x.+x.&x..8.(x.,x.%x.-8.(�.,�.(�. x.,�.(�.%�.-x.b8.`8.)x.-�.+x. I���OH��]\ȏ�.&�.-8.%8.`x.)x.bx.)�	����Y�[��H8.`8.!8.*�0��	�[ۙ^J���Y��YX�J
+��OO��܋�[[�[�
+J_H8.&�.,�.%�0��8.a8.(x.b8.&�.-8.%	���\Y�[��H8.`8.!8.*���ܙ\�[˛X\
+�O���
+����J_H8�%	܋��]\�OOI����Y	���.&�.-8.%8.`8.!8.*�.`x.)x.bx.)�Κ
+���X\�ۊ_O��
+K���[�	��_X	��]ۈYH��[��\�QۙH��\��H��[X\�KX�]ۈ��.`8.*�.(�.a�."8.*�.-8.bx.&O؝]ۏ��N	
+	�؝[��\�QۙI�K�ۘ�X��X���S[�[H�]�
+\��܊H��\�
+	�.%x.(�.)�."8.'8.)x.)x.b8.,�.*�..8.%8.a8.(x.b8.*�.,�.`8.(�.a�."�	��\��܋�Y\��Y�J��8�%8. x.(�..8.$�.,�.(�.-x.`8.'�.(�."�. x.b8.+x.&x.)x.+x.!�.`�.*�.(x.b	�	��\���N�B��[�[H��[��\�P\�ݘ[�[��[��Y�[�N�B�NB���[��[ۈ�ۙ�\�T]ZX�����JJHY�
+X�[��\�ݙH�JH�]\��[�J�.&�.-8.%8.`8.!8.*��NY�
+Z\�]ZX�����Q[Y�X�JJJH�]\���\�
+�.`8.!8.*�.&x.-x.bx.(�.,x.!�.&�.-8.%8.%8.b8.)�.&x.a8.(x.b8.a8.%8.bH8. x.(�..8.$�.,�.%x.(�.)�."8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8. x.b8.+x.&H���\���N�[�[�[
+�8.(�.-�.&x.(�.,x.&x.&�.-8.%8.`8.!8.*�	�
+K�Y
+_X�]��\��H�]ZX��X���KX������ۙϸ.'�.&�. �.bx.+x.(x..x.)x.!8.(�.&�.%�.,x.bx.!�.*�.+x.!�.'x.,x.b8.!�.`x.)x.,8.(�.+x.%8.%x.(�.!�. x.,x.&O���ۙϏ]��\��H�]ZX��X���KYܚY��]���[���H�8.&8.&x.,�.!8.,�.(���[�����[ۙ^JK��[��[[�[�
+_O؏��]��]���[�����8.(�.,8.&�.&���[�����[ۙ^JK��\�[P[[�[�
+_O؏��]��]���[��.'8.)x.%x.b8.,�.!�.(�.+x.%��[�����[ۙ^J�[X�\�K��\�[P[[�[�
+HH�[X�\�K��[��[[�[�
+J_O؏��]��]���[��.'8.)x.%x.b8.,�.!�.`8.)�.)x.,���[�����
+^�\[ە[YQY��X�[
+JJ_O؏��]���]���X[�.(�.,8.&�.&�."8.,8.&�.,x.&x.%�.-�. x.'8..x.bx.(�.-�.&x.(�.,x.&H8.`8.)�.)x.,�8.`x.)x.,8.`8.*�.%x..8.'8.)x.a8.)�.bx.`�.&H]Y]��8. x.,�.(�.&�.-8.%8.&x.-x.bx.`8.&�.a�.&x. x.,�.(�.%x.,x.%8.*�.-8.&x.`�."8. �.+x.!�.'8..x.bx.%x.(�.)�."8.a8.(x.b8.`�."�.b8. x.,�.(�.&�.-8.%8.+x.,x.%x.`�.&x.(x.,x.%x.-��X[��]����]ۈ�\��H����X�]ۈ�YH�]ZX�����P�[��[��. x.)x.,x.&�.a8.&�.%x.(�.)�."؝]ۏ��]ۈ�\��H��[X\�KX�]ۈ�YH�]ZX�����P�ۙ�\�H��.(�.-�.&x.(�.,x.&x.(�.+x.%8.%x.(�.!�.`x.)x.,8.&�.-8.%8.`8.!8.*�؝]ۏ��
+N	
+��]ZX�����P�[��[�K�Y]�[�\�[�\���X�ȋ���S[�[
+N	
+��]ZX�����P�ۙ�\�H�K�Y]�[�\�[�\���X�ȋ
+
+HO���\]T]ZX�����JJJNB��ʈKKKKKKKKKKKKKKKH�[�[�\�[��KKKKKKKKKKKKKKKH
+��[��[ۈ���Y�ܚٛ��Y]�X��
+H�ۜ�[����HH
+���HO��ۜ�]HH���˘�\�[�\���]H���˙]H���]\����	��\�]�P��\[�T������B�	���[�X��\����\[�J��˘��\[�JB�	��
+\�]K��[\�˙���H]H�H�]K��[\�˙���JB�	��
+\�]K��[\�˝�]HH�]K��[\�˝�B�	��
+�]K��[\�˘��\[�HOOH�S��ܛX[^�S]�P��\[�P��J��˘��\[�JHOOH�ܛX[^�S]�P��\[�P��J�]K��[\�˘��\[�JJNN�ۜ�]X[]T����H
+]�Sݙ\��Y]��]K�]X[]H�JK��[\�[����JK��[\�
+���HO���˜�[��Y	��\��˚\��\��]�Y
+N�ۜ�Y[�����H
+]�Sݙ\��Y]��]K�[��ܛX][ۘ[^�\[ۜ��JK��[\�[����JK��[\�
+���HO�VȘ���Y��\�ݙY�K�[��Y\���˜�]\�JN�ۜ��X��\�����H
+]�Sݙ\��Y]��]K��X��\��JK��[\�[����JN�ۜ��X��\��R�^HH�]�X\
+�X��\����˛X\
+
+���HO��	ܛ�˘�\�[�\���]__	ۛܛX[^�S]�P��\[�P��J��˘��\[�J_X���JJN�ۜ�Y�ܙY�]S�[��Y�ܙT�X�HH]X[]T���˜�YX�J
+�[K�[�HO��ۜ��[H�[X�\��[��^�\[ۗ���[�
+N�ۜ��X��\�H�X��\��R�^K��]
+	ܝ[���\�[�\���]__	ۛܛX[^�S]�P��\[�P��J�[����\[�J_X
+N�ۜ��\���YH�[X�\��X��\�˜�\���Y���[�
+N�ۜ��\ܝY�[�H�[X�\��X��\�˛�[����[�
+N�ۜ��X��\��ݙ\�ԝ[�H�X��\�˛�[����[�OH�[	���\ܝY�[�
+��\���Y�H�[�]\���[H
+�
+�X��\��ݙ\�ԝ[���\ܝY�[��X]�X^
+�[H�\���Y
+JNK
+N�ۜ�Y�ܙY�]S�[�HX]�X^
+Y�ܙY�]S�[��Y�ܙT�X�HHY[����˛[��
+N�ۜ��YY�[�H��^�\[ۜ˙�[\�
+���HO�[����J���H	��VȘ���Y��\�ݙY�K�[��Y\���˜�]\�JK�[���ۜ�]X[]T�XYHH\��^K�\�\��^J]�Sݙ\��Y]��]K�]X[]JH	��Z\�]�P�ܙQ\��܊�.'8.)x. x.(�.,8.%�.&�.(�.+x.%�N�]\���[�]�Z[X�N�]X[]T�XYH]�Sݙ\��Y]��]K�^�\[ۜԙXYK��[��]X[]T�XYH	��]X[]T���˛[���Y�ܙY�]S�[���YY�[��\�ݘ[�]�Z[X�N�]�Sݙ\��Y]��]K�^�\[ۜԙXYH	��
+�]K�]\�]OOH	���X�[ۉ�
+X[�X[Z\�[�˜]Y]YT�]K�����OOH�[	���\�P���\�K�]Y]YT�]K�����OOH�[	��ܛ���^U�ܚؙ[���]Y]YT�]K�����OOH�[
+JK�\�ݘ[Έ��^�\[ۜ˙�[\�
+���HO�[����J���H	��\��˘���\�T�\]Y\�Y	����˜�]\�OOH	�[XY�I�K�[��
+�
+�]K�]\�]OOH	���X�[ۉ��
+X[�X[Z\�[�˜]Y]YT�]K�����˛[��
+H
+�
+�\�P���\�K�]Y]YT�]K�����˛[��
+H
+�
+ܛ���^U�ܚؙ[���]Y]YT�]K�����˛[��
+H��]��]
+��^�\[ۜ˙�[\����O���˜�]\�OOI�Z\��[�[���K�X\
+���O���˛X[�X[Z\�Y��˚Y
+JK��^�JK�����\Έ��^�\[ۜ˙�[\�
+���HO�[����J���H	��\��˘���\�T�\]Y\�Y	��VȘ���Y��\�ݙY�K�[��Y\���˜�]\�H	��Ș�\�Y�Z[�ȋ�[���\�Y��[XY�H�K�[��Y\���˜�]\�JK�[���NB���[��[ۈ�[�\��]�
+HY��]K�]\�]OOI���X�[ۉɉ�؋��YۙY[�
+J^�X[�X[Z\�[�˛�Y[�[��
+N��\�P���\�K��Y[�[��
+N�ܛ���^U�ܚؙ[����Y[�[��
+N�B��ۜ�[��YH��UWԓ�T���]K���WN�ۜ��ܚٛ��H���Y�ܚٛ��Y]�X��
+N	
+�ۘ]�\��K�[��\�SH��UT˛X\
+
+�HO��ۜ�][\�H˚][\˙�[\�
+]
+HO�[��Y�[��Y\�]�Y
+H	��
+Z]�Y[��]K���HOOH�YZ[��JNY�
+Z][\˛[��
+H�]\�����]\��
+��[��\��H��]�[X�[���
+˙ܛ�\
+_O��[��
+][\�X\
+�
+]
+HO��H�Y�H����]�YH��\��H���]K���]HOOH]�Y��X�]�H����H�]K\��]OH��]�YH�]OH��
+]�X�[
+_H���ݙ��Y]Л�H����\�XKZY[�H��YH��]H��P�Ӕ��]�X�ۗ_H�Ϗ�ݙϏ�[���
+]�X�[
+_O��[���	�]�YOOH�^�\[ۜȈ���\��H��]�X��[�����ܚٛ�˛�[�]�Z[X�H��[J�ܚٛ�˛�[�H���%�O؏����B�	�]�YOOH�]Y]\�]�Y]Ȉ���\��H��]�X��[��]OH�.`8.!8.*�.(�.+H]Y]8.%x.(�.)�."8.`�.&x.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&x.%�.-x.b8.%�.-x.b8.`8.)x.-�.+x. H���]�Sݙ\��Y]��]K�^�\[ۜԙXYH��[J]Y]�]�Y]˜������^�\[ۜ�ٚ[\�Μ�]K��[\���[�X��\����\[�_JK�[��
+H���%�O؏����B�	�]�YOOH�\�ݘ[Ȉ���\��H��]�X��[��]OH�.!8.,�. �.+x."8.,x.&�.!8..x.b8.%�..8. x.)�.,x.&x.%�.-x.b8.%x.,�.(x.*�.-8.%�.&8.-8.c8.(�.)�.(x.`8.!8.*�."�.-x.bx.`x."8.!�.`x.)x.bx.)�.`�.&x. �.+x.&�.`8. �.%x.%�.-x.b8.`�.*�.)x.%����ܚٛ�˘\�ݘ[�]�Z[X�H��[J�ܚٛ�˘\�ݘ[�H���%�O؏����B��O��
+B����[���B�
+NJK���[���NB���[��[ۈ�]�YX�\���\�Y
+��\�Y
+H�ۜ��[H	
+��\�[�N�ۜ��]ۈH	
+�ۘ]����H�NY�
+\�[X�]ۊH�]\���[��\��\�����J��YX�\�X��\�Y���\�Y
+N�]ۋ��]]�X�]J�\�XKY^[�Y���[��X��\�Y
+JN�]ۋ��]]�X�]J�\�XK[X�[���\�Y��.`x.*�.%8.!�.`x.%�.&�.`8.(x.&x..H���."�.b8.+x.&x.`x.%�.&�.`8.(x.&x..H�N�]ۋ�]HH��\�Y��.`x.*�.%8.!�.`x.%�.&�.`8.(x.&x..H���."�.b8.+x.&x.`x.%�.&�.`8.(x.&x..H��H���[�ܘY�K��]][J�]Y]\�YX�\�X��\�Y���\�Y��H����N�H�]�
+�H�B�B���[��[ۈ�[�\�]Y]���
+H�ۜ��[\�H
+��Y�]K��]�\��JK��]X\
+
+�]�
+HO��]����\��Wٚ[\��JN�ۜ��[R\��Y\�H�[\˙�[\�
+�[JHO�
+�[K�\��W�\��܈	��\�][Y[��YYЛԙ]�Y]��[JJH�[K��[�OOH�[�ۛ�ۈ�K�[���ۜ��[T�]�Y]�H�[\˙�[\��][Y[��YYЛԙ]�Y]�K�[���ۜ��[U�Z][��H�[\˙�[\�
+�[JHO�Y�[K�\��Y	��Y�[K�\��W�\��܈	��Vȝ[�ۛ�ۈ������\�Y�H�K�[��Y\��[K��[�
+JK�[���ۜ��ܚٛ��H���Y�ܚٛ��Y]�X��
+N�ۜ��\�H���]N����Y��ΈKX�[��.%x.(�.)�."8.a8.'�.)x.c�Y]N��[\˛[���	۝[J�[\˛[��
+_H8.a8.'�.)x.c	ٚ[R\��Y\��0��8.&�.,x.#x.*�.,�	۝[J�[R\��Y\�_X���Iٚ[T�]�Y]��0��8.(�.+x.`8.%�.-x.(�.&���	۝[J�[T�]�Y]�_X���Iٚ[U�Z][���0��8.(�.+x.(�.,8.&�.&�	۝[J�[U�Z][��_X��[R\��Y\��[T�]�Y]������0��8.'�.(�.bx.+x.(H�X��.%x.(�.)�."8.a8.'�.)x.c8.%�.-x.b8.a8.%8.bx.(�.,x.&��ۙN��[R\��Y\��[T�]�Y]����\�����[\˛[�����Ȉ���K����]N��\���\���Έ�X�[��.%8..x.(8.,�.'�.(�.)�.(H�Y]N��.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%ȋۙN���K����]N��^�\[ۜȋ�Έ�X�[��.%x.(�.)�."8. �.bx.+x.'8.-8.%8.&�. x.%x.-�Y]N��ܚٛ�˛�[�]�Z[X�H�	۝[J�ܚٛ�˛�[�_H8.`8.!8.*�.`8.&�.-8.%��. x.,�.)x.,x.!�.`�.*�.)x.%8.(�.+x.%8.`8.!8.*��ۙN�]�ܚٛ�˛�[�]�Z[X�H�����ܚٛ�˛�[����\������ȈK����]N���\�Y�H��ΈX�[��.%x.-8.%8.%x.,�.(K�.+x.&x..8.(x.,x.%x.-�Y]N��ܚٛ�˘\�ݘ[�]�Z[X�H�	۝[J�ܚٛ�˙����\�_H8.!�.,�.&X��. x.,�.)x.,x.!�.`�.*�.)x.%8.!�.,�.&x.%x.-8.%8.%x.,�.(H�ۙN�]�ܚٛ�˘\�ݘ[�]�Z[X�H�����ܚٛ�˙����\����\������ȈK����]N���\ܝȋ�ΈKX�[��.+x.+x. x.(�.,�.(�.!�.,�.&H�Y]N��^ܝ8.*�.)x.,x. x.$8.,�.&H�ۙN���K�N�ۜ�X�]�HH�[�Z�N����Y�X]�[�Έ�^�\[ۜȋ\�ݘ[Έ��\�Y�H��N���\ܝȋ[Έ��\ܝȈV��]K���]WH�]K���]N	
+��]Y]��ȊK�[��\�SH�\˛X\
+
+�\
+HO�H�Y�H�����\���]_H��\��H��X�]�HOOH�\���]H��X�]�H����H	��\�ۙ_H��O���\���O�O��[�����
+�\�X�[
+_O؏��X[��
+�\�Y]J_O��X[���[���O�
+K���[���NY�
+�]K���]HOOH���Y�H	
+��]Y]��ȊK�]Y\�T�[X�܊	�V��Y�H�����Y�I�O˘Y]�[�\�[�\���X�ȋ
+]�[�
+HO�]�[���]�[�Y�][
+
+N��[Y[���][[Y[��RY
+���Y[����O˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JNJNB�B��][�[����Y[���H�[�N��[��[ۈ�^X�[ۑ�ܔ�]J
+H�ۜ��[\�H
+��Y�]K��]�\�]�R[�Z�T�]K��]�\��JK��]X\
+
+�]�
+HO�
+�]����\��Wٚ[\��JK�X\
+
+�[JHO�
+�����[K�]���\[�N��]����\[�K�\�[�\���]N��]���\�[�\���]HJJJN�ۜ�[��XYH�[\˙�[\�
+�[JHO�
+�[K�\��W�\��܈	��\�][Y[��YYЛԙ]�Y]��[JJH�[K��[�OOH�[�ۛ�ۈ�N�ۜ��YYЛԙ]�Y]�H�[\˙�[\��][Y[��YYЛԙ]�Y]�N�ۜ��Z][��H
+]�Sݙ\��Y]��]K��X��\��JK��[\�
+���HO�țZ\��[��ٚ[\ȋ�Z\��[��ܙ\]Z\�Y���Z][��ٚ[\ȋ�\��W�\��܈�K�[��Y\���˘�X��\���]\�JN�ۜ��ܚٛ��H���Y�ܚٛ��Y]�X��
+NY�
+[��XY�[��
+H�]\�����]N����Y�X�[�8.%x.(�.)�."8.a8.'�.)x.c8.%�.-x.b8.(x.-x.&�.,x.#x.*�.,�	۝[J[��XY�[��
+_H8.a8.'�.)x.c]Z[��. x.%8.%8..x.(�.,�.(�."�.-�.b8.+x.a8.'�.)x.c8.&�.,x.#x.*�.,�.%�.,x.bx.!�.*�.(x.%8.`x.)x.,8.*�.,�.`8.*�.%x..8. x.b8.+x.&H8.`x.)x.bx.)�.!8.b8.+x.(�.`8.&�.-8.%8.%x.(�.)�."8.%�.-x.)x.,8.(�.,�.(�. x.,�.(ȋۙN���Y�NY�
+�YYЛԙ]�Y]˛[��
+H�]\�����]N����Y�X�[�8.`8.%�.-x.(�.&���8.*�.,�.*�.(�.,x.&�.a8.'�.)x.c8.%�.-x.b8.+x.b8.,�.&x.`x.)x.bx.)�	۝[J�YYЛԙ]�Y]˛[��
+_H8.a8.'�.)x.c]Z[��.a8.(x.b8.'�.&�.(�.,�.(�. x.,�.(�.`�.&x.)�.,x.&x.%x.(�.)�."8.a8.(x.b8.`�."�.b8.a8.'�.)x.c8.`8.*�.-x.(�8�%8.%x.(�.)�."8.&�.,x.#x."�.-x.`x.)x.,8.)�.,x.&x. x.,x.&���8. x.b8.+x.&x.*�.(�..8.&�8.a8.(x.b8.%x.bx.+x.!�.(�.,x.&x.a8.'�.)x.c8.`8.%8.-8.(x."�.bx.,ȋۙN���\���NY�
+�Z][�˛[��
+H�]\�����]N��Z[K\�[[X\�H�X�[�8.%8..x.(�.,�.(�. x.,�.(�.%�.-x.b8.(�.,x.!�. �.,�.%	۝[J�Z][�˛[��
+_H8.&�.(�.-8.*x.,x.%��.)�.,x.&X]Z[��.%x.(�.)�."�X��\�8.`x.)x.bx.)�.%x.,�.(H�H8.*�.(�.-�.+H��8.%�.-x.b8.(�.,x.!�.a8.(x.b8.!8.(�.&��ۙN���\���NY�
+�ܚٛ�˘\�ݘ[�]�Z[X�H	���ܚٛ�˘\�ݘ[�	���[�	�\�ݙI�JH�]\�����]N��\�ݘ[ȋX�[�8.%x.(�.)�."8.!8.,�."�.-x.bx.`x."8.!��8.!8.,�. �.+x.+x.&x..8.(x.,x.%x.-	۝[J�ܚٛ�˘\�ݘ[�_H8.!�.,�.&X]Z[��.`8.&�.-8.%8.`8.!8.*�.`x.)x.,8.`8.+x. x.*�.,�.(�.%�.-x.b8.'8..x. x.a8.)�.bH8.%x.(�.)�."8.*�.)x.,x. x.$8.,�.&x. x.b8.+x.&x.+x.&x..8.(x.,x.%x.-�ۙN���\���N�ۜ�]Y]�Z][��H]Y]�]�Y]˜������^�\[ۜ���[\�Έ�]K��[\���[�X��\����\[�HJK�[��Y�
+]Y]�Z][��	����UWԓ�T���]K���WK�[��Y\�	�]Y]\�]�Y]��JH�]\�����]N�	�]Y]\�]�Y]��X�[�]Y]8.(�.+x.%x.(�.)�."	۝[J]Y]�Z][��_H8.`8.!8.*�]Z[�	�.%x.(�.)�."8.!8.,�.%x.+x.&�.`x.)x.,8.*�.)x.,x. x.$8.,�.&x.`�.&x.`8.!8.*�.`8.%8.-8.(x. x.b8.+x.&x.*�.b8.!�.*�.,x.)�.*�.&x.bx.,��ۙN�	��\���NY�
+�ܚٛ�˙����\�H�]\�����]N���\�Y�H�X�[�8.%x.-8.%8.%x.,�.(x.!8.,�."�.-x.bx.`x."8.!�	۝[J�ܚٛ�˙����\�_H8.!�.,�.&X]Z[��.%x.-8.%8.%x.,�.(x.!8.,�.%x.+x.&�.`x.)x.,8.*�.)x.,x. x.$8.,�.&x."8.,�. x.'8..x.bx."�.-x.bx.`x."8.!ȋۙN���\���NY�
+�ܚٛ�˛�[�]�Z[X�H	���ܚٛ�˛�[�H�]\�����]N��^�\[ۜȋX�[�8.%x.(�.)�."8.(�.,�.(�. x.,�.(�.'8.-8.%8.&�. x.%x.-	۝[J�ܚٛ�˛�[�_H8.`8.!8.*�]Z[��.`8.&�.-8.%8.*�.)x.,x. x.$8.,�.&H8.%x.(�.)�."8.(�.+x.%8.%x.b8.,�.!�8.`x.)x.,8.*�.b8.!�.%x.-8.%8.%x.,�.(x.!8.,�."�.-x.bx.`x."8.!ȋۙN���\���NY�
+]�ܚٛ�˛�[�]�Z[X�JH�]\�����]N��\���\��X�[��. x.,�.)x.,x.!�.%x.(�.)�."8.(�.+x.%8.`8.!8.*�."8.,�. x.$8.,�.&x. �.bx.+x.(x..x.)H�]Z[��.(�.,x.!�.a8.(x.b8.*�.(�..8.&�.)�.b8.,�.!�.,�.&x.*�.(x.%8."8.&x. x.)�.b8.,�."8.,8.`�.*�.)x.%8.(�.+x.%8."8.(�.-8.!�.*�.,�.`8.(�.a�."�ۙN���\���N�]\�����]N���\ܝȋX�[��.%8..x.*�.(�..8.&�.`x.)x.,8.+x.+x. x.(�.,�.(�.!�.,�.&H�]Z[��.!�.,�.&x.%�.-x.b8.%x.bx.+x.!�.%8.,�.`8.&x.-8.&x. x.,�.(�.*�.(x.%8.`x.)x.bx.)�8.%x.(�.)�."8.(�.,�.(�.)�.,x.&x.`x.)x.,^ܝ8.*�.)x.,x. x.$8.,�.&H�ۙN���ȈNB���[��[ۈ�[�\��^X�[ۊ���
+HY�
+�]K���]HOOH�X�\�Y]ȊH�]\��Y�
+�]K�]\�]OOH���X�[ۈ�T؋��YۙY[�
+JH�]\���ۜ�X�[ۈH�^X�[ۑ�ܔ�]J
+N�ۜ���]HH��UWԓ�T���]K���WK�[��Y\�X�[ۋ���]JH�X�[ۋ���]H��\���\���ۜ��]ۓX�[H��]HOOH���Y���.%8..x.a8.'�.)x.c8.&�.,x.#x.*�.,�.%�.,x.bx.!�.*�.(x.%8������.a8.&�.%x.b8.+H8��������[��\�Y�X�[�S
+�Y�\��Y�[���X�[ۈ�\��H��^XX�[ۋX�\�	�X�[ۋ�ۙ_H�]K[�^\��]OH��
+��]J_H���OH�[�ȈX�[�^H��\�XK[X�[H�. �.,x.bx.&x.%�.,x.%8.a8.&�	�
+X�[ۋ�X�[
+_H��]���[��. �.,x.bx.&x.%�.,x.%8.a8.&�.%�.-x.b8.`x.&x.,8.&x.,���[�����
+X�[ۋ�X�[
+_O؏��X[��
+X�[ۋ�]Z[
+_O��X[��]���]ۈ�\��H��[X\�KX�]ۈ�H�\OH��]ۈ��؝]ۓX�[O؝]ۏ���X�[ۏ�
+N�ۜ��\�H����]Y\�T�[X�܊��]K[�^\��]WH�N�ۜ�����H
+
+HO��ۜ��^��]HH�\��]\�]��^��]NY�
+�^��]HOOH���Y�H[�[����Y[���H�YNY�
+�]K���]HOOH���Y�H[�[����Y[���H�[�N
+��[Y[���][[Y[��RY
+��؛[Q�[T�[[X\�H�H��[Y[���][[Y[��RY
+���Y[����JO˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JN�]\��B�B����^��]JNN�\��Y]�[�\�[�\���X�ȋ����N�\��Y]�[�\�[�\���^Y�ۈ�
+]�[�
+HO�Y�
+]�[���^HOOH�[�\��]�[���^HOOH��H�]�[���]�[�Y�][
+
+N�����
+N�B�JNB���[��[ۈ�[�\���T�[X�
+
+H	
+�ܛ�T�[X��K�[��\�SHؚ�X��[��Y\�����\�B��X\
+
+���JHO��[ۈ�[YOH���H�	��]K���HOOH����[X�Y����O��
+���[YJ_O��[ۏ�
+B����[���NB���[��[ۈ�[�\��[\��
+H�ۜ���]HH��UW�PT��]K���]WN�ۜ���H	
+���ؘ[�[\�ȊNY�
+\��]H\��]K��[\��
+�]K���]HOOH�^�\[ۜȈ	���]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+JJH���Y[�H�YN���[��\�SH���]\��B����Y[�H�[�N�ۜ��H�]K��[\���ۜ���\[�SX�[H����\[�HOOH�S���.%�..8. x.&�.(�.-8.*x.,x.%Ȉ�����\[�N�ۜ�\�X�[ۓX�[H��\�X�[ۈOOH�S���.%�..8. x.&�.(�.,8.`8.(8.%Ȉ���\�X�[ێ���[��\�SH�]��\��H��[\�X�\�ZXY���]����ۙόK�8.`8.)x.-�.+x. x. �.bx.+x.(x..x.)x.%�.-x.b8."8.,8.%x.(�.)�."���ۙϏ�[���
+�[��SX�[
+
+J_H0��	�
+��\[�SX�[
+_H0��	�
+\�X�[ۓX�[
+_O��[���]����]ۈ�\��H����X�]ۈȈYH��[\����H�\OH��]ۈ�\�XKY^[�YH���]K��[\���[�H����]K��[\���[���.(�.b8.+H���.&�.(�.,x.&�.%x.,x.)�. x.(�.+x.!ȟO؝]ۏ���]���]��\��H��[\�Y�Y[Ȉ	��]K��[\���[������Y[��O��X�[�.)�.,x.&x.%�.-x.b8.%x.,x.bx.!�.%x.bx.&x. �.+x.!�."�.b8.)�.![�]\OH�]H�YH��]H��[YOH�ً�]_H�Z[�H�ՒT�P�W�UWє��_H�X^H�ՒT�P�W�UW��H�ς��X�[��X�[�.`8.)x.-�.+x. x."�.b8.)�.!�.)�.,x.&x.%�.-x.b��[X�YH���\�]���	�UW��T�U˛X\
+
+
+HO��[ۈ�[YOH�����_H�	ً��\�]OOH���H���[X�Y����O��
+��[YJ_O��[ۏ�
+K���[���_B���[X����X�[��X�[�.)�.,x.&x.`8.(�.-8.b8.(x.%x.bx.&B�[�]\OH�]H�YH�����H��[YOH�ً����_H�Z[�H�ՒT�P�W�UWє��_H�X^H�ً��H�ς��X�[��X�[�.)�.,x.&x.*�.-8.bx.&x.*�..8.%�[�]\OH�]H�YH��Ȉ�[YOH�ً��H�Z[�H�ً����_H�X^H�ՒT�P�W�UW��H�ς��X�[��X�[�.&�.(�.-8.*x.,x.%�[X�YH����\[�H����[ۈ�[YOH�S��.%�..8. x.&�.(�.-8.*x.,x.%���[ۏ��	���\[�SX\�\�
+K�X\
+
+�HO��[ۈ�[YOH��˘��_H�	ً���\[�HOOH˘��H���[X�Y����O��
+˛�[YJ_O��[ۏ�
+K���[���_B���[X����X�[��X�[�.&8..8.(�. x.(�.(�.(H�8."�.b8.+x.!�.%�.,�.!�[X�YH��\�X�[ۈ����[ۈ�[YOH�S��.'x.,�. x.`x.)x.,8.%�.+x.&H0��8.%�..8. x."�.b8.+x.!�.%�.,�.!���[ۏ���[ۈ�[YOH�H�	ً�\�X�[ۈOOH�H����[X�Y����O�.`8."x.'�.,�.,^[Y[�
+JO��[ۏ���[ۈ�[YOH�.'x.,�. H�	ً�\�X�[ۈOOH�.'x.,�. H����[X�Y����O�.'x.,�. O��[ۏ���[ۈ�[YOH�.%�.+x.&H�	ً�\�X�[ۈOOH�.%�.+x.&H����[X�Y����O�.%�.+x.&O��[ۏ����[X����X�[���]���]��\��H��[\�\�[[X\�H�YH��[\��[[X\�H���]���	
+�ٚ[\����H�K�Y]�[�\�[�\���X�ȋ
+
+HO��]K��[\���[�H\�]K��[\���[��[�\��[\��
+NJN�	
+�ّ]H�K�Y]�[�\�[�\���[��H�
+JHO��]K��[\�˙]HHK�\��]��[YN\T�\�]
+�]K��[\�˜�\�]
+N�\�
+�.`8.&�.)x.-x.b8.(�.&x.)�.,x.&x.%�.-x.b8.%x.(�.)�."8.`8.&�.a�.&H�
+�K�\��]��[YJN�[�\�
+NJN	
+�ٔ�\�]�K�Y]�[�\�[�\���[��H�
+JHO�\T�\�]
+K�\��]��[YJN�]K�Y�HHN�[�\�
+NJN	
+�ّ���H�K�Y]�[�\�[�\���[��H�
+JHO��]K��[\�˙���HHK�\��]��[YNY�
+�]K��[\�˙���H��]K��[\�˝�H�]K��[\�˝�H�]K��[\�˙���N�]K��[\�˜�\�]H��\��H��]K�Y�HHN�[�\�
+NJN	
+�ٕȊK�Y]�[�\�[�\���[��H�
+JHO��]K��[\�˝�HK�\��]��[YNY�
+�]K��[\�˝��]K��[\�˙���JH�]K��[\�˙���HH�]K��[\�˝��]K��[\�˜�\�]H��\��H��]K�Y�HHN�[�\�
+NJNș���\[�H���\�X�[ۈ�K��ܑXX�
+
+Y
+HO�	
+�Ȉ
+�Y
+K�Y]�[�\�[�\���[��H�
+JHO��]K��[\���YOOH����\[�H�����\[�H���\�X�[ۈ�HHK�\��]��[YN�]K�Y�HHN�[�\�
+NJNJNY�
+�]K���]HOOH�[XY�H�	���]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+JH�ۜ��XYHH]�Q[XY�T�]O˜�XYH	��]�Q[XY�T�]K��^HOOH[XY�T]Y\�R�^J
+N�ۜ�����H�XYH�]�Q[XY�T�]K�������N�ۜ��[H���˜�YX�J
+�[K���HO��[H
+��[X�\���˘[[�[�
+K
+N	
+�ٚ[\��[[X\�H�K�[��\�SH8."�.b8.)�.!�. �.bx.+x.(x..x.)H���
+�[��SX�[
+
+J_O؏�0��8.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.%�.-x.b8.(�.-�.&x.(�.,x.&x.`x.)x.bx.)���ܙXYH��[J���˛[��
+H���%�O؏�8.(�.,�.(�. x.,�.(�0��8.(�.+x.%8.(�.)�.(H��ܙXYH�	�[ۙ^L
+�[
+_H8.&�.,�.%���. x.,�.)x.,x.!�.`�.*�.)x.%8. �.bx.+x.(x..x.)x."8.(�.-8.!ȟO؏��]\��B��ۜ����YH���Y^�\[ۜ�
+NY�
+�]K�]\�]OOH	���X�[ۉ�	��؋��YۙY[�
+H	��
+[]�Sݙ\��Y]��]K�^�\[ۜԙXYH]�Sݙ\��Y]��]K��^HOOH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X
+JH	
+	�ٚ[\��[[X\�I�K�[��\�SH8."�.b8.)�.!�. �.bx.+x.(x..x.)H���
+�[��SX�[
+
+J_O؏�0��8.(�.,�.(�. x.,�.(�.`8.!8.*����%؏�0���H���%؏�0��8.(�.+x.%���%؏�0��8. x.,�.)x.,x.!�.(�.+x. �.bx.+x.(x..x.)x."8.(�.-8.!�8.a8.(x.b8.`�."�.b8.*8..x.&x.(�.c�]\��B�Y�
+�]K�]\�]OOH	���X�[ۉ�	���]K���]HOOH	��\�Y�I�	���]K���HOOH	��Y��XY	�H	
+	�ٚ[\��[[X\�I�K�[��\�SH8."�.b8.)�.!�. �.bx.+x.(x..x.)H���
+�[��SX�[
+
+J_O؏�0��8.!8.-8.)�.!8.,�. �.+x.%�.-x.b]Y]8.*�.b8.!�.(x.,���۝[J���Y�[��
+_O؏�8.`8.!8.*�.`�.&x.&�.(�.-8.*x.,x.%�.%�.-x.b8.`8.)x.-�.+x. H0��8.a8.(x.b8.`�."�.b8.(�.+x.%8. x.(�.,8.%�.&�.(�.+x.%8.*�.(�.-�.+x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(��]\��B�Y�
+\[و�\��]�Y]�]Y]YS[�HOOH	ٝ[��[ۉ�	���\��]�Y]�]Y]YS[�J
+JH	
+	�ٚ[\��[[X\�I�K�[��\�SH8."�.b8.)�.!�. �.bx.+x.(x..x.)H���
+�[��SX�[
+
+J_O؏�0��8.(�.,�.(�. x.,�.(�.`8.!8.*�.%�.-x.b8.`�.*�.)x.%8.`�.&x.&�.(�.-8.*x.,x.%�.%�.-x.b8.`8.)x.-�.+x. H��۝[J���Y�[��
+_O؏�0��8.a8.(x.b8.`�."�.b8.(�.+x.%8.(�.)�.(x. x.,�.(�.`8.!�.-8.&x.*�.(�.-�.+x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(��]\��B�	
+�ٚ[\��[[X\�H�K�[��\�SH8."�.b8.)�.!�. �.bx.+x.(x..x.)H���
+�[��SX�[
+
+J_O؏�0��8. x.,�.)x.,x.!�.%8..H��۝[J���Y�[��
+_O؏�^�\[ۈ0��8.`8. x.-8.&H�H��۝[J���Y��[\�
+JHO�K�ݙ\��JK�[��
+_O؏�8.(�.,�.(�. x.,�.(�0��8.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.`�.&x."�.b8.)�.!�.&x.-x.bH���[ۙ^L
+��[XY�\˙�[\�
+
+HO�[��[��J�]JJK��YX�J
+K�HO�H
+�˘[[�[�
+J_O؏�8.&�.,�.%�B��ʈKKKKKKKKKKKKKKKH��]\�KKKKKKKKKKKKKKKH
+��[��[ۈ\��R\�
+
+H�ۜ��]�H��][ۋ�\���\X�J׈������K��]
+�ȊV�N�]\����UW�PTܘ]�H��]��
+�[��ːT��ӑ�Q�˙Y�][��]H���Y�NB��[��[ۈ����]K��H�JHY�
+�˙^�[\�Hؚ�X��\��Yۊ�]K�^�[\��˙^�[\�NY�
+�˙�[\��Hؚ�X��\��Yۊ�]K��[\���˙�[\��N��][ۋ�\�H��Ȉ
+���]NB��[��˘Y]�[�\�[�\��\��[��H�
+
+HO��ۜ��H\��R\�
+
+NY�
+T��UWԓ�T���]K���WK�[��Y\��JH�\�
+8.*�.-8.%�.&8.-8.c	�����\���]K���WK��[Y_H8.`8. �.bx.,�.*�.&x.bx.,�.&x.-x.bx.a8.(x.b8.a8.%8.bX��\���N��][ۋ�\�H�����Y��]\��B��]K���]HH��]K�Y�HHN���Q�]�\�
+N�[�\�
+N	
+�ݚY]ԛ���K����\���]�[��ܛ���YHJN�[��˜�ܛ������Z]�[܎���[���JNJN�ʈKKKKKKKKKKKKKKKHXZ[��[�\�KKKKKKKKKKKKKKKH
+��ۜ��QU��H�N�ۜ���\��U�ܚ��X�T���O^���\[�N��[]N��[N�[��[ۈ�[�\���\��U�ܚ��X�J��Y�J^Y��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+J^����[��\�SI��X�[ۈ�\��H�[�[��.*�.&x.bx.,�.&x.-x.bx.`�."�.bx.%�.,8.`8.&�.-x.(�.&x."8.(�.-8.!�.*�.)x.,x.!�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�8.a8.(x.b8.(x.-x. �.bx.+x.(x..x.)x."8.,�.)x.+x.!���X�[ۏ��ܙ]\���B��ۜ���\[�Y\�SP�]�T�Y]ː��TS�QT˙�[\��[�X��\����\[�JN�Y�X��\[�Y\˛[��
+^����[��\�SI��X�[ۈ�\��H�[�[��.a8.(x.b8.(x.-x.*�.-8.%�.&8.-8.c8.&�.(�.-8.*x.,x.%���X�[ۏ��ܙ]\���B�Y�X��\[�Y\˚[��Y\���\��U�ܚ��X�T���K���\[�JJ\��\��U�ܚ��X�T���K���\[�OX��\[�Y\˚[��Y\��]K��[\�˘��\[�JO��]K��[\�˘��\[�N���\[�Y\˚[��Y\��]K�Z[T�[[X\�K���\[�JO��]K�Z[T�[[X\�K���\[�N���\[�Y\��N��\��U�ܚ��X�T���K�]O\��\��U�ܚ��X�T���K�]_�]K�Z[T�[[X\�K�]_�]K��[\�˝�����VN�ۜ����OJ��\[�K]JOO�ؚ�X��\��Yۊ��\��U�ܚ��X�T���K���\[�K]_JN�ۜ��۝��\�T��\��U�ܚ��X�K�[�[�
+���Y�K��\[�N���\��U�ܚ��X�T���K���\[�K]N���\��U�ܚ��X�T���K�]K��\[�Y\����N�
+OO��]K���KX�܎�
+OO�؋�]]\�\�
+O˚YX�]�N�
+OO�؋��YۙY[�
+I���]K���]OOOX��\��KI�Y�OOOI�\�Y	���\�Y	Ήܝ[��X��Y�؋���\��U�ܚ��X�KY�؋�Y]Y]X[�X[��\��K�ۙ�\�N��[T�[�X[�Y�[Y[���ۙ�\�PX�[ۋ���K��]�Y�]N���]K��\[�K]JOO�����J��\[�K]JN�����]JN�K�X[�Y�N���\[�K]K�[RYە\]Y
+OO��[��[T�[�X[�Y�[Y[�
+���\[�K]KX���[�Ζ�K�[RYە\]YJK��]�Y]Ι�[OO��[��ܙY�[T�]�Y]��]��[K��ܘY�W�]�[YN��[K��[Wۘ[YKZ[YN��[K�Z[YW�\KY��[K�Y�[���[K��[���\[�N��[K���\[�K]N��[K��\�[�\���]K�^�N��[K��^�W؞]\�JK��[����\[�K]K�[RY�OO��[�X���[��X�X�����\[�K]KX���[�Ζ�K�[RY�J_JN�����\��U�ܚ��X�Q\���OJ
+OO��۝��\��\���J
+NB��QU������\��K]\�Y	�OZ��O��[�\���\��U�ܚ��X�J��	�\�Y	�N�QU������\��K\�[��OZ��O��[�\���\��U�ܚ��X�J��	ܝ[��N�QU����XZ[Z[�Z�I�OZ��O�XZ[[�Z�P�۝���[�[�
+���\N�؋��N��]K���K�^N�����VK\�X�]�N�
+OO��]K���]OOOI�XZ[Z[�Z�Iɉ�؋��YۙY[�
+K��Y�N��\�JN�QU�˙�[�[��O\���O�Y��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+JHܛ���[��\�SI��X�[ۈ�\��H�[�[��.(�.,�.(�.!�.,�.&x.&x.-x.bx.`�."�.bx. �.bx.+x.(x..x.)x."8.(�.-8.!�.*�.)x.,x.!�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.`8.%�.b8.,�.&x.,x.bx.&H8.a8.(x.b8.(x.-x.%x.,x.)�.`8.)x. �.%x.,x.)�.+x.(�.b8.,�.!���X�[ۏ��ܙ]\���B��[�[��Q^X�]]�K�[�[�
+���ܛ�N�
+OO��]K���KX�܎�
+OO�؋�]]\�\�
+O˚YX�]�N�
+OO��]K���]OOOIٚ[�[��Iɉ�؋��YۙY[�
+K�^N�����VK��۝^�؋��[�[��T�\ܝ[����\[�Y\��Δ؋��[�[��T�\ܝ���[����\�\Δ؋��[�[��P�\�T�\ܝ�ܛX][YN�\�^U[YK�]�P�؎�^ܝ\���]�P�؋�Z[�ܚ؛��Ζ�ܚ]\���Z[\��]�N��ܚ]\��\��]�K���X[�Y�\��؋��[�[��P�ԙ\ܝX[�Y�\�X��\�ԙ\ܝ�؋�X��\�[�[��P�ԙ\ܝ��\�ܞN�؋��[�[��P�ԙ\ܝ\�ܞK����ۛ�Y�\�[���[OO��Y��]K���]HOOIٚ[�[��I�V��XY	�	�YZ[��K�[��Y\��]K���J_X�[�X��\����\[�J�[K���\[�JJ]���\��܊	�.a8.(x.b8.(x.-x.*�.-8.%�.&8.-8.c8.+x.b8.,�.&H��8.(�.,�.(�.!�.,�.&I�Nܙ]\��؋��ۛ�Y
+�[K��ܘY�W�]ٛܘ�N��Y_JN�K��ԙXY��\�[���]\�O���ۜ��Y]�J]�Z]��XY\���XY�ܚ؛����]\��[��YSY]Y]N��Y_JJK��[\��O�˜���˜��YJ�O�����YJ�O���[�������K��[J
+JJJN�Y��Y]˛[��OOLJ]���\��܊	Г�8.*�.)x.,�.(�."�.-x.%K�.a8.(x.b8.(x.-x."�.-x.%x. �.bx.+x.(x..x.)H8.%x.bx.+x.!�.%�.&�.%�.)�.&x. �.+x.&�.`8. �.%x.(�.,�.(�.!�.,�.&x. x.b8.+x.&H8.a8.(x.b8.+x.b8.,�.&x.`x.!8.b8."�.-x.%x.`x.(�. I�Nܙ]\���Y]��N�K��\��N��ܛX]˜\��K���L�M��\�[���]\�O�ˋ���]�Z[�\��^J]�Z]ܞ\˜�X�K�Y�\�
+	��KL�M���]\�JWK�X\
+�O������[��M�K�Y�\�
+�	�	�JK���[�	��K��Δ؋��]�Y]���\ܝX�[ۜΔ؋��[�[��PX�[۔�\ܝX�[ې�\�N�؋��[�[��PX�[ې�\�K�[�X�[ې�\�N�؋��[��[�[��PX�[ې�\�K�]�PX�[ێ�؋��]�Q�[�[��PX�[ۋ\�YX�[ێ�؋�\�Y�[�[��PX�[ۑ]�Y[��KX�[ە\��؋��[�[��PX�[ە\�JNN�[��[ۈ�[�X���[��X�X�����\[�K]KX���[���[RY�[�[[�]X[�ؒY[�[۔�[X\�T�XYO[�[JHY��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+_X�[�X��\����\[�J��\[�JJ\�]\��[�J	�.%x.(�.)�."8.`8."x.'�.,�.,8.&�.,x.#x."�.-I�N�[�[�[
+	�.%x.(�.)�."8."�.bx.,��8. x.(�.,8.%�.&�.(�.+x.%8.`8."x.'�.,�.,8.&�.,x.#x."�.-I�	�]�YH�X���[��X�X��[�[���]���	��]ۈYH�X���[��X�X��\�Z\�ȏ�.&�.-8.%8.*�.&x.bx.,�.%�.&�.%�.)�.&O؝]ۏ��N�ۜ�\���OPX���[��X�X�˛[�[�
+	
+	��X���[��X�X��[�[	�K��\[�K]KX���[�Ζ��S	����X���[�˙�[\�OO�HOOI�S	�WK�[RY�[�]X[�ؒY��N�
+OO��]K���KX�܎�
+OO�؋�]]\�\�
+O˚Y��\]Y\��؋��\]Y\�X���[��X�X��\��؋�\�X���[��X�X����Y�]N�؋��[T�[�X[�Y�[Y[��ۙ�\�N�؋��ۙ�\�PX���[��X�X���]Z[�؋�X���[��X�X��]Z[^ܝ�ܚ؛��Α^ܝ\���ܚ؛�����[�[�ۙ�\�X][ێ�X���[��X�X�˙�[�[�ۙ�\�X][ۋ�۔�[X\�N�YO�X[�X[�[X\�K��[�Y�X�܎�
+OO�؋�]]\�\�
+O˚Y��N�
+OO��]K���K��]�Y]Δ؋�X[�X[�[X\�T�]�Y]�X��\�؋�X��\X[�X[�[X\�U�]�\�\��]�\�\Ν�YK�ېX��\Y�\�[���[YOO��\�
+8.`�."�.bx.'8.)x.%x.(�.)�."8.(x.-�.+x.`8.&�.a�.&x.'8.)x.*�.)x.,x. x.`x.)x.,8.`8.%x.(�.-x.(�.(x.`8.!8.*�.'�.(�.bx.+x.(x.%8.,�.`8.&x.-8.&x. x.,�.(�.`x.)x.bx.)�	ݘ[YO˘�\�W��]˘�\�W���[���H8.`8.!8.*�	����N\���J
+N����S[�[
+
+NY�۔�[X\�T�XYJX]�Z]۔�[X\�T�XYJ
+N[�H�]�Z]�Y]�Sݙ\��Y]��YJN��[�\�
+N�B�_JK�JN	
+	��[�[	�K���۝[��X[�\Y\���N	
+	��X���[��X�X��\�Z\���K�ۘ�X��J
+OO��\���J
+N����S[�[
+
+N�NB�\�[���[��[ۈ�[��[Q^�\�[ۊ�[RY
+HY��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+_Q�[Q^�\�[ۋ��[�X[�Y�J�]K���JJ\�]\��[�J	�.(�. x.`8.)�.bx.&x.a8.'�.)x.c8."8.,�. x. x.,�.(�.(�.,x.&I�N�]\���[Q^�\�[ۋ��[�ٚ[RY��N�
+OO��]K���KX�܎�
+OO�؋�]]\�\�
+O˚Y��]�Y]Δ؋���\��Q^�\�[۔�]�Y]��]�N�؋��]��\��Q^�YY�ۙ�\�N��[T�[�X[�Y�[Y[���ۙ�\�PX�[۟JNB��[��[ۈ�[��[T�[�X[�Y�[Y[�
+���\[�K]KX���[���[RY[�[ە\]Y[�[JHY��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+_X�[�X��\����\[�J��\[�JJ\�]\��[�J	�."8.,x.%8. x.,�.(�.a8.'�.)x.c�.'�.,x. x.(�.,x.&I�N�[�[�[
+	�.`8.)x.-�.+x. x.a8.'�.)x.c�8.`x. x.bx. �.bx.+x.(x..x.)H�8.'�.,x. x.(�.,x.&I�	�]�YH��[T�[�X[�Y�[Y[�[�[���]���	��]ۈYH��[T�[�X[�Y�[Y[�\�Z\�ȏ�.&�.-8.%؝]ۏ��N�ۜ�\���OQ�[T�[�X[�Y�[Y[��[�[�
+	
+	�ٚ[T�[�X[�Y�[Y[�[�[	�K��\[�K]K[�]X[�[RY��[RYە\]Y��N�
+OO��]K���K�Y�؋��[T�[�X[�Y�[Y[�\�ܞN�؋���\��T�]�\�[ے\�ܞK���\[�Y\ΓP�]�T�Y]ː��TS�QT˙�[\��[�X��\����\[�JKX�܎�
+OO�؋�]]\�\�
+O˚Y��]��؋��]]Y]�[���ܜ�X��؋��ܜ�X�]Y]��\��K�ۑ^�YN��[��[Q^�\�[ۋ��X\����\��\Δ؋�Y��X�]�P]Y]�[\�Y��\��N�؋�Y]Y]X[�X[��\��K��ۙ�\�PY][ێ��O��[T�[�X[�Y�[Y[���ۙ�\�PX�[ۊ�]N��.%�.&�.%�.)�.&x.`8.'�.-8.b8.(x.a8.'�.)x.c8.`�.&x.(�.+x.&�.%x.(�.)�."	�Y\��Y�N�	؋��[Y_W�.&�.(�.-8.*x.,x.%�	؋���\[�_H0��8.)�.,x.&x.+x.bx.,�.!�.+x.-8.!�	؋�]_W�؋��X\�۟W�.`8.'�.-8.b8.(x.a8.'�.)x.c8.`�.%8.(�.`8. x.a�.&�.%x.bx.&x."x.&�.,x.&�.`x.)x.,8.%x.(�.)�."8.a8.'�.)x.c8."�.bx.,�8.'�.,x. x.&�.+x.%�.(�.+x.&�.&x.-x.bH8.(�.,x.!�.a8.(x.b8.(�.,x.&H8.a8.(x.b8.`�."�.bx.'8.)x.*�.)x.,x. x.*�.(�.-�.+x.`8.&�.)x.-x.b8.(�.&x.`8.!8.*��ۙ�\�SX�[��.(�.-�.&x.(�.,x.&x.`8.'�.-8.b8.(x.a8.'�.)x.c0��8.a8.(x.b8.(�.,x.&I�[��Y�
+OO�؋��YۙY[�
+I���[T�[�X[�Y�[Y[���[�X[�Y�J�]K���JI���[�X��\����\[�J��\[�J_JK��ۙ�\�R���O��[T�[�X[�Y�[Y[���ۙ�\�PX�[ۊ�]N�	؋�]\�Y��.'�.,x. IΉ�.`8.&�.-8.%	�x.&�.+x.%�.(�.+x.&�.*�.)x.,x. H0��	���\[�_H0��	�]_XY\��Y�N�	؋��X\�۟W�.a8.(x.b8.`x. x.bx.(�.+x.%8.*�.(�.-�.+x.&�.-8.%8.`8.!8.*��. x.,�.(�.'�.,x. x.&�.+x.%�.a8.(x.b8.`8.(�.-8.b8.(x.(�.,x.&x.(x.-�.+x.`�.*�.bx.`8.+x.!��ۙ�\�SX�[���]\�Y��.(�.-�.&x.(�.,x.&x.'�.,x. x.&�.+x.%�Ή�.(�.-�.&x.(�.,x.&x.`8.&�.-8.%8.&�.+x.%��[��Y�
+OO�؋��YۙY[�
+I���[T�[�X[�Y�[Y[���[�X[�Y�J�]K���JI���[�X��\����\[�J��\[�J_JK�\�Y�ܜ�X�[ێ�؋�\�Y]Y]��\��P�ܜ�X�[ۋ�ۑ�[N��[OO��[��ܙY�[T�]�Y]��]��[K��ܘY�W�]�[YN��[K��[Wۘ[YKZ[YN��[K�Z[YW�\KY��[K�Y�[���[K��[���\[�N��[K���\[�K]K�^�N��[K��^�W؞]\�JK��ۙ�\�P�ܜ�X�[ێ��O��[T�[�X[�Y�[Y[���ۙ�\�PX�[ۊ�]N��.%�.&�.%�.)�.&x.`x. x.bx.)�.,x.&K�. �.bx.+x.(x..x.)x.a8.'�.)x.c	�Y\��Y�N�	؋��[Y_W�.&�.(�.-8.*x.,x.%�	؋���\[�_H0��8.)�.,x.&x.+x.bx.,�.!�.+x.-8.!�	؋�]_W�؋��X\�۟W�.`8. x.a�.&�.%x.bx.&x."x.&�.,x.&�8.`8.'�.-8.b8.(x.`8.)�.+x.(�.c8."�.,x.&x.`�.*�.(x.b8.`x.)x.,8.'�.,x. x.&�.+x.%�.(�.+x.&�.%�.-x.b8.`8. x.-x.b8.(�.)�. �.bx.+x.!�8.a8.(x.b8.(�.,x.&x.*�.(�.-�.+x.(�.-�.&x.(�.,x.&x.'8.)x.*�.)x.,x. X�ۙ�\�SX�[��.(�.-�.&x.(�.,x.&x.&�.,x.&x.%�.-�. x.`8.)�.+x.(�.c8."�.,x.&x.`�.*�.(x.b	�[��Y�
+OO�؋��YۙY[�
+I���[T�[�X[�Y�[Y[���[�X[�Y�J�]K���JI���[�X��\����\[�J��\[�J_JK��ۙ�\�T�[��\��[��Θ�O��[T�[�X[�Y�[Y[���ۙ�\�PX�[ۊ�]N�8.%�.&�.%�.)�.&x.!8.,�.`8.%x.-�.+x.&H0��	؋���\[�_H0��	؋�]_XY\��Y�N�8.'�.&�.!8.,�.`8.%x.-�.+x.&H	؋��\��[��˛[��H8.(�.,�.(�. x.,�.(��؋��\��[��˛X\
+�O��˙�[Wۘ[YK˙]Z[K��[\����X[�K���[�	�0��	�JK���[�	���_W�.a8.&�.%�.&�.%�.)�.&x. �.+x.&�.`8. �.%x.(�.,x.&x.%x.(�.)�."8.(x.-�.+x.`8.%�.b8.,�.&x.,x.bx.&H8.(�.,x.!�.a8.(x.b8.(�.,x.&x."8.&x. x.%8.(�.-�.&x.(�.,x.&x.`�.&x. �.,x.bx.&x.%�.,x.%8.a8.&�8.a8.(x.b8.`8.&�.-8.%8.&�.+x.%�8.a8.(x.b8.(�.-�.&x.(�.,x.&x.'8.)x.*�.)x.,x. x.*�.(�.-�.+x.*�.b8.!�."�.-x.bx.`x."8.!��ۙ�\�SX�[��.a8.&�.`8.)x.-�.+x. x. �.+x.&�.`8. �.%H0��8.(�.,x.!�.a8.(x.b8.(�.,x.&I�[��Y�
+OO�؋��YۙY[�
+I���[�X��\����\[�J��\[�J_JK�۔�[��\�[���[RY�O��^�]��X�\�XX���[���N���[X�Y��\��\�\�H[��Y���[�[�SXX���[��Y�Y�X�X�˂���H�[H�[X\�H]\�����X��\[��K��H�\�[��YYY��]�Y]�]��Y�X��X�\˛[��	��Y�[RY�˛[��
+^��ۜ�]OX]�Z]؋��X�ۘ�[X][ۓݙ\��Y]���\[�K]JN���X�\�Vˋ���]��]
+ˋ��]K��[�˜�[[X\�O˛X]��]�Y[��_�JK�X\
+�O���X���[�
+K���]K��\�\��JK�X\
+�O���X���[�
+K���]K��[�˜�[[X\�O˘��ٚ\��˜�\]Z\�Y�JK�X\
+�O���Y[�]JWK��[\�OO�I����[��JK��\\��\�J
+HOOI�S�ӓ�Ӊ�JWN�B�\���J
+N����S[�[
+
+N��[�X���[��X�X�����\[�K]KX���[�Θ��X�\��[RY�JNX�]�
+\��܊^��\�
+\��܋�Y\��Y�K	ؘY	�N�B�K�JN	
+	��[�[	�K���۝[��X[�\Y\���N	
+	�ٚ[T�[�X[�Y�[Y[�\�Z\���K�ۘ�X��J
+OO��\���J
+N����S[�[
+
+N�NB��[��[ۈ����Q�[T�[�X[�Y�[Y[�
+
+^�ۜ���\[�Y\�SP�]�T�Y]ː��TS�QT˙�[\��[�X��\����\[�JK��\[�OX��\[�Y\˚[��Y\��]K��[\�˘��\[�JO��]K��[\�˘��\[�N���\[�Y\��N�[�[�[
+	�.`8.)x.-�.+x. x. �.+x.&�.`8. �.%x."8.,x.%8. x.,�.(�.a8.'�.)x.c�8.'�.,x. x.(�.,x.&I�X�[�.&�.(�.-8.*x.,x.%��[X�YH��[SX[�Y�P��\[�H�����\[�Y\˛X\
+�O��[ۈ	��OOX��\[�O���[X�Y	Ή��O��
+�_O��[ۏ�
+K���[�	��_O��[X���X�[�X�[�.)�.,x.&x.%�.-x.b[�]\OH�]H�YH��[SX[�Y�Q]H��[YOH��
+�]K��[\�˝��]K��[\�˙]_Q�US��Ԓ��UJ_H���X�[�	��]ۈYH��[SX[�Y�P�۝[�YH��.`8.&�.-8.%8.a8.'�.)x.c�.*�.%�.,�.&x.,8. �.+x.!�.)�.,x.&O؝]ۏ��N	
+	�ٚ[SX[�Y�P�۝[�YI�K�ۘ�X��J
+OO���ۜ���\[�OI
+	�ٚ[SX[�Y�P��\[�I�K��[YK]OI
+	�ٚ[SX[�Y�Q]I�K��[YN�Y�X��\[�_Kח�KW̟KW̟I˝\�
+]JJ\�]\���\�
+	�.`8.)x.-�.+x. x.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&x.%�.-x.b8.`�.*�.bx.!8.(�.&��	��\���N����S[�[
+
+N��[��[T�[�X[�Y�[Y[�
+���\[�K]KX���[�Ζ�_JN�NB��[��[ۈ�[�]Y]��\��P\��]�J
+^Y��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+J\�]\��[�J	�.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8."8.(�.-8.!��N�ۜ���\[�Y\�SP�]�T�Y]ː��TS�QT˙�[\��[�X��\����\[�JK[�]X[X�܏T؋�]]\�\�
+O˚Y�[�[�[
+	�.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8."8.(�.-8.!�8�%8.`8.'8.-�.b8.+x.%�.,�.!�.,�.&x.(x.-�.+I�	�]�YH�]Y]��\��P\��]�T[�[���]���	��]ۈYH�]Y]\��]�P�[��[��.&�.-8.%�8.(�. x.`8.)x.-8. x. x.,�.(�.`8.%x.(�.-x.(�.(O؝]ۏ��N	
+	��[�[	�K��\��\��Y
+	���\��KX\��]�K[[�[	�N�ۜ�\���OP]Y]��\��P\��]�K�[�[�
+	
+	��]Y]��\��P\��]�T[�[	�K��\[�N���\[�Y\˚[��Y\��]K��[\�˘��\[�JO��]K��[\�˘��\[�N���\[�Y\��K]N��]K��[\�˝��]K��[\�˙]_Q�US��Ԓ��UK��\[�Y\�[�]X[X�܋�X�ܒY�
+OO�؋�]]\�\�
+O˚Y�][�Δ؋�]Y]��\��P\��]�SX[�Y�\��ۛ�Y�]O�؋��ۛ�Y
+]ٛܘ�N��Y_JK��[Y]N�؋�]Y]��\��P\��]�U�[Y]K�X��\�Θ\�[��
+OO���ۜ��\�[X]�Z]؋�^PX��\��
+Nܙ]\��\��^K�\�\��^J�\�[
+Oܙ\�[�N��\�[�K��L�M��\�[���]\�O�ˋ���]�Z[�\��^J]�Z]ܞ\˜�X�K�Y�\�
+	��KL�M���]\�JWK�X\
+�O������[��M�K�Y�\�
+�	�	�JK���[�	��K��\��ܚ]\��\��]�K�]�N�^ܝ\���]�P�؋�JN	
+	��[�[	�K���۝[��X[�\J
+OO��\���J
+N�
+	��[�[	�K��\��\���[[ݙJ	���\��KX\��]�K[[�[	�N�N	
+	��]Y]\��]�P�[��[	�K�ۘ�X��J
+OO��\���J
+N����S[�[
+
+N�NB�\�[���[��[ۈ�XY]Y]���\�]ܔ�X�ܙ��[K]JHY��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+_�[K��[�OOI؛��XZ[��X�[�X��\����\[�J�[K���\[�JJ]����]�\��܊	�.a8.(x.b8.(x.-x.*�.-8.%�.&8.-8.c8.+x.b8.,�.&H��8.%x.bx.&x.%�.,�.!��NY�K���	�K�\�
+�[K��[Wۘ[YJJ]����]�\��܊	�.a8.'�.)x.c��8.&x.-x.bx.a8.(x.b8.`�."�.b�8.%�.-x.b8.(�.+x.!�.(�.,x.&��N�ۜ��\�ۜ�OX]�Z]�]�
+]�Z]؋��YۙY\�
+�[K��ܘY�W�]
+JNY�\�\�ۜ�K���]����]�\��܊	�.%8.,�.)�.&x.c8.`�.*�.)x.%��8.a8.(x.b8.*�.,�.`8.(�.a�."
+	�ܙ\�ۜ�K��]\���I�N�ۜ��\�[Q�ܛX]˜\��J�[K��[Wۘ[YK]�Z]��XY\���XY
+]�Z]�\�ۜ�K�\��^P�Y��\�
+JK]JNY�V�؛����\X�	�	؛���[��X�[ۗ�^ܝ	�	؛��XZ[��K�[��Y\��\�[���JJ]����]�\��܊	�.a8.(x.b8.'�.&�.(�..x.&�.`x.&�.&���8.%�.-x.b8.%x.(�.)�."8.*�.+x.&�.a8.%8.bI�N�]\��ˋ���\�[��X�ܙ�����\�[�]^�JK��[\��O����[�OOI���[��ܛX][ۉ�WNB�\�[���[��[ۈ�[�X[�X[�[X\�P�\�T�]
+Y۔�[�Y
+^Y�V��XY	�	�YZ[��K�[��Y\��]K���JJ\�]\��[�J	�.(�.-�.&x.(�.,x.&x.`8.!8.*�."�..8.%8.`�.*�.(x.b	�N�]\���[X\�P�\�T�]˛�[�Y�X�܎�
+OO�؋�]]\�\�
+O˚Y��N�
+OO��]K���K�]�Y]Δ؋�X[�X[�[X\�P�\�\��]�Y]�X�]�]N�؋�X�]�]SX[�X[�[X\�P�\�\�ېX�]�]Y�
+OO���\�
+	�.*�.(�.bx.,�.!�.`8.!8.*�."�..8.%8.`�.*�.(x.b8.`x.)x.bx.)�8.`8. x.a�.&�.`8.!8.*�.`8.%8.-8.(x.`8.&�.a�.&x.&�.(�.,8.)�.,x.%x.-	�N�۔�[�Yˊ
+N�_JNB��QU��țX�\�Y]ȗHH���O�P�]�T�Y]˛[�[�
+���]N��]K��[\�˙]HQ�US��Ԓ��UK���\[�N�P�]�T�Y]ː��TS�QT˚[��Y\��]K�Z[T�[[X\�K���\[�JH��]K�Z[T�[[X\�K���\[�H�	�P�	����\[�Y\ΈP�]�T�Y]ː��TS�QT���YۙY[��
+
+HO��]K�]\�]OOH	���X�[ۉ�	��؋��YۙY[�
+K��Y�؋��X�ۘ�[X][ۓݙ\��Y]���Y�[\Έ�[�YO�؋�^�\[ۑ�[\��[�Y
+K��XY�ԙX�ܙΈ�XY]Y]���\�]ܔ�X�ܙ��۔�X�X�Έ�[�X���[��X�X���ۓX[�Y�Q�[\Έ�[��[T�[�X[�Y�[Y[��^ܝ���Z][���\�\Έ�ۛ�Y���Z][���\�T�\]Y\��ۓ�^�\�T]Y]YN��[�	ܙ\]Y\���\�Y�I�H����OO���ԙXYۛP�\�T]Y]YJˋ�����KX���[����JH��[�\�X�]�N�
+
+HO��]K���]HOOH	�X�\�Y]���ۓ��[�
+
+HO�P��Y]˜�[�\����
+K�ې��\[�N���\[�HO���]K�Z[T�[[X\�K���\[�HH��\[�N�K�ۑ]N�]HO���]K��[\�˙]HH]N�K�ې�\�N�\�[��
+���HO�Y�
+\���˚Y
+H����]�\��܊	�.a8.(x.b8.'�.&�URQ8. �.+x.!�.`8.!8.*�."8.(�.-8.!��N]�Z]�[�]�Y[��T�[]Y�\�J��˚Y
+NK�ۓ�]��\�T�]���XY	�	�YZ[��K�[��Y\��]K���JO��[�X[�X[�[X\�P�\�T�]��[�ې�\�Q\��܎�
+\��܊HO��\�
+	�.`8.&�.-8.%8.`8.!8.*�."8.(�.-8.!�.a8.(x.b8.*�.,�.`8.(�.a�."�	�
+�
+\��܏˛Y\��Y�H	�.a8.(x.b8.%�.(�.,�.&�.*�.,�.`8.*�.%x..	�K	��\���K�ۑ�[N�
+�[K]K��\[�JHO��Y��[O˜�ܘY�W�]
+H�[��ܙY�[T�]�Y]��]��[K��ܘY�W�]�[YN��[K��[Wۘ[YKZ[YN��[K�Z[YW�\KY��[K�Y�[���[K��[���\[�N��[K���\[�_��\[�K]K�^�N��[K��^�W؞]\��]\Ι�[K�\��W�\��܏��\��܉Ι�[K�\��Y��\��Y	Ή��Z][���JN�K�^ܝ�ܚ؛��Έ
+�Y]��[[�[YKY]JHO�^ܝ\���ܚ؛����Y]��[[�[YKY]JK�ۑ^ܝY�
+ٚ[[�[YK��\[�K]K�����Y]���\]_JHO���X�[ۊ	�^ܝ	�	�]Y]ܙX�ۘ�[X][ۗ��ܚ؛����	���\[�__	�]_X^�[	��Y]�H8."�.-x.%H0��	ܛ���H8.`x.%�.)�0��	���\]O��. �.bx.+x.(x..x.)x.(�.+x.&�.!8.(�.&�Ή�. �.bx.+x.(x..x.)x.(�.+x.&�.(�.,x.!�.a8.(x.b8.!8.(�.&��X
+N�\�
+8.%8.,�.)�.&x.c8.`�.*�.)x.%	ٚ[[�[Y_H8.`x.)x.bx.)�
+	��Y]�H8."�.-x.%H0��	۝[J����_H8.`x.%�.)�X
+NK�JN�[��[ۈ�����[��]JY\��Y�JH	
+	��X��\���Z]��X�I�O˜�[[ݙOˊ
+N	
+	��\�[	�K�[�\�H�[�N�܈
+�ۜ�Yو����]�\��	��[�[	�	���]�\�ݙ\�^I�	��[�[ݙ\�^I�JH�ۜ���HH	
+Y
+N�Y�
+��JH���K�[�\�H�[�N���K�Y[�H�YN�B�B�	
+	���ۛ�X�[ۑ�]I�K�Y[�H�YN	
+��\�[�K�Y[�H�YN	
+����[��]H�K�Y[�H�[�N	
+����[��ܛH�K�Y[�H�[�N	
+�ܙ\�]�ܛH�K�Y[�H�YN�ۜ��]H	
+����[�\��܈�NY�
+Y\��Y�JH�]�^�۝[�HY\��Y�N�]�Y[�H�[�NH[�H�]�Y[�H�YNB�B���[��[ۈ����ۛ�X�[���]JY\��Y�K�]�PX�[ۋ�\�\��U�ܚ�H�[�JH�ۜ��[H	
+	��\�[	�N	
+	��X��\���Z]��X�I�O˜�[[ݙOˊ
+NY�
+�\�\��U�ܚ�H���Y\H]][�X�]Y�K��Y���]�]�\�YZ]ܚ]\�ۈ�[HX��\�˂��[�[�\�H�YN�܈
+�ۜ�Yو����]�\��	��[�[	�JH��ۜ���HH	
+Y
+N�Y�
+��JH��K�[�\�H�YN�B��ۜ���X�HH��[Y[��ܙX]Q[[Y[�
+	�\�YI�N��X�K�YH	�X��\���Z]��X�I���X�K��\�Ә[YHH	�[\��\�����X�K��]]�X�]J	ܛ�I�	��]\��N�ۜ�^H��[Y[��ܙX]Q[[Y[�
+	��[��N^�^�۝[�HY\��Y�N��X�K�\[�
+^
+NY�
+�]�PX�[ۊH�ۜ��]�HH��[Y[��ܙX]Q[[Y[�
+	؝]ۉ�N�]�K�^�۝[�H	�.%x.(�.)�."8.*�.-8.%�.&8.-8.c8.+x.-x. x.!8.(�.,x.bx.!���]�K�ۘ�X��H\�[��
+
+HO���]�K�\�X�YH�YN��H�]�Z]�]�PX�[ۊ
+N�H�[�[H��]�K�\�X�YH�[�N�HN��X�K�\[�
+�]�JNB��[��Y�ܙJ��X�JN	
+	���ۛ�X�[ۑ�]I�K�Y[�H�YN�]\��B��[�[�\�H�[�N�܈
+�ۜ�Yو����]�\��	��[�[	�JH��ۜ���HH	
+Y
+N�Y�
+��JH���K�[�\�H�[�N���K�Y[�H�YN�HB�	
+	����[��]I�K�Y[�H�YN	
+	��\�[	�K�Y[�H�YN	
+	���ۛ�X�[ۑ�]I�K�Y[�H�[�N	
+	���ۛ�X�[ۓY\��Y�I�K�^�۝[�HY\��Y�H	�. x.,�.)x.,x.!�.!8.-�.&x.*�.%�.,�.&x.,8.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.`x.)x.,8.%x.(�.)�."8.*�.-8.%�.&8.-8.c8. x.(�..8.$�.,�.(�.+x.*�.,x. x.!8.(�..x.b8.a8.(x.b8.%x.bx.+x.!�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�."�.bx.,���ۜ��]�HH	
+	��X��\���X�ԙ]�I�N�]�K�Y[�H\�]�PX�[ێ�]�K�\�X�YH�[�N�]�K�ۘ�X��H�]�PX�[ۈ�\�[��
+
+HO�Y�
+�]�K�\�X�Y
+H�]\���]�K�\�X�YH�YN�H�]�Z]�]�PX�[ۊ
+N�H�[�[H��]�K�\�X�YH�[�N�B�H��[B���[��[ۈ���\���ܙ�\�]�]J
+H	
+	���ۛ�X�[ۑ�]I�K�Y[�H�YN	
+��\�[�K�Y[�H�YN	
+����[��]H�K�Y[�H�[�N	
+����[��ܛH�K�Y[�H�YN	
+�ܙ\�]�ܛH�K�Y[�H�[�N	
+�ۙ]�\���ܙ�K����\�
+NB���[��[ۈ�[�\�
+H�]K��[\�˙]HH�\�X�Q]J�]K��[\�˙]JN�]K��[\�˙���HH�\�X�Q]J�]K��[\�˙���JN�]K��[\�˝�H�\�X�Q]J�]K��[\�˝�NY�
+�]K��[\�˙���H��]K��[\�˝�H�]K��[\�˝�H�]K��[\�˙���N�]K�Z[T�[[X\�K�]HH�\�X�Q]J�]K�Z[T�[[X\�K�]JN�ۜ���]HH��UW�PT��]K���]WN�\�˜�\�]
+
+N	
+��ܝ[X��K�^�۝[�H��UT˙�[�
+
+�HO�˚][\˜��YJ
+JHO�K�YOOH��]K�Y
+JK�ܛ�\	
+��Y�U]H�K�^�۝[�H��]K�]N��[Y[��]HH	ܛ�]K�]_H0��]Y]RH�X�ۘ�[X][ۘ	
+��Y�Q\�ȊK�[��\�SB�
+��]K�\��H
+
+؋��YۙY[�
+H�	��[��\��H��Y�HܙY[���.(�.,8.&�.&�. �.bx.+x.(x..x.)x."8.(�.-8.!���[������N�[�\��]�
+N�[�\�]Y]���
+N�[�\��[\��
+N�\\�Q�\�]Y]YQ�Y��
+N	
+�ݚY]ԛ���K�]\�]��\�]Y]YQ�Y��^HH�\�]Y]YQ�Y��^J
+N	
+�ݚY]ԛ���K��[�[��Q\���Oˊ
+N	
+�ݚY]ԛ���K���\��U�ܚ��X�Q\���Oˊ
+N	
+�ݚY]ԛ���K�[��\�SH���QU��ܛ�]K�YJ	
+�ݚY]ԛ���JN�\�ܙQ�\�]Y]YQ�Y��
+N	
+	�ٚ[SX[�Y�Q[��I�O˜�[[ݙJ
+N	
+	����\��P\��]�Q[��I�O˜�[[ݙJ
+NY��]K�]\�]OOI���X�[ۉɉ�؋��YۙY[�
+I������Y	�	�[�Z�I�	�^�\[ۜ��	�Z[K\�[[X\�I�	�X�\�Y]��K�[��Y\���]K�Y
+I����[ۚ]܉�	�]Y]�\��\�[�	�	�XY	�	�YZ[��K�[��Y\��]K���JJ^�ۜ�[��OY��[Y[��ܙX]Q[[Y[�
+	؝]ۉ�N�[��K�YIٚ[SX[�Y�Q[��I��[��K��\�Ә[YOI����X�]ۉ��[��K�^�۝[�I�.(�.,x.&x.(x.-�.+H�8."8.,x.%8. x.,�.(�.a8.'�.)x.c	��[��K�ۘ�X��X����Q�[T�[�X[�Y�[Y[��
+	�؝�^ܝ	�K�\�[�[[Y[��\[��[
+[��JN�ۜ��X��\Y��[Y[��ܙX]Q[[Y[�
+	؝]ۉ�NؘX��\�YI���\��P\��]�Q[��I�ؘX��\��\�Ә[YOI����X�]ۉ�ؘX��\�^�۝[�I�.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8."8.(�.-8.!�
+8.%�.,�.!�.,�.&x.(x.-�.+JI�ؘX��\�ۘ�X��[�[�]Y]��\��P\��]�N�
+	�؝�^ܝ	�K�\�[�[[Y[��\[��[
+�X��\
+NY�����Y	�	�[�Z�I�K�[��Y\���]K�Y
+J^�ۜ��\�Y��[Y[��ܙX]Q[[Y[�
+	��X�[ۉ�N��\���\�Ә[YOI���\��KX\��]�K[][��	���\��[��\�SI�]����.%8.,�.)�.&x.c8.`�.*�.)x.%8.%x.bx.&x."x.&�.,x.&�.a8.)�.bx.%�.,�. x.(�.,8.%�.&�.(�.+x.%8.(x.-�.+O����.`8.)x.-�.+x. x.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&x.%�.-x.b0��8.a8.%8.bH�T8.`x.(�. x.`�.'�.)x.`8.%8.+x.(�.c�K�K��8.`x.)x.,8.*�.)x.,x. x.$8.,�.&H0��8.a8.(x.b8.(�.,x.&x.&�.+x.%�.*�.(�.-�.+x.`8.&�.)x.-x.b8.(�.&x.`8.!8.*����]���]ۏ�.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8.%x.bx.&x."x.&�.,x.&�؝]ۏ����\��]Y\�T�[X�܊	؝]ۉ�K�ۘ�X��[�[�]Y]��\��P\��]�N�
+	�ݚY]ԛ��	�K��\[�
+�\�
+N�ۜ�X[�X[Y��[Y[��ܙX]Q[[Y[�
+	��X�[ۉ�N�X[�X[��\�Ә[YOI���\��KX\��]�K[][��	��X[�X[�[��\�SI�]����.(�.,x.&x.%x.(�.)�."8."�.bx.,��8."8.,x.%8. x.,�.(�.a8.'�.)x.c����H8.`8.)x.-�.+x. x.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&H8����8.`8.)x.-�.+x. x.a8.'�.)x.c�.&�.,x.#x."�.-H8����8.%x.(�.)�."8.`x.)x.,8.%�.&�.%�.)�.&x.'8.)H0��8.*�.,x.)�.*�.&x.bx.,��.'8..x.bx.%8..x.`x.)x.(�.-�.&x.(�.,x.&x.`8.%�.b8.,�.&x.,x.bx.&O���.`x. x.bx."�.-�.b8.+K�.&�.(�.-8.*x.,x.%��."x.&�.,x.&�.`x.%�.&H8.*�.(�.-�.+x.'�.,x. x.(�.,x.&x.a8.%8.bH8.`�.%8.(�.`8. x.a�.&�.%x.bx.&x."x.&�.,x.&�.`x.)x.,8.&�.(�.,8.)�.,x.%x.-���]���]ۏ�.`8.)x.-�.+x. x.a8.'�.)x.c8.`x.)x.,8.(�.,x.&x.%x.(�.)�."8."�.bx.,�؝]ۏ���X[�X[�]Y\�T�[X�܊	؝]ۉ�K�ۘ�X��X����Q�[T�[�X[�Y�[Y[��
+	�ݚY]ԛ��	�K��\[�
+X[�X[
+NB�B�Y�
+�]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+H	��Vș\���\���[XY�H��X�\�Y]ȋ��[�[��H�K�[��Y\���]K�Y
+JH�ۜ�]�S��X�HH]�Sݙ\��Y]��]K��Y[���X�[ۈ�\��H�[\�]�KX�X��ܛ�[�[��X�H����ۙϸ. x.,�.)x.,x.!�.+x.,x.&�.`8.%8.%x. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%���ۙϏ�[��.*�.&x.bx.,�.&x.-x.bx.`�."�.bx.!�.,�.&x.a8.%8.bx.%x.,�.(x.&�. x.%x.-8.%x.,x.)�.`8.)x. �."8.,8.+x.,x.&�.`8.%8.%x.+x.,x.%x.`�.&x.(x.,x.%x.-8.`8.(x.-�.b8.+H�\X�\�H8.%x.+x.&�. x.)x.,x.&���[����X�[ۏ���]�Sݙ\��Y]��]K�\��܂���X�[ۈ�\��H�[\��\��]�KX�X��ܛ�[�[��X�H����ۙϸ. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%8.(�.,x.!�.(x.,�.a8.(x.b8.!8.(�.&����ۙϏ�[���
+]�Sݙ\��Y]��]K�\��܊_O��[���]ۈ�\��H����X�]ۈ�H�YH�]�P�X��ܛ�[��]�H��.)x.+x.!�.`�.*�.(x.b؝]ۏ���X�[ۏ�����Y�
+]�S��X�JH	
+�ݚY]ԛ���K�[��\�Y�X�[�S
+�Y�\��Y�[��]�S��X�JN	
+��]�P�X��ܛ�[��]�H�O˘Y]�[�\�[�\���X�ȋ
+
+HO��Y]�Sݙ\��Y]��YJJNB��[�\��^X�[ۊ	
+�ݚY]ԛ���JNY[�[�\\�P�]ۜ�
+NY�
+�]K���]HOOH���Y�	��[�[����Y[���
+H�\]Y\�[�[X][ۑ��[YJ
+
+HO�[�[����Y[���H�[�N
+��[Y[���][[Y[��RY
+��؛[Q�[T�[[X\�H�H��[Y[���][[Y[��RY
+���Y[����JO˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JNJN	
+���YX�\��K��\��\���[[ݙJ��[��N]Y]ZK��[�Ә]�
+NB��ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB��QUΈ\���\��OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+��ۜ�]�Sݙ\��Y]��]HH�Z[N��[�\�][ۜΈ�[]X[]N��[�X��\���[�њ\����[�][��Έ�[[XY�\Έ�[��Έ�[��Y�X�][ۜΈ�[�\�Y�X�][ۜΈ�[[��ܛX][ۘ[^�\[ۜΈ�KX]�]�Y[��N��KX]�Y�[Q^�\[ۜΈ^�\[ۜԙXYN��[�K[XY�\ԙXYN��[�K��ԙXYN��[�K�Y[�Έ�[�K]^[X\�S�Y[�Έ�[�K]^[X\�Q\��܎��[�ܙQ\��ܜΈ�K�\]Y\�Y�\��܎��[�^N���\]Y]��[N�ۜ�]�Q^�\[۔�X\��H��^N������Έ�K�Y[�Έ�[�K\��܎��[N�ۜ�^�\[۔�\ܝ�X�HH�]�X\
+
+N�ۜ�[ܙP�\�T�]HH�ٙ��]�\�[ܙN��YK�Y[�Έ�[�K\��܎���N�\�[���[��[ۈ�Y[ܙP�\�\�
+HY�
+[ܙP�\�T�]K��Y[��]�Sݙ\��Y]��]K��Y[��]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�]\���ۜ��^HH]�Sݙ\��Y]��]K��^N�ۜ��[�\�][ۈH]�Sݙ\��Y]��]K��\]Y\�Y[ܙP�\�T�]K��Y[��H�YN[ܙP�\�T�]K�\��܈H���[�\�
+N�H�ۜ�����H]�Z]؋��\��[�^�\[ۜ��[[X\�J����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]��Lٙ��]�[ܙP�\�T�]K�ٙ��]JNY�
+�^HOOH]�Sݙ\��Y]��]K��^H�[�\�][ۈOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H�]\��[ܙP�\�T�]K�ٙ��]
+�H���˛[��[ܙP�\�T�]K�\�[ܙHH���˛[��OOH�L�ۜ�^\�[��H�]�X\
+��^�\[ۜ˛X\
+
+���HO�ܛ�˙�Y��˚Y���JJN�܈
+�ۜ��]�وX�[ۘX�P]Y]��������]�Sݙ\��Y]��]K�X]�]�Y[��JJHY�
+Y^\�[�˚\��]˚Y
+JH^\�[�˜�]
+�]˚YX\]�Q^�\[ۊ�]�JN��^�\[ۜ�Hˋ��^\�[�˝�[Y\�
+WNH�]�
+\��܊HY�
+�^HOOH]�Sݙ\��Y]��]K��^JH[ܙP�\�T�]K�\��܈H�.`�.*�.)x.%8.`8.!8.*�.`8.'�.-8.b8.(x.`8.%x.-8.(x.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\��܋�Y\��Y�NH�[�[H[ܙP�\�T�]K��Y[��H�[�NY�
+�]K���]HOOH�^�\[ۜȊH�[�\�
+NB�B��\�[���[��[ۈ�Y]�Q^�\[۔�X\��
+\�JH�ۜ��^HH	�\�__	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_XY�
+]\�H]�Q^�\[۔�X\����Y[��]�Q^�\[۔�X\����^HOOH�^JH�]\��]�Q^�\[۔�X\����^HH�^N]�Q^�\[۔�X\����Y[��H�YN]�Q^�\[۔�X\���\��܈H�[]�Q^�\[۔�X\�������H�N�H�ۜ�����H]�Z]؋��X\��^�\[ۜ��\�K���N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]��JN]�Q^�\[۔�X\�������HX�[ۘX�P]Y]��������]�Sݙ\��Y]��]K�X]�]�Y[��JK�X\
+X\]�Q^�\[ۊNH�]�
+\��܊H]�Q^�\[۔�X\�������H�N]�Q^�\[۔�X\���\��܈H\��܋�Y\��Y�H�.!8.bx.&x.*�.,��\X�\�H8.a8.(x.b8.*�.,�.`8.(�.a�."�B�]�Q^�\[۔�X\����Y[��H�[�NY�
+�]K���]HOOH�^�\[ۜȊH�[�\�
+NB���ۜ�U�W��S��P�SH�W�����H�8.'x.,�. Kx.%�.+x.&x.&8.&x.,�.!8.,�.(ȋ����XZ[���.(�.,�.(�.!�.,�.&H�ȋ�W��][Y[���.(�.,�.(�. x.,�.(�.`8.%8.-8.&x.&�.,x.#x."�.-HH��X[�X[�ܙY]��.'x.,�. x.(x.-�.+HH8.`8.!8.(�.%8.-8.%H��X[�X[�^[Y[���.'x.,�. x.(x.-�.+HH^[Y[���X[�X[؛۝\Έ�.'x.,�. x.(x.-�.+HH8.`�.&�.&x.,x.*�����[Wܙ\N��.%�.+x.&x.!8.b8.,�.!8.+x.(x.(x.-8."�."�.,x.b8.&H��ܙY]��]��.%�.+x.&x.`8.!8.(�.%8.-8.%H������\�Y�N��.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!ȋ�[�ۛ�ێ��.(�.,x.!�."8.,�.`x.&x. x.a8.(x.b8.a8.%8.bH��N��ۜ�U�W��UT�H��\]Y��X�[��.(�.,8.&�.&�.&�.(�.,8.(x.)�.)x.'8.)x.`8.*�.(�.a�."�ۙN��ܙY[��K���\]Yܙ]�Y]Έ�X�[��. x.(�.,8.%�.&�.(�.+x.%8.`x.)x.bx.)�0��8.(�.+x.%x.(�.)�."8.`8.!8.*��ۙN��[X�\��K��YY�ܙ]�Y]Έ�X�[��.%x.bx.+x.!�.%x.(�.)�."8.*�.+x.&��ۙN���Y�K��Z][��ٚ[\Έ�X�[��.(�.+x.a8.'�.)x.c�ۙN��[X�\��K��XYN��X�[��.'�.(�.bx.+x.(x. x.(�.,8.%�.&�.(�.+x.%�ۙN���YH�K�]Y]YY��X�[��.`8. �.bx.,�.!8.-8.)ȋۙN���YH�K��[��[�Έ�X�[��. x.,�.)x.,x.!�.%�.,�.!�.,�.&H�ۙN���[�]�K�\��܎��X�[��.)x.bx.(x.`8.*�.)x.)ȋۙN���Y�K�N���8.%x.,�.(�.,�.!�.!8.-8.)�.(�..8.b8.&x.`8. x.b8.,�.`8.!8.(�.*�.(�.bx.,�.!�.`x.%�.)�.(�.)�.(x.%x.,�.(x."�.-�.b8.+x.(�.,8.&�.&�
+H��T�L���
+B���8.`x.%�.)�.`8.*�.)x.b8.,�.&x.,x.bx.&x.a8.(x.b8.`�."�.b8.&�.(�.-8.*x.,x.%�.`x.)x.,8.%x.bx.+x.!�.a8.(x.b8.%�..x. x.&x.,�.a8.&�.&�.&x. x.,x.&�.*�.(�..8.&�H8.&�.(�.-8.*x.,x.%�."8.(�.-8.!�ۜ�U�W���TS�W���T�H�]��]
+Ȍ����U������P���T�H���������T�H��Q�P�U�H�JN�ۜ��ܛX[^�S]�P��\[�P��HH
+�[YJHO��ۜ���HH��[���[YH��K��[J
+K��\\��\�J
+NY�
+��HOOH���H�]\������Y�
+��HOOH��H�H�]\���Q�P�U�H��]\��U�W���TS�W���T˚\���JH���H���N�ۜ��\�[�\���\�[Sِ��\[�HH
+�[YJHO��ۜ���\[�HH�ܛX[^�S]�P��\[�P��J�[YJNY�
+Ȍ����T�H��P���T�H����K�[��Y\���\[�JJH�]\����Y�
+ȑ����U�����K�[��Y\���\[�JJH�]\���L�ȎY�
+��\[�HOOH�Q�P�U�H�H�]\����H��]\���.a8.(x.b8.(�.,8.&�..8.(�.,8.&�.&��N�ۜ�\�]�P��\[�T���H
+���HO����X[��ܛX[^�S]�P��\[�P��J���˘��\[�JJN�ۜ�X�[ۘX�P]Y]����H
+����]�Y[��JHO��[��ː]Y]�\�X�T�X�H��[��ː]Y]�\�X�T�X�K��[\�����]�Y[��JH�
+\��^K�\�\��^J����H�������JN�ۜ�[��ܛX][ۘ[]Y]����H
+����HO�
+\��^K�\�\��^J����H�������JK��[\�
+���HO��[��ː]Y]�\�X�T�X�O˚\�[��ܛX][ۘ[
+���JN�ۜ�X]�Y�[P]Y]��[�H
+����]�Y[��JHO�X]�X^
+X�[ۘX�P]Y]��������K�[��HX�[ۘX�P]Y]��������]�Y[��JK�[��
+N��ۜ��P��T���UT�H��Y[Y��X�[��.`8.%x.(�.-x.(�.(x.(�.+x.)�.,x.&x.%�.,�. x.,�.(ȋۙN��ܙ^H�K��X�Z]�[�Έ�X�[��.+x.(�..x.b8.`�.&x."�.b8.)�.!�.(�.,x.&�.a8.'�.)x.c�ۙN���YH�K�Z\��[��ٚ[\Έ�X�[��.(�.,x.!�.a8.(x.b8.a8.%8.bx.(�.,x.&�.a8.'�.)x.c�ۙN���Y�K�Z\��[��ܙ\]Z\�Y��X�[��.a8.'�.)x.c8.*�.)x.,x. x.(�.,x.!�.a8.(x.b8.!8.(�.&��ۙN���Y�K�\��W�\��܎��X�[��.(x.-x.a8.'�.)x.c8.+x.b8.,�.&x.a8.(x.b8.a8.%8.bH�ۙN���Y�K��Z][���\��N��X�[��. x.,�.)x.,x.!�.+x.b8.,�.&x.a8.'�.)x.c�ۙN��[X�\��K��Z][��ٚ[\Έ�X�[��.(�.+x.a8.'�.)x.c�ۙN��[X�\��K��XYN��X�[��.'�.(�.bx.+x.(x. x.(�.,8.%�.&�.(�.+x.%�ۙN���YH�K�]Y]YY��X�[��.`8. �.bx.,�.!8.-8.)ȋۙN���YH�K��[��[�Έ�X�[��. x.,�.)x.,x.!�. x.(�.,8.%�.&�.(�.+x.%�ۙN���[�]�K��YY�ܙ]�Y]Έ�X�[��.%x.bx.+x.!�.%x.(�.)�."8.*�.+x.&��ۙN���Y�K��[���\�\Έ�X�[��.(x.-x.`8.!8.*�.%x.bx.+x.!�.&�.-8.%�ۙN��[X�\��K���\]Y��X�[��.(�.,8.&�.&�.&�.(�.,8.(x.)�.)x.'8.)x.`8.*�.(�.a�."�ۙN��ܙY[��K�\��܎��X�[��.%�.,�.!�.,�.&x.)x.bx.(x.`8.*�.)x.)ȋۙN���Y�K�N��ۜ��X��\�X\��H
+���[YK�[ۘ[H�[�JHO���[��\��H��X��[X\��	������Ȉ��[ۘ[���[ۘ[���Z\��[�ȟH����������$Ȉ��[ۘ[���$Ȉ��H�O؏��
+�[YJ_O��[����ۜ�^X�Y����[�H
+���HO��[X�\����˙^X�Y؛����[�
+ȐU���������K�[��Y\��ܛX[^�S]�P��\[�P��J���˘��\[�JJH���JJN�ۜ��Y�\�\�Y�P��[�H
+���HO��[X�\����˜�Y�\�\�Y��W�X���[��
+N�ۜ��Y�\�\�YP��[�H
+���HO��[X�\����˜�Y�\�\�Y�Wٚ[\�
+N��[��[ۈ�Y�Q^�\[ۑ]Z[
+JH�ۜ�]Z[H��[��K�]Z[��NY�
+K�[�Y�[�Y�S�Ύ��S�J��K�\�
+]Z[
+JH�]\��]Z[Y�
+
+K�^�\HK�\JHOOH�ܛ����^H�H�]\���. �.bx.+x.(x..x.)x.)�.,x.&x.%�.-x.b8.*�.(�.-�.+x.`8.)�.)x.,�.'x.,x.b8.!���8.a8.(x.b8.!8.(�.&�8�%8.a8.(x.b8.!8.)�.(�.`�."�.bx.(�.,�.(�. x.,�.(�.&x.-x.bx.%x.,x.%8.*�.-8.&x.)�.b8.,�.`8.&�.a�.&x.(�.,�.(�. x.,�.(�. �.bx.,�.(x.)�.,x.&H8. x.(�..8.$�.,�.&�.(�.,8.(x.)�.)x.'8.)x.`�.*�.(x.b8.%8.bx.)�.(��ܚ�\�8.`8.)�.+x.(�.c8."�.,x.&x.)x.b8.,�.*�..8.%��]\��]Z[��\X�J�[�Y�[�Y��K�.a8.(x.b8.'�.&�. �.bx.+x.(x..x.)H�K��\X�JӘS�Ύ��S�J���K�.a8.(x.b8.'�.&�.`8.)�.)x.,��NB���[��[ۈ�\�SX�[
+JH�ۜ���\[�HH��[��O˘��\[�H�.a8.(x.b8.(�.,8.&�..�K��[J
+N�ۜ�]HH��[��O˙]HO˘�\�[�\���]H��K��X�JL
+N�ۜ��ܝ]HHח�KW̟KW̟I˝\�
+]JB��	�]K��X�JL
+_KI�]K��X�JK�_KI�]K��X�J�
+_X��]N�ۜ���HH��[��O˘��HO˚Y�.`8.!8.*��K��[J
+N�]\�����\[�K�ܝ]K��WK��[\����X[�K���[���NB���[��[ۈX\]�Q^�\[ۊJH�ۜ��]�\�]HHK��]�\�]H�YY][H��ۜ��R�\��H�[X�\��]�Y]J�]�\�]JK��H
+N�ۜ�ܙX]YHK�ܙX]Y�]��]�]JK�ܙX]Y�]
+K��][YJ
+H�]K����
+N�ۜ�Y�R�\��HX]�X^
+X]���܊
+]K����
+HHܙX]Y
+H�͌
+JN�ۜ��]\�HK��]\���[���]\������X�\��Y�Z[�]VL�H�܈]�\�H��\[�Kܝ[��]\�H\�^B����[X�\���H�ؘ[H[�\]YH�^K�\�[��]�܈�]�\��]�Y�][ۈXYB���H������[�H�\��P�VL�H[�XYH�YY[�Y[[ܞK��Y\B���\��\�YURQ\�HRK�X�[ۈ�^H[��[�\�H���YX�[[��XY��Y�K�Y���N�K���HK�Y��Y�K�Y��[�Y�K��[��Y�X[�X[Z\�Y�K�X[�X[�Z\��Y�[�ܛ���^T�\]Y\�Y�K�ܛ����^Wܙ\]Y\��Y�[�ܛ���^R[XY�T�\]Y\�Y�K�ܛ����^W�[XY�Wܙ\]Y\��Y�[��\\��YY�Q^�\[ےY�K��\\��YY؞W�^�\[ۗ�Y�[�]N�K��\�[�\���]K�[YN���[��K����\��Y�]��K��X�J
+K���[YN���[��K����[YH��K��X�J
+K��U[YN���[��K��W�[YH��K��X�J
+K���]N�K����]H����Q]N�K��W�]H�����\[�N�K���\[�H�.a8.(x.b8.(�.,8.&�..���[�ΈK��[���H��X���[��K�X���[��H��\�X�[ێ�K�\�X�[ۈ�H��Y[X�\��K�Y[X�\����H�H���\��Y\�]Z[ΈK��\��Y\��]Z[��K�\N�K�^�\H�[�ۛ�ۈ��\S�[YN�K�\Wۘ[YHK�^�\H�.(�.,x.!�.a8.(x.b8."8.,�.`x.&x. H���]�\�]K��]\���X�ΈK��X���YP]�K�YW�]���[Y[�YP]�K���[Y[��YW�]�[����\�T�\]Y\�Y�K��\�W����\�Wܙ\]Y\��Y�[��\�[P[[�[��K��\�[W�[[�[�OH�[��[��[X�\�K��\�[W�[[�[�
+K��[��[[�[��K��[���[[�[�OH�[��[��[X�\�K��[���[[�[�
+K�[[�[�Y����[X�\�K�[[�[��Y��
+K��\��[[�[���[X�\�K��\���[[�[�
+K��\��[��N�K��\��[��H������]N�K��ܘ]HOH�[��[��[X�\�K��ܘ]JK�[YQY���XΈ�[X�\�K�[YW�Y����X�
+K�[\�YYN�K�[\�YYH�.a8.(x.b8.(�.,8.&�..���Y��K��Y��^H���]\�N�K��]\�H�.(�.+x.%x.(�.)�."8.*�.+x.&�.*�.,�.`8.*�.%x..��]Z[��Y�Q^�\[ۑ]Z[
+JK��T�]ΈK��Wܘ]���%���Ԙ]ΈK���ܘ]���%��Y�R�\����R�\���ݙ\��N�YK��\�W����\�Wܙ\]Y\��Y	��VȘ���Y��\�ݙY�K�[��Y\��]\�H	��
+K���[Y[��YW�]��]\�OOI��\�Y�Z[��ɉ�]K����
+O�]K�\��JK���[Y[��YW�]
+H�Y�R�\����R�\��K���\Έ�K�]�Y[��N��K�\�]�Y[��N�HYK��\�Y�X�][ۗٚ[W�Y��\�Y�X�][ۑ�[RY�K��\�Y�X�][ۗٚ[W�Y�[�]]����Y�HYK�]]�����Y��\��][ۓ��N�K��\��][ۗۛ�H����\���Y]�K��\���Y�]�[��\���Y�N�K��\���Y؞H�[�X]��ۙ�Y[��N��[X�\�K�X]���ۙ�Y[��H
+K�\��YۙYΈK�\��YۙY���[��\]Y\�Y�N�K��\]Y\�Y؞H�[��\]Y\�Y]�K��\]Y\�Y�]�[��\�ۜ�U^�K��\�ۜ�W�^����\�ۙY�N�K��\�ۙY؞H�[��\�ۙY]�K��\�ۙY�]�[�\�ݙY�N�K�\�ݙY؞H�[�\�ݙY]�K�\�ݙY�]�[�NB���[��[ۈX\]�Q[XY�J
+H�]\��Y����H�Y��Y��Y�^�\[ےY��^�\[ۗ�Y�H��]N���\�[�\���]K���\[�N��ܛX[^�S]�P��\[�P��J���\[�JH���\[�H�.a8.(x.b8.(�.,8.&�..��[\�YYN��[\�YYH�.a8.(x.b8.(�.,8.&�..���Y����Y��H��[YN���[������\��Y�]	��K��X�J
+K�[[�[���[[�[���OH�[	���[[�[�OH�[��[��[X�\��[[�[������[[�[�
+K��]\�N���]\�H�.(�.+x.%x.(�.)�."8.*�.+x.&����X�N���X�H�.a8.(x.b8.(�.,8.&�..8.(�.+x.&���]�Y[��N�HY�\��]�Y[��K���]\Έ����]\��.(�.+x.%8.,�.`8.&x.-8.&x. x.,�.(ȋ��[�[��T�]\Έ��[�[��W��]\��.(�.+x.%8.,�.`8.&x.-8.&x. x.,�.(ȋ�ܙX]Y]��ܙX]Y�]�[�NB���[��[ۈ�[�ܛۙ����\�T�]�\��[
+KX�[ۊHY��]K�]\�]OOI���X�[ۉ�T؋��YۙY[�
+_V��XY	�	�YZ[��K�[��Y\��]K���J_X�[�	�\�ݙI�J\�]\��[�J	�.(�. x.`8.)x.-8. x.'8.)x.&�.-8.%8.`8.!8.*��NY�V�����Y	�	�[XY�I�K�[��Y\�K��]\�J\�]\���\�
+	�.`8.!8.*�.&x.-x.bx.a8.(x.b8.a8.%8.bx.+x.(�..x.b8.`�.&x.*�.%�.,�.&x.,8.&�.-8.%8.*�.(�.-�.+x.(�.-�.&x.(�.,x.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.`x.)x.bx.)��	��\���N�ۜ��]\��[��XX�[ۏOOIܙ]\����\�Y�X�][ۉ��ۜ�]O\�]\��[����.%x.-x. x.)x.,x.&�.`�.*�.bx."�.-x.bx.`x."8.!�.`8.'�.-8.b8.(x.`8.%x.-8.(IΉ�.(�. x.`8.)x.-8. x.'8.)x.&�.-8.%8�%8.!8.-�.&x.`�.*�.bH]Y]8.%x.(�.)�."8.`�.*�.(x.b	��[�[�[
+]K��
+�\�SX�[
+JJ_O���\��H�[\��\����. x.,�.(�.%�.,�.(�.,�.(�. x.,�.(�.&x.-x.bx.a8.(x.b8.)x.&�.(�.+x.%8.*�.)x.,x. x.$8.,�.&H8.*�.(�.-�.+x.&�.(�.,8.)�.,x.%x.-8.`8.%8.-8.(H8.(�.,8.&�.&�."8.,8.%�.,�.`8.!8.(�.-�.b8.+x.!�.*�.(x.,�.(�.'8.)x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.`8.%8.-8.(x.)�.b8.,�8�'8.(�. x.`8.)x.-8. x�'H8.`x.)x.,8.&x.,�.+x.+x. x."8.,�. x.(�.+x.%8.*�.(�..8.&�.&�.,x."8."8..8.&�.,x.&O���ܙ]\��[����.!8.-�.&x.`8.!8.*�.a8.&�.*�.%�.,�.&x.,8.(�.+x.'8..x.bx."�.-x.bx.`x."8.!�.*�.b8.!�. �.bx.+x.(x..x.)x.`8.'�.-8.b8.(x.`8.%x.-8.(IΉ�.!8.-�.&x.`8.!8.*�.a8.&�.*�.%�.,�.&x.,8.%x.+x.&�.`x.)x.bx.)�8.`8.'�.-�.b8.+x.`�.*�.bH]Y]8.%x.(�.)�."8.`x.)x.,8.&�.-8.%8.'8.)x.`�.*�.(x.b	�O��X�[�.`8.*�.%x..8.'8.)x.%�.-x.b8.(�. x.`8.)x.-8. x.'8.)x.`8.%8.-8.(O^\�XHYH����\�T�]�\��[�X\�ۈ�X^[��H���X�Z�\�H�.(�.,8.&�..8.)�.b8.,�.'8.)x.`8.%8.-8.(x.'8.-8.%8.+x.(�.b8.,�.!�.a8.(�8.`x.)x.,8.%x.bx.+x.!�.%x.(�.)�."8.`x. x.bx."8..8.%8.`�.%���^\�XO��X�[�X�[�[�]\OH��X�؛��YH����\�T�]�\��[�X��Y��.%x.(�.)�."8.`8.)x. �.`8.!8.*�8.(�.+x.%8.`8.%8.-8.(H8.*�.)x.,x. x.$8.,�.&H8.`x.)x.,8.(�.-�.&x.(�.,x.&x.)�.b8.,�.%x.bx.+x.!�.(�.bx.+x.&x.'8.)x.&�.-8.%8.`8.!8.*�.&x.-x.bO�X�[�YH����\�T�]�\��[�]\Ȉ��OH��]\ȏ����]ۈ�\��H����X�]ۈ�YH����\�T�]�\��[�[��[��.(�. x.`8.)x.-8. O؝]ۏ��]ۈ�\��H��[X\�KX�]ۈ�YH����\�T�]�\��[�ۙ�\�H���
+]J_O؝]ۏ�
+N	
+	�����\�T�]�\��[�[��[	�K�ۘ�X��X���S[�[	
+	�����\�T�]�\��[�ۙ�\�I�K�ۘ�X��X\�[��]�[�O��ۜ��X\�ۏI
+	�����\�T�]�\��[�X\�ۉ�K��[YK��[J
+NY�I
+	�����\�T�]�\��[�X��Y	�K��X��Y�X\�ۋ�[��L�X\�ۋ�[����
+\�]\���\�
+	�.%x.bx.+x.!�.%x.(�.)�."8.(�.-�.&x.(�.,x.&x.`x.)x.,8.(�.,8.&�..8.`8.*�.%x..8.'8.)HL8�$̋8.%x.,x.)�.+x.,x. x.*x.(��	��\���N]�[���\��[�\��]�\�X�Y]�YN�
+	�����\�T�]�\��[�]\��K�^�۝[�I�. x.,�.)x.,x.!�.&�.,x.&x.%�.-�. x.`x.)x.,8.+x.b8.,�.&x.*�.%�.,�.&x.,8.(�.-�.&x.(�.,x.&H8�%8.*�.bx.,�.(x. x.%8."�.bx.,���^]�Z]؋��]�\��Uܛۙ��\�P���\�J��Y�ܞ\˜�[��UURQ
+
+K��\�N�K��Y��]�[�\���]\ΙK��]\��X�[ێ�X�[ۋܙX\�ێ��X\�۟JN���S[�[
+
+N����Q�]�\�
+N�]�Z]�Y]�Sݙ\��Y]��YJNܙ[�\�
+N��\�
+�]\��[����.%x.-x. x.)x.,x.&�.`�.*�.bx."�.-x.bx.`x."8.!�.`x.)x.bx.)�8.`x.)x.,8.`8. x.a�.&�.&�.(�.,8.)�.,x.%x.-8.'8.)x.`8.%8.-8.(x.!8.(�.&�Ή�.(�. x.`8.)x.-8. x.'8.)x.&�.-8.%8.`x.)x.,8.!8.-�.&x.`�.*�.bH]Y]8.%x.(�.)�."8.`�.*�.(x.b8.`x.)x.bx.)��NX�]�
+\��܊^�
+	�����\�T�]�\��[�]\��K�^�۝[�I�.(�.,x.!�.a8.(x.b8.(�.-�.&x.(�.,x.&x.'8.)N�	��\��܋�Y\��Y�N��\�
+	�.(�.,x.!�.(�.bx.+x.&x.`8.!8.*�.a8.(x.b8.a8.%8.bN�	��\��܋�Y\��Y�K	��\���N�]�[���\��[�\��]�\�X�YY�[�N�B�NB���[��[ۈY�]S]�Q]J]X[]K�\�][ۜ�^�\[ۜ�[XY�\����H��^�\[ۜ�HX�[ۘX�P]Y]����^�\[ۜ�K�X\
+X\]�Q^�\[ۊN��[XY�\�H
+[XY�\��JK�X\
+X\]�Q[XY�JN��]Y]��H
+����JK�X\
+
+
+HO�
+�]��]\�\���X�܈�.(�.,8.&�.&��X�[ێ��X�[ۋ[�]N��[�]K\��]��\��]]Z[��]Z[��JJN�ۜ�\��[�H
+]X[]H�JK��[�
+
+
+HO���[��Y	����[��]
+N���\��[��[�H\��[���Y�\��[���[��Y��\�[�\��]N�\��[���\�[�\���]K���\[�N�\��[����\[�K��P��[���[X�\�\��[���W���[�
+K�����[���[X�\�\��[�������[�
+K�X]�Y��[X�\�\��[��X]�Y
+K�X]��]N��[X�\�\��[��X]�ܘ]H
+K�^�\[ې��[���[X�\�\��[��^�\[ۗ���[�
+K����P��[���B���[B�����X��ܛ�[��\]Y\��]\����\X�HH�Y]�[\�܈�Y��Z[��\�Y��]]�R[�\�X�[ە�\��[ۈH�܈
+�ۜ�]�[��[YHوȜ�[�\��ۈ���^Y�ۈ��[�]���Y[���X�[ݙH�JH��[Y[��Y]�[�\�[�\�]�[��[YK
+
+HO��]�R[�\�X�[ە�\��[ۊ���K�\��]�N��YHJNB�]]�T]Y]YU\]T[�[��H�[�N]]�T]Y]YS\��H�[��[ۈ]�T]Y]YT��]J
+H�]\����\���\�	�	��\�Y�I�	�]Y]\�]�Y]��	�\�ݘ[��K�[��Y\��]K���]JH	���]K�]\�]OOI���X�[ۉ�	��؋��YۙY[�
+NB��[��[ۈ]�T]Y]YT��X�Y
+
+HY�
+	
+	��\�[	�O˚[�\�
+H�]\���YNY���[Y[���\�X�[]T�]OOOI�Y[��\�]\���YNY�����]�\��	��[�[	�K���YJ�[X�܏O�
+�[X�܊I��I
+�[X�܊K�Y[�J\�]\���YN�ۜ����I
+	�ݚY]ԛ��	�N�]\��\��^K����J���˜]Y\�T�[X�ܐ[
+	�^\�XK[�]�[X�	�_�JK���YJ[O��
+��[Y[��X�]�Q[[Y[�OOY[	��[�YOOI�]Y]�]�Y]���\[�I�H
+���X�؛�	�	ܘY[��K�[��Y\�[�\JO�[��X��Y��[�YӘ[YOOOI��SP�	��\��^K����J[��[ۜ�K���YJ
+�[ۋ[�^
+OO��[ۋ��[X�YOOJ�[ۋ�Y�][�[X�Y
+Y[�][\H	��P\��^K����J[��[ۜ�K���YJ][OO�][K�Y�][�[X�Y
+H	��[�^OOL
+JJN�[��[YHOOY[�Y�][�[YJJNB��[��[ۈ\S]�T]Y]YU\]J�ܘ�OY�[�JHY�[]�T]Y]YT��]J
+H]�Sݙ\��Y]��]K��Y[��]�Sݙ\��Y]��]K�]^[X\�S�Y[�
+[]�Sݙ\��Y]��]K�^�\[ۜԙXYH	��J�]K���]HOOH	��\�Y�I�	��]�Sݙ\��Y]��]K�]^[X\�Q\��܊JH
+��]Y]\�]�Y]��	�\�ݘ[��K�[��Y\��]K���]JH	��
+]�Sݙ\��Y]��]K�\��܈]�Sݙ\��Y]��]K�]^[X\�Q\��܊JB�
+Y�ܘ�H	��]�T]Y]YT��X�Y
+
+JJ\�]\���[�N�ۜ����I
+	�ݚY]ԛ��	�K]�[��˜�ܛ�O]�[��˜�ܛ�NY��]K���]OOOI�]Y]\�]�Y]�ɉ�\[و���˘]Y]]Y]YU\]R[�X�OOOIٝ[��[ۉ�^�ۜ�\]Y\����]Y]]Y]YU\]R[�X�J
+NY�\]Y
+^�]�T]Y]YU\]T[�[��Y�[�N�
+	��]�U\]P]�Z[X�I�O˜�[[ݙJ
+Nܛ���]Y\�T�[X�܊	˛]�KX�X��ܛ�[�[��X�I�O˜�[[ݙJ
+Nܙ[�\��]�
+Nܙ[�\�]Y]���
+N�Y�\[و�[�\��[\��OOIٝ[��[ۉ�\�[�\��[\��
+N�B��]\��\]YB��ۜ��ܛ��P\��^K����J���˜]Y\�T�[X�ܐ[
+	ʉ�_�JK��[\�[O�[��ܛ��[��ܛ�Y�
+K�X\
+[O��ۜ�]V�N�]��OY[��[J��I����HOO\���
+^�]�[��Y�
+	ۛ�K�YӘ[YK����\��\�J
+_N��X�[
+	�\��^K����J��K�\�[�[[Y[���[�[�K�[�^ي��JJ�_JX
+Nۛ�O[��K�\�[�[[Y[��B��]\����[X�܎�]���[�	��	�K��[��ܛ��Y��[��ܛ�Y�NJN]�T]Y]YU\]T[�[��Y�[�N�[�\�
+N�ۜ��\�ܙOJ
+OO�ٛ܊�ۜ��]�Yو�ܛ��^��ۜ�[I
+	�ݚY]ԛ��	�O˜]Y\�T�[X�܊�]�Y��[X�܊N�Y�[
+^�[��ܛ��\�]�Y���[��ܛ�Y�\�]�Y�Y��_]�[��˜�ܛ��JN�N�\�ܙJ
+Nܙ\]Y\�[�[X][ۑ��[YJ�\�ܙJN�]\���YNB�\�[���[��[ۈ�]�T]Y]Y\�
+HY�[]�T]Y]YT��]J
+H]�T]Y]YT��X�Y
+
+J\�]\��Y�]�T]Y]YU\]T[�[��X\S]�T]Y]YU\]J
+NY�]�Sݙ\��Y]��]K��Y[��]�Sݙ\��Y]��]K�]^[X\�S�Y[��]K����
+K[]�T]Y]YS\���
+\�]\��]�T]Y]YS\��Q]K����
+N���XYۛK��]�\�\�]��X�ۘ�[X][ۋX�\�[ۜ���\�܈�\�H�[��\˂�Y��]K���]OOOI�\�ݘ[��Y�܊�ۜ��[YHو��\�P���\�KX[�X[Z\�[��ܛ���^U�ܚؙ[��J[�[YK�]Y]YT�]K�]L]�Z]�Y]�Sݙ\��Y]��YJNB��][�\��[
+
+
+OO��]�T]Y]Y\�
+K��]�
+
+
+OO��JKL
+N��[Y[��Y]�[�\�[�\�	ݚ\�X�[]X�[��I�
+
+OO��Y���[Y[���\�X�[]T�]HOOI�Y[��^�]�T]Y]YS\��L��]�T]Y]Y\�
+K��]�
+
+
+OO��JN�_JN�[��[ۈٙ�\�]�Sݙ\��Y]�\]J
+HY��]K���]OOOIٚ[�[��I�\�]\��Y�\[و]�T]Y]YT��]OOOIٝ[��[ۉ�	��]�T]Y]YT��]J
+JH]�T]Y]YU\]T[�[��]�YNY�\S]�T]Y]YU\]J
+J\�]\��B��ۜ����H	
+�ݚY]ԛ���NY�
+\���T؋��YۙY[�
+JH�]\��]��X�HH	
+��]�U\]P]�Z[X�H�NY�
+[��X�JH��X�HH��[Y[��ܙX]Q[[Y[�
+�\�YH�N��X�K�YH�]�U\]P]�Z[X�H���X�K��\�Ә[YHH�[\�]�K]\]KX]�Z[X�H���X�K��]]�X�]J���H���]\ȊN�ۜ�^H��[Y[��ܙX]Q[[Y[�
+��[��N^�^�۝[�H�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%8.'�.(�.bx.+x.(x.`x.)x.bx.)�0��8.*�.&x.bx.,�.%�.-x.b8. x.,�.)x.,x.!�.%x.(�.)�."8.(�.,x.!�.!8.!�.`8.%8.-8.(H��ۜ��]ۈH��[Y[��ܙX]Q[[Y[�
+��]ۈ�N�]ۋ��\�Ә[YHH����X�]ۈ�H��]ۋ�^�۝[�H�.`x.*�.%8.!�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%��]ۋ�ۘ�X��H
+
+HO���\Z[��\�^X�]��]�\�\��\�H�ܛH܈�[��\�H�[[�K��Y�
+
+	
+	���]�\��H	��I
+	���]�\��K�Y[�H
+\[و]�T]Y]YT��]HOOH	ٝ[��[ۉ�	��]�T]Y]YT��]J
+H	��]�T]Y]YT��X�Y
+
+JH
+	
+��[�[�H	��I
+��[�[�K�Y[�JH�\�
+�. x.(�..8.$�.,�.&�.,x.&x.%�.-�. x.`x.)x.,8.&�.-8.%8.*�.&x.bx.,�.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8.%�.-x.b8.`8.&�.-8.%8.+x.(�..x.b8. x.b8.+x.&H8�%8.(�.,x.!�.a8.(x.b8.a8.%8.bx.`8.&�.)x.-x.b8.(�.&x.*�.&x.bx.,�.*�.(�.-�.+x.%�.-8.bx.!�. �.bx.+x.!8.)�.,�.(H���\���N�]\��B�Y�
+��X�K�]Y\�T�[X�܊�]��JH�]\���ۜ��ۙ�\�HH��[Y[��ܙX]Q[[Y[�
+�]��N�ۙ�\�K��]]�X�]J���H��ܛ�\�N�ۙ�\�K��]]�X�]J�\�XK[X�[��.(�.-�.&x.(�.,x.&x.`x.*�.%8.!�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%�N�ۜ��\��[��H��[Y[��ܙX]Q[[Y[�
+��N�\��[�˝^�۝[�H�.`x.*�.%8.!�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%�8.*�.,�. x.(x.-x. �.bx.+x.!8.)�.,�.(x.%�.-x.b8.(�.,x.!�.a8.(x.b8.&�.,x.&x.%�.-�. H8.`�.*�.bx.(�. x.`8.)x.-8. x.`x.)x.,8.&�.,x.&x.%�.-�. x. x.b8.+x.&H��ۜ��[��[H��[Y[��ܙX]Q[[Y[�
+��]ۈ�N�[��[��\�Ә[YHH����X�]ۈ�H��[��[�^�۝[�H�.(�. x.`8.)x.-8. H��[��[�ۘ�X��H
+
+HO��ۙ�\�K��[[ݙJ
+N�ۜ�\HH��[Y[��ܙX]Q[[Y[�
+��]ۈ�N\K��\�Ә[YHH��[X\�KX�]ۈ�H�\K�^�۝[�H�.(�.-�.&x.(�.,x.&x.`x.*�.%8.!�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%�\K�ۘ�X��H
+
+HO�Y�
+
+	
+	���]�\��H	��I
+	���]�\��K�Y[�H
+\[و]�T]Y]YT��]HOOH	ٝ[��[ۉ�	��]�T]Y]YT��]J
+H	��]�T]Y]YT��X�Y
+
+JH
+	
+��[�[�H	��I
+��[�[�K�Y[�JH�]\���ۜ�H�[��˜�ܛ�HH�[��˜�ܛ�N�[�\�
+N�[��˜�ܛ��JNN�ۙ�\�K�\[�
+�\��[���[��[\JN��X�K�\[�
+�ۙ�\�JNN�ۜ��]�HH��[Y[��ܙX]Q[[Y[�
+��]ۈ�N�]�K��\�Ә[YHH����X�]ۈ�H��]�K�^�۝[�H�.)x.+x.!�.`�.*�.)x.%8.`�.*�.(x.b��]�K�ۘ�X��H\�[��
+
+HO��]�K�\�X�YH�YN�H�]�Z]�Y]�Sݙ\��Y]��YJN�B��[�[H��]�K�\�X�YH�[�N�B�N��X�K�\[�
+^�]ۋ�]�JN����\[�
+��X�JNB��ۜ�\��ܜ�H�]�Sݙ\��Y]��]K�\��܋]�Sݙ\��Y]��]K�]^[X\�Q\��ܗK��[\����X[�N��X�K�]Y\�T�[X�܊��[��K�^�۝[�H\��ܜ˛[�����. �.bx.+x.(x..x.)x.&�.,�.!�.*�.b8.)�.&x.`�.*�.)x.%8.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\��ܜ˚��[��0���H
+��8�%8.a8.(x.b8.`�."�.b8.(�.+x.%8.!8.bx.,�.!�.`8.&�.a�.&x.*8..x.&x.(�.c�8. x.%8.)x.+x.!�.`�.*�.)x.%8.`�.*�.(x.b8.`�.%8.(�.a8.(x.b8.%�.-8.bx.!�.!�.,�.&x.%�.-x.b8.`8.&�.-8.%8.+x.(�..x.b����. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%8.'�.(�.bx.+x.(x.`x.)x.bx.)�0��8.*�.&x.bx.,�.%�.-x.b8. x.,�.)x.,x.!�.%x.(�.)�."8.(�.,x.!�.!8.!�.`8.%8.-8.(H�B����XY[ۛH�\�ۙ\�[�[�ۙH]]ܚ^�Y]K\�[��Hۘ\���\��\�[�����\[�H�[\����]�\�\��\�]܈�\�H]Xܛ���X�ܜ��X��\�����\˂��ۜ��\�]Y]YQ�Y��H�]�X\
+
+N�[��[ۈ�\�]Y]YQ�Y��^J
+HY�
+V��]Y]\�]�Y]��	�\�ݘ[��K�[��Y\��]K���]JH�]K�]\�]OOH	���X�[ۉ�H�]\��	���]\����Ӌ���[��Y�J�؋�]]\�\�
+O˚Y�]K���K�]K�X��\��˘��\[�Y\��]K���]K�]K��[\��JNB��[��[ۈ�\\�Q�\�]Y]YQ�Y��
+H�ۜ����I
+	�ݚY]ԛ��	�K�^O\���˙]\�]��\�]Y]YQ�Y��^NY�
+Z�^JH�]\���ۜ��[Y\�Y�\�]Y]YQ�Y�˙�]
+�^J_�N����]Y\�T�[X�ܐ[
+	�^\�XI�K��ܑXX�
+[O���ۜ��[YOY[�Y
+[�\�]�X�]J	�]K\Z\�X�[�[��I�O��Z\�X�[�[��IΉ��N�Y��[YJ]�[Y\�ۘ[YWOY[��[YN�JN�\�]Y]YQ�Y�˜�]
+�^K�[Y\�NB��[��[ۈ�\�ܙQ�\�]Y]YQ�Y��^X�Y�^OY�\�]Y]YQ�Y��^J
+JH�ۜ����I
+	�ݚY]ԛ��	�NY�
+Y^X�Y�^H���˙]\�]��\�]Y]YQ�Y��^HOOY^X�Y�^JH�]\���ۜ��[Y\�Y�\�]Y]YQ�Y�˙�]
+^X�Y�^J_�N����]Y\�T�[X�ܐ[
+	�^\�XI�K��ܑXX�
+[O���ۜ��[YOY[�Y
+[�\�]�X�]J	�]K\Z\�X�[�[��I�O��Z\�X�[�[��IΉ��N�Y�ؚ�X��\��ۊ�[Y\��[YJI��[��[YOOOY[�Y�][�[YI����[Y[��X�]�Q[[Y[�OOY[
+Y[��[YO]�[Y\�ۘ[YWN�JNB�]�\�ۙ\�]Y]YP�X�HH�[]�\�ۙ\�]Y]YQ�Z[\�HH�[�ۜ��\�ۙ\�]Y]YQ�Y��H�]�X\
+
+N�[��[ۈ�\�ۙ\�]Y]YS[�J
+H�]\���]K�]\�]OOH	���X�[ۉ�	���]K���]HOOH	��\�Y�I�	���]K���HOOH	��Y��XY	�	��؋��YۙY[�
+NB��[��[ۈ�\��]�Y]�]Y]YS[�J
+H�]\���]K�]\�]OOH	���X�[ۉ�	��؋��YۙY[�
+H	�����]Y]\�]�Y]��	�\�ݘ[��K�[��Y\��]K���]JH	����[ۚ]܉�	�]Y]�\��\�[�	�	�XY	�	�YZ[��K�[��Y\��]K���JNB��[��[ۈ�\��\�T]Y]YS[�J
+H��]\���\�ۙ\�]Y]YS[�J
+H�\��]�Y]�]Y]YS[�J
+N�B��[��[ۈ�\�ۙ\�]Y]YR�^J
+H�]\����Ӌ���[��Y�J�؋�]]\�\�
+O˚Y�]K�X��\��˙[XZ[�]K���K�ˋ���]K�X��\��˘��\[�Y\��JWK��ܝ
+
+K�]K��[\�˙���K�]K��[\�˝�JNB��[��[ۈ\T�\�ۙ\�]Y]YJۘ\��
+H��^�\[ۜ�Hۘ\������˙�[\����O��[�X��\����\[�J��˘��\[�JJK�X\
+X\]�Q^�\[ۊN]�Sݙ\��Y]��]K��^HH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X]�Sݙ\��Y]��]K��\�ۙ\�ۛHH�YN]�Sݙ\��Y]��]K�^�\[ۜԙXYHH�YN]�Sݙ\��Y]��]K�\��܈H�[]�Sݙ\��Y]��]K��ܙQ\��ܜ�H�N]�Sݙ\��Y]��]K�\]Y]H�]�]Jۘ\���]
+N[ܙP�\�T�]K�\�[ܙHHۘ\����[��]Y[ܙP�\�T�]K�ٙ��]Hۘ\����[[ܙP�\�T�]K�\��܈H	��B�\�[���[��[ۈ�Y�\�ۙ\�]Y]YJ�ܘ�HH�[�JHY�
+Y�\��\�T]Y]YS[�J
+HT؋�]]\�\�
+O˚Y
+H�]\����[�\[�[�]][�X�]Y�XYΈ����Z]�܈�؜���\�H�[[X\�Y\��Y�ܙB����\�Z[��H�YH\�ݘ[]Y]Y\ˈZ\�^\�[���[��H�Y����X�H�ۂ���\��܈[�X�܈\��][ێ�\��\����X�Z]܈X�YH[�H�\]Y\���Y�
+�]K���]HOOH	�\�ݘ[��H�܈
+�ۜ�[�[Hو�X[�X[Z\�[��ܛ���^U�ܚؙ[���\�P���\�WJH[�[K��Y[�[��
+K��]�
+
+
+HO��JNB�B��ۜ��^HH�\�ۙ\�]Y]YR�^J
+NY�
+[]�Sݙ\��Y]��]K��\�ۙ\�ۛJH
+��]�Sݙ\��Y]��]K��\]Y\�YY�
+�\�ۙ\�]Y]YP�X�O˚�^HOOH�^JH�\�ۙ\�]Y]YP�X�HH�[��^�\[ۜ�H�N]�Sݙ\��Y]��]K�^�\[ۜԙXYHH�[�NB�Y�
+�\�ۙ\�]Y]YP�X�JH\T�\�ۙ\�]Y]YJ�\�ۙ\�]Y]YP�X�JNY�
+Y�ܘ�H	���\�ۙ\�]Y]YP�X�H	��]K����
+HH�\�ۙ\�]Y]YP�X�K�]�
+H�[�\��[\��
+N�]\��B�Y�
+�\�ۙ\�]Y]YQ�Y�˚\��^JJH�]\���\�ۙ\�]Y]YQ�Y�˙�]
+�^JNY�
+Y�ܘ�H	���\�ۙ\�]Y]YQ�Z[\�O˚�^HOOH�^H	��]K����
+H�\�ۙ\�]Y]YQ�Z[\�K��]�P]
+H�]\���ۜ����HHٜ��N��]K��[\�˙���KΈ�]K��[\�˝���\[�N�	�S	�[Z]�LN]�Sݙ\��Y]��]K��\�ۙ\�ۛHH�YN]�Sݙ\��Y]��]K��^HH	����K����__	����K��_	��]K��[\�˘��\[�_X]�Sݙ\��Y]��]K��Y[��H�YN]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�Q\��܈H�[�ۜ��Y�H
+\�[��
+
+HO���^\�[��]][�X�]Y�[��ܝ
+��\��\�\�YH����\��[�\�[X\�H[�[������\���\�\�ܞK�[�[��K��Y�X�][ۜ�܈�X�ۘ�[X][ۈ�XY˂��H�ۜ�����H]�Z]؋��\��[�^�\[ۜ��[[X\�J���JNY�
+Y�\��\�T]Y]YS[�J
+H�\�ۙ\�]Y]YR�^J
+HOOH�^JH�]\���\�ۙ\�]Y]YP�X�HH��^K]�]K����
+K�[����˛[���[��]Y����˛[��OOH���K�[Z]����Έ�\�ۙ\�]Y]YS[�J
+H����˙�[\����O���˜�\]Y\�Y�]	��\��˘�\�W����\�Wܙ\]Y\��Y	�����[��	��\�Y�Z[���	�[���\�Y	�K�[��Y\���˜�]\�JH�����N\T�\�ۙ\�]Y]YJ�\�ۙ\�]Y]YP�X�JN�\�ۙ\�]Y]YQ�Z[\�HH�[H�]�
+\��܊HY�
+�\��\�T]Y]YS[�J
+H	���\�ۙ\�]Y]YR�^J
+HOOH�^JH�\�ۙ\�]Y]YQ�Z[\�HH��^K�]�P]�]K����
+H
+��N]�Sݙ\��Y]��]K�]^[X\�Q\��܈H	�.(�.,�.(�. x.,�.(�.`8.!8.*��	�
+�
+\��܋�Y\��Y�H	�.`�.*�.)x.%8.a8.(x.b8.*�.,�.`8.(�.a�."	�H
+�	�0��8.!8.!�.(�.b8.,�.!�.`x.)x.,8. �.bx.+x.(x..x.)x.%�.-x.b8.`�.*�.)x.%8.a8.%8.bx.!8.(�.,x.bx.!�. x.b8.+x.&I�B�H�[�[H�\�ۙ\�]Y]YQ�Y�˙[]J�^JNY�
+�\��\�T]Y]YS[�J
+H	���\�ۙ\�]Y]YR�^J
+HOOH�^JH]�Sݙ\��Y]��]K��Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�Nٙ�\�]�Sݙ\��Y]�\]J
+NB�B�JJ
+N�\�ۙ\�]Y]YQ�Y�˜�]
+�^K�Y�
+N�]\���Y�B�\�[���[��[ۈ�Y]�Sݙ\��Y]��ܘ�HH�[�JHY�
+�]K���]HOOH	��\�Y�I�	���]K���HOOH	��Y��XY	�H�]\���Y�\�ۙ\�]Y]YJ�ܘ�JNY�
+\[و�\��]�Y]�]Y]YS[�HOOH	ٝ[��[ۉ�	���\��]�Y]�]Y]YS[�J
+JH�]\���Y�\�ۙ\�]Y]YJ�ܘ�JNY�
+]�Sݙ\��Y]��]K��\�ۙ\�ۛJH]�Sݙ\��Y]��]K��\�ۙ\�ۛHH�[�N]�Sݙ\��Y]��]K��Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�N
+��]�Sݙ\��Y]��]K��\]Y\�Y]�Sݙ\��Y]��]K�]X[]HH�[]�Sݙ\��Y]��]K��^HH	��B��ۜ��^HH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X�ۜ��\�T�XY[Z]H�]K���]HOOH	��\�Y�I��L��LY�
+]�Sݙ\��Y]��]K��Y[��]�Sݙ\��Y]��]K�]^[X\�S�Y[��
+Y�ܘ�H	��]�Sݙ\��Y]��]K��^HOOH�^H	��]�Sݙ\��Y]��]K�]X[]JJH�]\���ۜ��\]Y\�YH
+��]�Sݙ\��Y]��]K��\]Y\�Y�ۜ��[��Y�[\�H]�Sݙ\��Y]��]K��^HOOH�^N�ۜ��\��\���\��YH�]K���]HOOH�\���\��	��[]�Sݙ\��Y]��]K�]X[]N�ۜ�[�\�X�[ې]�\�H]�R[�\�X�[ە�\��[ێ]�Sݙ\��Y]��]K��Y[��H�YN]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�Q\��܈H�[]�Sݙ\��Y]��]K��ܙQ\��ܜ�H�N]�Sݙ\��Y]��]K�\��܈H�[]�Sݙ\��Y]��]K��^HH�^NY�
+�[��Y�[\�H]�Sݙ\��Y]��]K�Z[HH�[]�Sݙ\��Y]��]K��\�][ۜ�H�[]�Sݙ\��Y]��]K�]X[]HH�[]�Sݙ\��Y]��]K��X��\�H�[]�Sݙ\��Y]��]K��њ\��H�[]�Sݙ\��Y]��]K�[XY�\�H�[]�Sݙ\��Y]��]K����H�[]�Sݙ\��Y]��]K��\�Y�X�][ۜ�H�[]�Sݙ\��Y]��]K�[��ܛX][ۘ[^�\[ۜ�H�N]�Sݙ\��Y]��]K�^�\[ۜԙXYHH�[�N]�Sݙ\��Y]��]K�[XY�\ԙXYHH�[�N]�Sݙ\��Y]��]K���ԙXYHH�[�N��^�\[ۜ�H�N��[XY�\�H�NB����Y\^\�[���۝[��[HH�\]Y\�\�[��Y����H��\�HN�8. �.bx.+x.(x..x.)x.*�.(�..8.&�. �.&x.,�.%8.`8.)x.a�. x.%x.bx.+x.!�. �.-�.bx.&x.*�.&x.bx.,�."8.+x. x.b8.+x.&H8.a8.(x.b8.(�.+H^�\[ۋ�.*�.)x.,x. x.$8.,�.&x.*�.)x.,�.(�.'�.,x.&x.`x.%�.)�ۜ��ܙHH]�Z]��Z\�K�[�]Y
+؋�Z[T�]\�����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]�LJK�؋��\�][ۜ�����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]�LJK�؋�]X[]J����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]�LJK�؋�Z[P�X��\�
+����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�HJK�؋��њ\���ݙ\�Y�J����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�HJK�؋��[�[YT�][���
+K�؋��]�Y]�����\�
+K�JNY�
+�\]Y\�YOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H�]\���ۜ��ܙS�[Y\�Hȸ.(�.+x.%8.`8.(x.)x.`x.)x.,8.a8.'�.)x.c��.!8.-8.)�. x.(�.,8.%�.&�.(�.+x.%��.'8.)x. x.(�.,8.%�.&�.(�.+x.%��.`8."�.a�. x.)x.-8.*�.%x.c��.'8.)H��Y�\����. x.,�.(�.%x.,x.bx.!�.!8.b8.,�.(�.,8.&�.&���.%�.,8.`8.&�.-x.(�.&x.'�.,x. x.%x.(�.)�."�NX���[��]�Y]��˜�]
+�ܙV͗K��]\�OOIٝ[�[Y	���ܙV͗K��[YN��JNY�
+�^HOOH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X
+H]�Sݙ\��Y]��]K��Y[��H�[�N�]\���Y]�Sݙ\��Y]��YJNB��ۜ��ܙU�[YHH
+[�^�[�X��HO��ܙV�[�^K��]\�OOH��[�[Y��
+�ܙV�[�^K��[YH���[�X��H��[�X��]Z[HH�ܙU�[YJ]�Sݙ\��Y]��]K�Z[JN]�\�][ۜ�H�ܙU�[YJK]�Sݙ\��Y]��]K��\�][ۜ�N]]X[]HH�ܙU�[YJ�]�Sݙ\��Y]��]K�]X[]JN]�X��\�����H�ܙU�[YJ�]�Sݙ\��Y]��]K��X��\�
+N]�њ\������H�ܙU�[YJ]�Sݙ\��Y]��]K��њ\��
+N�ۜ��][���H�ܙU�[YJK]�Sݙ\��Y]��]K��][�����]�Sݙ\��Y]��]K��][���H��[
+N]�Sݙ\��Y]��]K��ܙQ\��ܜ�H�ܙK��]X\
+
+][K[�^
+HO�][K��]\�OOH��Z�X�Y����ܙS�[Y\��[�^H
+����
+���[��][K��X\�ۏ˛Y\��Y�H�.!8.,�. �.+x.a8.(x.b8.*�.,�.`8.(�.a�."�K��X�J�
+WH��JN���Y\H�\]Y\�Y^H]�[��[�[\N��]�\��[[�H�Y[�܈�[��H^KLK��Y�
+�\]Y\�YOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H�]\��Y�
+Z[HOOH�[
+H]�Sݙ\��Y]��]K�Z[HHZ[H�NY�
+�\�][ۜ�OOH�[
+H]�Sݙ\��Y]��]K��\�][ۜ�H
+�\�][ۜ��JK��[\�\�]�P��\[�T���NY�
+]X[]HOOH�[
+H]�Sݙ\��Y]��]K�]X[]HH
+]X[]H�JK��[\�\�]�P��\[�T���NY�
+�X��\�����OOH�[
+H]�Sݙ\��Y]��]K��X��\�H
+�X��\������JK��[\�\�]�P��\[�T���NY�
+�њ\������OOH�[
+H]�Sݙ\��Y]��]K��њ\��H
+�њ\�������JK��[\�\�]�P��\[�T���NY�
+�][���OOH�[
+H]�Sݙ\��Y]��]K��][���H\��^K�\�\��^J�][���H�
+�][����H�[
+H��][���]�Sݙ\��Y]��]K�\��܈H]�Sݙ\��Y]��]K��ܙQ\��ܜ˛[����8. �.bx.+x.(x..x.)x.&�.,�.!�.*�.b8.)�.&x.(�.,x.!�.a8.(x.b8.'�.(�.bx.+x.(N�	�ˋ���]��]
+]�Sݙ\��Y]��]K��ܙQ\��ܜ�WK���[���_H8�%8.%x.,x.)�.`8.)x. �.*�.b8.)�.&x.&x.-x.bx."8.,8.`x.*�.%8.!�8�'8�%8�'H8.`x.%�.&x.*8..x.&x.(�.c���[]�Sݙ\��Y]��]K�\]Y]H�]�]J
+N]�Sݙ\��Y]��]K��Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�YN��\�HH]\���\�\�HH\��YY�\�Hؚ�X����Y���[HB���[�\[�[��\�H�XY\�[�[�ˈY�]H�]�����ۛHY�\�\�H���Y�
+�\��\���\��Y	���]K���]HOOH�\���\��	��]�R[�\�X�[ە�\��[ۈOOH[�\�X�[ې]�\�	��]�Sݙ\��Y]��]K�]X[]JH�ۜ�H�[��˜�ܛ�HH�[��˜�ܛ�N�[�\�
+N�[��˜�ܛ��JNH[�Hٙ�\�]�Sݙ\��Y]�\]J
+N���\�H��8.`8.%x.-8.(x.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8.*�.&x.,x. x.%8.bx.,�.&x.*�.)x.,x.!�8.`�.%8.(�.a8.(x.b8.&�.)x.a�.+x. x.`x.%8."�.&�.+x.(�.c8.%8.*�.)x.,x. B��ۜ�]^H]�Z]��Z\�K�[�]Y
+��8.`�.*�.)x.%8.`8."x.'�.,�.,8."�..8.%8.`x.(�. x.`�.*�.bx.*�.&x.bx.,�. �.-�.bx.&x.a8.)��8.!8.bx.&x.*�.,��^ܝ8.!8.b8.+x.(�.%8.-�.!�.`8.'�.-8.b8.(x.`8.%x.-8.(x.`8.(x.-�.b8.+x.'8..x.bx.`�."�.bx.(�.bx.+x.!�. �.+B�؋��\��[�^�\[ۜ��[[X\�J����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]��\�T�XY[Z]JK�؋�[XY�\�����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]��JK�؋�]Y]�������N��]K��[\�˙���KΈ�]K��[\�˝�[Z]�LJK�؋���Y�X�][ۜ���T�P�W�UWє��JK�؋��\�Y�X�][ۓX]�\�����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�K[Z]�LJK�؋��X�ۘ�[X][ۑ]�Y[��J����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�HJK�JNY�
+�\]Y\�YOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H�]\��Y�
+]�Sݙ\��Y]��]K��^HOOH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X
+H]�Sݙ\��Y]��]K��Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�N�]\���Y]�Sݙ\��Y]��YJNB��ۜ��[YHH
+[�^�[�X��H�JHO�]^�[�^K��]\�OOH��[�[Y��
+]^�[�^K��[YH�[�X��H��[�X���ۜ��]�[�\��\�\�H��^�\[ۜ��ۜ��]�[�\�[XY�\�H��[XY�\��ۜ��]�[�\����H��]Y]���ۜ��]�^�\[۔����H�[YJ�JN�ۜ�X]�]�Y[��HH�[YJK�JN�ۜ�^�\[۔����HX�[ۘX�P]Y]�����]�^�\[۔����X]�]�Y[��JN�ۜ�[XY�T����H�[YJK]�Sݙ\��Y]��]K�[XY�\��JN�ۜ��ԛ���H�[YJ�]�Sݙ\��Y]��]K�����JN�ۜ��\�\��X��YYYH]^�K��]\�OOH��[�[Y�]�Sݙ\��Y]��]K�^�\[ۜԙXYHH�\�\��X��YYY]�Sݙ\��Y]��]K�^�\[ۜԙXYNY�
+�\�\��X��YYY
+H]�Sݙ\��Y]��]K�[��ܛX][ۘ[^�\[ۜ�H[��ܛX][ۘ[]Y]�����]�^�\[۔����N]�Sݙ\��Y]��]K�X]�]�Y[��HHX]�]�Y[��N]�Sݙ\��Y]��]K�X]�Y�[Q^�\[ۜ�HX]�Y�[P]Y]��[�
+�]�^�\[۔����X]�]�Y[��JN[ܙP�\�T�]K�ٙ��]H�]�^�\[۔���˛[��[ܙP�\�T�]K�\�[ܙHH�]�^�\[۔���˛[��OOH�\�T�XY[Z][ܙP�\�T�]K�\��܈H��B�]�Sݙ\��Y]��]K�[XY�\ԙXYHH]^�WK��]\�OOH��[�[Y�]�Sݙ\��Y]��]K���ԙXYHH]^̗K��]\�OOH��[�[Y�Y�
+]^�WK��]\�OOH��[�[Y�H]�Sݙ\��Y]��]K�[XY�\�H[XY�T����Y�
+]^̗K��]\�OOH��[�[Y�H]�Sݙ\��Y]��]K����H�ԛ���Y�
+]^��K��]\�OOH��[�[Y�H]�Sݙ\��Y]��]K���Y�X�][ۜ�H�[YJ�NY�
+]^�K��]\�OOH��[�[Y�H]�Sݙ\��Y]��]K��\�Y�X�][ۜ�H�[YJ
+N�ۜ�]^[X\�S�[Y\�Hȸ.(�.,�.(�. x.,�.(�.`8.!8.*���.%�.,8.`8.&�.-x.(�.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���.&�.(�.,8.)�.,x.%x.-8.!�.,�.&H��. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&H��.!8.,�."�.-x.bx.`x."8.!ȋ�.*�.)x.,x. x.$8.,�.&x."8.,x.&�.!8..x.b�N�ۜ�]^[X\�Q\��ܜ�H]^��]X\
+
+][K[�^
+HO�][K��]\�OOH��Z�X�Y����]^[X\�S�[Y\��[�^H
+����
+���[��][K��X\�ۏ˛Y\��Y�H�.!8.,�. �.+x.a8.(x.b8.*�.,�.`8.(�.a�."�K��X�J�
+WH��JN]�Sݙ\��Y]��]K�]^[X\�Q\��܈H]^[X\�Q\��ܜ˛[���]^[X\�Q\��ܜ˚��[��0���H��[]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�N]�Sݙ\��Y]��]K�\]Y]H�]�]J
+NY�]S]�Q]J]�Sݙ\��Y]��]K�]X[]H�K]�Sݙ\��Y]��]K��\�][ۜ��K^�\[۔����[XY�T�����ԛ���NY�
+X�\�\��X��YYY
+H��^�\[ۜ�H�]�[�\��\�\�Y�
+]^�WK��]\�OOH	ٝ[�[Y	�H��[XY�\�H�]�[�\�[XY�\�Y�
+]^̗K��]\�OOH	ٝ[�[Y	�H��]Y]��H�]�[�\����\]P�[
+
+NH�]�
+JHY�
+�\]Y\�YOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H]�Sݙ\��Y]��]K�\��܈HK�Y\��Y�H�.`�.*�.)x.%8. �.bx.+x.(x..x.)x."8.(�.-8.!�.a8.(x.b8.*�.,�.`8.(�.a�."�B�Y�
+�\]Y\�YOOH]�Sݙ\��Y]��]K��\]Y\�Y
+H]�Sݙ\��Y]��]K��Y[��H�[�N]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�[�Nٙ�\�]�Sݙ\��Y]�\]J
+NB�B���[��[ۈ[��\�S]�Sݙ\��Y]����
+HY�
+�]K�]\�]OOH���X�[ۈ�T؋��YۙY[�
+JH�]\���YNY�
+�\��\�T]Y]YS[�J
+JH��Y�\�ۙ\�]Y]YJ
+K��]�
+
+
+HO��JN��]\���YN�B��ۜ��^HH	��]K��[\�˙���__	��]K��[\�˝�_	��]K��[\�˘��\[�_X�ۜ��[HH]�Sݙ\��Y]��]K��^HOOH�^NY�
+]�Sݙ\��Y]��]K��\�ۙ\�ۛH
+
+[]�Sݙ\��Y]��]K�]X[]H�[JH	��[]�Sݙ\��Y]��]K��Y[��JH�Y]�Sݙ\��Y]��[JN��8.+x.(�.b8.,�.&�.-8.%8.%�.,x.bx.!�.*�.&x.bx.,�.(�.,8.*�.)�.b8.,�.!�.(�.+x. �.bx.+x.(x..x.)x. x.)x.,�.!�8.`x.%x.b8.)x.,8.*�.&x.bx.,�."8.,8.`x.*�.%8.!�. �.bx.+x.(x..x.)x.%�.-x.b8.(x.-x.+x.(�..x.b8. x.b8.+x.&B���8.`x.)x.,�[�\�
+H8."8.,8.`8.%x.-8.(x.`x.%�.&�.`x."8.bx.!�.*�.%�.,�.&x.,8.%8.bx.,�.&x.&�.&x."8.&x. x.)�.b8.,�. x.,�.(�.+x.,x.&�.`8.%8.%x."8.,8.`8.*�.(�.a�."��]\���YNB���[��[ۈ\�]�P�ܙQ\��܊�X�[ۋ\��ܜ�H]�Sݙ\��Y]��]K��ܙQ\��ܜ�H�]\��\��ܜ˜��YJ
+Y\��Y�JHO�Y\��Y�HOOH�X�[ۈY\��Y�K��\���]
+	��X�[۟N�
+JNB��[��[ۈ�[�\�]�Q\���\�
+���
+HY�
+[]�Sݙ\��Y]��]K�]X[]H	��[]�Sݙ\��Y]��]K��Y[��H�Y]�Sݙ\��Y]�
+N��ۜ�[�]�T�[��HH
+
+HO�
+\�]K��[\�˙���H��\�[�\���]H�H�]K��[\�˙���JH	��
+\�]K��[\�˝���\�[�\���]HH�]K��[\�˝�H	��
+�]K��[\�˘��\[�HOOH�S����\[�HOOH�]K��[\�˘��\[�JN�ۜ�Z[HH
+]�Sݙ\��Y]��]K�Z[H�JK��[\�[�]�T�[��JN�ۜ��\�][ۜ�H
+]�Sݙ\��Y]��]K��\�][ۜ��JK��[\�[�]�T�[��JN�ۜ�]X[]HH
+]�Sݙ\��Y]��]K�]X[]H�JK��[\�[�]�T�[��JN�ۜ�^�\[ۜ�H���Y^�\[ۜ�
+N�ۜ��[XZ[HZ[K��YX�J
+�[K
+HO��[H
+��[X�\��XZ[���[�
+K
+N�ۜ��[�[\�HZ[K��YX�J
+�[K
+HO��[H
+��[X�\���[W���[�
+K
+N�ۜ�\��Y�[\�HZ[K��YX�J
+�[K
+HO��[H
+��[X�\��\��Y���[�
+K
+N�ۜ���\]YH]X[]K��[\�
+
+HO���[X\�T�\�[��]\�OOH���\]Y�K�[���ۜ��YYԙ]�Y]�H]X[]K��[\�
+
+HO���]\�OOH��YY�ܙ]�Y]ȊK�[���ۜ��Z][��H]X[]K��[\�
+
+HO�^��[X\�T�\�[	����]\�OOH��Z][��ٚ[\ȊK�[���ۜ��Z[YH]X[]K��[\�
+
+HO�^��[X\�T�\�[	��
+��]\�OOH�\��܈��[X�\��\��ܗ���[�
+H�
+JK�[���ۜ��X��\�[��[��HH
+]�Sݙ\��Y]��]K��X��\��JK��[\�[�]�T�[��JN�ۜ��X��\��P��\[�Q]HH�]�X\
+�X��\�[��[��K�X\
+
+���HO��	ܛ�˘�\�[�\���]__	���[����˘��\[�H��K��\\��\�J
+_X���JJN�ۜ�X[�X[����\�[X[�X[����\][\��X��\�[��[��JN�ۜ�X[�X[����\\��ܜ�Vˋ���]��]
+�X��\�[��[��K�X\
+�O����ܚٛ���]\�\��܊K��[\����X[�JWN�ۜ�X[�X[����\�XYOP\��^K�\�\��^J]�Sݙ\��Y]��]K��X��\�
+I��Z\�]�P�ܙQ\��܊	�.`8."�.a�. x.)x.-8.*�.%x.c	�N�ۜ��\��[�^�\[ې��[�H
+���HO��ۜ�Y�X�X�HH�X��\��P��\[�Q]K��]
+	ܛ�˘�\�[�\���]__	���[����˘��\[�H��K��\\��\�J
+_X
+N�]\��Y�X�X�O˛�[����[�OH�[	��Y�X�X�O˜�\���Y���[�OH�[���[X�\�Y�X�X�K��[����[�
+H
+��[X�\�Y�X�X�K��\���Y���[�
+B���[X�\���˙^�\[ۗ���[�
+NN�ۜ�Y[�^�\[ە�[H
+]�Sݙ\��Y]��]K�[��ܛX][ۘ[^�\[ۜ��JK��[\�[�]�T�[��JK�[���ۜ�\�Y�X�X�P��[��H�X��\�[��[��K���YJ
+���HO���˛�[����[�OH�[	����˜�\���Y���[�OH�[
+N�ۜ�^�\[ە�[H\�Y�X�X�P��[���X��\�[��[��K��YX�J
+�[K���HO��[H
+��[X�\���˛�[����[�
+H
+��[X�\���˜�\���Y���[�
+K
+B��X]�X^
+]X[]K��YX�J
+�[K
+HO��[H
+��[X�\��^�\[ۗ���[�
+K
+HHY[�^�\[ە�[H�[X�\�]�Sݙ\��Y]��]K�X]�Y�[Q^�\[ۜ�
+JN�ۜ��\��H^�\[ۜ˜�YX�J
+�[K
+HO��[H
+��[X�\���\��[[�[�
+K
+N�ۜ�Z[P]�Z[X�HH\��^K�\�\��^J]�Sݙ\��Y]��]K�Z[JH	��Z\�]�P�ܙQ\��܊�.(�.+x.%8.`8.(x.)x.`x.)x.,8.a8.'�.)x.c�N�ۜ�]X[]P]�Z[X�HH\��^K�\�\��^J]�Sݙ\��Y]��]K�]X[]JH	��Z\�]�P�ܙQ\��܊�.'8.)x. x.(�.,8.%�.&�.(�.+x.%�N�ۜ����Y]�X�H
+]�Z[X�K�[YJHO�]�Z[X�H��[J�[YJH���%���ۜ���R�^HH�]�X\
+�\�][ۜ˛X\
+
+
+HO��	���\�[�\���]__	����\[�__	���\�[�\����\�[H��XJJN�ۜ���\[�SX\H�]�X\
+
+N]X[]K��ܑXX�
+
+���HO��ۜ��^HH	ܛ�˘��\[�__	ܛ�˘�\�[�\����\�[H�.a8.(x.b8.(�.,8.&�..8.(�.,8.&�.&��XY�
+X��\[�SX\�\��^JJH��\[�SX\��]
+�^K���\[�N���˘��\[�K�\�[N���˘�\�[�\����\�[H�.a8.(x.b8.(�.,8.&�..8.(�.,8.&�.&����\]Y��]�Y]Έ�Z][�Έ\��܎��[\Έ]\����˘�\�[�\���]K�[�Έ�]��]
+
+HJN�ۜ�][HH��\[�SX\��]
+�^JN][K��[\�
+�H�[X�\���˙�[W���[�
+N][K�]\�H][K�]\����˘�\�[�\���]H�][K�]\����˘�\�[�\���]NY�
+��˜�[X\�T�\�[��˜�]\�OOH���\]Y�H][K���\]Y
+��[�HY�
+��˜�]\�OOH��Z][��ٚ[\ȊH][K��Z][����[�HY�
+��˜�]\�OOH�\��܈�H][K�\��܊��[�H][K��]�Y]����ۜ��H��R�^K��]
+	ܛ�˘�\�[�\���]__	ܛ�˘��\[�__	ܛ�˘�\�[�\����\�[H��X
+N
+�˜�\�[���[���JK��ܑXX�
+
+�[�
+HO�][K��[�˘Y
+�[�
+JNJN�ۜ���\[�Y\�Hˋ����\[�SX\��[Y\�
+WK��ܝ
+
+K�HO���]\����[P��\\�JK�]\�
+H���]�Y]�
+����Z][��H
+K��]�Y]�
+�K��Z][��JN��ۜ��Z]�[ܑܛ�\�H�X�[���H�8.'x.,�. Kx.%�.+x.&x.&8.&x.,�.!8.,�.(ȋ�[�ΈȜ�W���KۙN���YH�K��X�[��.(�.,�.(�.!�.,�.&H�ȋ�[�ΈȘ���XZ[��KۙN��ܙY[��K��X�[��H�^[Y[���[�ΈȜW��][Y[��KۙN���[�]�K��X�[��X[�X[�8.(�.,�.(�. x.,�.(�.'�.-8.`8.*8.*H��[�ΈțX[�X[�ܙY]��X[�X[�^[Y[���X[�X[؛۝\ȋ���[Wܙ\H��ܙY]��]�KۙN��[X�\��K��X�[��."�.-x.bx.`x."8.!��8.(�.,x.!�."8.,�.`x.&x. x.a8.(x.b8.a8.%8.bH��[�Έș����\�Y�H��[�ۛ�ۈ�KۙN���Y�K�K�X\
+
+ܛ�\
+HO�
+����ܛ�\�[YN��\�][ۜ˙�[\�
+�
+HO�
+���\�[���[���JK���YJ
+�[�
+HO�ܛ�\��[�˚[��Y\��[�
+JJK�[��JJN��ۜ�\T�[[X\�HHؚ�X��[��Y\�^�\[ۜ˜�YX�J
+X��JHO�
+
+X���K�\S�[YWHH
+X���K�\S�[YWH
+H
+�JKX��K�JJK��ܝ
+
+K�HO���WHHV�WJK��X�J�N�ۜ��X�[�Hˋ��]X[]WK��ܝ
+
+K�HO���[�����\�[�\���]JK���[P��\\�J��[��K��\�[�\���]JJH��[��K���\[�JK���[P��\\�J��[������\[�JK��JK��X�J
+N�ۜ�Z\��[��^H
+���HO���YZ\��[��ܛ�\�^
+��˛Z\��[���ܛ�\�N�ۜ���\[�P�P��HH�]�X\
+��\[�Y\˛X\
+
+��\[�JHO����[����\[�K���\[�H��K��\\��\�J
+K��\[�WJJN�ۜ�]\���\[�Q]HH
+��\�HO���\˜�YX�J
+]\���JHO��ۜ��[YHH��\[�P�P��K��]
+��JO˛]\����]\���[YH�]\���[YH�]\�K�]K��[\�˝�Q�US��Ԓ��UJN�ۜ�X�]�T�\�H]�Sݙ\��Y]��]K��][���˛�\�][ۘ[��\��]H�T�US����T��UN�ۜ�\�ܞP�]ٙ�H]�Sݙ\��Y]��]K��][���˚\�ܞW��]ٙ��]H����LL����ۜ��X��\�]\�Hˋ���]��]
+
+]�Sݙ\��Y]��]K��X��\��JK�X\
+
+���HO���˘�\�[�\���]JJWK��ܝ
+
+K��]�\��J
+N�ۜ��X��\�]HH�X��\�]\˚[��Y\��]K��[\�˙]JH��]K��[\�˙]H�
+�X��\�]\��H�]K��[\�˙]JN�ۜ��X��\�H
+]�Sݙ\��Y]��]K��X��\��JK��[\�
+���HO���˘�\�[�\���]HOOH�X��\�]JN�ۜ��њ\���P��\[�Q]HH�]�X\
+
+N
+]�Sݙ\��Y]��]K��њ\���JK��ܑXX�
+
+���HO��ۜ��^HH	ܛ�˘�\�[�\���]__	���[����˘��\[�H��K��\\��\�J
+_XY�
+X�њ\���P��\[�Q]K�\��^JJH�њ\���P��\[�Q]K��]
+�^K���NJN�ۜ��Y��X�HH]�Sݙ\��Y]��]K��Y[���X�[ۈ�\��H�[\�����ۙϸ. x.,�.)x.,x.!�.+x.,x.&�.`8.%8.%x. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%���ۙϏ�[��.`8.&�.-8.%8.%8..x.`8.(x.&x..x.`x.)x.,8.(�.,�.(�.!�.,�.&x.a8.%8.bx.%�.,x.&x.%�.-H8.(�.,8.&�.&�."8.,8.`8.%x.-8.(x.%x.,x.)�.`8.)x. �.&�.&x.*�.&x.bx.,�.&x.-x.bx.`8.(x.-�.b8.+x. �.bx.+x.(x..x.)x.(x.,�.%�.-�.!���[����X�[ۏ���]�Sݙ\��Y]��]K�\��܂���X�[ۈ�\��H�[\��\������ۙϸ. �.bx.+x.(x..x.)x."8.(�.-8.!�.(x.,�.a8.(x.b8.!8.(�.&�.%�..8. x.*�.b8.)�.&O���ۙϏ�[���
+]�Sݙ\��Y]��]K�\��܊_O��[���]ۈ�\��H����X�]ۈ�H�YH�]�T�]�H��.)x.+x.!�.`�.*�.(x.b؝]ۏ���X�[ۏ���YZ[K�[��	��[�\�][ۜ˛[��	��\]X[]K�[�����X�[ۈ�\��H�[\��\������ۙϸ.a8.(x.b8.'�.&�. �.bx.+x.(x..x.)x.`�.&x."�.b8.)�.!�	�
+�[��SX�[
+
+J_O���ۙϏ�[��. �.bx.+x.(x..x.)x.+x.,�."8.+x.(�..x.b8. x.b8.+x.&x."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.%�.-x.b8.`8.)x.-�.+x. H8.)x.+x.!�. �.(�.,�.(�."�.b8.)�.!�.(�.bx.+x.&x.*�.)x.,x.!�8.*�.(�.-�.+x.`8.&�.-8.%8.!8.)x.,x.!�.a8.'�.)x.c8.`8.'�.-�.b8.+x.%x.(�.)�."8.)�.,x.&x.%�.-x.b8."8.,�. x.`8.(x.)x."8.(�.-8.!���[���]ۈ�\��H����X�]ۈ�H�YH�^[�]T�[��H��. �.(�.,�.(�.(�.bx.+x.&x.*�.)x.,x.!�L8.)�.,x.&O؝]ۏ��]ۈ�\��H����X�]ۈ�H�]KY���H���Y��.`8.&�.-8.%8.!8.)x.,x.!�.a8.'�.)x.c؝]ۏ���X�[ۏ����������[��\�SH�	��Y��X�_B��X�[ۈ�\��H��]\�\��\]�K\�]\�\��\X�[ۋ][\ȏ��\�X�H�\��H��Ȉ]KXX�[ۋ\��]OH���Y���[��.`8.(x.)x.`�.&x."�.b8.)�.!�.%�.-x.b8.`8.)x.-�.+x. O��[����ۙω����Y]�X�Z[P]�Z[X�K�[XZ[
+_O���ۙϏ�X[��Z[P]�Z[X�H�	۝[J�[�[\�_H8.a8.'�.)x.c0��8.+x.b8.,�.&x.`x.)x.bx.)�	۝[J\��Y�[\�_X��. �.bx.+x.(x..x.)x.`8.(x.)x.(�.,x.!�.a8.(x.b8.'�.(�.bx.+x.(H�H0��8. x.%8.%8..x.a8.'�.)x.c��X[��\�X�O��\�X�H�\��H��Ȉ]KXX�[ۋ\��]OH�Z[K\�[[X\�H���[��.(�.,8.&�.&�.&�.(�.,8.(x.)�.)x.'8.)x.`8.*�.(�.a�."��[����ۙω����Y]�X�]X[]P]�Z[X�K��\]Y
+_O���ۙϏ�X[�."8.,�.&x.)�.&x.!�.,�.&x.(�.,�.(�.)�.,x.&K�.&�.(�.-8.*x.,x.%�0��8.(�.,x.!�.a8.(x.b8.`�."�.b8. x.,�.(�.(�.-�.&x.(�.,x.&x."8.,�. H]Y]��X[��\�X�O��\�X�H�\��H��\���]KXX�[ۋ\��]OH�Z[K\�[[X\�H���[��.%x.bx.+x.!�.%x.(�.)�."8.*�.+x.&���[����ۙω����Y]�X�]X[]P]�Z[X�K�YYԙ]�Y]�_O���ۙϏ�X[��]X[]P]�Z[X�H��. �.bx.+x.(x..x.)x.(x.,�.`x.)x.bx.)�.`x.%x.b8.(�.,x.!�.a8.(x.b8.!8.(�.&����.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.(�.,x.!�.a8.(x.b8.'�.(�.bx.+x.(H�H0��8. x.%8.%8..x.*�.-8.b8.!�.%�.-x.b8. �.,�.%��X[��\�X�O��\�X�H�\��H��Y�]KXX�[ۋ\��]OH���Y���[��.(�.+x.a8.'�.)x.c�8.)x.bx.(x.`8.*�.)x.)���[����ۙω����Y]�X�]X[]P]�Z[X�K�Z][��
+��Z[Y
+_O���ۙϏ�X[��]X[]P]�Z[X�H�8.(�.+H	۝[J�Z][��_H0��8.)x.bx.(x.`8.*�.)x.)�	۝[J�Z[Y
+_X��.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.(�.,x.!�.a8.(x.b8.'�.(�.bx.+x.(H�H0��8. x.%8.`x. x.bx.a8.'�.)x.c��X[��\�X�O��\�X�H�\��H��Y�]KXX�[ۋ\��]OH�^�\[ۜȏ��[��.`8.!8.*�.%�.-x.b8.(�.,8.&�.&�.%x.(�.)�."8.'�.&���[����ۙω����Y]�X�]X[]P]�Z[X�K^�\[ە�[
+_O���ۙϏ�X[��\]X[]P]�Z[X�H��.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.(�.,x.!�.a8.(x.b8.'�.(�.bx.+x.(H��]�Sݙ\��Y]��]K�]^[X\�S�Y[����. �.bx.+x.(x..x.)x.*�.)x.,x. x.'�.(�.bx.+x.(x.`x.)x.bx.)�0��8. x.,�.)x.,x.!�.`8.%x.-8.(x.(�.+x.%8.`8.*�.-x.b8.(�.!Ȉ�[]�Sݙ\��Y]��]K�^�\[ۜԙXYH��.(�.+x.%8.`8.*�.-x.b8.(�.!�.(�.,x.!�.`�.*�.)x.%8.a8.(x.b8.*�.,�.`8.(�.a�."��8.(�.+x.%8.`8.*�.-x.b8.(�.!�.`8."x.'�.,�.,	۝[J^�\[ۜ˛[��
+_H8.`8.!8.*�.%�.-x.b8.`�.*�.)x.%	�[ۙ^L
+�\��_H8.&�.,�.%�0��8.a8.(x.b8.`�."�.b8.(�.+x.%8.(�.)�.(x.%�.,x.bx.!�.(�.,8.&�.&�H0��8. x.%8.%x.(�.)�."8.`8.!8.*���X[��\�X�O����X�[ۏ����X�[ۈ�\��H�[�[X[�X[Y����\\[�[�\�XK[X�[Y�OH�X[�X[����\]H���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�.a8.(x.b8.)x.-�.(x.(�.-�.&x.(�.,x.&x.'8.)x.(�.,x.&x.(x.-�.+O���YH�X[�X[����\]H��.'8.)x.(�.,x.&x.(x.-�.+x.%�.-x.b8.%x.bx.+x.!�.%�.,�.%x.b8.+H	�X[�X[����\�XYO�
+	۝[JX[�X[����\˛[��
+_JX���O����X[�\��H�XY\�X���.%x.,�.(x.&�.(�.-8.*x.,x.%�.`x.)x.,8."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.%�.-x.b8.`8.)x.-�.+x. H0��8.`x.*�.%8.!�.(�.+x.&�.)x.b8.,�.*�..8.%8. �.+x.!�.`x.%x.b8.)x.,8. �.+x.&�.`8. �.%H0��8.`8.&�.-8.%8.%�.&�.%�.)�.&x.`8.%�.b8.,�.&x.,x.bx.&H8.a8.(x.b8.(�.-�.&x.(�.,x.&x.*�.(�.-�.+x.`8.&�.)x.-x.b8.(�.&x.'8.)x.*�.)x.,x. x.+x.,x.%x.`�.&x.(x.,x.%x.-��X[��]���]���	�[X[�X[����\�XYO����OH��]\ȏ�.(�.,x.!�.%x.(�.)�."8.*�.%�.,�.&x.,8.(�.,�.(�.!�.,�.&x.a8.(x.b8.*�.,�.`8.(�.a�."8. x.(�..8.$�.,�.(�.-x.`8.'�.(�."�8.a8.(x.b8.a8.%8.bx.*�.(x.,�.(�.!8.)�.,�.(x.)�.b8.,�.a8.(x.b8.(x.-x.!�.,�.&x.!8.bx.,�.!���Ή��B�	�X[�X[����\\��ܜ˛X\
+OO���OH�[\����
+J_H0��8.(�.,�.(�. x.,�.(�.+x.,�."8.(�.,x.!�.a8.(x.b8.!8.(�.&���
+K���[�	��_B��X[�X[����\˛X\
+OO�\�X�H�\��H�X[�X[Y����\Z][H��]����ۙω�
+K���\[�J_H0��	�
+K��\�[�\���]J_O���ۙϏ��K��]\�OOIܙXYI���.(�.,x.&x.(x.-�.+x.*�.,�.`8.(�.a�."0��8.(�.+x.*�.,x.)�.*�.&x.bx.,��.'8..x.bx.%8..x.`x.)x.(�.-�.&x.(�.,x.&x.(�.,�.(�.!�.,�.&IΉ�.(�.-�.&x.(�.,x.&x.(�.,�.(�.!�.,�.&x.`x.)x.bx.)�0��8.(�.,x.!�.a8.(x.b8.`�."�.bx.`8.&�.a�.&x.'8.)x.*�.)x.,x. I�O���X[��
+K�X���[�OOI�S	���.%�..8. x.&�.,x.#x."�.-IΜK�X���[�
+_H0��	�
+�[��.'x.,�. x.`x.)x.,8.%�.+x.&I�\��]��.'x.,�. I��]�]Ή�.%�.+x.&I�V�K�\�X�[ۗ_K�\�X�[ۊ_H0��8.(�.,x.&x.`8.(x.-�.b8.+H	�
+\�^U[YJK�ܙX]Y�]
+J_O��X[��K�X���[�OOI�S	�K�\�X�[ۈOOI�[	����X[�\��H��X���.(�.,�.(�.!�.,�.&x.`8."x.'�.,�.,8. �.+x.&�.`8. �.%N�8.(�.-�.&x.(�.,x.&x.`8. x.a�.&�.`8.&�.a�.&x.(�.,�.(�.!�.,�.&x.`x.(�. x.a8.%8.bH8.`x.%x.b8.`�."�.bx.`x.%�.&x.'8.)x.*�.)x.,x. x.%�.,x.bx.!�.&�.(�.-8.*x.,x.%�.a8.(x.b8.a8.%8.bO��X[�Ή��O�]�����XY	�	�YZ[��K�[��Y\��]K���JI���[�X��\����\[�JK���\[�JO��]ۈ�\��H��[X\�KX�]ۈ�]K[X[�X[Y����\H��
+K�Y
+_H���K��]\�OOIܙXYI���.%�.&�.%�.)�.&x.`x.)x.,8.(�.-�.&x.(�.,x.&x.(�.,�.(�.!�.,�.&IΜK�X���[�OOI�S	�K�\�X�[ۈOOI�[	���.`8.&�.-8.%8.(�.,�.(�.!�.,�.&x.`8."x.'�.,�.,8. �.+x.&�.`8. �.%IΉ�.%�.&�.%�.)�.&x.`�."�.bx.`8.&�.a�.&x.'8.)x.*�.)x.,x. I�O؝]ۏ����X[�.`�.*�.bx.*�.,x.)�.*�.&x.bx.,��.'8..x.bx.%8..x.`x.)x.`�.&x.&�.(�.-8.*x.,x.%�.&x.-x.bx.%8.,�.`8.&x.-8.&x. x.,�.(���X[��O�\�X�O�
+K���[�	��_B�	�X[�X[����\�XYI��[X[�X[����\˛[��	��[X[�X[����\\��ܜ˛[�����\��H�[\H��.a8.(x.b8.'�.&�.'8.)x.(�.,x.&x.(x.-�.+x.%�.-x.b8.(�.+x.(�.-�.&x.(�.,x.&x.*�.(�.-�.+x.(�.,x.!�.a8.(x.b8.`�."�.bx.`8.&�.a�.&x.'8.)x.*�.)x.,x. x.`�.&x. �.+x.&�.`8. �.%x.&x.-x.bO��Ή��B���X�[ۏ����X�[ۈ�\��H�X�[ۋ[ݙ\��Y]ȏ��]���\��H�^YX���ȏ�.*�.(�..8.&�.%�.-x.b8.%x.bx.+x.!�.%�.,������\]X[]P]�Z[X�H��. x.,�.)x.,x.!�.(�.+x.'8.)x. x.(�.,8.%�.&�.(�.+x.%8."8.(�.-8.!Ȉ��YYԙ]�Y]�
+��Z][��
+��Z[Y�8.(x.-H	۝[J�YYԙ]�Y]�
+��Z][��
+��Z[Y
+_H8.!�.,�.&x.%�.-x.b8.%x.bx.+x.!�.%x.,�.(X��.%x.(�.)�."8.'8.)x.`x.)x.,8. x.,�.(�.(�.-�.&x.(�.,x.&x. �.+x.!�]Y]8.%x.b8.+x.`�.&x.*�.&x.bx.,�.(�.,�.(�. x.,�.(ȟO�����\]X[]P]�Z[X�H��.(�.,8.&�.&�.a8.(x.b8.*�.(�..8.&�.`8.&�.a�.&x.*8..x.&x.(�.c8."8.&x. x.)�.b8.,�."8.,8.+x.b8.,�.&x.'8.)x."8.(�.-8.!�.*�.,�.`8.(�.a�."��	��Z][���8.(�.+x.a8.'�.)x.c	۝[J�Z][��_H8.!�.,�.&H0�����IۙYYԙ]�Y]��8.%x.bx.+x.!�.%x.(�.)�."	۝[J�YYԙ]�Y]�_H8.!�.,�.&H0�����I٘Z[Y�8.)x.bx.(x.`8.*�.)x.)�	۝[J�Z[Y
+_H8.!�.,�.&X��.a8.(x.b8.'�.&�.!�.,�.&x.)x.bx.(x.`8.*�.)x.)ȟXI�]�Sݙ\��Y]��]K�]^[X\�S�Y[����0��8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8. x.,�.)x.,x.!�.`�.*�.)x.%8.`8.&�.-�.bx.+x.!�.*�.)x.,x.!Ȉ���I�]�Sݙ\��Y]��]K�]^[X\�Q\��܈�0��	�
+]�Sݙ\��Y]��]K�]^[X\�Q\��܊_X���O���]���]��\��H�[�[�KXX�[ۜȏ��]ۈ�\��H��[X\�KX�]ۈ�]KY���H�Z[K\�[[X\�H��.*�.(�..8.&�H8.&�.(�.-8.*x.,x.%��.)�.,x.&O؝]ۏ��]ۈ�\��H����X�]ۈ�]KY���H���Y��.%8..x.`8.(x.)x.`x.)x.,8.a8.'�.)x.c؝]ۏ��]ۈ�\��H����X�]ۈ�]KY���H�^�\[ۜȏ�.%8..H^�\[ۏ؝]ۏ��]ۈ�\��H����X�]ۈ�YH�]�T�Y��\���.(�.-x.`8.'�.(�."�. �.bx.+x.(x..x.)O؝]ۏ��]�����X�[ۏ����X�[ۈ�\��H�\�[�X�[��\����]���\��H�^YX���ȏ�.(�.+x.&�.&�.#�.-8.&�.,x.%x.-8.!�.,�.&x.&�.,x."8."8..8.&�.,x.&O����.`8.(�.-8.b8.(x.%x.(�.)�."8.`�.*�.(x.b8.%x.,x.bx.!�.`x.%x.b	�
+X�]�T�\�
+_O����. �.bx.+x.(x..x.)x.%�.-�.!�	�
+\�ܞP�]ٙ�_H8.%�..x. x.`8. x.a�.&�.a8.)�.bx.`8.&�.a�.&x.&�.(�.,8.)�.,x.%x.-8.a8.(x.b8.%�..x. x.)x.&�8.`x.)x.,8.a8.(x.b8.&�.&x. x.,x.&�.!8.-8.)�.!�.,�.&x.(�.+x.&�5�my��$z{-���jםܘ�H��
+[�[�ԙ\X�[Y[�ؚ�X�\�
+_H�]OH�.%x.,x.)�.+x.(�.b8.,�.!�	�
+�[K��[YJ_H���Y��[YO�H[�HY�
+Ȟ����H�K�[��Y\��\X�[Y[�^
+JH\��]�[��\�SH�[T�]�Y]�X�J]�Z]��XY\���XY
+�Y��\�JNH[�HY�
+Ș�݈���K�[��Y\��\X�[Y[�^
+JH�ۜ�^H�]�^X��\��]�N�K�X��J�Y��\�N\��]�[��\�SH�[T�]�Y]�X�J�\X�[Y[�^OOH��݈��[��[�K�\��P�Պ^
+H�^��]
+�����K�X\
+
+[�JHO��[�WJJNH[�HY�
+�\X�[Y[�^OOH����H�ۜ��]�Y]�H]�Z]���XY\���[�\��Y��\�N\��]��\X�P�[�[��]�Y]˙[[Y[�
+N	
+��[�[�K���۝[��X[�\H
+
+HO��]�Y]˘�X[�\
+
+NY�
+[�[�ԙ\X�[Y[�ؚ�X�\�
+HT���]���Sؚ�X�T�
+[�[�ԙ\X�[Y[�ؚ�X�\�
+NNB�Y�
+�\X�[Y[�^OOH����H	
+��[�[�K���۝[��X[�\H
+
+HO�Y�
+[�[�ԙ\X�[Y[�ؚ�X�\�
+HT���]���Sؚ�X�T�
+[�[�ԙ\X�[Y[�ؚ�X�\�
+NN	
+��[�[]H�K�^�۝[�H�[K��[YN	
+�ٚ[T�]�Y]��^�H�K�^�۝[�H	�X]�X^
+KX]���[�
+�[K��^�H�L�
+JK����[T��[��
+_HИ	
+�ٚ[T�]�Y]��]\ȊK�^�۝[�H�.a8.'�.)x.c8.`�.*�.(x.b8.'�.(�.bx.+x.(x.&�.,x.&x.%�.-�. H�	
+�ٚ[T�\X�[Y[��XYS�[YH�K�^�۝[�H�[K��[YN	
+�ٚ[T�\X�[Y[��XYH�K�Y[�H�[�N�\X�[Y[��]ۋ�^�۝[�H�.`8.&�.)x.-x.b8.(�.&x.a8.'�.)x.c8.`�.*�.(x.b8.+x.-x. x.!8.(�.,x.bx.!Ȏ	
+�ٚ[S�[�ܚY�[�[�K�^�۝[�H�.`8.&�.-8.%8.a8.'�.)x.c8.`8.%8.-8.(x.`�.&x.`x.%�.a�.&�.`�.*�.(x.b�	
+�ٚ[Q�ۛ�Y�K�^�۝[�H�.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8.`8.%8.-8.(H��\�
+�.`x.*�.%8.!�.a8.'�.)x.c8.`�.*�.(x.b8.`x.)x.bx.)�8.%x.(�.)�."8. �.bx.+x.(x..x.)x. x.b8.+x.&x. x.%8.&�.,x.&x.%�.-�. x.`x.)x.,8.(�.,x.&x.%x.b8.+H���ȊNH�]�
+\��܊H[�[�ԙ\X�[Y[��[HH�[�\�
+�.%x.(�.)�."8.a8.'�.)x.c8.`�.*�.(x.b8.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\��܋�Y\��Y�K��\���NH�[�[HY�
+�\X�[Y[��]ۈ	����[Y[����K��۝Z[���\X�[Y[��]ۊJH�\X�[Y[��]ۋ�\�X�YH�[�NY�
+\[�[�ԙ\X�[Y[��[JH�\X�[Y[��]ۋ�^�۝[�H�X�[B�Y�
+�]�P�]ۈ	����[Y[����K��۝Z[���]�P�]ۊJH�]�P�]ۋ�\�X�YH�[�NB�JNB���H�ۜ�\��]H	
+�ٚ[T�]�Y]��۝[��NY�
+]\��]
+H�]\��Y�
+Ȝ��K�[��Y\�^
+H��[��Y]K�Z[YJK�[��Y\����JHY�Y]K��XYۛJH���[�\�]][�X�]Y�]\�[�H\����\[�ۈH�����\��Y�Z[����ۜ��X[�\H]�Z]�][Y[��]�Y]˛[�[�
+\��]�Y�Y]K�YY]K�]�ܘY�W�]�Y]K�]JNY�\��]�\��ۛ�X�Y
+H	
+	��[�[	�K���۝[��X[�\H�X[�\[�H�X[�\ˊ
+N��X�[ۊ	��]�Y]�ٚ[I�	��\�W�]�Y[��I�Y]K�YY]K�]8.%8..H�8.*�.)x.,x. x.$8.,�.&H	ۘ[Y_X
+N�]\��B��ۜ�ܚY�[�[\�H]�Z]�]�YۙY
+
+NY�
+[�[�ԙ\X�[Y[��[JH�]\��\��]�[��\�SHY��[YH�\��H��[K\�]�Y]�Y��[YH�ܘ�H��
+ܚY�[�[\�
+_H�]OH�.%x.,x.)�.+x.(�.b8.,�.!�	�
+�[YJ_H���Y��[YO�Y�
+�[��X�\��Y�H	��\[و؋��[S�܈OOH��[��[ۈ�H�H�ۜ��܈H]�Z]؋��[S�܊Y]K�Y
+NY�
+[�[�ԙ\X�[Y[��[H]\��]�\��ۛ�X�Y
+H�]\����]�Y]˛[�[�
+\��]�\��ܚY�[�[\�]�Y[��N��܋�[YHJNY�
+Y]K��[�OOH	��W���	����[ۚ]܉�	�]Y]�\��\�[�	�	�XY	�	�YZ[��K�[��Y\��]K���JJH���\��P\�ݘ[�[�[�
+\��]�Y��\��N�
+
+HO�؋��X�ݙ\�T��\��JY]K�Y
+K��ۛ�Y��]�ۛ�Y�\�ݙN�
+^[�Y��JHO�Y�
+[�[�ԙ\X�[Y[��[JH����]�\��܊	�. x.(�..8.$�.,�.&�.-8.%8.a8.'�.)x.c8.%�.-x.b8.`8.)x.-�.+x. x.`x.%�.&x. x.b8.+x.&x.(�.-�.&x.(�.,x.&x.%x.bx.&x."x.&�.,x.&�.`8.%8.-8.(I�N�]\��؋�\�ݙT��X�ݙ\�J^[�Y��JNK�۔Y�N�Y�HO��\��]�]Y\�T�[X�܊	�Y��[YI�K�ܘ�HܚY�[�[\���]
+	���V�H
+�	��Y�OI�
+�Y�N�K�JNB�Y�
+�܊H�ۜ�^ܝ�]ۈH��[Y[��ܙX]Q[[Y[�
+	؝]ۉ�N^ܝ�]ۋ��\�Ә[YHH	����X�]ۉ�^ܝ�]ۋ�^�۝[�H	�.%8.,�.)�.&x.c8.`�.*�.)x.%^�[�ԉ�^ܝ�]ۋ�Y]�[�\�[�\�	��X���
+
+HO��H�^ܝ�ܑ^�[
+Y]K�܊N��\�
+	�.*�.(�.bx.,�.!�^�[8."8.,�. x.'8.)H�Ԉ8.`x.)x.bx.)��	����N�B��]�
+\��܊H��\�
+\��܋�Y\��Y�K	��\���N�B�JN\��]�]Y\�T�[X�܊	˜�\�]�Y]�ZXY[���K�\[�
+^ܝ�]ۊNB�H�]�
+\��܊H�ۜ��K��\����Y�Ԉ]�Y[��H�Z[Y�\��܊NY�
+\��]�\��ۛ�X�Y	��\[�[�ԙ\X�[Y[��[JH\��]�[��\�Y�X�[�S
+�Y�\��Y�[��	���OH�[\���.`�.*�.)x.%8. �.bx.+x.(x..x.)x.%�.-x.b8.+x.b8.,�.&x."8.,�. H�8.a8.(x.b8.*�.,�.`8.(�.a�."8.(�.,x.!�.%x.(�.)�."8.(8.,�.'�.%x.bx.&x."x.&�.,x.&�.a8.%8.bH8.`x.)x.,8.(�.,x.!�.a8.(x.b8.(�.-�.&x.(�.,x.&x.)�.b8.,�.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(����NB�B�H[�HY�
+Ȝ�ȋ��ȋ��Yȋ��Y����X��K�[��Y\�^
+H��[��Y]K�Z[YJK��\���]
+�[XY�KȊJH�ۜ�ܚY�[�[\�H]�Z]�]�YۙY
+
+NY�
+[�[�ԙ\X�[Y[��[JH�]\��\��]�[��\�SH[Y��\��H��[K\�]�Y]�Z[XY�H�ܘ�H��
+ܚY�[�[\�
+_H�[H�.%x.,x.)�.+x.(�.b8.,�.!�	�
+�[YJ_H�ϘH[�HY�
+Ȟ����H�K�[��Y\�^
+JH�ۜ�ܚY�[�[����H]�Z]��XY\���XY
+]�Z]�]�ۛ�Y
+
+JNY�
+[�[�ԙ\X�[Y[��[JH�]\��\��]�[��\�SH�[T�]�Y]�X�JܚY�[�[����NH[�HY�
+Ș�݈���K�[��Y\�^
+JH�ۜ�^H�]�^X��\��]�N�K�X��J]�Z]�]�ۛ�Y
+
+JNY�
+[�[�ԙ\X�[Y[��[JH�]\��\��]�[��\�SH�[T�]�Y]�X�J^OOH��݈��[��[�K�\��P�Պ^
+H�^��]
+�����K�X\
+
+[�JHO��[�WJJNH[�HY�
+^OOH������[��Y]K�Z[YJK�[��Y\���ܙ���\��[��[�JH�ۜ��]�Y]�H]�Z]���XY\���[�\�]�Z]�]�ۛ�Y
+
+JNY�
+[�[�ԙ\X�[Y[��[JH��]�Y]˘�X[�\
+
+N��]\���B�\��]��\X�P�[�[��]�Y]˙[[Y[�
+N	
+��[�[�K���۝[��X[�\H�]�Y]˘�X[�\H[�H\��]�[��\�SH]��\��H��[K\�]�Y]�][�]�Z[X�H����.a8.'�.)x.c8."�.&x.-8.%8.&x.-x.bx.(�.,x.!�.`x.*�.%8.!�.%x.,x.)�.+x.(�.b8.,�.!�.`�.&x.*�.&x.bx.,�.`8.)�.a�.&�.a8.(x.b8.a8.%8.bO؏��[��.%x.(�.)�."8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8.%8.bx.,�.&x.&�.&H8.`x.)x.bx.)�.`8.)x.-�.+x. H8�'8.`8.&�.-8.%8.%x.bx.&x."x.&�.,x.&��'H8.*�.(�.-�.+H8�'8.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.'�.)x.c8�'H8.`8.(x.-�.b8.+x.%x.bx.+x.!�. x.,�.(���[���]��B���X�[ۊ��]�Y]�ٚ[H����\��Wٚ[H�Y]K�YY]K�]8.%8..x.%x.,x.)�.+x.(�.b8.,�.!�.a8.'�.)x.c	ۘ[Y_X
+NH�]�
+\��܊H�ۜ�\��]H	
+�ٚ[T�]�Y]��۝[��NY�
+\��]
+H\��]�[��\�SH]��\��H��[K\�]�Y]�][�]�Z[X�H�Y����.*�.(�.bx.,�.!�.%x.,x.)�.+x.(�.b8.,�.!�.a8.(x.b8.*�.,�.`8.(�.a�."8.*�.)x.,x.!�.)x.+x.!�.`�.*�.(x.b�8.!8.(�.,x.bx.!�؏��[���
+\��܋�Y\��Y�J_O��[���X[�.(�.,x.!�.*�.,�.(x.,�.(�.%�.`8.&�.-8.%8.%x.bx.&x."x.&�.,x.&�.*�.(�.-�.+x.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.%8.bx."8.,�. x.&�..8.b8.(x.%8.bx.,�.&x.)x.b8.,�.!�8.*�.(�.-�.+x.&�.-8.%8.`x.)x.bx.)�.`8.&�.-8.%�]�Y]�8.`�.*�.(x.b��X[��]��B�B���[��[ۈ�[��ܙY�[S[�������[X�܈H��]K\�ܘY�K[�[�H�H����]Y\�T�[X�ܐ[
+�[X�܊K��ܑXX�
+
+�]ۊHO��]ۋ�Y]�[�\�[�\���X�ȋ
+
+HO��[��ܙY�[T�]�Y]�]��]ۋ�]\�]��ܘY�S�[��Y��]ۋ�]\�]��[RY��[YN��]ۋ�]\�]��[S�[YK�Z[YN��]ۋ�]\�]��[SZ[YK��^�N��]ۋ�]\�]��[T�^�K��[���]ۋ�]\�]��[R�[����\[�N��]ۋ�]\�]��[P��\[�K�]N��]ۋ�]\�]��[Q]K��]\Έ�]ۋ�]\�]��[T�]\��JJJNB���[��[ۈ��YZ\��[��ܛ�\�^
+ܛ�\�H�ۜ�X�[H
+ܛ�\
+HO�Y�
+\��^K�\�\��^Jܛ�\
+JH�]\��ܛ�\�X\
+X�[
+K���[����NY�
+\[وܛ�\OOH���[�ȊH�]\��ܛ�\�.a8.(x.b8.(�.,8.&�..8. x.)x..8.b8.(x.a8.'�.)x.c�Y�
+Yܛ�\\[وܛ�\OOH�ؚ�X��H�]\���.a8.(x.b8.(�.,8.&�..8. x.)x..8.b8.(x.a8.'�.)x.c��ۜ��[Y\�H\��^K�\�\��^Jܛ�\���\��W�X�[�B��ܛ�\���\��W�X�[˙�[\�
+�[YJHO�\[و�[YHOOH���[�Ȉ	���[YK��[J
+JK���[����H����ۜ�X���[�H�[Y\�
+\[وܛ�\�X�[OOH���[�Ȉ	��ܛ�\�X�[
+B�
+\[وܛ�\�Y[�]HOOH���[�Ȉ	��ܛ�\�Y[�]JH�.a8.(x.b8.(�.,8.&�..8.&�.,x.#x."�.-H��ۜ�\�X�[ۈH�\��]��.'x.,�. H��]�]Έ�.%�.+x.&H�8.'x.,�. N��.'x.,�. H�8.%�.+x.&N��.%�.+x.&H�V�ܛ�\�\�X�[ۗH���]\���\[وܛ�\��[�OOH���[�Ȉ�ܛ�\��[����X���[�\�X�[ۗK��[\����X[�K���[��0���NNY�
+P\��^K�\�\��^Jܛ�\�JH�]\���.(�.,x.!�.a8.(x.b8.(x.-x. �.bx.+x.(x..x.)x.a8.'�.)x.c8.%�.-x.b8. �.,�.%��]\��ܛ�\˛[���ܛ�\˛X\
+X�[
+K���[���H��.!8.(�.&��B��\�[���[��[ۈ��Y�Y
+�ܘ�HH�[�JH�ۜ��^HH��Y]Y\�R�^J
+N��H�]��[\��ۜ�H�]��\]Y\�]�[��[HH�]�[�\����H\�[�[�˂����\��\�H]��[H�\�ۜ�H�]\����]�]]�\��[X\�[��H�[��\���Y�
+��Y�]K��^HOOH�^H	��
+��Y�]K��Y[����Y�]K�]^[X\�S�Y[��H	��Y�ܘ�JH�]\��Y�
+Y�ܘ�H	����Y�]K��^HOOH�^H	����Y�]K��]�\�OOH�[
+H�]\���ۜ��\]Y\�YH
+����Y�]K��\]Y\�Y�ۜ��[��Y�[\�H��Y�]K��^HOOH�^N��Y�]K��^HH�^N��Y�]K��Y[��H�YN��Y�]K�]^[X\�S�Y[��H�YN��Y�]K�\��܈H�[��Y�]K�\�X[\��܈H�[��Y�]K�]�Y[��Q\��܈H�[��Y�]K��\�P]X�Y[��H�[Y�
+�[��Y�[\�H��Y�]K��]�\�H�[��Y�]K�Z[HH�[��Y�]K��\�][ۜ�H�[��Y�]K�X��YH�NB��[�\�
+N�ۜ��H�]K��[\�˝����T�S�T���UN�ۜ����HH�]K��[\�˙���H��ۜ���\[�HH�]K��[\�˘��\[�N�ۜ��\��[�H
+
+HO�J�\]Y\�YOOH��Y�]K��\]Y\�Y�^HOOH��Y]Y\�R�^J
+JN�ۜ��Z[YH�]�X\
+
+N�ۜ��[Y\�Hȸ.(�.,�.(�. x.,�.(�.`8.(x.)K�.a8.'�.)x.c��.*�.(�..8.&�.(�.,�.(�.)�.,x.&H��.!8.-8.)�. x.(�.,8.%�.&�.(�.+x.%��.*�.)x.,x. x.$8.,�.&x."8.,�. x.`8.!8.*��N����[�XX��XYܛ�\[��Y[��][K\�\]Y\��[X\�Hݙ\�^\ˈ��ܚ]\��܈�X�ۘ�[X][ۈ\�H�]�YY\�K�]H�\�ۜ�\��[����\X�HH���K���ۜ��XYH\�[��
+[�^�Y\JHO�][Y\��H�ۜ��[YHH]�Z]��Z\�K��X�J��Z\�K��\���J
+K�[��Y
+K��]���Z\�J
+��Z�X�
+HO��[Y\�H�][Y[�]
+
+
+HO��Z�X�
+�]�\��܊	�.*�.(x.%8.`8.)�.)x.,�.(�.+x. �.bx.+x.(x..x.)H8. x.(�..8.$�.,�.(�.-x.`8.'�.(�."��JK�L
+N�JK�JNY�
+�\��[�
+
+JH\J�[YJNH�]�
+\��܊HY�
+�\��[�
+
+JH�Z[Y��]
+[�^	ۘ[Y\��[�^_H
+	�\��܏˛Y\��Y�H	�.+x.b8.,�.&x.a8.(x.b8.*�.,�.`8.(�.a�."	�JX
+NH�[�[H�X\�[Y[�]
+[Y\�NY�
+�\��[�
+
+JH��Y�]K�\�X[\��܈H�Z[Y��^�H�8.`�.*�.)x.%8.a8.(x.b8.*�.,�.`8.(�.a�."�	�ˋ���Z[Y��[Y\�
+WK���[���_X��[��Y�]K�\��܈H�Z[Y�\�
+H�	٘Z[Y��]
+
+_H8�%8.(�.,x.!�.a8.(x.b8.`x.*�.%8.!�."8.,�.&x.)�.&x.a8.'�.)x.c8.`8.'�.-�.b8.+x.&�.bx.+x.!�. x.,x.&x.(�.+x.%8.*8..x.&x.(�.c8.&�.)x.+x.(X��[Y�
+[�^OOH
+H��Y�]K��Y[��H�[�NY�
+[�^OOH�	���Z[Y�\��JH��Y�]K�]�Y[��Q\��܈H	�.`�.*�.)x.%8.*�.)x.,x. x.$8.,�.&x."8.,�. x.`8.!8.*�.a8.(x.b8.*�.,�.`8.(�.a�."8. x.(�..8.$�.,�.(�.-x.`8.'�.(�."�8.a8.(x.b8.`�."�.b8. x.,�.(�.(�.-�.&x.(�.,x.&x.)�.b8.,�.a8.(x.b8.(x.-x.*�.)x.,x. x.$8.,�.&I�Y�
+�]K���]HOOH	���Y	�H�[�\�
+NB�B�N]�Z]��Z\�K�[
+�XY
+
+
+HO�؋��]�\�ٜ��K���\[�K�ܘ�_JK�[YHO����Y�]K��]�\�H�[YH�N�JK��XY
+K
+
+HO�؋�Z[T�]\�ٜ��K���\[�K[Z]�LJK�[YHO����Y�]K�Z[HH�[YH�N�JK��XY
+�
+
+HO�؋��\�][ۜ�ٜ��K���\[�K[Z]��JK�[YHO����Y�]K��\�][ۜ�H�[YH�N�JK��XY
+�
+
+HO�؋��\�Q]�Y[��SX��\�Jٜ��K���\[�_JK�[YHO����Y�]K��\�P]X�Y[��H�[YN�JK�JNY�
+X�\��[�
+
+JH�]\����Y�]K�]^[X\�S�Y[��H�[�NY�
+�]K���]HOOH	���Y	�H�[�\�
+NB��ʈ8.`�.*�.)x.%8.a8.'�.)x.c8."8.,�. H�ܘY�H8.`x.)x.bx.)�.*�.b8.!�.`8. �.bx.,�.%x.,x.)�.+x.b8.,�.&x.`8.%8.-8.(H
+�\�[���[��[ۈ��Y[\ܝ
+�[\���H�JHY��[\˜��YJ�[OO��[K�^�YY
+J]���\��܊	�.(x.-x.a8.'�.)x.c8.%�.-x.b8.(�. x.`8.)�.bx.&x."8.,�. x. x.,�.(�.(�.,x.&H8. x.(�..8.$�.,�.`�.*�.)x.%8.%�.,8.`8.&�.-x.(�.&x.)x.b8.,�.*�..8.%8.`x.)x.,8.`8.)x.-�.+x. x.`�.*�.(x.b	�N��]�Y[��H]\��]�\�[�\�\��\��X\��\��Y܈�X�ۘ�[X][ۋ]�[�Y��\YYX[�X[K���[\�H�[\˙�[\��[HO��[K��[�OOH	�����\�Y�I�	��T��[���[K��ܘY�W�]	��K��\���]
+	��\�KY]�Y[��K��JN�ۜ�����YH�[\˙�[\�
+�[JHO��[K�\��W�\��܈�[K��[�OOH�[�ۛ�ۈ�N�[\�H�[\˙�[\�
+�[JHO�Y�[K�\��W�\��܈	���[K��[�OOH�[�ۛ�ۈ�NY�
+����Y�[��
+H�\�
+8.'�.,x. x.a8.'�.)x.c8.&�.,x.#x.*�.,�	۝[J����Y�[��
+_H8.a8.'�.)x.c8.a8.)�.bx. x.b8.+x.&H8�%8.%x.bx.+x.!�.`x. x.bx.&�.(�.,8.`8.(8.%�.*�.(�.-�.+x. �.bx.+x.'8.-8.%8.'�.)x.,�.%8. x.b8.+x.&x.(�.,x.&X��\���NY�
+Y�[\˛[��
+HY�
+�˚�؊H����]�\��܊8.'�.,x. x.!8.-8.)�.a8.)�.bx. x.b8.+x.&N�8.(x.-x.a8.'�.)x.c8.&�.,x.#x.*�.,�	؛���Y�[��H8.a8.'�.)x.c8.`x.)x.,8.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.'�.(�.bx.+x.(x.(�.,x.&X
+N�]\���\�
+�.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.%�.-x.b8.'�.(�.bx.+x.(x.(�.,x.&H���\���NB�Y�
+�˘�X\�H[\ܝ�]K��[\�H�N[\ܝ�]K�\��[�H�[B���Y�]K�X�]�R�؈H�˚�؈�[�����ܙ\���. x.,�.)x.,x.!�.%8.-�.!�.a8.'�.)x.c8."8.,�. x.!8.)x.,x.!�.`x.)x.,8.+x.b8.,�.&x.`8. �.bx.,�.(�.,8.&�.&��N]��H�ۜ��Z[YH�N�܈
+]HH�H�[\˛[���J��H�ۜ��H�[\��WN�]��ܙ\��
+H
+�JH��[\˛[�����[Wۘ[YJN�H�ۜ��Y�H]�Z]؋��ۛ�Y
+���ܘY�W�]
+N�ۜ��ܛHH]�Z][��\��]����[Wۘ[YK�Y��Y���]S[���[RY���Y��ܘY�T]����ܘY�W�]��\�[�\��]N��˚�؏˘�\�[�\���]K�JN�ۜ��H�ܛK��X�ܙ˛[��
+�
+�ܛK�]^�JK�[������؋�X\��\��Y
+��Y��[
+K��]�
+
+
+HO��JNH�]�
+JH�Z[Y�\�
+	ً��[Wۘ[Y_N�	�K�Y\��Y�_X
+N؋�X\��\��Y
+��Y�[K�Y\��Y�JK��]�
+
+
+HO��JNB�B�YT��ܙ\��
+N��X�[ۊ���Y�[\ܝ����\��Wٚ[H�	���H8.a8.'�.)x.c8.%8.-�.!�."8.,�. x.!8.)x.,x.!��\X�\�H	���H8.a8.'�.)x.c	؛���Y�[���0��8.'�.,x. x.a8.'�.)x.c8.&�.,x.#x.*�.,�	؛���Y�[��X���I٘Z[Y�[���0��8.'8.-8.%8.'�.)x.,�.%	٘Z[Y�[��X���X
+N�\�
+8.+x.b8.,�.&x.`8. �.bx.,�.(�.,8.&�.&�.`x.)x.bx.)�	���H8.a8.'�.)x.c	؛���Y�[���0��8.'�.,x. x.a8.'�.)x.c8.&�.,x.#x.*�.,�	؛���Y�[��X���I٘Z[Y�[���0��8.a8.(x.b8.*�.,�.`8.(�.a�."	٘Z[Y�[��X���X
+NY�
+�Z[Y�[��
+H�ۜ��K��\���Z[Y
+N��Y�]K�X��YH�N]�Z]�[��X�ۘ�[Q���R[\ܝ
+��X\�ێ��˚�؈��.!8.-8.)�. x.(�.,8.%�.&�.(�.+x.%8.(�.,�.(�.)�.,x.&H���.%8.-�.!�."8.,�. x.!8.)x.,x.!�.a8.'�.)x.c��؎��˚�؈�[JNB���QU�˘��YH
+���
+HO��ۜ��H؋�ٙ�
+N�ۜ��XYHH؋��ۙ�Y�\�Y
+
+N�ۜ�[��\��[ۈH؋��YۙY[�
+N�Y�
+\�XYHZ[��\��[ۊH�����[��]J
+N����[��\�SH���]\��B��ʈ8.*�.&x.bx.,���X�[ۈ8.a8.(x.b8.`8.&�.-8.%8.`�.*�.bx.`x. x.bHT���^H8."8.,�. x.*�.&x.bx.,�.`8.)�.a�.&�
+�Y�
+�[�JH����[��\�SH��X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ���Y[�������.`8."�.-�.b8.+x.(x.%x.b8.+x.!8.)x.,x.!�.a8.'�.)x.c����]����[��\��H�X[	ܙXYH��][�[ۈ���][�[ۈ�H��ܙXYH��.(�.,x.!�.a8.(x.b8.a8.%8.bx.)x.a�.+x. x.+x.-8.&H���.(�.,x.!�.a8.(x.b8.a8.%8.bx.%x.,x.bx.!�.!8.b8.,��O��[����]����\��H�[���.a8.'�.)x.c8."8.,�. x.`8.(x.)H��UQU�؏�8."8.,8.%�..x. H��8.%8.-�.!�.(x.,�.`8. x.a�.&�.a8.)�.bx.`�.&H�\X�\�H�ܘY�H8.`x.)x.,����H�]�H8.`�.*�.bx.+x.,x.%x.`�.&x.(x.,x.%x.-8.*�.&x.bx.,�.&x.-x.bx.`�."�.bx.%8.-�.!�.a8.'�.)x.c8.`8.*�.)x.b8.,�.&x.,x.bx.&x.`8. �.bx.,�.(x.,�.%x.(�.)�."8.`�.%8.(�.a8.(x.b8.%x.bx.+x.!�.%8.,�.)�.&x.c8.`�.*�.)x.%8.`8.+x.!����]��\��H��][��[\�]���X�[��[���\X�\�HT���[��[�]\OH�^�YH�ؕ\���[YOH��
+˝\���_H�X�Z�\�H�΋����\X�\�K��ȈϏ��؏��X�[��X�[�\��H��YH���[��[�ۈX�X��^O��[��[�]\OH�\���ܙ�YH�ؒ�^H��[YOH��
+˘[�ے�^H��_H�X�Z�\�H�^R����S�K����Ϗ��؏��X�[��X�[��[���ܘY�H�X��]��[��[�]\OH�^�YH�ؐ�X��]��[YOH��
+˘�X��]�]Y]Y�[\Ȋ_H�Ϗ��؏��X�[���]���]��\��H��][��[\����X�[��[��.+x.-x.`8.(x.)x.'8..x.bx.`�."�.bO��[��[�]\OH�[XZ[�YH�ؑ[XZ[��[YOH��
+˙[XZ[��_H�X�Z�\�H�]Y]��\[�K���H�Ϗ��؏��X�[��X�[��[��.(�.*�.,x.*�.'8.b8.,�.&O��[��[�]\OH�\���ܙ�YH�ؔ\�ȈX�Z�\�H��(��(��(��(��(��(��(��(��Ϗ��؏��X�[���]���]��\��H�[�[�KXX�[ۜȏ���]ۈ�\��H��[X\�KX�]ۈ�YH�ؓ��[���.&�.,x.&x.%�.-�. x.`x.)x.,8.)x.a�.+x. x.+x.-8.&O؝]ۏ���]ۈ�\��H����X�]ۈ�YH�ؔ[�ȏ�.%�.%8.*�.+x.&�. x.,�.(�.`8."�.-�.b8.+x.(x.%x.b8.+O؝]ۏ���]���]�YH�ؔ[���]���]����\��H��\�[��H��.`�.*�.b8.a8.%8.bx.`8."x.'�.,�.,��[�ۈX�X��^O؏�8.`8.%�.b8.,�.&x.,x.bx.&H8�%���\��X�Wܛ�H�^O؏�8.%x.bx.+x.!�.+x.(�..x.b8.`�.&H��8.`8.%�.b8.,�.&x.,x.bx.&H8.*�.bx.,�.(x.`�.*�.b8.`�.&x.*�.&x.bx.,�.`8.)�.a�.&�8.`8.'�.(�.,�.,8."8.,8. �.bx.,�.(H��8.`x.)x.,8.`8.&�.-8.%8. �.bx.+x.(x..x.)x.)x..x. x.!8.bx.,�.%�.,x.bx.!�.*�.(x.%�����X�[ۏ��	
+��ؓ��[��K�Y]�[�\�[�\���X�ȋ\�[��
+
+HO�؋��]�P�ۙ�Y��\��	
+��ؕ\��K��[YK��[J
+K[�ے�^N�	
+��ؒ�^H�K��[YK��[J
+K�X��]�	
+��ؐ�X��]�K��[YK��[J
+H�]Y]Y�[\ȈJN�H]�Z]؋��Yے[�	
+��ؑ[XZ[�K��[YK��[J
+K	
+��ؔ\�ȊK��[YJN�\���Y�ܚ�\�
+N�\�
+�.)x.a�.+x. x.+x.-8.&H�\X�\�H8.*�.,�.`8.(�.a�."�N��X�[ۊ���Y���[����\X�\�H�	
+��ؑ[XZ[�K��[YK��[J
+K�.`8."�.-�.b8.+x.(x.%x.b8.+x.!8.)x.,x.!�.a8.'�.)x.c�N��Y�Y
+
+NH�]�
+JH�\�
+K�Y\��Y�K��\���NB�JN	
+��ؔ[�ȊK�Y]�[�\�[�\���X�ȋ\�[��
+
+HO�؋��]�P�ۙ�Y��\��	
+��ؕ\��K��[YK��[J
+K[�ے�^N�	
+��ؒ�^H�K��[YK��[J
+K�X��]�	
+��ؐ�X��]�K��[YK��[J
+H�]Y]Y�[\ȈJN�ۜ��H]�Z]؋�[��
+N	
+��ؔ[���]�K�[��\�SH[�\��H�X��[\�]���H�\��H�܋�\�������ȟH��T�	܋�\���.`�.*�.b8.`x.)x.bx.)Ȉ��.(�.,x.!�.a8.(x.b8.a8.%8.bx.`�.*�.b�O�O��H�\��H�܋��^H������ȟH��[�ۈ�^H	܋��^H��.`�.*�.b8.`x.)x.bx.)Ȉ��.(�.,x.!�.a8.(x.b8.a8.%8.bx.`�.*�.b�O�O��H�\��H�܋�]]������ȟH��.)x.a�.+x. x.+x.-8.&H	܋�]]��.`x.)x.bx.)Ȉ��.(�.,x.!�.a8.(x.b8.a8.%8.bx.)x.a�.+x. x.+x.-8.&H�O�O��H�\��H�܋�X�\�������ȟH��.+x.b8.,�.&x.%x.,�.(�.,�.!�.%�.,8.`8.&�.-x.(�.&H	܋�X�\���.a8.%8.bH���.a8.(x.b8.a8.%8.bH�O�O��H�\��H�܋��ܘY�H������ȟH��.+x.b8.,�.&H�X��]	܋��ܘY�H��.a8.%8.bH���.a8.(x.b8.a8.%8.bH�O�O��	܋�\��܈�H�\��H��ȏ��
+��\��܊_O�O����B��[�JN�]\��B��Y�
+��Y�]K��^HOOH��Y]Y\�R�^J
+H
+��Y�]K��]�\�OOH�[	��X��Y�]K��Y[��	��X��Y�]K�\��܊JH��Y�Y
+
+NB���ۜ��]�\�H��Y�]K��]�\��N�ۜ�[�[\�H�]�\˙�]X\
+
+�HO�
+����\��Wٚ[\��JK�X\
+
+�HO�
+������\�[�\���]N����\�[�\���]K��\[�N�����\[�H����\[�K�X��X�����X��X�JJJN�ۜ�\��؛[Q�[HH
+�[JHO����X[�
+�[K�\��W�\��܈	��\�][Y[��YYЛԙ]�Y]��[JJH�[K��[�OOH�[�ۛ�ۈ�N�ۜ�\ԙXYQ�[HH
+�[JHO�\�][Y[��YYЛԙ]�Y]��[JH	��Z\��؛[Q�[J�[JH	�����X[��[K�\��Y�[K��[�OOH�����\�Y�H�N�ۜ�\��Z][�њ[HH
+�[JHO�\�][Y[��YYЛԙ]�Y]��[JH	��Z\��؛[Q�[J�[JH	��Z\ԙXYQ�[J�[JN�ۜ��]�Y]њ[\�H[�[\˙�[\��][Y[��YYЛԙ]�Y]�N�ۜ��؛[Q�[\�H[�[\��[\�\��؛[Q�[JB���ܝ
+
+K�HO���[�����\�[�\���]H��K���[P��\\�J��[��K��\�[�\���]H��JH��[��K���\[�H��K���[P��\\�J��[������\[�H��K��H��[��K��[Wۘ[YH��K���[P��\\�J��[�����[Wۘ[YH��K��JN�ۜ��XYX�HH[�[\˙�[\�
+�HO�Y��^�YY	������_��ݟ�I�K�\�
+���[Wۘ[YJH	�����[�OOH�����\�Y�H�N�ۜ��XYQ�[\�H[�[\˙�[\�\ԙXYQ�[JN�ۜ��Z][�њ[\�H[�[\˙�[\�\��Z][�њ[JN�ۜ�]Y]YXX�Q�[\�H�XYX�K��[\�
+�HO�Y��\��Y	��Y��\��W�\��܈	�����[�OOH�[�ۛ�ۈ�N�ۜ�X��Y�[\�H]Y]YXX�Q�[\˙�[\�
+�HO���Y�]K�X��Yً�YJN�ۜ��\�X�Q�[HH
+�[JHO���Y�]K��[U�Y]�OOH��]�Y]Ȃ���][Y[��YYЛԙ]�Y]��[JB����Y�]K��[U�Y]�OOH��؛[H���\��؛[Q�[J�[JB����Y�]K��[U�Y]�OOH��XYH���\ԙXYQ�[J�[JB����Y�]K��[U�Y]�OOH��Z][�Ȃ��\��Z][�њ[J�[JB���YN�ۜ��\�X�P�]�\�H�]�\˛X\
+
+�]�
+HO�
+�����]���\��Wٚ[\Έ
+�]����\��Wٚ[\��JK��[\��\�X�Q�[JHJJK��[\�
+�]�
+HO��]����\��Wٚ[\˛[��
+N�ۜ�Z[HH��Y�]K�Z[H�N�ۜ��\�][ۜ�H��Y�]K��\�][ۜ��N�ۜ��[Tۘ\��H؋��[Tۘ\��[������N��]K��[\�˙���H�]K��[\�˝����T�S�T���UK�Έ�]K��[\�˝����T�S�T���UK���\[�N��]K��[\�˘��\[�K�JN�ۜ��ؓX�[H��Z][��ٚ[\Έ�.(�.+x.a8.'�.)x.c��XYN��.'�.(�.bx.+x.(H�]Y]YY��.`8. �.bx.,�.!8.-8.)ȋ�[��[�Έ�. x.,�.)x.,x.!�.(�.,x.&H���\]Y��.*�.,�.`8.(�.a�."��YY�ܙ]�Y]Έ�.%x.bx.+x.!�.%x.(�.)�."8.*�.+x.&��\��܎��.)x.bx.(x.`8.*�.)x.)ȈN�ۜ��ؕۙHH��Z][��ٚ[\Έ�[X�\���XYN���YH�]Y]YY���YH��[��[�Έ��[�]���\]Y��ܙY[���YY�ܙ]�Y]Έ��Y�\��܎���Y�N�����[��\�SH�	��\�][ۜ˜��YJ�O����[���X�Q\��ܟ���[���X�O˚�˜]\�Y���[���X�O˛X[�X[ۛ_���]\�OOI�\��܉�
+��]Y]YY	�	�\��܉�K�[��Y\����]\�I���[X�\����[���X�O˘][\���[�
+O�L�JO��X�[ۈ�\��H�[�[�\�XK[X�[H�.`x."8.bx.!�.`8.*�.%x..8.%�.-x.b8.!�.,�.&x.(�.,x.!�.a8.(x.b8.(�.,x.&H����.!�.,�.&x.%�.-x.b8.%x.bx.+x.!�.%�.(�.,�.&�. x.b8.+x.&x.(�.,x.&O����.`x.(�. x.!8.-8.)�.(�.+x.&�.*�.)x.,x. x. x.,x.&�.!�.,�.&x.%x.(�.)�."8.(x.-�.+H0��8.%x.(�.)�."8.`8.*�.%x..8.'8.)x.`x.)x.,8. �.,x.bx.&x.%x.+x.&x.%x.b8.+x.a8.&�.%8.bx.,�.&x.)x.b8.,�.!�����\�][ۜ˙�[\��O����[���X�Q\��ܟ���[���X�O˚�˜]\�Y���[���X�O˛X[�X[ۛ_���]\�OOI�\��܉�
+��]Y]YY	�	�\��܉�K�[��Y\����]\�I���[X�\����[���X�O˘][\���[�
+O�L�JK�X\
+�O�ω�
+����\[�J_H0��	�
+���\�[�\���]J_O�ωњ[T�[�X[�Y�[Y[����X�R[
+���[���X�J_X
+K���[�	��_O�.'8..x.bx.(x.-x.*�.-8.%�.&8.-8.c8.*�.,x.b8.!�.%x.(�.)�."8.`�."�.bx.`8.(x.&x..H8�'8.(�.,x.&x.(x.-�.+H�8."8.,x.%8. x.,�.(�.a8.'�.)x.c8�'H0��8.'8..x.bx."�.-x.bx.`x."8.!�.`x."8.bx.!�]Y]�.*�.,x.)�.*�.&x.bx.,�.a8.%8.bx."8.,�. x.`8.*�.%x..8.'8.)x.&x.-x.bO����X�[ۏ����B��X�[ۈ�\��H�[�[�YH��\�Q]�Y[��SX��\�T[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�]�Y[��HX��\�O����.!8.)x.,x.!�.*�.)x.,x. x.$8.,�.&H0��8.`8.(x.)x.`x.)x.,8.'8..x.bx."�.-x.bx.`x."8.!�����X[�.`�."�.bx.&�.(�.-8.*x.,x.%�.`x.)x.,8.)�.,x.&x.%�.-x.b8.`8.!8.*�."8.,�. x.%x.,x.)�. x.(�.+x.!�.%8.bx.,�.&x.&�.&H0��8.`8. x.a�.&�.a8.'�.)x.c8.`8.%8.-8.(x.`x.)x.,8.&�.(�.,8.)�.,x.%x.-8.!8.(�.&�0��8.a8.(x.b8.`8. �.bx.,�. x.(�.,8.%�.&�.(�.+x.%��X[��]���]���	���Y�]K�]�Y[��Q\��܈���OH�[\����
+��Y�]K�]�Y[��Q\��܊_O�����Y�]K��\�P]X�Y[��OOH�[�	���OH��]\ȏ�. x.,�.)x.,x.!�.`�.*�.)x.%8.*�.)x.,x. x.$8.,�.&x."8.,�. x.`8.!8.*��)�����	��B�]�YH��\�Q]�Y[��SX��\�H���]�����X�[ۏ���X�[ۈ�\��H��]\�\��\��\�X�[ۋ][\ȏ��\�X�H�\��H��Ȉ]K\�ܛ�X��YH���Y[������[��.`8.(x.)x.%�.-x.b8.%8.-�.!�.`8. �.bx.,�.(x.,�.`x.)x.bx.)���[����ۙω۝[J�]�\˛[��
+_O���ۙϏ�X[�."�.b8.)�.!�	�
+�[��SX�[
+
+J_H0��8. x.%8.%8..x.`8.(x.)O��X[��\�X�O��\�X�H]KX��Y]�Y]�H�[���[��.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%��[����ۙω۝[J[�[\˛[��
+_O���ۙϏ�X[�. x.%8.%8..x.%�..8. x.*�.%�.,�.&x.,��X[��\�X�O��\�X�H�\��H�ܙXYQ�[\˛[�����Ȉ���H�]KX��Y]�Y]�H��XYH���[��.'�.(�.bx.+x.(x.`�."�.bx.!�.,�.&O��[����ۙω۝[J�XYQ�[\˛[��
+_O���ۙϏ�X[�.+x.b8.,�.&x.*�.,�.`8.(�.a�."0��8. x.%8.%8..x.(�.,�.(�. x.,�.(���X[��\�X�O��\�X�H]KX��Y]�Y]�H��Z][�ȏ��[��.(�.+x.&�.(�.,8.(x.)�.)x.'8.)O��[����ۙω۝[J�Z][�њ[\˛[��
+_O���ۙϏ�X[�.a8.(x.b8.`�."�.b8.a8.'�.)x.c8.`8.*�.-x.(�0��8.(�.+x.(�.,8.&�.&�.+x.b8.,�.&O��X[��\�X�O��\�X�H]KX��Y]�Y]�H��]�Y]ȏ��[��.+x.b8.,�.&x.`x.)x.bx.)�0��8.(�.+x.`8.%�.-x.(�.&�����[����ۙω۝[J�]�Y]њ[\˛[��
+_O���ۙϏ�X[�.a8.(x.b8.'�.&�.(�.,�.(�. x.,�.(�.`�.&x.)�.,x.&x.%x.(�.)�."0��8.a8.(x.b8.%x.bx.+x.!�.(�.,x.&x.a8.'�.)x.c8.`8.%8.-8.(x."�.bx.,���X[��\�X�O��\�X�H�\��H���؛[Q�[\˛[����[��\�����H�]KX��Y]�Y]�H��؛[H���[��.(x.-x.&�.,x.#x.*�.,�.%x.bx.+x.!�.`x. x.bO��[����ۙω۝[J�؛[Q�[\˛[��
+_O���ۙϏ�X[���؛[Q�[\˛[����.a8.(x.b8.*�.b8.!�.a8.&�.(�.,x.&x."8.&x. x.)�.b8.,�."8.,8.`x. x.bH���.a8.(x.b8.(x.-x.&�.,x.#x.*�.,��O��X[��\�X�O����X�[ۏ����X�[ۈ�\��H�]Y]Y�[KY�ZYHX�[ۋY�ZYH����]ۈ\OH��]ۈ�]K\�ܛ�X��YH���Y[�����O�O�O��[����.`8.&�.-8.%8.a8.'�.)x.c8.%�.-x.b8.a8.%8.bx.(�.,x.&�؏��X[�. x.%8.`8.'�.-�.b8.+x.a8.&�.(�.,x.!�.a8.'�.)x.c8."8.,�. x.`8.(x.)O��X[���[��؝]ۏ���]ۈ\OH��]ۈ�]K\�ܛ�X��YH���؛[Q�[\˛[�����؛[Q�[T�[[X\�H�����Y[����H��O���O��[����.%8..x.a8.'�.)x.c8.&�.,x.#x.*�.,�.%�.,x.bx.!�.*�.(x.%؏��X[�.%x.(�.)�."8.(�.,�.(�."�.-�.b8.+x.`x.)x.,8.*�.,�.`8.*�.%x..8. x.b8.+x.&x.`x. x.bx.%�.-x.)x.,8.a8.'�.)x.c��X[���[��؝]ۏ���]ۈ\OH��]ۈ�]KXX�[ۋ\��]OH�Z[K\�[[X\�H��O���O��[����.%8..x.'8.)x.*�.)x.,x.!�.&�.,x.&x.%�.-�. O؏��X[�.a8.&�.*�.(�..8.&�H8.&�.(�.-8.*x.,x.%�H8.)�.,x.&O��X[���[��؝]ۏ����X�[ۏ���	��؛[Q�[\˛[����X�[ۈ�\��H�[�[�؛[KY�[K\�[[X\�H�YH��؛[Q�[T�[[X\�H���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��؛[H�[\�����.a8.'�.)x.c8.%�.-x.b8.'�.&�.&�.,x.#x.*�.,�.%�.,x.bx.!�.*�.(x.%����X[�\��H�XY\�X���.(�.)�.(H	۝[J�؛[Q�[\˛[��
+_H8.a8.'�.)x.c8.`�.&x."�.b8.)�.!�	�
+�[��SX�[
+
+J_H0��8.%x.(�.)�."8.(�.,�.(�."�.-�.b8.+x.`x.)x.,8.*�.,�.`8.*�.%x..8. x.b8.+x.&x.`8.(�.-8.b8.(x.`x. x.bO��X[��]���]��\��H�[�[�KXX�[ۜȏ��]ۈ�\��H��[X\�KX�]ۈ�H�YH�ԙ]�Y]�\��Y\ȏ�.`8.(�.-8.b8.(x.%x.(�.)�."8.%�.-x.)x.,8.a8.'�.)x.c؝]ۏ��]ۈ�\��H����X�]ۈ�H�\OH��]ۈ�]K\�ܛ�X��YH���Y[�����.%8..x.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%8."8.,�. x.`8.(x.)O؝]ۏ��]����]���]��\��H�X�K]ܘ\�؛[KY�[K]X�H��X�O��XY��������.)�.,x.&x.%�.-x.b���.&�.(�.-8.*x.,x.%����."�.-�.b8.+x.a8.'�.)x.c���.&�.(�.,8.`8.(8.%�.&�.,x."8."8..8.&�.,x.&O���.&�.,x.#x.*�.,�.%�.-x.b8.'�.&����������XY����O���؛[Q�[\˛X\
+
+�[K[�^
+HO���\��H��Y����\��H��[H��۝[J[�^
+�J_O������
+�[K��\�[�\���]H�H�_O؏�����
+�[K���\[�H�.a8.(x.b8.(�.,8.&�..�_O�����]ۈ�\��H��[K[�[YK[[�Ȉ]K\�ܘY�K[�[�H��
+�[K��ܘY�W�]
+_H�]KY�[KZYH��
+�[K�Y
+_H�]KY�[K[�[YOH��
+�[K��[Wۘ[YJ_H�]KY�[K[Z[YOH��
+�[K�Z[YW�\H��_H�]KY�[K\�^�OH��
+�[K��^�W؞]\���_H�]KY�[KZ�[�H��
+�[K��[���_H�]KY�[KX��\[�OH��
+�[K���\[�H��_H�]KY�[KY]OH��
+�[K��\�[�\���]H��_H�]KY�[K\�]\�H�ٚ[K�\��W�\��܈��\��܈����Z][�ȟH�	ٚ[K��ܘY�W�]�����\�X�Y�O��[���
+�[K��[Wۘ[YJ_O��[���X[��
+�[K��X��X��. x.%8.`8.'�.-�.b8.+x.%8..x.%x.,x.)�.+x.(�.b8.,�.!Ȋ_O��X[�؝]ۏ������
+�S��P�Sٚ[K��[�H�[K��[��.(�.,x.!�.a8.(x.b8.%�.(�.,�.&�.&�.(�.,8.`8.(8.%Ȋ_O�����[��\��H��Y�H�Y��ٚ[K�\��W�\��܈�
+�][Y[��]�Y]�X�[
+�[JJH��.(�.,x.!�.a8.(x.b8.%�.(�.,�.&�.&�.(�.,8.`8.(8.%ȟO��[���X[�\��H��X�[��\����
+�[K�\��W�\��܈�.%x.bx.+x.!�.`8.&�.-8.%�]�Y]�8.`x.)x.bx.)�.`8.)x.-�.+x. x.&�.(�.,8.`8.(8.%�.a8.'�.)x.c�_O��X[�����\��H��Y����]ۈ�\��H��[X\�KX�]ۈȈ]K\�ܘY�K[�[�H��
+�[K��ܘY�W�]
+_H�]KY�[KZYH��
+�[K�Y
+_H�]KY�[K[�[YOH��
+�[K��[Wۘ[YJ_H�]KY�[K[Z[YOH��
+�[K�Z[YW�\H��_H�]KY�[K\�^�OH��
+�[K��^�W؞]\���_H�]KY�[KZ�[�H��
+�[K��[���_H�]KY�[KX��\[�OH��
+�[K���\[�H��_H�]KY�[KY]OH��
+�[K��\�[�\���]H��_H�]KY�[K\�]\�H�ٚ[K�\��W�\��܈��\��܈����Z][�ȟH�	ٚ[K��ܘY�W�]�����\�X�Y�O�.`8.&�.-8.%8.%x.(�.)�."؝]ۏ�������
+K���[���_O���O���X�O��]�����X�[ۏ���X�[ۈ�\��H�[�[�؛[KY�[K\�[[X\�H�ȈYH��؛[Q�[T�[[X\�H��]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ��؛[H�[\�����.a8.(x.b8.'�.&�.a8.'�.)x.c8.%�.-x.b8.(x.-x.&�.,x.#x.*�.,�����X[�\��H�XY\�X���.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%8.(x.-x.&�.(�.,8.`8.(8.%�.`x.)x.bx.)�.`x.)x.,8.a8.(x.b8.(x.-x. �.bx.+x.'8.-8.%8.'�.)x.,�.%8."8.,�. x. x.,�.(�.+x.b8.,�.&O��X[��]���]ۈ�\��H����X�]ۈ�H�\OH��]ۈ�]K\�ܛ�X��YH���Y[�����.%8..x.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%8."8.,�. x.`8.(x.)O؝]ۏ��]����X�[ۏ�B��	�\�][ۜ˛[�����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�Z[H�\�][ۜ�����.!8.-8.)�. x.(�.,8.%�.&�.(�.+x.%8.+x.,x.%x.`�.&x.(x.,x.%x.-����]���[��\��H�X[	��\�][ۜ˜��YJ
+
+HO���]\�OOH�\��܈���]\�OOH��YY�ܙ]�Y]ȊH��][�[ۈ����ȟH����\�][ۜ˙�[\�
+
+HO���]\�OOH�]Y]YY���]\�OOH��[��[�ȊK�[��H8.!�.,�.&x. x.,�.)x.,x.!�.%8.,�.`8.&x.-8.&x. x.,�.(���[���]���]��\��H�X�K]ܘ\��X�O��XY����.)�.,x.&x.%�.-x.b���.&�.(�.-8.*x.,x.%��.(�.,8.&�.&����.*�.%�.,�.&x.,���\��H��Y���.`8.(x.)O���\��H��Y���.a8.'�.)x.c���.a8.'�.)x.c8.%�.-x.b8. �.,�.%���.'8.)x.)x.b8.,�.*�..8.%������XY����O���\�][ۜ�X\
+�
+�HO���\��H�X�[ۋ\��Ȉ]K\�[[X\�KX��\[�OH��
+����\[�J_H�]K\�[[X\�KY]OH��
+���\�[�\���]J_H���OH�[�ȈX�[�^H��������
+���\�[�\���]J_O؏�ڋ�]Wٚ[H�	��X[�\��H��X�[��\���.(x.-x.a8.'�.)x.c8.(x.,�."�.bx.,�0��8.%x.(�.)�."8.*�.%�.,�.&x.,8.(�.,x.&x. x.b8.+x.&O��X[�����O�����
+����\[�J_Iڋ��\�[�\����\�[H��X[�\��H��X����
+���\�[�\����\�[J_O��X[����O�����[��\��H��Y�H	ڋ��[���X�O˚�˜]\�Y���[���X�O˛X[�X[ۛO��[X�\�Κ�ؕۙVڋ��]\�H�ܙ^H�H���
+���[���X�O˚�˜]\�Y���[���X�O˛X[�X[ۛO��.'�.,x. x.&�.+x.%�.(�.+x.&�.*�.)x.,x. IΚ�ؓX�[ڋ��]\�H���]\�_O��[��ڋ��[���X�Q\��܏���X[�\��H��X�[��\���.(�.,x.!�.%x.(�.)�."8.*�.%�.,�.&x.,8.'�.,x. x.a8.(x.b8.a8.%8.bH0��8.`�.*�.)x.%8.*�.%�.,�.&x.,8.)x.b8.,�.*�..8.%8. x.b8.+x.&x.*�.,x.b8.!�.!�.,�.&O��X[�Κ���[���X�I�����[���X�K��˜]\�Y���[���X�K�X[�X[ۛ_���]\�OOI�\��܉��[X�\����[���X�K�][\���[�
+O�L�Oњ[T�[�X[�Y�[Y[����X�R[
+���[���X�JN���Iڋ�\��\��܈	��Z���[���X�O˝�ܚ�\��Z[\�H	��Z��\��\��܋�[��Y\��.%x.(�.)�."8.(�..x.&�.`x.&�.&�.a8.'�.)x.c8.*�.(�.-�.+x.`8.'�.-8.b8.(x.a8.'�.)x.c8.%�.-x.b8.%�..x. x.%x.bx.+x.!ȊH��X[�\��H��X�[��\��]OH��
+��\��\��܊_H���
+��\��\��܋��X�J
+J_O��X[����O����\��H��Y��[H��۝[J��XZ[���[�
+_O���\��H��Y��[H��۝[J���[W���[�
+_O����\��H�]]Y���
+��YZ\��[��ܛ�\�^
+��Z\��[���ܛ�\�J_O����ڋ�X]�ܘ]HOH�[��H��	ӝ[X�\���X]�ܘ]JK�њ^Y
+�_IH0��^�\[ۈ	۝[J��^�\[ۗ���[�
+_XO�������
+B����[���_O���O���X�O��]����\��H�[���.!8.-8.)�.(�.+x.&�.*�.)x.,x. x. x.,x.&�.!�.,�.&x.%x.(�.)�."8.(x.-�.+x.`8.&�.a�.&x.!8.&x.)x.,8.!�.,�.&H0��8.!�.,�.&x.'�.,x. K�.a8.'�.)x.c8.`x. x.bx.a8. �."8.,8.a8.(x.b8.(�.,x.&x.*�.)x.,x. x.+x.,x.%x.`�.&x.(x.,x.%x.-8.`8.)x.-�.+x. H8�'8.(�.,x.&x.(x.-�.+H�8."8.,x.%8. x.,�.(�.a8.'�.)x.c8�'H8.`8.'�.-�.b8.+x.%8..x.`8.*�.%x..8.'8.)x.`x.)x.,8.(�.,x.&x.(�.,�.(�.!�.,�.&x.`x.(�. O�����X�[ۏ������B���X�[ۈ�\��H�[�[�YH���Y[������]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ���Y[�������.a8.'�.)x.c8."8.,�. x.`8.(x.)HUQU�����X[�\��H�XY\�X���.)x.a�.+x. x.+x.-8.&x.`8.&�.a�.&H	�
+؋��\��[�[XZ[
+
+J_H0��	���Y�]K�\��܈��.`�.*�.)x.%8. �.bx.+x.(x..x.)x.a8.(x.b8.*�.,�.`8.(�.a�."����Y�]K�\�X[\��܈�
+��Y�]K�\�X[\��܊H��.+x.,x.&�.`8.%8.%x.)x.b8.,�.*�..8.%�
+�
+˛\��[���\�^U[YJ˛\��[��H��H�_O��X[��]���]��\��H�[�[�KXX�[ۜȏ���]ۈ�\��H����X�]ۈ�H�YH�ԙ[�Y�	���Y�]K��Y[����\�X�Y����O����Y�]K��Y[����. x.,�.)x.,x.!�.`�.*�.)x.%������.(�.-x.`8.'�.(�."��O؝]ۏ���]ۈ�\��H����X�]ۈ�H�YH��]�Y[��T�X��[Y[�][ۜȏ�.!8..x.b8.`x.&x.,8.&x.,�."8.,�. x.*�.)x.,x. x.$8.,�.&O؝]ۏ���]ۈ�\��H����X�]ۈ�H�YH��X�ә]ȏ�.`8.)x.-�.+x. x.`8."x.'�.,�.,8.a8.'�.)x.c8.%�.-x.b8.'�.(�.bx.+x.(x.(�.,x.&O؝]ۏ���]ۈ�\��H��[X\�KX�]ۈ�H�YH��[\ܝ�	�X��Y�[\˛[�������\�X�Y�O�.+x.b8.,�.&x.a8.'�.)x.c8.%�.-x.b8.`8.)x.-�.+x. H	�X��Y�[\˛[���
+	�X��Y�[\˛[��JX���O؝]ۏ���]����]����\��H�[����OH��]\ȏ�.*�.`x.&x.&�."�.a�.+x.%x.%�.,8.`8.&�.-x.(�.&x.a8.'�.)x.c8.`�.&x.`x.%�.a�.&�.&x.-x.bIٚ[Tۘ\���	�0��8.&�.,x.&x.%�.-�. x.`8.(x.-�.b8.+H	�
+�
+\�^U[YJ�[Tۘ\���\]Y]
+JH�	��H0��8.`8.&�.)x.-x.b8.(�.&x.*�.&x.bx.,�.`�."�.bx. �.bx.+x.(x..x.)x.`8.%8.-8.(H0��8.%x.,x.)�.+x.(�.b8.,�.!�.%x.bx.&x."x.&�.,x.&�.'�.,x. x.`�.&x.*�.&x.b8.)�.(�.!8.)�.,�.(x."8.,�.a8.(x.b8.`8. x.-8.&HH8.&x.,�.%�.-H0��8. x.%8.(�.-x.`8.'�.(�."�.`8.'�.-�.b8.+x.+x.b8.,�.&x.%�.,8.`8.&�.-x.(�.&x.)x.b8.,�.*�..8.%0��8.a8.(x.b8.`�."�.b8. x.,�.(�.(�.-�.&x.(�.,x.&x.*�.%�.,�.&x.,8.&�.-8.%8.`8.!8.*����	���Y�]K�]^[X\�S�Y[���	���OH��]\ȏ�. x.,�.)x.,x.!�.`�.*�.)x.%8.*�.(�..8.&��.!8.-8.)�.`x.)x.,8.*�.)x.,x. x.$8.,�.&x.`8.'�.-8.b8.(x.`8.%x.-8.(H0��8.(�.,�.(�. x.,�.(�.a8.'�.)x.c8.`x.*�.%8.!�.`x.(�. x.a8.%8.bH8.a8.(x.b8.(�.,x.&x.!�.,�.&O����	��B�]��\��H���YY�[K]X�Ȉ��OH�X�\��\�XK[X�[H�. x.(�.+x.!�.*�.%�.,�.&x.,8.a8.'�.)x.c���	��Ș[��.%�.,x.bx.!�.*�.(x.%�[�[\˛[��KȜ�XYH��.'�.(�.bx.+x.(x.`�."�.bx.!�.,�.&H��XYQ�[\˛[��Kȝ�Z][�ȋ�.(�.+x.&�.(�.,8.(x.)�.)x.'8.)H��Z][�њ[\˛[��KȜ�]�Y]ȋ�.+x.b8.,�.&x.`x.)x.bx.)�0��8.(�.+x.`8.%�.-x.(�.&��ȋ�]�Y]њ[\˛[��KȜ�؛[H��.(x.-x.&�.,x.#x.*�.,�.%x.bx.+x.!�.`x. x.bH��؛[Q�[\˛[��WK�X\
+
+ݘ[YKX�[��[�JHO��]ۈ\OH��]ۈ���OH�X��]KX��YY�[K]�Y]�H�ݘ[Y_H�\�XK\�[X�YH����Y�]K��[U�Y]�OOH�[Y_H��\��H����Y�]K��[U�Y]�OOH�[YH��X�]�H����H���X�[H��۝[J��[�
+_O؏�؝]ۏ�
+K���[���_B��]���	���Y�]K�\��܈��\��H�[�[��\����
+��Y�]K�\��܊_O�����Y�]K�\�X[\��܈��\��H�[��\�����
+��Y�]K�\�X[\��܊_H0��8.*�.b8.)�.&x.%�.-x.b8.`�.*�.)x.%8.*�.,�.`8.(�.a�."8.(�.,x.!�.`8.&�.-8.%8.%8..x.a8.%8.bO�����B�	�\�X�P�]�\˛[�����\�X�P�]�\�X\
+�
+�HO�]��\��H�XZ[X�\����]��\��H�XZ[ZXY���]�����ۙω�
+���X��X��8.a8.(x.b8.(x.-x.*�.,x.)�. �.bx.+JH�_O���ۙς��[���
+���[�\��H�_H0��8.(�.,x.&�.`8.(x.-�.b8.+H	�
+\�^U[YJ���X�Z]�Y�]
+J_O��[����]���]��\��H�XZ[]Y�ȏ��	؋���\[�H��[��\��H��Y�H�[�]���
+����\[�J_O��[�����B�	؋��\�[�\���]H��[��\��H��Y�H�YH���
+���\�[�\���]J_O��[�����B�	؋�\���\[Y[���[��\��H��Y�H[X�\���.`8.'�.-8.b8.(x.`8.%x.-8.(O��[�����B��[��\��H��Y�H	؋��]\�OOH��ܙY���ܙY[����ܙ^H�H���
+���]\�_O��[����]����]���]��\��H�X�K]ܘ\���X�O��XY����[OH��Y�������.a8.'�.)x.c���."�.&x.-8.%8.%�.-x.b8.(�.,8.&�.&�.`8.%8.,����\��H��Y���. �.&x.,�.%���.*�.%�.,�.&x.,���������XY����O��	�����\��Wٚ[\��JB���ܝ
+
+JHO���[����[Wۘ[YJK���[P��\\�J��[��K��[Wۘ[YJK��JB��X\
+
+�HO��ۜ��[��XYH����_��ݟ�I�K�\�
+���[Wۘ[YJH	�����[�OOH�����\�Y�H��ۜ��[�]Y]YHH�[��XY	��Y��^�YY	��Y��\��Y	��Y��\��W�\��܈	�����[�OOH�[�ۛ�ۈ��]\����\��H�ً�\��W�\��܈	��\�][Y[��YYЛԙ]�Y]��H���Y����H������[�]Y]YH�[�]\OH��X�؛��]K\X��H��
+��Y
+_H�	���Y�]K�X��Yً�YH���X��Y����HϘ���O�����]ۈ�\��H��[K[�[YK[[�Ȉ]K\�ܘY�K[�[�H��
+���ܘY�W�]
+_H�]KY�[KZYH��
+��Y
+_H�]KY�[K[�[YOH��
+���[Wۘ[YJ_H�]KY�[K[Z[YOH��
+��Z[YW�\H��_H�]KY�[K\�^�OH��
+���^�W؞]\���_H�]KY�[KZ�[�H��
+���[���_H�]KY�[KX��\[�OH��
+����\[�H����\[�H��_H�]KY�[KY]OH��
+���\�[�\���]H��_H�]KY�[K\�]\�H�ً�\��W�\��܈��\��܈����\��Y��\��Y����Z][�ȟH�	ً��ܘY�W�]�����\�X�Y�O��[���
+���[Wۘ[YJ_O��[���X[�. x.%8.%8..x.%x.,x.)�.+x.(�.b8.,�.!�8���ً��X���[H�0���X���[H	�
+��[�����X���[JK��X�JL
+J_x�)����O��X[�؝]ۏ�ً����Wޚ\��X[�\��H��X���."8.,�. H	�
+�����Wޚ\
+_O��X[����O�����
+�S��P�Sً��[�H���[��H�_Iً��Y�\�[��W�]O��X[�\��H��X���.)�.,x.&x.+x.bx.,�.!�.+x.-8.!�	�
+���Y�\�[��W�]J_O��X[����Iً�^�YY���X[�\��H��X���.(�. x.`8.)�.bx.&x."8.,�. x. x.,�.(�.(�.,x.&H0��8.`8. x.a�.&�.%x.bx.&x."x.&�.,x.&���X[�Ή��O����\��H��Y��[H��ً��^�W؞]\��X]���[�
+���^�W؞]\��L�
+K����[T��[��
+H
+��Ј���H�O������^�YY�	��[��\��H��[K\�]H�Z]���[����.(�. x.`8.)�.bx.&x."8.,�. x. x.,�.(�.(�.,x.&O؏��X[�.a8.(x.b8.)x.&�.a8.'�.)x.c8.`x.)x.,8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x.`8.!8.*���X[���[����[������\��W�\��܂���[��\��H��[K\�]H�Z]�]OH��
+��\��W�\��܊_H��O�O�O��[�����
+�][Y[��]�Y]�X�[
+�J_O؏��X[�. x.%8.%x.(�.)�."8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8�%8.(�.,x.!�.a8.(x.b8.(�.-�.&x.(�.,x.&x.'8.)x. x.(�.,8.%�.&�.(�.+x.%��X[���[����[�������[�OOH�[�ۛ�ۈ����[��\��H��[K\�]H�Y��O�O�O��[����.(�.,x.!�.a8.(x.b8.%�.(�.,�.&�.&�.(�.,8.`8.(8.%�؏��X[�.%x.bx.+x.!�.`8.&�.-8.%�]�Y]�8.`x.)x.,8.`8.)x.-�.+x. x.&�.(�.,8.`8.(8.%���X[���[����[�������[�OOH�����\�Y�H����[��\��H��[K\�]H�ȏ�O��$��O��[����.*�.)x.,x. x.$8.,�.&x.'�.(�.bx.+x.(x.%x.(�.)�."؏��X[�.a8.(x.b8.%x.bx.+x.!�.*�.b8.!�.`8. �.bx.,�.`8.!8.(�.-�.b8.+x.!�.+x.b8.,�.&x.(�.,�.(�. x.,�.(���X[���[����[������\��Y���[��\��H��[K\�]H�ȏ�O��$��O��[�����
+\��Y�[SX�[
+�J_O؏��X[��\�[\TQ�[J�H���ݚY\�8.*�.b8.!�.a8.'�.)x.c8.)�.b8.,�.!�8�%8.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�.`�.&x.(�.+x.&�.&x.-x.bH����������[��8.(�.,8.&�.&�.+x.b8.,�.&H	۝[J��������[�
+_H8.`x.%�.)���.(�.,8.&�.&�.+x.b8.,�.&x.*�.,�.`8.(�.a�."�O��X[���[����[�����[��\��H��[K\�]H�Z]��O��(��O��[����.(�.+x.%x.(�.)�."8.a8.'�.)x.c؏��X[�.(�.,x.!�.a8.(x.b8.+x.b8.,�.&x.`8. �.bx.,�.(�.,8.&�.&���X[���[����[���O����\��H��Y���]��\��H��[KXX�[ۜȏ�ً��]�W�\��H�\��H����X�]ۈȈ�Y�H��
+���]�W�\�
+_H�\��]H�؛[�Ȉ�[H����[�\����]�O�O����O�]ۈ�\��H��[X\�KX�]ۈȈ]K\�ܘY�K[�[�H��
+���ܘY�W�]
+_H�]KY�[KZYH��
+��Y
+_H�]KY�[K[�[YOH��
+���[Wۘ[YJ_H�]KY�[K[Z[YOH��
+��Z[YW�\H��_H�]KY�[K\�^�OH��
+���^�W؞]\���_H�]KY�[KZ�[�H��
+���[���_H�]KY�[KX��\[�OH��
+����\[�H����\[�H��_H�]KY�[KY]OH��
+���\�[�\���]H��_H�]KY�[K\�]\�H�ً�\��W�\��܈��\��܈����\��Y��\��Y����Z][�ȟH��.%8..x.%x.,x.)�.+x.(�.b8.,�.!�؝]ۏ��]��������JB����[���_B����O���X�O���]����]���
+B����[���B���\��H�[\KX�������Y�]K��Y[����. x.,�.)x.,x.!�.`�.*�.)x.%�������Y�]K��[U�Y]�OOH�[���.(�.,x.!�.a8.(x.b8.(x.-x.`8.(x.)x.`�.&x."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.&x.-x.bH8�%8.)x.+x.!�. �.(�.,�.(�."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.`�.&x.`x.%�.&�.%x.,x.)�. x.(�.+x.!�.%8.bx.,�.&x.&�.&H8.*�.(�.-�.+x.%x.(�.)�."8.)�.b8.,��ܚٛ��8.`�.&H��8.(�.,x.&x.`x.)x.bx.)Ȉ��.a8.(x.b8.(x.-x.a8.'�.)x.c8.`�.&x.*�.%�.,�.&x.,8.%�.-x.b8.`8.)x.-�.+x. H�O���B���X�[ۏ���	�[�H	��Z[K�[�����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ��ݙ\�Y�O����.a8.'�.)x.c8.`8. �.bx.,�.!8.(�.&�.(�.,�.(�.)�.,x.&O����]���[��\��H�X[�ȏ�۝[JZ[K�[��
+_H8.(�.,�.(�. x.,�.(���[���]���]��\��H�X�K]ܘ\���X�O��XY����.)�.,x.&x.%�.-x.b���.&�.(�.-8.*x.,x.%����\��H��Y���.`8.(x.)O���\��H��Y���.a8.'�.)x.c���\��H��Y���.+x.b8.,�.&x.`x.)x.bx.)����\��H��Y���.(x.-x.&�.,x.#x.*�.,����.`8.(x.)x.)x.b8.,�.*�..8.%������XY����O��	�Z[B��X\
+�
+
+HO��������
+��\�[�\���]H�H�_O؏������
+���\[�H�H�_O����\��H��Y��[H��۝[J�XZ[���[�
+_O����\��H��Y��[H��۝[J��[W���[�
+_O����\��H��Y��[H��۝[J�\��Y���[�
+_O����\��H��Y��[H	��\��ܗ���[���[��\�����H��۝[J�\��ܗ���[�
+_O����\��H�]]Y���
+\�^U[YJ�\��XZ[�]
+J_O�������
+B����[���_B����O���X�O���]�����X�[ۏ������X�Y���Y�]K��\�P]X�Y[��OOH�[
+H�\�Q]�Y[��SX��\�K�[�[�
+	
+	���\�Q]�Y[��SX��\�I�K�\�Q]�Y[��SX��\�K�[��Y\���Y�]K��]�\���Y�]K��\�P]X�Y[��K�[��ܙY�[T�]�Y]�N��\[�H\�[��Y]Y]HX�[ێ��]�\��]\�H�]�Y]��[\ܝ�]ۜ˂�Y��[Q^�\�[ۋ��[�X[�Y�J�]K���JJH����]Y\�T�[X�ܐ[
+	���K��ܑXX�
+���O��ۜ��]�Y]�\��˜]Y\�T�[X�܊	��]KY�[KZYI�N�Y�\�]�Y]�\�]\���ۜ��[OX[�[\˙�[�
+�O���YOO\�]�Y]˙]\�]��[RY
+N�Y�Y�[J\�]\���ۜ��]ۏY��[Y[��ܙX]Q[[Y[�
+	؝]ۉ�N؝]ۋ��\�Ә[YOI����X�]ۈ��؝]ۋ�\OI؝]ۉ��]ۋ�^�۝[�Y�[K�^�YY��.!8.-�.&x.a8.'�.)x.c8.`�.*�.bx.`8.)x.-�.+x. x.`�."�.bIΉ�.(�. x.`8.)�.bx.&x.a8.'�.)x.c8."8.,�. x. x.,�.(�.(�.,x.&I��]ۋ�]\�]�^�YQ�[OY�[K�Y؝]ۋ�ۘ�X��X\�[��
+OO��Y�]�Z]�[��[Q^�\�[ۊ�[K�Y
+JX��Y�Y
+�YJN�N��˜]Y\�T�[X�܊	˙�[KXX�[ۜ��O˘\[��[
+�]ۊNJN	
+��ԙ[�Y�K�Y]�[�\�[�\���X�ȋ
+
+HO���Y�Y
+�YJJN	
+���]�Y[��T�X��[Y[�][ۜȊK�Y]�[�\�[�\���X�ȋ
+
+HO�]�Y[��T�X��[Y[�][ۜ˘�����J؋�]K�]HQ�US��Ԓ��UK�[��ܙY�[T�]�Y]�JN	
+���X�ә]ȊK�Y]�[�\�[�\���X�ȋ
+
+HO���Y�]K�X��YH�N]Y]YXX�Q�[\˙�ܑXX�
+
+�HO�
+��Y�]K�X��Yً�YHH�YJJN�[�\�
+NJN	
+���[\ܝ�K�Y]�[�\�[�\���X�ȋ
+
+HO���Y[\ܝ
+X��Y�[\�JN	
+��ԙ]�Y]�\��Y\ȊO˘Y]�[�\�[�\���X�ȋ
+
+HO��ۜ��\��H�؛[Q�[\��N�ۜ��]ۈH\��^K����J����]Y\�T�[X�ܐ[
+��]K\�ܘY�K[�[�V�]KY�[KZYH�JK��[�
+
+][JHO�][K�]\�]��[RYOOH�\��˚Y
+NY�
+X�]ۊH�]\���\�
+�.(�.,x.!�.a8.(x.b8.'�.&�.a8.'�.)x.c8.&�.,x.#x.*�.,�.`�.&x.(�.,�.(�. x.,�.(�.&�.,x."8."8..8.&�.,x.&H���\���N�]ۋ��ܛ�[�՚Y]���Z]�[܎���[������Έ��[�\��JN�]ۋ��X��
+NJN����]Y\�T�[X�ܐ[
+��]KXX�[ۋ\��]WH�K��ܑXX�
+
+][JHO�][K�Y]�[�\�[�\���X�ȋ
+
+HO���][K�]\�]�X�[۔��]JJJN]Y]ZK�X�����
+N����]Y\�T�[X�ܐ[
+��]KX��Y]�Y]�H�K��ܑXX�
+
+][JHO�][K�Y]�[�\�[�\���X�ȋ
+
+HO���Y�]K��[U�Y]�H][K�]\�]���Y�Y]��[�\�
+N�\]Y\�[�[X][ۑ��[YJ
+
+HO���[Y[���][[Y[��RY
+��Y�]K��[U�Y]�OOH��؛[H����؛[Q�[T�[[X\�H�����Y[����O˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JJNJJN����]Y\�T�[X�ܐ[
+��]KX��YY�[K]�Y]�H�K��ܑXX�
+
+][JHO�][K�Y]�[�\�[�\���X�ȋ
+
+HO���Y�]K��[U�Y]�H][K�]\�]���Y�[U�Y]��[�\�
+N�\]Y\�[�[X][ۑ��[YJ
+
+HO���[Y[���][[Y[��RY
+���Y[����O˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JJNJJN����]Y\�T�[X�ܐ[
+��]K\�ܛ�X��YH�K��ܑXX�
+
+][JHO�][K�Y]�[�\�[�\���X�ȋ
+
+HO���[Y[���][[Y[��RY
+][K�]\�]��ܛ���Y
+O˜�ܛ�[�՚Y]���Z]�[܎���[������Έ��\��JJJN����]Y\�T�[X�ܐ[
+��]K\�[[X\�KX��\[�WH�K��ܑXX�
+
+���HO��ۜ��[�H
+
+HO���]K�Z[T�[[X\�K�]HH��˙]\�]��[[X\�Q]N��]K�Z[T�[[X\�K���\[�HH��˙]\�]��[[X\�P��\[�N����Z[K\�[[X\�H�N�N��˘Y]�[�\�[�\���X�ȋ�[�N��˘Y]�[�\�[�\���^Y�ۈ�
+]�[�
+HO��Y�
+]�[���^HOOH�[�\��]�[���^HOOH��H�]�[���]�[�Y�][
+
+N��[�
+N�HJNJN����]Y\�T�[X�ܐ[
+��]K\X��H�K��ܑXX�
+
+؊HO��؋�Y]�[�\�[�\���[��H�
+
+HO���Y�]K�X��Y�؋�]\�]�X��HH؋��X��Y�[�\�
+NJK�
+N�[��ܙY�[S[������
+NN��ۜ��S��P�SH���XZ[���.(�.,�.(�.!�.,�.&x.&�.,x.#x."�.-x.'x.,�. Kx.%�.+x.&H��W��][Y[���.(�.,�.(�. x.,�.(�.`8.%8.-8.&x.&�.,x.#x."�.-HH��X[�X[�ܙY]��.'x.,�. x.(x.-�.+HH8.`8.!8.(�.%8.-8.%H��X[�X[�^[Y[���.'x.,�. x.(x.-�.+HH^[Y[���X[�X[؛۝\Έ�.'x.,�. x.(x.-�.+HH8.`�.&�.&x.,x.*�����[Wܙ\N��. �.+x.%�.+x.&x.!8.b8.,�.!8.+x.(x.(x.-8."�."�.,x.b8.&H��ܙY]��]��.(�.,�.(�.!�.,�.&x.%�.+x.&x.`8.!8.(�.%8.-8.%H���W�����][Y[�8.&8.&x.,�.!8.,�.(�
+�H������\�Y�N��.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!ȋ�[�ۛ�ێ��.(�.,x.!�.(�.,8.&�..8.a8.(x.b8.a8.%8.bH��N�ʈ8.*�.%�.,�.&x.,8. �.+x.!�.*�.&x.bx.,�.(�.,x.&�.a8.'�.)x.c8."8.(�.-8.!�.`x.)x.,��ܙ\��ݙ\�^B�8.%x.bx.+x.!�.&�.(�.,8. x.,�.*8. x.b8.+x.&H�\��X[\�
+
+KՒQU�˚[\ܝ8."�.-�.b8.!�.`8.(�.-x.(�. x.`�."�.bx.!8.b8.,�."�..8.%8.&x.-x.bH
+��ۜ�[\ܝ�]HH�[\Έ�K�\��[���[�[�����[��[��[�Έ�[�K�N��[��[ۈ�����ܙ\��]JH	
+�����]H�K�^�۝[�H]N	
+�����X�[�K�^�۝[�H�.`8.%x.(�.-x.(�.(x. �.bx.+x.(x..x.)K����	
+����њ[�K��[K��YH�	H�	
+�������K�^�۝[�H�	H�	
+����ܙ\��ݙ\�^H�K�Y[�H�[�NB���[��[ۈ�]��ܙ\���X�[
+H�ۜ�HX]���[�
+X]�Z[�KX]�X^
+�
+JH
+�L
+N	
+����њ[�K��[K��YH
+��H�	
+�������K�^�۝[�H
+��H�Y�
+X�[
+H	
+�����X�[�K�^�۝[�HX�[B���[��[ۈYT��ܙ\��
+H	
+����ܙ\��ݙ\�^H�K�Y[�H�YNB���[��[ۈ�Z[[���
+
+H�ۜ��]H�[\K��Z[�[T�]
+�]K��[\�˙]K�
+N�ۜ�^X�YH�����]���[�\�[˙^X�YNؚ�X���^\��]�T��[�\�[˙^X�Y
+K��ܑXX�
+
+�^JHO�
+^X�Y��^WH
+�H�]�T��[�\�[˙^X�Y��^WJJN[\ܝ�]K�[���H]N��]K��[\�˙]K���[�\�[Έ�]���[�\�[��T��[�\�[Έ�]�T��[�\�[��^X�Y�Y\��Y�\Έ�]��[\˛X\
+
+�[K[�^
+HO�
+Y��H�
+�
+[�^
+�JK����N�������ؐ�[��\�\ܝ������ؘ[���[��\�\ܝ�������ؐ�[��\�\ܝ�����ؘ��[��\�\ܝ����X��ٙ�X�P�\�L�ȋ���X��ٙ�X�P�\�L�ȋ���\ܝ]]�Y\�����\ܝ^�^H����\ܝ�X�\�\ȋ���X��ٙ�X�P�\�L�ȋ�V�[�^H��X��ٙ�X�P�\�L�ȋ��X��X��	ٚ[K��[�H8.&�.(�.,8."8.,�.)�.,x.&x.%�.-x.b	��]K��[\�˙]_X��[K�[Y��[�K�JJK�N�]\��[\ܝ�]K�[���B���ʈ8.&�.,x.#x."�.-x.%�.-x.b8.(x.-H�][Y[�8.`8. �.bx.,�.(x.,�8.%�.-�.+x.`8.&�.a�.&x.&�.,x.#x."�.-x. �.+x.!�.&�.(�.-8.*x.,x.%�.`�.%8.(�.+x.,x.%x.`�.&x.(x.,x.%x.-�8.a8.(x.b8.!�.,x.bx.&x. x.#��.)x..x. x.!8.bx.,�.'x.,�. x.'8.-8.%8.&�.,x.#x."�.-H�8."8.,8.'�.bx.+x.!�.%�..8. x.`x.%�.)�.`8.'�.(�.,�.,8.(�.,x.!�.a8.(x.b8.(x.-x.`�.&x.%�.,8.`8.&�.-x.(�.&x.&�.,x.#x."�.-H
+��[��[ۈ�Y�\�\�X���[����T�][Y[�
+�ܛJH�ۜ�H�ܛK�XY\��NY�
+Z�X���[�
+H�]\��Y�
+��X���[�˜��YJ
+JHO�K�YOOH�X���[�
+JH�]\����X���[�˜\�
+Y��X���[���[�Έ��[���H����\[�N��ܛK��ܛX]���\[�H�H��\N��\��]��X�]�N��YK��\����\����]]�YY��YK�JN��X�[ۊ�X���[��Y��X���[���X���[�8.`8.'�.-8.b8.(x.&�.,x.#x."�.-x.+x.,x.%x.`�.&x.(x.,x.%x.-8."8.,�. H�][Y[�	���[����H	���\���X��[J
+JNB��ʈ8.`�.*�.)x.%8.&�.,x.#x."�.-x."8.(�.-8.!�."8.,�. x.%�.,8.`8.&�.-x.(�.&H
+�Y�\��K���H8.(x.,�.`8.&�.a�.&HX\�\�X���[��8. �.+x.!�.(�.,8.&�.&�
+��[��[ۈ�Y�Y�\��PX���[��
+HY�
+\[و�Y�\��HOOH�[�Y�[�Y�T�Y�\��K�P���S��H�]\���[�ۜ��[���H�Y�\��K�P���S�˙�[\�
+JHO�K���\��HOOH��[�Ȉ	��K�X���[�
+NY�
+X�[��˛[��
+H�]\���[�]\���[��˛X\
+
+JHO�
+�Y�K�X���[��[�ΈK��[����\[�N�K��X���K��ݚY\��H�\N�K�\H����X�]�N��YK�\��K��[YH�����T�Y�\��N��YHJJNB��ʈ8.)x.bx.,�.!�. �.bx.+x.(x..x.)x.%x.,x.)�.+x.(�.b8.,�.!��.`8. x.b8.,�.%�.,x.bx.!�.*�.(x.%8.`x.)x.bx.)�.`8.(�.-8.b8.(x.*�.%�.,�.&x.,8.*�.,8.+x.,�.%8.*�.,�.*�.(�.,x.&�.`8.%�.*�. �.bx.+x.(x..x.)x."8.(�.-8.!�
+��[��[ۈ�\��X[\�
+
+H�ܙK��\�]
+
+N[\ܝ�]K��[\�H�N[\ܝ�]K�\��[�H�[[\ܝ�]K�[���H�[��^�\[ۜ�H�N��[XY�\�H�N���[\�H�N���\��[��[�H�[Y�
+\��^K�\�\��^J���\�JJH���\�K��ܑXX�
+
+
+HO����[H��X]�YH��^�\[ۈH�JN�ۜ��X[H�Y�Y�\��PX���[��
+NY�
+�X[
+H��X���[��H�X[�]K�]\�]H�[\ܝY�Y�
+\[و\]P]]��]\�OOH��[��[ۈ�H\]P]]��]\�
+N�\�
+8.)x.bx.,�.!�. �.bx.+x.(x..x.)x.`8. x.b8.,�.`x.)x.bx.)�8�%8.`�.*�.)x.%8.&�.,x.#x."�.-x."8.(�.-8.!�	ܙX[��X[�[���H8.&�.,x.#x."�.-x."8.,�. x.%�.,8.`8.&�.-x.(�.&H0��8.'�.(�.bx.+x.(x.&x.,�.`8. �.bx.,�.a8.'�.)x.c8."8.(�.-8.!�
+N���[\ܝ�NB���[��[ۈ�XY�[U^
+�[JH�]\���]���Z\�J
+�\���K�Z�X�
+HO��ۜ��H�]��[T�XY\�
+N��ۛ�YH
+
+HO��\���J���\�[
+N��ۙ\��܈H
+
+HO��Z�X�
+�]�\��܊�.+x.b8.,�.&x.a8.'�.)x.c8.a8.(x.b8.a8.%8.bH�JN���XY\�^
+�[K�]�N�NJNB��[��[ۈ�XY�[P�Y��\��[JH�]\���]���Z\�J
+�\���K�Z�X�
+HO��ۜ��H�]��[T�XY\�
+N��ۛ�YH
+
+HO��\���J���\�[
+N��ۙ\��܈H
+
+HO��Z�X�
+�]�\��܊�.+x.b8.,�.&x.a8.'�.)x.c8.a8.(x.b8.a8.%8.bH�JN���XY\�\��^P�Y��\��[JNJNB��\�[���[��[ۈ[��\��]��[YK^�^�KY]HH�JH]����H�N]�ܛN�ۜ��\�[�\��]HHY]K��\�[�\��]H�]K��[\�˙]NY�
+����K�\�
+�[YJJHʈ�][Y[�8.&8.&x.,�.!8.,�.(�.`8.&�.a�.&H�8�%8.`�."�.bx.%x.,x.)�.+x.b8.,�.&x.`8."x.'�.,�.,
+��ܛHH]�Z]��K�\��J�[YK^�\�[�\��]JNY�
+�ܛK�]X[]H	��[�ܛK�]X[]K���\]JH����]�\��܊�8.+x.b8.,�.&x.a8.%8.bx.&�.,�.!�.*�.b8.)�.&N�	ۛܛK�]X[]K�[��XY���˛[��H8.&�.(�.(�.%�.,x.%8.(�.,x.!�.+x.b8.,�.&x.a8.(x.b8.a8.%8.bH�	ۛܛK�]X[]K�[��[Y���˛[��H8.(�.,�.(�. x.,�.(�.%x.bx.+x.!�.(�.-�.&x.(�.,x.&H8�%8.*�.b8.!�.+x.b8.,�.&x.'8.b8.,�.&H�Ԉ8.*�.(�.-�.+x.%x.(�.)�."8.%x.bx.&x."x.&�.,x.&�. x.b8.+x.&x. x.(�.,8.%�.&�.(�.+x.%
+N�Y�\�\�X���[����T�][Y[�
+�ܛJNH[�HY�
+����_�I�K�\�
+�[YJJH����H]�Z][��[�K�\��T�Y]
+^
+N[�Hʈ8.a8.'�.)x.c�Ջ�8.%�.-x.b8.(x.,�."8.,�. H[�]�\OY�[WH8.%�..x. x.+x.b8.,�.&x.`8.&�.a�.&H��[��8.`x.%x.b8.a8.'�.)x.c8."8.,�. B��\X�\�H�ܘY�H8.%�..x. x.%8.,�.)�.&x.c8.`�.*�.)x.%8.`8.&�.a�.&H\��^P�Y��\�8�%8.`x.&�.)x.!�.`�.*�.bx.`8.&�.a�.&x. �.bx.+x.!8.)�.,�.(x. x.b8.+x.&B�8.*�.b8.!�.`8. �.bx.,�\��\�8.`8.'�.-�.b8.+x.`�.*�.bx.%�.,x.bx.!�.*�.+x.!�.`8.*�.bx.&x.%�.,�.!�.`�."�.bx.%x.,x.)�.+x.b8.,�.&x.`8.%8.-x.(�.)�. x.,x.&x.a8.%8.bH
+��ۜ��ݕ^H\[و^OOH���[�Ȉ�^��]�^X��\��]�N�K�X��J^
+N����H[��[�K�\��P�Պ�ݕ^
+NB��ܛHH[��[�K��ܛX[^�J�[YK�������][����\�[�\��]JNB�ʈ8.`x.%�.a�. x.%8.bx.)�.(�.%�.,8.`8.&�.-x.(�.&x.&�.,x.#x."�.-H
+8.&�.(�.-8.*x.,x.%�.(�.b8.+x.(��.&�.,x.#x."�.-K�.'8..x.bx.`�.*�.bx.&�.(�.-8. x.,�.(�H
+��ܛX[^�H8.`8.)x. �.&�.,x.#x."�.-x.`�.*�.bx.`8.&�.a�.&x.(�..x.&�.`x.&�.&�.`8.%8.-x.(�.)8.`8.'�.-�.b8.+x.`�.*�.bH�H
+8.&8.&x.,�.!8.,�.(�H8. x.,x.&����H8."8.,x.&�.!8..x.b8. x.,x.&x.a8.%8.bx.`x.(x.bx.`8. �.-x.(�.&x.`8.)x. �.&�.,x.#x."�.-x.%x.b8.,�.!�.(�..x.&�.`x.&�.&�
+8. �.-x.%�.`8.&�.+x.(�.c�YS[ۙ^JH
+�]Y��X���H���Y��ݚY\�H���Y�X���[�H��Y�
+\[و�Y�\��HOOH�[�Y�[�Y�H]Y�H�[Y�
+����K�\�
+�[YJH	���ܛK�XY\�	���ܛK�XY\��X���[�
+HY�X���[�H�Y�\��K��ܛX[^�PX���[�
+�ܛK�XY\��X���[��ܛK�XY\���[��NY�H�Y�\��K��PX���[�
+Y�X���[�
+H�Y�\��K�X]��[J�[YJK�X]�H[�HY�H�Y�\��K�X]��[J�[YJK�X]�B��ۜ���H
+�ܛK��ܛX]	���ܛK��ܛX]��[��H
+Y�	��Y˘�[��H
+�ܛK�XY\�	���ܛK�XY\���[��H��
+�ܛK��X�ܙ��JK��ܑXX�
+
+�HO�Y�
+��X���[�	��\��\�P�[��[	���˝\�
+��[����X���[�
+JJH��X���[�H�Y�\��K��ܛX[^�PX���[�
+��X���[������[��NJNY��X���H
+Y�	��Y˜�X���H
+�ܛK��ܛX]	���ܛK��ܛX]���\[�JH���ۜ��H
+�ܛK��X�ܙ��JV�NY��ݚY\�H
+�	����\�P�[��[	�����[��[
+H
+Y�	��Y˜�ݚY\�H��Y�
+Y��X���H
+�ܛK��X�ܙ��JK��ܑXX�
+
+�HO��Y�
+\���X���H���X���HY��X����JNB��[\ܝ�]K��[\�H[\ܝ�]K��[\˙�[\�
+�HO�
+Y]K��[RY�����Y�[RYOOHY]K��[RY����[YHOOH�[YJJN[\ܝ�]K��[\˜\�
+�[YK���Y�[RY�Y]K��[RY�[��ܘY�T]�Y]K��ܘY�T]�[��\�[�\��]K��^�N��^�H��
+^��]S[��^�[��
+K������[�����˛[���������8.`8. x.a�.&�.`x.%�.)�.%8.-8.&�.a8.)�.bH8.`8.'�.-�.b8.+H�ܛX[^�H8.`�.*�.(x.b8.`8.(x.-�.b8.+x. x.#�.&8.&x.,�.!8.,�.(�.`8.&�.)x.-x.b8.(�.&B��ܛX]��ܛK��ܛX]��X�ܙΈ�ܛK��X�ܙ��]^��ܛK�]^�K���Y��ܛK���Y��\��[��Έ�ܛK��\��[�����X��ΈY��X�����ݚY\��Y��ݚY\��Y�X���[��JN�ۜ��[�H�ܛK��ܛX]��X[X�[�ܛK��ܛX]���\��K��\\��\�J
+H
+�
+�ܛK��ܛX]��[������
+��ܛK��ܛX]��[�����N��X�[ۊ�[\ܝ����\��Wٚ[H��[YK8.&x.,�.`8. �.bx.,�	��ܛK��X�ܙ˛[��
+�ܛK�]^�JK�[��
+_H8.(�.,�.(�. x.,�.(�
+	��[�JX
+N�]\���ܛNB��ʈ8.+x.b8.,�.&x.a8.'�.)x.c8.`8.%8.-8.(x.`�.*�.(x.b8.%8.bx.)�.(�. x.#�.&�.,x."8."8..8.&�.,x.&H8�%8.`�."�.bx.`8.(x.-�.b8.+x.'8..x.bx.`�."�.bx.`8.&�.)x.-x.b8.(�.&x. x.#�.&8.&x.,�.!8.,�.(�.*�.(�.-�.+H�\�[��H
+��[��[ۈ�[�ܛX[^�P[
+
+H[\ܝ�]K��[\�H[\ܝ�]K��[\˛X\
+
+�HO�Y�
+Y������Y�����˛[��
+H�]\����ۜ��ܛHH[��[�K��ܛX[^�J���[YK���������][������\�[�\��]H�]K��[\�˙]JN�]\��������ܛX]��ܛK��ܛX]�X�ܙΈ�ܛK��X�ܙ�]^��ܛK�]^�K��Y��ܛK���Y�\��[��Έ�ܛK��\��[���NJNB��ʈ8.`8.!�.-�.b8.+x.&x.a8. �.%�.-x.b8.%�.,�.`�.*�.bx.(�.,8.&�.&�. x.(�.,8.%�.&�.(�.+x.%8.`8.+x.!�.a8.%8.bH
+��[��[ۈ]]ԙXY[�\��
+H�ۜ��[\�H[\ܝ�]K��[\��ۜ�\��HH�[\˜��YJ
+�HO����ܛX]���\��HOOH��Ȉ	�����ܛX]���\��HOOH�]^�	�����X�ܙ˛[��
+N�ۜ�\Л�H�[\˜��YJ
+�HO����ܛX]���\��HOOH��Ȉ	�����X�ܙ˛[��
+N�ۜ�\�]^H�[\˜��YJ
+�HO�
+��]^�JK�[��
+NY�
+Y�[\˛[��
+H�]\����XYN��[�K^��.(�.+x.a8.'�.)x.c�ۙN��YH��N��.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.`8. �.bx.,�.(�.,8.&�.&��NY�
+Z\��H	��
+\Л�\�]^
+JB��]\���XYN��YK��[\�ۛN��YK�^�[\ܝ�]K�\��[���.%x.(�.)�."8. x.#�.`x.)x.bx.)Ȉ��.%x.(�.)�."8. x.#�.&8..8.(�. x.-8."��ۙN���Z]���N��.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.'x.,x.b8.!�.&8.&x.,�.!8.,�.(�8�%8.(�.,8.&�.&�.%x.(�.)�."8. x.#�.&8..8.(�. x.-8."8."8.,�. x.(�.,�.(�.!�.,�.&x.*�.)x.,x.!�.&�.bx.,�.&x.`�.*�.bx. x.b8.+x.&H
+8.!8.b8.,�.!8.+x.(K�.%x.,x.%8.`8.!8.(�.%8.-8.%K�. �.bx.,�.(x.)�.,x.&K�."�.bx.,�H��NY�
+Z\��JH�]\����XYN��[�K^��.(�.+H�H�ۙN���Z]��N��.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.'x.,x.b8.!�.&8.&x.,�.!8.,�.(�
+�H8.*�.(�.-�.+HJH�NY�
+Z\Л�H�]\����XYN��[�K^��.(�.+H�ȋۙN���Z]��N��.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.'x.,x.b8.!�.(�.,8.&�.&�.*�.)x.,x.!�.&�.bx.,�.&H
+��H�N�]\����XYN��YK^�[\ܝ�]K�\��[���. x.(�.,8.%�.&�.(�.+x.%8.`x.)x.bx.)Ȉ��.'�.(�.bx.+x.(x. x.(�.,8.%�.&�.(�.+x.%�ۙN���ȋ�N��.a8.'�.)x.c8.!8.(�.&�.%�.,x.bx.!�.*�.+x.!�.'x.,x.b8.!�8.(�.,8.&�.&�. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.bx.+x.,x.%x.`�.&x.(x.,x.%x.-�NB��ʈ8.(�.)�.&�.(�.)�.(x.'8.)x.%x.(�.)�."8. x.#�.&8..8.(�. x.-8."8."8.,�. x.a8.'�.)x.c8.(�.,�.(�.!�.,�.&x.*�.)x.,x.!�.&�.bx.,�.&H
+8.a8.(x.b8.%x.bx.+x.!�.`�."�.bH�][Y[�
+H
+��[��[ۈ�[��\�[�\�ԝ[\�
+HY�
+\[و�[\�OOH�[�Y�[�Y�H�]\���^�\[ۜΈ�K��[�Έ�HN�ۜ�\��YH[\ܝ�]K��[\��[\�
+�HO����ܛX]	��
+���ܛX]���\��HOOH��Ȉ���ܛX]���\��HOOH�]^�JB��X\
+
+�HO�
+��X�ܙΈ���ܛX]���\��HOOH��Ȉ����X�ܙ���K]^���]^�HJJN�]\���[\˜�[�\��Y���][���NB��ʈ��Y�\���ݙ\�Y�N���8.!8.-�.+x.*�.)x.,x. x.$8.,�.&x.)�.b8.,�.&�.,x.#x."�.-K��ݚY\�8.`�.%8.%�..x. x.`�."�.bx."8.(�.-8.!�.`�.&x.)�.,x.&x.&x.,x.bx.&B�����H�Y]8.`8.&�.a�.&x.%�.,8.`8.&�.-x.(�.&x.(�.-�.&x.(�.,x.&x."�.-�.b8.+x.(x.,�.%x.(�.$8.,�.&H8.*�.b8.)�.&x."�.-�.b8.+x.`8.(x.)x.`x.)x.,8."�.-�.b8.+x.a8.'�.)x.c8.`8.&�.a�.&x.`8.'�.-x.(�.!�[�
+��[��[ۈ�Z[�њ\���ݙ\�Y�J�T�X�ܙ��ԙX�ܙ�H�ۜ��X[�H
+�[YJHO���[���[YH��K��[J
+K��\\��\�J
+N�ۜ���\[�SوH
+�X�ܙ
+HO��ܛX[^�S]�P��\[�P��J�X�ܙ˜�X����X�ܙ˘��\[�JH�X[��X�ܙ˜�X����X�ܙ˘��\[�JH�.a8.(x.b8.(�.,8.&�..8.&�.(�.-8.*x.,x.%Ȏ�ۜ�\�X�[ۈH
+�X�ܙ
+HO��X�ܙ˙\�X�[ۈOOH��]�]Ȉ���]�]Ȉ��X�ܙ˙\�X�[ۈOOH�\��]���\��]���[�ۛ�ۈ��ۜ�Y[�]HH
+�X�ܙ
+HO��ۜ��]�H�X�ܙ˘�[��[�X�ܙ˘X���[��X�ܙ˘�[�����ۜ�HH\[و�ܛX]�OOH�[�Y�[�Y�	���ܛX]˘�[�ۚX�[H��ܛX]˘�[�ۚX�[J�]�H���Y�
+H�X�ܙ˚\�P�[��[
+H�]\����[���H�Y�H�X[��]�KX�[�H�X[��]�HN�ۜ�X���[�H��[���X�ܙ˘X���[���K��\X�J�����N�ۜ��[��H�X[��X�ܙ˘�[���X�ܙ˘�[��[
+N�]\����[����H�Y�X���[��[��X�[�ؘ[��X���[��8�(��(��X���[���X�JM
+_X���K��[\����X[�K���[���HNN�ۜ���X�H
+�X�ܙ�HO��ۜ�X\H�]�X\
+
+N
+�X�ܙ��JK��ܑXX�
+
+�X�ܙ
+HO��ۜ�YHY[�]J�X�ܙ
+NY�
+ZY�YY�YOOH�S�ӓ�ӈ�H�]\���ۜ���\[�HH��\[�Sي�X�ܙ
+N�ۜ��\�[HH�\�[�\���\�[Sِ��\[�J��\[�JN�ۜ�\�H\�X�[ۊ�X�ܙ
+N�ۜ��^HH	��\�[__	���\[�__	�Y��[�_	�Y�Y_	�\�X�ۜ�][HHX\��]
+�^JH��^K�\�[K��\[�K�[��Y��[�Y[�]N�Y�YX�[�Y�X�[\�X�[ێ�\����Έ[[�[����\��Wٚ[\Έ�HN][K�����
+�HN][K�[[�[�HX]���[�
+
+][K�[[�[�
+��[X�\��X�ܙ˘[[�[�
+JH
+�L
+H�L�ۜ���\��Q�[HH��[���X�ܙ˜��\��Wٚ[H�X�ܙ˙�[S�[YH��K��[J
+NY�
+��\��Q�[H	��Z][K���\��Wٚ[\˚[��Y\���\��Q�[JJH][K���\��Wٚ[\˜\�
+��\��Q�[JNX\��]
+�^K][JNJN�]\��ˋ��X\��[Y\�
+WK��ܝ
+
+K�HO�K��^K���[P��\\�J���^JJNN�ۜ��\]Z\�YH��X�
+�ԙX�ܙ�N�ۜ��X�Z]�YH��X�
+�T�X�ܙ�N�ۜ��X�Z]�Y�^\�H�]��]
+�X�Z]�Y�X\
+
+][JHO�][K��^JJN�ۜ�Z\��[��H�\]Z\�Y��[\�
+][JHO�\�X�Z]�Y�^\˚\�][K��^JJN�]\��Y]�����ђT�����Y�\��W���\��N��΋����˙����K���K���XY�Y]���TQL��R]ZL���[�NUNL�X���О��SQH���\]Z\�Y��X�Z]�Y�Z\��[�����\]N��\]Z\�Y�[���	��Z\��[�˛[��OOH�NB���[��[ۈ\]P]]��]\�
+H�ۜ�[H	
+��]]��]\ȊNY�
+Y[
+H�]\���ۜ��H[\ܝ�]K��[��[����^��. x.,�.)x.,x.!�. x.(�.,8.%�.&�.(�.+x.%�ۙN���[���N���H�]]ԙXY[�\��
+N[��\�Ә[YHH�]]�\�]\��
+���ۙN	
+��]]��]\�^�K�^�۝[�H��^[�]HH���H�.(�.,8.&�.&�. x.,�.)x.,x.!�."8.,x.&�.!8..x.b8.(�.,�.(�. x.,�.(�.+x.(�..x.b�B��ʈ8.%�.(�.-8. x.`8. x.+x.(�.c8.+x.,x.%x.`�.&x.(x.,x.%x.-8�%8.`8.(�.-x.(�. x.%�..8. x.!8.(�.,x.bx.!�.%�.-x.b8.a8.'�.)x.c8.`8. �.bx.,�.*�.(�.-�.+x. x.#�.`8.&�.)x.-x.b8.(�.&H
+�]]]�[Y\�H�[�[��[ۈ��Y[P]]ԙX�ۘ�[J�X\�ۊH�X\�[Y[�]
+]]�[Y\�N\]P]]��]\�
+NY�
+X]]ԙXY[�\��
+K��XYH[\ܝ�]K��[��[��H�]\��]]�[Y\�H�][Y[�]
+
+
+HO��[��X�ۘ�[Q���R[\ܝ
+�]]Έ�YK�X\�ۈJK�L
+NB��\�[���[��[ۈ�[��X�ۘ�[Q���R[\ܝ
+��H�JH�ۜ��HH�N�ۜ���H�N[\ܝ�]K��[\˙�ܑXX�
+
+�HO�Y�
+���ܛX]���\��HOOH�]^�H�]\��Y�
+���ܛX]���\��HOOH��ȊH�˜\�
+������X�ܙ�N[�H�K�\�
+������X�ܙ�NJNʈ8.(�.,�.(�. x.,�.(�.`8.%8.-x.(�.)�. x.,x.&x.+x.,�."8.+x.(�..x.b8.`�.&x.*�.)x.,�.(�.(�.,�.(�.!�.,�.&H
+8.&�.,x.#x."�.-x.'x.,�. H
+�8.'x.,�. x.(x.-�.+JH8.%x.bx.+x.!�.(�..8.&�. x.b8.+x.&x."8.,x.&�.!8..x.b
+�Y�
+\[و�ܛX]�OOH�[�Y�[�Y�	���˜��YJ
+�HO����ܛX]��JJH�ۜ�HH�ܛX]˛Y\��J��N�˛[��HK��ܝ
+
+K�HO�
+K��X�
+HH
+���X�
+JK��ܑXX�
+
+�HO��˜\�
+�JNB��ۜ��XYHH]]ԙXY[�\��
+NY�
+\�XYK��XYJHY�
+�˚�؊H�ۜ�Y\��Y�HH8.a8.'�.)x.c8.`�.&x.!8.-8.)�.a8.(x.b8.'�.(�.bx.+x.(x. x.(�.,8.%�.&�.(�.+x.%�	ܙXYK��_X]�Z]؋��Z[�؊�˚�؋�YY\��Y�JK��]�
+
+
+HO��JN��Y�]K�X�]�R�؈H�[B�\]P]]��]\�
+N�]\��B�[\ܝ�]K��[��[��H�YN\]P]]��]\�
+N�����ܙ\���XYK��[\�ۛH��. x.,�.)x.,x.!�.%x.(�.)�."8. x.#�.&8..8.(�. x.-8."8."8.,�. x.(�.,�.(�.!�.,�.&x.*�.)x.,x.!�.&�.bx.,�.&H���.(�.,8.&�.&�. x.,�.)x.,x.!�. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.bx.+x.,x.%x.`�.&x.(x.,x.%x.-�N]�Z]�]���Z\�J
+�HO��][Y[�]
+�
+JN��ۜ��^�H�[��\�[�\�ԝ[\�
+N]�\�[Y�
+�XYK��[\�ۛJH�ۜ��\�T�HH�]�\��^J�
+K��[
+
+N�ۜ��\�SX]�YH�]�\��^J�
+K��[
+
+N�˙�ܑXX�
+
+�HO��\�T�V�X]���܊���X��͌
+WJ��N�\�[HX]�Y��^�\[ۜΈ�K��P��[�������[���˛[���[\�Y\Έ�X]��]N���X\��\�[��N���\�T�K��\�SX]�Y�ܛ���^U�[��Έ�˙�[\�
+�HO���ܛ���^H��]S�Y�
+K�[������T�YN��K����P��[���˛[����[\�ۛN��YK�NH[�H���][��˘\�وH]K����
+N���8.!8.-8.%8.+x.,�.(�..�H8."8.,�. x.`8.)�.)x.,�."8.(�.-8.!�. �.+x.!�. x.,�.(�.%x.(�.)�."��\�[H]�Z][��[�K��X�ۘ�[J�K�����][�����X���[��
+�X�[
+HO��]��ܙ\���X�[
+JNB�ʈ8.(�.)�.(H^�\[ۈ8."8.,�. x. x.#�.&8..8.(�. x.-8."8.`8. �.bx.,�. x.,x.&�.'8.)x."8.,x.&�.!8..x.b8.`x.)x.bx.)�.+x.+x. x.(�.*�.,x.*�.`�.*�.(x.b8.`�.*�.bx.%x.b8.+x.`8.&x.-�.b8.+x.!�
+�ʈ8.(�.)�.(x.`x.)x.bx.)�.(�..8.&�.(�.,�.(�. x.,�.(�.%�.-x.b8."�.bx.,�. x.,x.&H
+8. x.#�.&8..8.(�. x.-8."8. x.,x.&�. x.,�.(�."8.,x.&�.!8..x.b8.+x.,�."8."8.,x.&�.`8.!8.*�.`8.%8.-x.(�.)�. x.,x.&JH
+��ۜ��\�^H�]�X\
+
+N�\�[�^�\[ۜ˘�ۘ�]
+�^��^�\[ۜ�K��ܑXX�
+
+JHO��ۜ��H�K�\KK�X���[�K�[YKK��\�[P[[�[�����K���[���N�ۜ��]�H�\�^��]
+�Nʈ8.%�.bx.,�."�.bx.,�. x.,x.&H8.`8. x.a�.&�.+x.,x.&x.%�.-x.b8.(x.-x.!8.,�.+x.&8.-8.&�.,�.(�.)x.,8.`8.+x.-x.(�.%8. x.)�.b8.,�.a8.)�.bH
+�Y�
+\�]�
+\�]��]Z[	��K�]Z[
+JH�\�^��]
+�JNJN�\�[�^�\[ۜ�Hˋ���\�^��[Y\�
+WK��ܝ
+
+K�HO�K��ܝ�X�H���ܝ�X�N�\�[�^�\[ۜ˙�ܑXX�
+
+KJHO�
+K�YH�VH�
+���[���H
+�JJJN�\�[��[Q^�\[ۜ�H�^��^�\[ۜ˛[���\�[�]^��[��H�^����[���\�[��њ\��H�Z[�њ\���ݙ\�Y�J�K��N�YT��ܙ\��
+N[\ܝ�]K��[��[��H�[�N\T�[��\�[
+�\�[�K��NY�
+�˚�؊H�H�\�[��\�[�\��]HH�˚�؋��\�[�\���]NY�
+�\�[��[\�ۛJH]�Z]؋��[�\�\��SۛJ�˚�؋�Y
+N��Y�]K�X�]�R�؈H�[��Y�]K��\�][ۜ�H�[[\ܝ�]K�\��[���X\�ۈH�˜�X\�ۈ�.+x.b8.,�.&H��8.`8.'�.-�.b8.+x.(�.+H�H�\]P]]��]\�
+N�\�
+8.+x.b8.,�.&H��8.`x.)x.bx.)�0��8.'�.&�.&�.,x.#x."�.-K��ݚY\�8.%�.-x.b8.`�."�.bx."8.(�.-8.!�	۝[J�\�[��њ\����\]Z\�Y�[��
+_H8. x.)x..8.b8.(H0��8.(�.,x.!�.a8.(x.b8.*�.(�.bx.,�.!�.'8.)x. x.(�.,8.%�.&�.(�.+x.%8."8.&x. x.)�.b8.,��H8."8.,8.(x.,�
+NY�
+�]K���]HOOH�[\ܝ��˙��\���\�
+H���\���\��N[�H�[�\�
+N�]\��B��ۜ��[�YH]�Z]؋��]�T�[��\�[�\�[�^�\[ۜ���\[�N��˚�؋���\[�K��[RYΈ[\ܝ�]K��[\˛X\
+
+�HO�����Y�[RY
+K��[\����X[�K��[[X\�N���X\�ێ��˜�X\�ۈ�.!8.-8.)�.(�.,�.(�.)�.,x.&H��ؗ�Y��˚�؋�Y]Wٚ[N�H[�˚�؋�]Wٚ[K��ٚ\����\�[��њ\��K�JN]�Z]؋��[�\��؊�˚�؋�Y�[�Y
+N��Y�]K�X�]�R�؈H�[��Y�]K��\�][ۜ�H�[H�]�
+JH]�Z]؋��Z[�؊�˚�؋�YK�Y\��Y�JK��]�
+
+
+HO��JN��Y�]K�X�]�R�؈H�[�\�
+8.&�.,x.&x.%�.-�. x.'8.)x.!8.-8.)�.(�.,�.(�.)�.,x.&x.a8.(x.b8.*�.,�.`8.(�.a�."�	�K�Y\��Y�_X��\���NB�B�[\ܝ�]K�\��[���X\�ۈH�˜�X\�ۈ�.a8.'�.)x.c8.`8. �.bx.,�.`�.*�.(x.b�\]P]]��]\�
+N�\�
+��\�[��[\�ۛB��8.%x.(�.)�."8. x.#�.&8..8.(�. x.-8."8.`x.)x.bx.)�0��8.'�.&�	۝[J�\�[�^�\[ۜ˛[��
+_H8.(�.,�.(�. x.,�.(�.%x.bx.+x.!�."�.-x.bx.`x."8.!�0��8.(�.,x.!�.(�.+x.a8.'�.)x.c8.'x.,x.b8.!�.&8.&x.,�.!8.,�.(�.`8.'�.-�.b8.+x."8.,x.&�.!8..x.b��8. x.(�.,8.%�.&�.(�.+x.%8.+x.,x.%x.`�.&x.(x.,x.%x.-8.`x.)x.bx.)�
+	��˜�X\�ۈ�.a8.'�.)x.c8.`8. �.bx.,�.`�.*�.(x.b�JH0��8."8.,x.&�.!8..x.b	۝[J�\�[�X]�Y
+_H8.(�.,�.(�. x.,�.(�0��^�\[ۈ	۝[J�\�[�^�\[ۜ˛[��
+_H0��	ܙ\�[�[\�Y\�H\��
+NY�
+�]K���]HOOH�[\ܝ��˙��\���\�
+H���\���\��N[�H�[�\�
+NB���[��[ۈ\T�[��\�[
+�\�[�K��H��^�\[ۜ�H�\�[�^�\[ۜ����\�K��ܑXX�
+
+JHO���[H�\�[��\�T�V�WN�X]�YH�\�[��\�SX]�Y�WN�^�\[ۈHJN�\�[�^�\[ۜ˙�ܑXX�
+
+JHO����\�V�K��\�K�^�\[ۊ��N��[XY�\�H��[XY�\˙�[\�
+
+HO���X�HOOH��H�N���\��[��[�H�\�[���[�Z�H�X��\�8.*�.,8.%�.bx.+x.&x.a8.'�.)x.c8.%�.-x.b8.&x.,�.`8. �.bx.,�."8.(�.-8.!�ۜ�ܘ�X�[H��N���H8.&8.&x.,�.!8.,�.(ȋ�Έ�.(�.,�.(�.!�.,�.&H�ȋN���HH�[�ۛ�ێ��.a8.(x.b8.%�.(�.,�.&�."�.&x.-8.%�N���[\�H[\ܝ�]K��[\˛X\
+
+�HO�
+Y����[YK���\[�N����ܛX]���\[�H��T�L�ȋ���\[�S�[YN�
+����\[�Y\˙�[�
+
+�HO�˘��HOOH
+���ܛX]���\[�H��T�L�ȊJH�JK��[YH���ܛX]���\[�H�.(�.,8.&�.&�L�ȋ��[U\N�ܘ�X�[ً��ܛX]���\��WH
+�
+���ܛX]��[���
+	ً��ܛX]��[��JX���K��]\Έ���X�ܙ˛[�����X�Z]�Y���Z\��[�ȋ����Έ���X�ܙ˛[����X�Z]�Y]�����[\
+
+K��X�JLKM�K��[�\���[XZ[8. x.)x.,�.!ȋ��X���[N���[�����^�JK�Y�\�
+��K��X�JN
+K�JJN[\ܝ�]K�\��[�H]�����[\
+
+K�����\�[��[\Έ[\ܝ�]K��[\˛X\
+
+�HO�
+��[YN����[YK��\��N����ܛX]���\��K�[�Έ���ܛX]��[���X�ܙΈ���X�ܙ˛[����Y�����YJJK�N�]K�]\�]H�[\ܝY��]K�Y�HHNʈ8.`8.)x.-�.b8.+x.&x.%x.,x.)�. x.(�.+x.!�.a8.&�.%�.-x.b8.)�.,x.&x.%�.-x.b8. �.+x.!�. �.bx.+x.(x..x.)x.%�.-x.b8.`8.'�.-8.b8.!�.&x.,�.`8. �.bx.,�8.a8.(x.b8.!�.,x.bx.&x.*�.&x.bx.,�."8.+x."8.,8.)�.b8.,�.!�.`8.'�.(�.,�.,8. x.(�.+x.!�.%8.bx.)�.(�.)�.,x.&x.&x.-x.bH
+��ۜ�]\�Hˋ���]��]
+�\�[�^�\[ۜ˛X\
+
+JHO�K�]JK��ۘ�]
+�K�X\
+
+�HO���]JK�˛X\
+
+�HO���]JJK��[\����X[�JWK��ܝ
+
+NY�
+]\˛[��
+H�ۜ�XZ[�H]\��X]���܊]\˛[����WN�]K��[\�˙]HHXZ[��]K��[\�˙���HH]\��N�]K��[\�˝�H]\��]\˛[��HWN�]K��[\�˜�\�]H]\˛[���H���\��H���^H�B���X�[ۊ�]]�ܙX�ۘ�[H��X]�ܝ[���T�H�
+�]K����
+K8. x.(�.,8.%�.&�.(�.+x.%8.+x.,x.%x.`�.&x.(x.,x.%x.-�8."8.,x.&�.!8..x.b	ܙ\�[�X]�YH8.(�.,�.(�. x.,�.(�^�\[ۈ	ܙ\�[�^�\[ۜ˛[��K	ܙ\�[�[\�Y\�H\�
+N�]Y��X���
+N�[���Y�X�][۔�[\�
+N�ܙK�\��\�
+
+NB���QU�˚[\ܝH
+���
+HO��ۜ�[���H[\ܝ�]K�[����Z[[���
+
+N�ۜ��[\�H[\ܝ�]K��[\��ۜ��[�X�ܙ�H�[\˜�YX�J
+K�HO�H
+����X�ܙ˛[��
+N�ۜ�\��HH�[\˜��YJ
+�HO����ܛX]���\��HOOH��ȊN�ۜ�\Л�H�[\˜��YJ
+�HO����ܛX]���\��HOOH��ȊN�ۜ��XYHH]]ԙXY[�\��
+N�ۜ�ܘӘ[YHH��N���H8.&8.&x.,�.!8.,�.(ȋ�Έ�.(�.,�.(�.!�.,�.&H�ȋN���HH�]^��.(�.,�.(�.!�.,�.&x.&�.(�.,8. x.+x.&��[�ۛ�ێ��.a8.(x.b8.%�.(�.,�.&�."�.&x.-8.%�Nʈ8.a8.'�.)x.c8."8.(�.-8.!�."8.,�. x.`x.'8.&x. x.a8.(x.b8.(x.-x. �.bx.+x.&�. x.'�.(�.b8.+x.!�.%�.-x.b8."8.!�.`�."8.`�.*�.b8.a8.)�.bH8."8.-�.!�.a8.(x.b8.%x.bx.+x.!�.`x.*�.%8.!�.%x.,�.(�.,�.!�.`8.%�.-x.(�.&�. �.+x.!�.a8.'�.)x.c8.%x.,x.)�.+x.(�.b8.,�.!�
+��ۜ�\�[�ԙX[�[\�H�[\˜��YJ
+�HO����ܛX]��X[��JN�����[��\�SH��X�[ۈ�\��H��]\�\��\��\����\�X�O��[��.a8.'�.)x.c8.`�.&x. x.)x.b8.+x.!�.+x.-x.`8.(x.)O��[����ۙω�[����Y\��Y�\˛[��O���ۙϏ�X[�.)�.,x.&x.%�.-x.b	�
+[����]J_O��X[��\�X�O��\�X�H�\��H�ٚ[\˛[�����Ȉ���H���[��.a8.'�.)x.c8.%�.-x.b8.&x.,�.`8. �.bx.,�.`x.)x.bx.)���[����ۙωٚ[\˛[��O���ۙϏ�X[��\��H��.(x.-x.'x.,x.b8.!�.&8.&x.,�.!8.,�.(Ȉ��.(�.,x.!�.a8.(x.b8.(x.-x.'x.,x.b8.!�.&8.&x.,�.!8.,�.(ȟH0��	�\Л���.(x.-x.'x.,x.b8.!��Ȉ��.(�.,x.!�.a8.(x.b8.(x.-x.'x.,x.b8.!��ȟO��X[��\�X�O��\�X�O��[��.(�.,�.(�. x.,�.(�.%�.-x.b�ܛX[^�H8.`x.)x.bx.)���[����ۙω۝[J�[�X�ܙ�_O���ۙϏ�X[�.'8.b8.,�.&x. x.#�.&8.&x.,�.!8.,�.(�.%�.-x.b8.`8.&�.-8.%8.`�."�.bO��X[��\�X�O��\�X�H�\��H��[\ܝ�]K�\��[����Ȉ��XYK��XYH���\������H���[��.'8.)x. x.(�.,8.%�.&�.(�.+x.%8.)x.b8.,�.*�..8.%��[����ۙω�[\ܝ�]K�\��[��[\ܝ�]K�\��[��X]��]K�њ^Y
+�H
+��H���H�O���ۙϏ�X[��[\ܝ�]K�\��[��[\ܝ�]K�\��[��[\�Y\�
+��\�0���
+�[\ܝ�]K�\��[��]�
+�XYK��J_O��X[��\�X�O����X�[ۏ����X�[ۈ�\��H�ܚYL����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ�[XZ[[��\�[ۏ����. x.)x.b8.+x.!�.+x.-x.`8.(x.)x. x.)x.,�.!�. �.+x.!�.`x.'8.&x. O����]����]ۈ�\��H����X�]ۈ�H�YH�[[��.%8.-�.!�.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%؝]ۏ���]���]��\��H�[���[\����	�[����Y\��Y�\�X\
+�
+JHO�]��\��H�[���Z][H	�K�[Y��[Y����H���]�����ۙω�
+K��X��X�
+_O���ۙς��[���
+K����J_H0��	�
+K��[K��[YJ_O��[����X[��
+K��[K���J_O��X[���]���]��\��H�[���XX�[ۜȏ���]ۈ�\��H�[��X���]KYH��
+K�Y
+_H��.%8.,�.)�.&x.c8.`�.*�.)x.%؝]ۏ���]ۈ�\��H����X�]ۈȈ]K\[H��
+K�Y
+_H�	�K�[Y��\�X�Y����O��K�[Y��.%8.-�.!�.`x.)x.bx.)Ȉ��.%8.-�.!�.`8. �.bx.,�.(�.,8.&�.&��O؝]ۏ���]����]���
+B����[���_B��]����\��H�[���.a8.'�.)x.c8.`8.*�.)x.b8.,�.&x.-x.bx.%�..x. x.*�.(�.bx.,�.!�.`�.*�.bx.(x.-x.)x.,x. x.*x.$�.,8.`8.*�.(x.-�.+x.&x.a8.'�.)x.c8."8.(�.-8.!�8�%8.(x.-x.&�.(�.(�.%�.,x.%8.(�.+x.%8.(�. x.(x.,�8.&�.(�.(�.%�.,x.%8.(�.+x.&�.)�.,x.&x.%�.-x.bX\��\�K����8.(�.,�.(�. x.,�.(��RSQ8.`x.)x.,8.)�.,x.&x.%�.-x.b8. �.+x.!�.)�.,x.&x.+x.-�.b8.&x.&�.&x.(x.,�8.`8.'�.-�.b8.+x.`�.*�.bx.%�.%8.*�.+x.&�\��\�8.`x.)x.,8. x.#�.&8.&x.,�.!8.,�.(�.a8.%8.bx."8.(�.-8.!�8.%8.,�.)�.&x.c8.`�.*�.)x.%8.a8.&�.`8.&�.-8.%8.%8..x.*�.(�.-�.+x.+x.,x.&�.`�.*�.)x.%8. x.)x.,x.&�.`8. �.bx.,�.(x.,�. x.a�.a8.%8.bO����]����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�\�Y����.+x.,x.&�.`�.*�.)x.%8.a8.'�.)x.c8. �.+x.!�.!8..8.$�.`8.+x.!�����]���]���X�[�\��H����ۙH�YH����ۙH���[�]\OH��[H�YH��[R[�]�][\HX��\H���݋��������Y[�ς���ۙϸ.)x.,�. x.a8.'�.)x.c8.(x.,�.)�.,�.!�8.*�.(�.-�.+x.!8.)x.-8. x.`8.'�.-�.b8.+x.`8.)x.-�.+x. x.a8.'�.)x.c���ۙς��[��.(�.+x.!�.(�.,x.&�����݈8.`x.)x.,�][Y[�8.&8.&x.,�.!8.,�.(�.%�.-x.b8.`8.&�.a�.&H��8�%8.(�.,8.&�.&�.+x.b8.,�.&x.*�.,x.)�.!8.+x.)x.,x.(x.&x.c8.`8.+x.!�.)�.b8.,�.`8.&�.a�.&x.(�.,�.(�.!�.,�.&x.&�.,x.#x."�.-x.'x.,�. Kx.%�.+x.&K8.'x.,�. x.(x.-�.+K8. �.+x.%�.+x.&x.!8.b8.,�.!8.+x.(K8.%�.+x.&x.`8.!8.(�.%8.-8.%H8.*�.(�.-�.+H�][Y[�8. �.+x.!�.&8.&x.,�.!8.,�.(�.a8.*�.&O��[����X�[���]��\��H�]]�X�[��\�	ܙXYK�ۙ_H���O��O��]�����ۙωܙXYK��XYH��.(�.,8.&�.&�. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.bx.+x.,x.%x.`�.&x.(x.,x.%x.-���.(�.,8.&�.&�.(�.,x.!�. x.(�.,8.%�.&�.(�.+x.%8.a8.(x.b8.a8.%8.bH�O���ۙς��[���
+�XYK��J_O��[����]����]���[�\��H�X��[\�]���O�.a8.'�.)x.c8.`8. �.bx.,�.(�.,8.&�.&�.!8.(�.&�.%�.,x.bx.!�.'x.,x.b8.!�.&8.&x.,�.!8.,�.(�.`x.)x.,8.'x.,x.b8.!���8�%8. x.(�.,8.%�.&�.(�.+x.%8.%�.,x.&x.%�.-O�O��O�.(x.-x.a8.'�.)x.c8.`8.'�.-8.b8.(x.`8. �.bx.,�.(x.,�.%�.-x.*�.)x.,x.!�8�%8. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.(x.b8.%�.,x.bx.!�."�..8.%8.`�.%8.(�.+x.,x.%x.`�.&x.(x.,x.%x.-�O��O�.`8.&�.)x.-x.b8.(�.&x. x.#�.&8.&x.,�.!8.,�.(�.*�.(�.-�.+H�\�[��H8�%8.+x.b8.,�.&x.a8.'�.)x.c8.`8.%8.-8.(x.`�.*�.(x.b8.`x.)x.bx.)�. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.(x.b8.`�.*�.bx.`8.+x.!��O��O�.%�.-�.!�.`8.)�.)x.,�.%x.,�.(x.%x.,�.(�.,�.!�.%�.-x.b8.%x.,x.bx.!�.a8.)�.bH8�%8.%8.-�.!�.a8.'�.)x.c8."8.,�. x.+x.-x.`8.(x.)x. x.)x.,�.!�.`x.)x.bx.)�. x.(�.,8.%�.&�.(�.+x.%8.`8.+x.!��O���[��]��\��H�[�[�KXX�[ۜ�]����]ۈ�\��H����X�]ۈ�YH��X\��[\Ȉ	ٚ[\˛[�������\�X�Y�O�.)x.bx.,�.!�.a8.'�.)x.c8.%�.,x.bx.!�.*�.(x.%؝]ۏ���]ۈ�\��H����X�]ۈ�YH��X���[[Ȉ	��]K�]\�]OOH�[\ܝY������\�X�Y�O�. x.)x.,x.&�.a8.&�.`�."�.bx. �.bx.+x.(x..x.)x.%x.,x.)�.+x.(�.b8.,�.!�؝]ۏ���]����]�����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ�\��H�\�[����.'8.)x. x.,�.(�.+x.b8.,�.&x.a8.'�.)x.c8.`x.)x.,8. x.#�.%�.-x.b8.%�..x. x.`�."�.bO����]����[��\��H�X[	ٚ[\˛[�����Ȉ��][�[ۈ�H��ٚ[\˛[����[J�[�X�ܙ�H
+��8.(�.,�.(�. x.,�.(�.'�.(�.bx.+x.(x."8.,x.&�.!8..x.b���.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c�O��[����]���]��\��H�X�K]ܘ\���X�O��XY����.a8.'�.)x.c���."�.&x.-8.%8.%�.-x.b8.%x.(�.)�."8.a8.%8.bO���\��H��Y���.`x.%�.)�.%8.-8.&����\��H��Y���.`�."�.bx."8.,x.&�.!8..x.b8.a8.%8.bO���.%�..x. x. x.(�.+x.!�.+x.+x. x.%8.bx.)�.(�. x.#����������XY����O��	�[\�X\
+�
+�HO��������
+���[YJ_O؏�ً��\��[��˛[����X[�\��H��X�[��\����
+���\��[����J_O��X[����O�����
+���ܛX]��X[X�[ܘӘ[YVً��ܛX]���\��WH��_Iً��ܛX]��[����[��\��H��Y�H�YH���
+���ܛX]��[��_O��[�����Iً��ܛX]���\[�H��[��\��H��Y�H�[�]���
+���ܛX]���\[�J_O��[�����Iً��X�����Y�X���[����ݚY\���[��\��H��Y�HܙY[��]OH�.`x.%�.a�. x."8.,�. x.%�.,8.`8.&�.-x.(�.&x.&�.,x.#x."�.-H���
+ً��X�����Y�X���[����ݚY\�K��[\����X[�K���[��0���J_O��[�����O����\��H��Y��[H��۝[J�������[�
+���X�ܙ˛[��
+�
+��]^�JK�[��
+J_O����\��H��Y��[H��۝[J���X�ܙ˛[��
+�
+��]^�JK�[��
+_O����\��H�ܘ\���ؚ�X��[��Y\�����Y
+K�X\
+
+���JHO��[��\��H���]Yȏ��
+�_H	ݟO��[��
+K���[���H	��[��\��H�]]Y��.a8.(x.b8.(x.-O��[���O�����]ۈ�\��H�[��X���]K\�OH��
+���[YJ_H��.`8.+x.,�.+x.+x. O؝]ۏ��������
+B����[���H�����[�H����\��H�[\H��.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8�%8.%8.-�.!�."8.,�. x. x.)x.b8.+x.!�.+x.-x.`8.(x.)x.*�.(�.-�.+x.+x.,x.&�.`�.*�.)x.%8.`8.+x.!�������B����O���X�O���]�����X�[ۏ���	[\ܝ�]K�\��[����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�X]��[�����.'8.)x. x.,�.(�.(�.,x.&x.)x.b8.,�.*�..8.%����]���[��\��H�X[�ȏ��
+\�^U[YJ[\ܝ�]K�\��[��]
+J_O��[���]���]��\��H��[�YܚY���]���[��.(�.,�.(�. x.,�.(�.'x.,x.b8.!�.&8.&x.,�.!8.,�.(���[����۝[J[\ܝ�]K�\��[���P��[�
+_O؏��]���]���[��.(�.,�.(�. x.,�.(�.'x.,x.b8.!�����[����۝[J[\ܝ�]K�\��[������[�
+_O؏��]���]���[��."8.,x.&�.!8..x.b8.*�.,�.`8.(�.a�."��[����۝[J[\ܝ�]K�\��[��X]�Y
+_O؏��]���]���[��.+x.,x.%x.(�.,�."8.,x.&�.!8..x.b��[�����[\ܝ�]K�\��[��X]��]K�њ^Y
+�_IO؏��]���]���[��^�\[ۏ��[����۝[J[\ܝ�]K�\��[��^�\[ۜ˛[��
+_O؏��]���]���[��.`8.)�.)x.,�.%�.-x.b8.`�."�.bO��[�����[\ܝ�]K�\��[��[\�Y\�H\�؏��]���]���[��.(�.,�.(�. x.,�.(�."�.b8.)�.!��ΌL�΍NO��[����۝[J[\ܝ�]K�\��[��ܛ���^U�[���
+_O؏��]����]����\��H��\�[��H��.(�.,�.(�. x.,�.(�."�.b8.)�.!��ΌL�΍NH8.%x.bx.+x.!�.%x.(�.)�."8.(�.b8.)�.(x. x.,x.&�.a8.'�.)x.c8. �.+x.!�.)�.,x.&x.%�.,x.%8.a8.&�8�%8.%�.-x.b8."8.,x.&�.!8..x.b8.a8.%8.bx.`x.)x.bx.)�.%�.-�.+x.)�.b8.,�.&�. x.%x.-8.*�.b8.)�.&x.%�.-x.b8."8.,x.&�.!8..x.b8.a8.(x.b8.a8.%8.bx."8.,8.%�..x. x.(�. x.`8.&�.a�.&H^�\[ۈ8.&�.(�.,8.`8.(8.%��.(�.,�.(�. x.,�.(�. �.bx.,�.(x.)�.,x.&H����]��\��H��\�]�YH��[��U\H���]�����X�[ۏ���	
+[\ܝ�]K�\��[�����T�YH�JK�[�����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��ݙ\�Y�O����."�.b8.+x.!�.%�.,�.!�.%�.-x.b8.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.'x.,x.b8.!�.&8.&x.,�.!8.,�.(�����]����[��\��H�X[][�[ۈ��۝[J[\ܝ�]K�\��[�����P��[�
+_H8.(�.,�.(�. x.,�.(�.(�.,x.!�.%x.(�.)�."8.a8.(x.b8.a8.%8.bO��[����]����\��H��\�[��H��.(�.,�.(�. x.,�.(�.`8.*�.)x.b8.,�.&x.-x.bH��.a8.(x.b8.%�..x. x.&x.,x.&�.`8.&�.a�.&H^�\[ۏ؏�8.`8.'�.(�.,�.,8.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c�][Y[�8. �.+x.!�."�.b8.+x.!�.%�.,�.!�.&x.,x.bx.&x.`�.*�.bx.`8.%�.-x.(�.&�8.%�.bx.,�.a8.%8.bx.a8.'�.)x.c8. �.+x.!��X�\�\��UU�QT��V�VH8.(x.,�.`8.'�.-8.b8.(H8.(�.,8.&�.&�."8.,8."8.,x.&�.!8..x.b8.`�.*�.bx.%�.,x.&x.%�.-x.`�.%8.(�.a8.(x.b8.%x.bx.+x.!�.%x.,x.bx.!�.!8.b8.,�.+x.,8.a8.(����]��\��H�X�K]ܘ\���X�O��XY����."�.b8.+x.!�.%�.,�.!����.&�.(�.-8.*x.,x.%����\��H��Y���."8.,�.&x.)�.&x.(�.,�.(�. x.,�.(����\��H��Y���.(�.+x.%8.(�.)�.(H
+8.&�.,�.%�O���.&�.,x.#x."�.-K�.`8.%�.+x.(�.c8.(x.-8.&x.,x.)O������XY����O��	�[\ܝ�]K�\��[�����T�YB��X\
+�
+�HO��������
+˘�[��[
+_O؏������
+˘��\[�J_O����\��H��Y��[H��۝[J˘��[�
+_O����\��H��Y��[H���[ۙ^J˘[[�[�
+_O����\��H�ܘ\���[��\��H�]]Y���
+˘X���[�˜�X�J
+K���[���J_I�˘X���[�˛[�����
+Ȉ
+�
+˘X���[�˛[��H
+H���O��[���������
+B����[���_B����O���X�O���]�����X�[ۏ������B��	\�[�ԙX[�[\�������X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ�[��[�H�[Y][ۏ����.%x.(�.)�."8.)�.b8.,�.`8.!8.(�.-�.b8.+x.!�."8.,x.&�.!8..x.b8.%�.,�.!�.,�.&x.%�..x. x.*�.(�.-�.+x.a8.(x.b����]����[��\��H�X[�ȏ�.`8.%�.-x.(�.&�. x.,x.&�. �.bx.+x.&�. x.'�.(�.b8.+x.!�.%�.-x.b8."8.!�.`�."8.`�.*�.b8.a8.)�.bx.`�.&x.a8.'�.)x.c8.%x.,x.)�.+x.(�.b8.,�.!���[����]���]��\��H�X�K]ܘ\���X�O��XY����.&�.(�.,8.`8.(8.%�^�\[ۏ���\��H��Y���.`�.*�.b8.a8.)�.bx.`�.&x.a8.'�.)x.c���\��H��Y���.(�.,8.&�.&�.%x.(�.)�."8.'�.&����.'8.)O������XY����O��	�ؚ�X��[��Y\�[����^X�Y
+B���[\�
+��JHO��OOH��[�	���OOH�ܛ����^H�B��X\
+
+���JHO��ۜ���[�H[\ܝ�]K�\��[��^�\[ۜ˙�[\�
+JHO�K�\HOOH�K�[���ۜ���H��[��H�
+��	����[�H�
+�K���]\������
+[��[�K�TWӐSQV��H�_O���\��H��Y��[H��ݟO���\��H��Y��[H��ٛ�[�O�����[��\��H��Y�H	�����ܙY[����[X�\��H�������.%x.(�.!�.%x.,�.(x.%�.-x.b8.`�.*�.b8.a8.)�.bH���.%x.b8.,�.!�."8.,�. x.%�.-x.b8.`�.*�.b8.a8.)�.bH�O��[�������JB����[���_B����O���X�O���]����\��H��\�[��H��.%x.,x.)�.`8.)x. �.*�.+x.!�.'x.,x.b8.!�.a8.(x.b8."8.,�.`8.&�.a�.&x.%x.bx.+x.!�.`8.%�.b8.,�. x.,x.&x.`8.&�.b�.,8.`8.'�.(�.,�.,8. �.bx.+x.&�. x.'�.(�.b8.+x.!�.&�.,�.!�.+x.(�.b8.,�.!�."�.bx.+x.&x. x.,x.&x.a8.%8.bH8.`8."�.b8.&H8.(�.,�.(�. x.,�.(�.%�.-x.b8.(�.+x.%8.a8.(x.b8.%x.(�.!�.`x.)x.,8.+x.(�..x.b8."�.b8.)�.!�. �.bx.,�.(x.)�.,x.&x.'�.(�.bx.+x.(x. x.,x.&H8.(�.,8.&�.&�."8.-�.!�.(�. x.`8.&�.a�.&x.`8.!8.*�.%x.,�.(x. x.#�.%�.-x.b8.(�..8.&x.`x.(�.!�. x.)�.b8.,������X�[ۏ��X�����X�Y�
+[\ܝ�]K�\��[�H�ۜ�Y��H�N[\ܝ�]K�\��[��^�\[ۜ˙�ܑXX�
+
+JHO�
+Y���K�\S�[YWHH
+Y���K�\S�[YWH
+H
+�JJN�\�˙�]��ܝ[��U\H���\�ȋX�[��^�\[ۈ8."8.,�. x. x.,�.(�.(�.,x.&x.)x.b8.,�.*�..8.%��][\Έؚ�X��[��Y\�Y��K�X\
+
+���JHO�
+�X�[���[YN��JJK��ܝ
+
+K�HO����[YHHK��[YJK���܎��\�˔SUK�̋�Y]�XΈ�."8.,�.&x.)�.&x.`8.!8.*���JNB���ۜ�[H\�[��
+JHO�]�Z][��\��]�K��[K��[YKK��[K��۝[�K��[K��۝[��[��
+NK�[YH�YNN�	
+��[[�K�Y]�[�\�[�\���X�ȋ\�[��
+
+HO������ܙ\���. x.,�.)x.,x.!�.%8.-�.!�.`x.)x.,\��H8.a8.'�.)x.c�N�ۜ�[�[��H[����Y\��Y�\˙�[\�
+JHO�[K�[Y
+N�܈
+]HH�H[�[�˛[���J��H�]��ܙ\��
+H
+�JH�[�[�˛[��[�[���WK��[K��[YJN]�Z][
+[�[���WJN]�Z]�]���Z\�J
+�HO��][Y[�]
+�L
+JNB�YT��ܙ\��
+N�\�
+8.%8.-�.!�.`x.)x.,\��H8.a8.'�.)x.c8.`x.)x.bx.)�	�[�[�˛[��H8.a8.'�.)x.c
+N�[�\�
+N��Y[P]]ԙX�ۘ�[J�.%8.-�.!�.a8.'�.)x.c8."8.,�. x.+x.-x.`8.(x.)x. x.)x.,�.!ȊNJN�����]Y\�T�[X�ܐ[
+��]K\[H�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ\�[��
+
+HO��ۜ�HH[����Y\��Y�\˙�[�
+
+
+HO��YOOH��]\�]�[
+N]�Z][
+JN�\�
+8.&x.,�.`8. �.bx.,�	�K��[K��[Y_H8.`x.)x.bx.)�
+N�[�\�
+N��Y[P]]ԙX�ۘ�[J�.a8.'�.)x.c�
+�K��[K��[YH
+��8.`8. �.bx.,�.(�.,8.&�.&��NJK�
+N����]Y\�T�[X�ܐ[
+��]KYH�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO��ۜ�HH[����Y\��Y�\˙�[�
+
+
+HO��YOOH��]\�]�
+N�ۛ�Y^
+K��[K��[YKK��[K��۝[�
+NJK�
+N����]Y\�T�[X�ܐ[
+��]K\�WH�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO�[\ܝ�]K��[\�H[\ܝ�]K��[\˙�[\�
+�HO����[YHOOH��]\�]��JN�[�\�
+NJK�
+N��ۜ��H	
+�����ۙH�N�ۜ�[�]H	
+�ٚ[R[�]�N��Y]�[�\�[�\���X�ȋ
+
+HO�[�]��X��
+JNș�Y�[�\����Y�ݙ\��K��ܑXX�
+
+]�HO����Y]�[�\�[�\�]�
+JHO�K��]�[�Y�][
+
+N���\��\��Y
+�ݙ\��NJK�
+Nș�Y�X]�H�����K��ܑXX�
+
+]�HO����Y]�[�\�[�\�]�
+JHO�K��]�[�Y�][
+
+N���\��\���[[ݙJ�ݙ\��NJK�
+N�ۜ�[�Q�[\�H\�[��
+\�
+HO������ܙ\���. x.,�.)x.,x.!�.+x.b8.,�.&x.a8.'�.)x.c�N�܈
+]HH�H\��[���J��H�ۜ��H\��WN�]��ܙ\��
+H
+�JH�\��[�����[YJN�H�ۜ�^[�YH����_��I�K�\�
+���[YJH�]�Z]�XY�[P�Y��\��H�]�Z]�XY�[U^
+�N]�Z][��\��]����[YK^[�Y���^�JNH�]�
+\��H�\�
+	ً��[Y_N�	�\���Y\��Y�_X��\���NB�B�YT��ܙ\��
+N�[�\�
+N��Y[P]]ԙX�ۘ�[J8.+x.,x.&�.`�.*�.)x.%	�\��[��H8.a8.'�.)x.c
+NN��Y]�[�\�[�\�����
+JHO�[�Q�[\�ˋ��K�]U�[�ٙ\���[\�JJN[�]�Y]�[�\�[�\���[��H�
+JHO�[�Q�[\�ˋ��K�\��]��[\�JJN�	
+���X\��[\ȊK�Y]�[�\�[�\���X�ȋ
+
+HO�[\ܝ�]K��[\�H�N�[�\�
+N\]P]]��]\�
+NJN	
+�ؘX���[[ȊK�Y]�[�\�[�\���X�ȋ
+
+HO���][ۋ��[�Y
+
+NJNN�ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�\�H8�%8. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&B�OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+���[��[ۈ�[���Y�X�][۔�[\�
+H�ۜ��H�ܙK�]K���Y�T�[\�Y�
+���[SZ\��[��H�ۜ��YH���[\˙�[\�
+�HO����]\�OOH�Z\��[�Ȉ���]\�OOH�ܛۙ����\[�H�NY�
+�Y�[��
+H�ܙK���Y�J��Y�8.a8.'�.)x.c8.(�.,x.!�.a8.(x.b8.!8.(�.&�	ؘY�[��H8.(�.,�.(�. x.,�.(��Y�X\
+
+�HO�	؋���\[�S�[Y_HH	؋��[U\_X
+K���[���K�[�Z�H�NB�Y�
+��ܚ]X�[^�\[ۊH�ۜ�ܚ]H��^�\[ۜ˙�[\�
+JHO�K��]�\�]HOOH�ܚ]X�[�	��VȘ���Y��\�ݙY�K�[��Y\�K��]\�JNY�
+ܚ]�[��
+H�ܙK���Y�J��Y�8.'�.&�^�\[ۈ8.(�.,8.%8.,x.&�ܚ]X�[	�ܚ]�[��H8.(�.,�.(�. x.,�.(�8.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."8.(�.)�.(H	�[ۙ^L
+�[T�\��ܚ]
+J_H8.&�.,�.%��^�\[ۜȊNB�Y�
+���P��XX�
+H�ۜ�ݙ\�H��^�\[ۜ˙�[\�
+JHO�K�ݙ\��H	��VȘ���Y��\�ݙY�K�[��Y\�K��]\�JNY�
+ݙ\��[��
+H�ܙK���Y�J��\���8.`8.!8.*�.`8.)x.(��H	�ݙ\��[��H8.(�.,�.(�. x.,�.(��.%x.bx.+x.!�.`8.(�.b8.!�.%x.-8.%8.%x.,�.(x."�.-x.bx.`x."8.!�.(8.,�.(�.`�.&x.)�.,x.&x.&x.-x.bH��^�\[ۜȊNB�Y�
+���X�QYJH�ۜ��[�H��[XY�P�X�\˙�[\�
+�HO�˜�]\�OOH��[��NY�
+�[��[��
+H�ܙK���Y�J�[��ȋ8.(�.+x.&�."�.-x.bx.`x."8.!�	��[��K��[Y_H8.(�.,x.!�.a8.(x.b8.&�.-8.%8.(x.-H	���[XY�\˙�[\�
+
+HO���X�HOOH�[��K���JK�[��H8.`8.!8.*�.(�.+x.*�.(�..8.&��[XY�H�NB�\]P�[
+
+NB���[��[ۈ\]P�[
+
+H�ۜ��H�]K�]\�]OOH���X�[ۈ�	��]�Sݙ\��Y]��]K���Y�X�][ۜ��]�Sݙ\��Y]��]K���Y�X�][ۜ˙�[\�
+���HO�\��˜�XY�]
+K�[����ܙK�[��XY
+
+N�ۜ��H	
+�ؙ[��[��NY�
+X�H�]\����^�۝[�H��NH��NJȈ����Y[�H�OOHB���[��[ۈ�[�\�]�S��Y�X�][ۜ����
+HY�
+Y[��\�S]�Sݙ\��Y]����
+JH�]\���ۜ�\�H]�Sݙ\��Y]��]K���Y�X�][ۜ��N�ۜ�ۙHH�[��Έ��YH��\��[�Έ�[X�\��\��܎���Y��X��\�Έ�ܙY[��N����[��\�SH�X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ��\X�\�H�X�ۗۛ�Y�X�][ۜ�����. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&x."8.(�.-8.!�
+	۝[J\��[��
+_JO����X[�\��H�XY\�X���.(�.,x.!�.a8.(x.b8.+x.b8.,�.&H	۝[J\���[\�
+���OO�\��˜�XY�]
+K�[��
+_O��X[��]��]��\��H�[�[�KXX�[ۜȏ��]ۈ�\��H����X�]ۈ�H�YH�]�S��Y��Y��\���.(�.-x.`8.'�.(�."�؝]ۏ��]ۈ�\��H����X�]ۈ�H�YH�]�S��Y��XY��.+x.b8.,�.&x.%�.,x.bx.!�.*�.(x.%؝]ۏ��]���]���]��\��H���Y�[\����\��X\
+
+���OO�]��\��H���Y�	ܛ�˜�XY�]Ȉ���[��XY�H���[��\��H��Y�H	�ۙVܛ�˛]�[_�ܙ^H�H���
+��˛]�[
+_O��[��]����ۙω�
+��˝]J_O���ۙϏ�[���
+��˙]Z[��_O��[���X[��
+\�^U[YJ��˘ܙX]Y�]
+J_Iܛ�˘��\[�O�0��	�
+��˘��\[�J_X���O��X[��]��ܛ�˘�\�[�\���]O��]ۈ�\��H����X�]ۈȈ]K[��Y�Y]OH��
+��˘�\�[�\���]J_H�]K[��Y�X��\[�OH��
+��˘��\[�_�S�_H��.`8.&�.-8.%8.%8..O؝]ۏ����O�]��
+K���[���_�\��H�[\H��.(�.,x.!�.a8.(x.b8.(x.-x. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&x."8.,�. x.(�.,8.&�.&���O�]����\��H�[���.(�.,�.(�. x.,�.(�.&x.-x.bx.+x.b8.,�.&x."8.,�. x.$8.,�.&x. �.bx.+x.(x..x.)x."8.(�.-8.!�8. x.,�.(�.`x."8.bx.!�[Yܘ[H8.%�.,�.!�.,�.&x."8.,�. H��8.a8.(x.b8.a8.%8.bx."8.,�.)x.+x.!�.`�.&x.`8.&�.(�.,�.)�.c8.`8."�.+x.(�.c�����X�[ۏ�	
+��]�S��Y��Y��\��O˘Y]�[�\�[�\���X�ȋ
+
+OO��Y]�Sݙ\��Y]��YJJN	
+��]�S��Y��XY�O˘Y]�[�\�[�\���X�ȋ\�[��
+OO��ۜ�[��XY[\���[\�
+���OO�\��˜�XY�]
+N�Y�][��XY�[��
+\�]\���\�
+�.+x.b8.,�.&x.!8.(�.&�.`x.)x.bx.)ȊN]�Z]��Z\�K�[
+[��XY�X\
+
+���OO�؋�]�
+��X�ۗۛ�Y�X�][ۜȋYY\K�ܛ�˚YXܙXY�]��]�]J
+K��T����[��
+_JJJN]�Z]�Y]�Sݙ\��Y]��YJN��\�
+�.%�.,�.`8.!8.(�.-�.b8.+x.!�.*�.(x.,�.(�.+x.b8.,�.&x.`x.)x.bx.)ȊNJN����]Y\�T�[X�ܐ[
+��]K[��Y�Y]WH�K��ܑXX�
+
+�]ۊOO��]ۋ�Y]�[�\�[�\���X�ȋ
+
+OO���]K��[\�˙]OX�]ۋ�]\�]���Y�]N��]K��[\�˙���OX�]ۋ�]\�]���Y�]N��]K��[\�˝�X�]ۋ�]\�]���Y�]N��]K��[\�˘��\[�OX�]ۋ�]\�]���Y���\[�_�S���]K��[\�˜�\�]H�^H�����\���\��N�JJNB���QU�˛��Y�X�][ۜ�H
+���
+HO�Y�
+�]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+JH�[�\�]�S��Y�X�][ۜ����
+N�]\��B��ۜ�\�H�ܙK�]K���Y�X�][ۜ��ۜ��[\�H�ܙK�]K���Y�T�[\��ۜ��[�ۙHH��Y���Y��\����[X�\��[��Έ��YH��Έ�ܙY[������[�]�N�ۜ��[�X�[H��Y��.%x.bx.+x.!�.`x. x.bx.%�.,x.&x.%�.-H��\����.`8.'x.bx.,�.(�.,8.)�.,x.!ȋ[��Έ�.`x."8.bx.!�.`�.*�.bx.%�.(�.,�.&���Έ�.&�. x.%x.-�N�����[��\�SH��X�[ۈ�\��H�ܚYL����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ�[�������. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&H
+	�\��[��JO����]���]��\��H�[�[�KXX�[ۜȏ���]ۈ�\��H����X�]ۈ�H�YH���X�ȏ�.%x.(�.)�."8.`8.!�.-�.b8.+x.&x.a8. �.`8.%8.-x.b�.(�.)�.&x.-x.bO؝]ۏ���]ۈ�\��H����X�]ۈ�H�YH���XY��.%�.,�.`8.!8.(�.-�.b8.+x.!�.*�.(x.,�.(�.+x.b8.,�.&x.`x.)x.bx.)�؝]ۏ���]����]���]��\��H���Y�[\����	\���X\
+�
+�HO�]��\��H���Y�	ۋ��XY�����[��XY�H����[��\��H��Y�H	��[�ۙVۋ��[�_H����[�X�[ۋ��[�_O��[���]�����ۙω�
+��]J_O���ۙς��[���
+��]Z[
+_O��[����X[��
+\�^U[YJ��]
+J_O��X[���]���	ۋ�[����]ۈ�\��H����X�]ۈȈ]K[�[��H��
+��[��_H��.`8.&�.-8.%8.%8..O؝]ۏ����B��]���
+B����[���H�\��H�[\H��.(�.,x.!�.a8.(x.b8.(x.-x. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&O���B��]����]����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ��[\�����.`8.!�.-�.b8.+x.&x.a8. �.`x.)x.,8."�.b8.+x.!�.%�.,�.!�����]���]���]��\��H����K[\����	�ș�[SZ\��[�ȋ�.`x."8.bx.!�.`8.(x.-�.b8.+x.a8.'�.)x.c8. �.,�.%8.*�.(�.-�.+x.*�.b8.!�.'8.-8.%8.&�.(�.-8.*x.,x.%ȗK�Șܚ]X�[^�\[ۈ��.`x."8.bx.!�.`8.(x.-�.b8.+x.'�.&�^�\[ۈ8.(�.,8.%8.,x.&�ܚ]X�[�K�Ȝ�P��XX���.`x."8.bx.!�.`8.(x.-�.b8.+x.(x.-x.`8.!8.*�.`8.)x.(��H�K�Ș�X�QYH��.`x."8.bx.!�.`8.(x.-�.b8.+x.`�. x.)x.bx.!8.(�.&�.(�.+x.&�."�.-x.bx.`x."8.!ȗK�B��X\
+
+��JHO�X�[�[�]\OH��X�؛��]K[��[OH���H�	ܝ[\���H���X��Y����Hψ	�
+
+_O�X�[�
+B����[���_B��]�����\��H��]�\�Zȏ�."�.b8.+x.!�.%�.,�.!�.*�.b8.!��ς�]��\��H����K[\����	�Ș�[��[[�\��.`x.*�.%8.!�.`�.&x.(�.,8.&�.&�
+8. x.(�.,8.%8.-8.b8.!�.(x..8.(x.&�.&x. �.)�.,�H�K�Ș�[��[[XZ[��.*�.b8.!�.+x.-x.`8.(x.)x.%�.-�.!�.'8..x.bx.(�.,x.&�.'8.-8.%8."�.+x.&��K�Ș�[��[[Yܘ[H��.*�.b8.!�[Yܘ[H8.`8.(x.-�.b8.+H�]�\�]H8.*�..x.!ȗK�B��X\
+
+��JHO�X�[�[�]\OH��X�؛��]K[��[OH���H�	ܝ[\���H���X��Y����Hψ	�
+
+_O�X�[�
+B����[���_B��]����\��H�[���.`�.&x.(�.,8.&�.&�."8.(�.-8.!�8."�.b8.+x.!�.%�.,�.!�.+x.-x.`8.(x.)x.`x.)x.,[Yܘ[H8."8.,8.(�.-8.!�."8.,�. x.'x.,x.b8.!��X��[�8.%x.+x.&x.&x.-x.bx.&�.,x.&x.%�.-�. x. x.,�.(�.%x.,x.bx.!�.!8.b8.,�.a8.)�.bx.`x.)x.,8.`x.*�.%8.!�.'8.)x.`�.&x.(�.,8.&�.&�.`8.%�.b8.,�.&x.,x.bx.&O����]�����X�[ۏ��	
+�ې�X�ȊK�Y]�[�\�[�\���X�ȋ
+
+HO��[���Y�X�][۔�[\�
+N�\�
+�.%x.(�.)�."8.`8.!�.-�.b8.+x.&x.a8. �.`x.)x.,8.*�.(�.bx.,�.!�. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&x.`�.*�.(x.b8.`x.)x.bx.)ȊN�[�\�
+NJN	
+�۔�XY�K�Y]�[�\�[�\���X�ȋ
+
+HO��ܙK�X\��[�XY
+
+N\]P�[
+
+N�[�\�
+NJN����]Y\�T�[X�ܐ[
+��]K[��[WH�K��ܑXX�
+
+�HO��˘Y]�[�\�[�\���[��H�
+
+HO��ܙK�]K���Y�T�[\��˙]\�]���[WHH˘�X��Y�ܙK�\��\�
+
+N�\�
+�.&�.,x.&x.%�.-�. x. x.,�.(�.%x.,x.bx.!�.!8.b8.,�.`x."8.bx.!�.`8.%x.-�.+x.&x.`x.)x.bx.)ȊNJK�
+N����]Y\�T�[X�ܐ[
+��]K[�[��H�K��ܑXX�
+
+�HO���Y]�[�\�[�\���X�ȋ
+
+HO�����]\�]��[��JJNN�ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�\�H8�%8.%x.,x.bx.!�.`8.)�.)x.,��][�[ۋ\��ܛX[��B�OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+��]��Y[U[Y\�H�[]��Y�ܚ�\�[Y\�H�[��[��[ۈ�[�����]Jٙ��]^\�H
+H�ۜ�\��H�]�[��]U[YQ�ܛX]
+�[�P�H��[YV�ۙN��\�XKИ[����ȋYX\����[Y\�Xȋ[۝���YY�]�^N���YY�]�JK��ܛX]�\���]�]J
+JN�ۜ��\�HH	�\�˙�[�
+
+
+HO��\HOOH�YX\��K��[Y_KI�\�˙�[�
+
+
+HO��\HOOH�[۝�K��[Y_KI�\�˙�[�
+
+
+HO��\HOOH�^H�K��[Y_X�ۜ�H�]�]J�\�H
+������N��]U�]J��]U�]J
+H
+�ٙ��]^\�N�]\����T����[��
+K��X�JL
+NB��\�[���[��[ۈ��Y�ܚ�\�X��
+H����Y�ۜ�]]�X]X��؜ˈ�����\��]\��]�\��Z[HH�[YH]Y]YN����\�\�\���Y��[��[HX���[��\��\�H�Z[H�؈�Y�ܙH���Y\�]��Y�
+؋��ۙ�Y�\�Y
+
+H	��؋��YۙY[�
+JH]�Z]؋�]Y]YQYR�؜��[�����]JLM
+K�[�����]JJJNB���[��[ۈ�\���Y�ܚ�\�
+H�X\�[Y[�]
+��Y�ܚ�\�[Y\�N��HX�\�Y����Y[H�[���]�][��[������\���B���[��[ۈ�\���Y[\�
+H�X\�[�\��[
+��Y[U[Y\�N�ۜ���H�ܙK�]K���Y[NY�
+\�˙[�X�Y
+H�]\���ۜ�\�HX]�X^
+K�˚[�\��[Z[�]\�H
+���˛�^�[�H�]�]J]K����
+H
+�\�K��T����[��
+N�ܙK�\��\�
+
+N��Y[U[Y\�H�][�\��[
+\�[��
+
+HO��˛\��[�H�]�]J
+K��T����[��
+N�˛�^�[�H�]�]J]K����
+H
+�\�K��T����[��
+N�ܙK�\��\�
+
+NY�
+�˘]]�[��\�
+H�ۜ�[���H[\ܝ�]K�[����Z[[���
+
+N�ۜ�[�[��H[����Y\��Y�\˙�[\�
+JHO�[K�[Y
+N�܈
+�ۜ�Hو[�[��H]�Z][��\��]�K��[K��[YKK��[K��۝[�K��[K��۝[��[��
+NK�[YH�YNB�Y�
+[�[�˛[��
+H��X�[ۊ���Y[Y�[��\�����\��Wٚ[H��[����8.%8.-�.!�.a8.'�.)x.c8."8.,�. x.+x.-x.`8.(x.)x. x.)x.,�.!�	�[�[�˛[��H8.a8.'�.)x.c
+NB��ܙK���Y�J��ȋ�.%�.,�.!�.,�.&x.%x.,�.(x.%x.,�.(�.,�.!�.`8.)�.)x.,�.`x.)x.bx.)ȋ8.%8.-�.!�.a8.'�.)x.c8.`x.)x.,8. x.(�.,8.%�.&�.(�.+x.%8.+x.,x.%x.`�.&x.(x.,x.%x.-0��8.(�.+x.&�.%�.,x.%8.a8.&�.+x.-x. H	��˚[�\��[Z[�]\�H8.&x.,�.%�.-X�\���\��N\]P�[
+
+NY�
+]]ԙXY[�\��
+K��XYJH]�Z]�[��X�ۘ�[Q���R[\ܝ
+�]]Έ�YK�X\�ێ��.%�.-�.!�.`8.)�.)x.,�.%x.,�.(x.%x.,�.(�.,�.!ȈJN[�HY�
+�]K���]HOOH���Y[H�H�[�\�
+NK\�NB���QU�˜��Y[HH
+���
+HO��ۜ���H�ܙK�]K���Y[N�ۜ��H�ܙK�]K��][�[ێ�ۜ�Y]X�HH�[���][��ȊH�[���[\ȊN�ۜ��][YHH
+\��HO�
+\���\�^U[YJ\��H��.(�.,x.!�.a8.(x.b8.`8.!8.(�.(�.,x.&H�N�����[��\�SH��X�[ۈ�\��H�ܚYL����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ���Y[Y�X�ۘ�[O����.%8.-�.!�.a8.'�.)x.c8.`x.)x.,8. x.(�.,8.%�.&�.(�.+x.%8.%x.,�.(x.`8.)�.)x.,�����]����[��\��H�X[	��˙[�X�Y���Ȉ��][�[ۈ�H����˙[�X�Y��.`8.&�.-8.%8.`�."�.bx.!�.,�.&H���.&�.-8.%8.+x.(�..x.b�O��[����]���]��\��H����K[\����X�[�[�]\OH��X�؛��YH���[�X�Y�	��˙[�X�Y���X��Y����H	�Y]X�H�����\�X�Y�Hψ8.`8.&�.-8.%8. x.,�.(�.%�.,�.!�.,�.&x.%x.,�.(x.%x.,�.(�.,�.!�.`8.)�.)x.,��X�[��X�[�[�]\OH��X�؛��YH���[��\��	��˘]]�[��\����X��Y����H	�Y]X�H�����\�X�Y�Hψ8.%8.-�.!�.a8.'�.)x.c8."8.,�. x.+x.-x.`8.(x.)x. x.)x.,�.!�. x.b8.+x.&x. x.(�.,8.%�.&�.(�.+x.%8.%�..8. x.!8.(�.,x.bx.!��X�[���]���]��\��H��][��[\�]���X�[��[��.(�.,x.&x.%�..8. O��[��[�]\OH��[X�\��YH���[�\��[��[YOH���˚[�\��[Z[�]\�H�Z[�H�H�	�Y]X�H�����\�X�Y�HϏ��.&x.,�.%�.-O؏��X�[���]���]��\��H��[�YܚY���]���[��.(�.,x.&x.)x.b8.,�.*�..8.%��[�����
+�][YJ�˛\��[�J_O؏��]���]���[��.(�.+x.&�.%�.,x.%8.a8.&���[�����
+�˙[�X�Y��][YJ�˛�^�[�H��H�_O؏��]����]���]��\��H�[�[�KXX�[ۜ�]����]ۈ�\��H��[X\�KX�]ۈ�YH����]�H�	�Y]X�H�����\�X�Y�O�.&�.,x.&x.%�.-�. x.%x.,�.(�.,�.!�.`8.)�.)x.,�؝]ۏ���]ۈ�\��H����X�]ۈ�YH��ӛ�ȏ�.%�.,�.!�.,�.&x.`8.%8.-x.b�.(�.)�.&x.-x.bO؝]ۏ���]����\��H�[�����8.%x.(�.)�."8.!8.)�.,�.(x.!8.(�.&�.%�.bx.)�.&x.`x.)x.,8."8.,x.%8.!8.-8.)�.%�.,�.)�.(�.%�..8. HL8.&x.,�.%�.-H8.*�.b8.)�.&x.%x.,x.)�.+x.b8.,�.&H���8."8.,8.(�.,x.&�.!�.,�.&x."8.,�. x.!8.-8.)�.`8.(x.-�.b8.+x.*�.&x.bx.,�.`8.)�.a�.&�.%�.-x.b8.)x.a�.+x. x.+x.-8.&x.`8.&�.-8.%8.+x.(�..x.b0��8.a8.'�.)x.c8.(x.,�."�.bx.,�."8.,8.%�..x. x.%x.-8.%8.&8.!�.`x.)x.,8.(�.,x.&x."�.bx.,�.+x.,x.%x.`�.&x.(x.,x.%x.-����]����]��\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�]H��X�[ۏ����.`8. x.a�.&�. �.bx.+x.(x..x.)H8.*�.,�.(�.+x.!�8.`x.)x.,8.`8. �.bx.,�.(�.*�.,x.*�����]���]���]��\��H��][��[\����X�[��[��.`8. x.a�.&�. �.bx.+x.(x..x.)x.(�.bx.+x.&x.*�.)x.,x.!���[��[�]\OH��[X�\��YH��[۝Ȉ�[YOH�ܝ�[۝�H�Z[�H�H�	�Y]X�H�����\�X�Y�HϏ��.`8.%8.-�.+x.&O؏��X�[���]���]��\��H����K[\����X�[�[�]\OH��X�؛��YH���X��\�	ܝ��X��\Z[H���X��Y����H	�Y]X�H�����\�X�Y�Hψ8.*�.,�.(�.+x.!�. �.bx.+x.(x..x.)x.+x.,x.%x.`�.&x.(x.,x.%x.-8.%�..8. x.)�.,x.&O�X�[��X�[�[�]\OH��X�؛��YH��[�ܞ\�	ܝ�[�ܞ\]�\����X��Y����H	�Y]X�H�����\�X�Y�Hψ8.`8. �.bx.,�.(�.*�.,x.*�. �.bx.+x.(x..x.)x. x.,�.(�.`8.!�.-8.&x. �.$�.,8."8.,x.%8.`8. x.a�.&��X�[��X�[�[�]\OH��X�؛��YH��X\�Ȉ	ܝ�X\��X���[����X��Y����H	�Y]X�H�����\�X�Y�Hψ8.&�.-8.%8.&�.,x.!�.`8.)x. �.&�.,x.#x."�.-x.*�.,�.*�.(�.,x.&�.&�.%�.&�.,�.%�.%�.-x.b8.a8.(x.b8."8.,�.`8.&�.a�.&x.%x.bx.+x.!�.`8.*�.a�.&O�X�[���]���[�\��H�X��[\�]���O�.a8.(x.b8.(x.-H����[�[ؚ[H�[��[��8�%8.(�.,x.&�. �.bx.+x.(x..x.)x."8.,�. H[XZ[�^ܝ8.`8.%�.b8.,�.&x.,x.bx.&O�O��O�.%�..8. HX�[ۈ8.*�.,�.!8.,x.#x.(x.-H]Y]��8.`x.&�.&�.`8. �.-x.(�.&x.a8.%8.bx.+x.(�.b8.,�.!�.`8.%8.-x.(�.)��O��O�.a8.(x.b8.(x.-x.&�.%�.&�.,�.%�.`�.%8.)x.&��[��X�[ۈ8.*�.(�.-�.+x.*�.)x.,x. x.$8.,�.&x.a8.%8.bO�O���[���]ۈ�\��H����X�]ۈ]�YH���]�H�	�Y]X�H�����\�X�Y�O�.&�.,x.&x.%�.-�. x.&x.`�.(�.&�.,�.(�؝]ۏ���]�����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ�\��ܛX[��O����.%�.%8.*�.+x.&�.(�.,8.%8.,x.&�LL�8.(�.,�.(�. x.,�.(�.%x.b8.+x.)�.,x.&O����]����[��\��H�X[�ȏ�.`8. x.$�.$x.c�Z[H�\ܝ8.`8.*�.(�.a�."8.`�.&HKL�8."�.,x.b8.)�.`�.(x.!���[����]���]��\��H�[�[�KXX�[ۜȏ��X�[�\��H���Z[�[�H��."8.,�.&x.)�.&x.(�.,�.(�. x.,�.(�.%�.-x.b8."8.,8.%�.%8.*�.+x.&���[X�YH�\���^�H����[ۈ�[YOH�L��L��[ۏ���[ۈ�[YOH�L��[X�Y�L��[ۏ���[ۈ�[YOH�������[ۏ����[X����X�[���]ۈ�\��H��[X\�KX�]ۈ�YH�\���[���.`8.(�.-8.b8.(x.%�.%8.*�.+x.&�؝]ۏ���]���]�YH�\���\�[���]�����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��\��[ۏ����. x.,�.(�.`8. x.a�.&�.*�.%�.,�.&x.,8.`x.)x.,8. x.,�.(�.)x.bx.,�.!�. �.bx.+x.(x..x.)O����]����[��\��H�X[	��ܙK�]�Z[X�H���Ȉ��][�[ۈ�H����ܙK�]�Z[X�H��.&�.,x.&x.%�.-�. x.`�.&x.`8.!8.(�.-�.b8.+x.!�.a8.%8.bH���.`8.&�.(�.,�.)�.c8.`8."�.+x.(�.c8.&x.-x.bx.&�.,x.&x.%�.-�. x.a8.(x.b8.a8.%8.bH8.`�."�.bx.*�.&x.b8.)�.(�.!8.)�.,�.(x."8.,�."�.,x.b8.)�.!8.(�.,�.)ȟO��[����]���]��\��H��[�YܚY���]���[��.&�.,x.&x.%�.-�. x.)x.b8.,�.*�..8.%��[�����
+�ܙK�]K�\��]�Y]�\�^U[YJ�ܙK�]K�\��]�Y]
+H��H�_O؏��]���]���[��]Y]��8.%�.-x.b8.`8. x.a�.&�.a8.)�.bO��[����۝[J�ܙK�]K�]Y]�˛[��
+_O؏��]���]���[��. x.,�.(�.`x."8.bx.!�.`8.%x.-�.+x.&O��[����۝[J�ܙK�]K���Y�X�][ۜ˛[��
+_O؏��]���]���[��.*�.%�.,�.&x.,8.`8.!8.*�.%�.-x.b8.`x. x.bx.a8.)�.bO��[����۝[Jؚ�X���^\��ܙK�]K�^ݙ\��Y\�K�[��
+_O؏��]����]����]ۈ�\��H����X�]ۈ]�YH��\H��.)x.bx.,�.!�. �.bx.+x.(x..x.)x.%�.-x.b8.&�.,x.&x.%�.-�. x.a8.)�.bx.`�.&x.`8.!8.(�.-�.b8.+x.!�؝]ۏ���]ۈ�\��H��[X\�KX�]ۈ]�YH��\��X[��.)x.bx.,�.!�. �.bx.+x.(x..x.)x.`8. x.b8.,�
+�8.`8.(�.-8.b8.(x.`8.%�.*�. �.bx.+x.(x..x.)x."8.(�.-8.!�؝]ۏ���\��H��\�[��H��.&�..8.b8.(x.&x.-x.bx."8.,8.)x.bx.,�.!�. �.bx.+x.(x..x.)x.%x.,x.)�.+x.(�.b8.,�.!��.*�.%�.,�.&x.,8.`8. x.b8.,�.%�.,x.bx.!�.*�.(x.%8.`x.)x.,8.`�.*�.)x.%8.&�.,x.#x."�.-x."8.(�.-8.!�."8.,�. x.%�.,8.`8.&�.-x.(�.&x.`8.&�.a�.&HX\�\�8.`x.)x.bx.)�.'�.,�.a8.&�.*�.&x.bx.,�.&x.,�.`8. �.bx.,�.a8.'�.)x.c8.`8.'�.-�.b8.+x.`8.(�.-8.b8.(x.`8.%�.*�.%8.bx.)�.(�.a8.'�.)x.c8."8.(�.-8.!�."8.,�. x.*8..x.&x.(�.c�����X�[ۏ��	
+�����]�H�K�Y]�[�\�[�\���X�ȋ
+
+HO�Y�
+YY]X�JH�]\��[�J�.`x. x.bx.%x.,�.(�.,�.!�.`8.)�.)x.,��N�˙[�X�YH	
+����[�X�Y�K��X��Y�˘]]�[��\�H	
+����[��\��K��X��Y�˚[�\��[Z[�]\�HX]�X^
+K
+�
+����[�\��[�K��[YH�
+N�ܙK�\��\�
+
+N�\���Y[\�
+N��X�[ۊ�\]H����Y[H���X�ۘ�[H�	��˙[�X�Y��.`8.&�.-8.%���.&�.-8.%�H0��8.%�..8. H	��˚[�\��[Z[�]\�H8.&x.,�.%�.-X
+N�\�
+�.&�.,x.&x.%�.-�. x.%x.,�.(�.,�.!�.`8.)�.)x.,�.`x.)x.bx.)ȊN�[�\�
+NJN	
+���ӛ�ȊK�Y]�[�\�[�\���X�ȋ
+
+HO��˛\��[�H�]�]J
+K��T����[��
+N�ܙK�\��\�
+
+N��X�[ۊ���Y[Yܝ[���X]�ܝ[���PS�PSH�
+�]K����
+K�.*�.,x.b8.!�.%�.,�.!�.,�.&x.&x.+x. x.%x.,�.(�.,�.!�.`8.)�.)x.,��N�ܙK���Y�J��ȋ�.*�.,x.b8.!�.%�.,�.!�.,�.&x.&x.+x. x.%x.,�.(�.,�.!�.`8.)�.)x.,���.%8.-�.!�.a8.'�.)x.c8.`x.)x.,8. x.(�.,8.%�.&�.(�.+x.%8."8.,�. x.*�.&x.bx.,�.%x.,�.(�.,�.!�.`8.)�.)x.,���\���\��N\]P�[
+
+NY�
+]]ԙXY[�\��
+K��XYJH�[��X�ۘ�[Q���R[\ܝ
+�]]Έ�YK�X\�ێ��.*�.,x.b8.!�.&x.+x. x.%x.,�.(�.,�.!ȈJN[�H�\�
+�.(�.,x.!�.a8.(x.b8.(x.-x.a8.'�.)x.c8.!8.(�.&�.%�.,x.bx.!�.*�.+x.!�.'x.,x.b8.!�8�%8.(�.,8.&�.&�."8.,8. x.(�.,8.%�.&�.(�.+x.%8.`�.*�.bx.`8.(x.-�.b8.+x.a8.'�.)x.c8.`8. �.bx.,�.!8.(�.&����\���N�[�\�
+NB�JN	
+�ܝ�]�H�K�Y]�[�\�[�\���X�ȋ
+
+HO�Y�
+YY]X�JH�]\��[�J�.`x. x.bx.&x.`�.(�.&�.,�.(�. �.bx.+x.(x..x.)H�N��[۝�HX]�X^
+K
+�
+�ܝ[۝ȊK��[YHL�N���X��\Z[HH	
+�ܝ�X��\�K��X��Y��[�ܞ\]�\�H	
+�ܝ[�ܞ\�K��X��Y��X\��X���[�H	
+�ܝX\�ȊK��X��Y�ܙK�\��\�
+
+N��X�[ۊ�\]H���][��ȋ��][�[ۈ�8.`8. x.a�.&�	ܝ�[۝�H8.`8.%8.-�.+x.&X
+N�\�
+�.&�.,x.&x.%�.-�. x.&x.`�.(�.&�.,�.(�. �.bx.+x.(x..x.)x.`x.)x.bx.)ȊNJN	
+��\���[��K�Y]�[�\�[�\���X�ȋ\�[��
+
+HO��ۜ��H
+�
+��\���^�H�K��[YN�����ܙ\��8.%�.%8.*�.+x.&�\��ܛX[��H	۝[J�_H8.(�.,�.(�. x.,�.(�
+N�]��ܙ\�����.*�.(�.bx.,�.!�."�..8.%8. �.bx.+x.(x..x.)x.%�.%8.*�.+x.&��N]�Z]�]���Z\�J
+�HO��][Y[�]
+��
+JN�ۜ��[�H\��ܛX[��K����
+N�ۜ��ۈH�[\K��Z[��[�\�[����T�S�T���UK�����N�ۜ��[�\�HX]���[�
+\��ܛX[��K����
+HH�[�N�ۜ�ԙX�H
+��YJHO�
+�XΈ���X��]N����T�S�T���UK�[[�[����[[�[��\�X�[ێ���X�˙\�X�[ۋ�X���[����X�˚Y��[�Έ�YHOOH��Ȉ����[�����X�˘�[�����\[�N���X�˘��\[�K�\�\��[YN���\�\���Y�����Y��\�Έ���ܛ���^N����X��H���]Έ���JN�ۜ��HH�ۋ��K�X\
+
+�HO�ԙX����H�JN�ۜ���H�ۋ��˛X\
+
+�HO�ԙX����ȊJN[]H���][��˘\�َ�����[�\�[�8."8.,�.)x.+x.!�.`�."�.bx.*�..x.%x.(�.+x.,�.(�..8.`x.&�.&�.&�.)x.,�.(�.)�.,x.&H8.a8.(x.b8.'8..x. x.`8.)�.)x.,�."8.(�.-8.!�ۜ��\�H]�Z][��[�K��X�ۘ�[J�K�����][�����X���[��
+
+HO��]��ܙ\���H
+�
+��K
+JNYT��ܙ\��
+N�ۜ�\��X�HX]���[�
+
+�K�[��
+��˛[��
+H�
+�\˙[\�Y\��L
+JN	
+��\���\�[�K�[��\�SH�]��\��H��[�YܚY]���]���[��.(�.,�.(�. x.,�.(�.'x.,x.b8.!�.&8.&x.,�.!8.,�.(���[����۝[J�K�[��
+_O؏��]���]���[��.(�.,�.(�. x.,�.(�.'x.,x.b8.!�����[����۝[J�˛[��
+_O؏��]���]���[��.*�.(�.bx.,�.!�."�..8.%8.%�.%8.*�.+x.&���[������[�\�H\�؏��]���]���[��.`8.)�.)x.,�."8.,x.&�.!8..x.b��[����ܙ\˙[\�Y\�H\�؏��]���]���[��.!8.)�.,�.(x.`8.(�.a�.)���[����۝[J\��X�_H8.(�.,�.(�. x.,�.(��.)�.-8.&x.,�.%�.-O؏��]���]���[��.+x.,x.%x.(�.,�."8.,x.&�.!8..x.b��[����ܙ\˛X]��]K�њ^Y
+�_IO؏��]���]���[��^�\[ۈ8.%�.-x.b8.'�.&���[����۝[J�\˙^�\[ۜ˛[��
+_O؏��]���]���[��.'8.)x.`8.%�.-x.(�.&�.`8. x.$�.$x.c��[����\��H�ܙ\˙[\�Y\������]���[��\��H��ܙ\˙[\�Y\����.'8.b8.,�.&H���.%x.bx.+x.!�.&�.(�.,x.&��O؏��]����]����\��H��\�[��H��.%�.%8.*�.+x.&�.&�.&x.`8.!8.(�.-�.b8.+x.!�.'8..x.bx.`�."�.bx.%8.bx.)�.(��]�T�ܚ\8.)x.bx.)�.&H8.`�.&x.(�.,8.&�.&�."8.(�.-8.!�.!�.,�.&x.&x.-x.bx."8.,8.(�.bx.,�.(�.a8.&�.'x.,x.b8.!��\��\�8.'�.(�.bx.+x.(H[�^8. �.+x.!�.$8.,�.&x. �.bx.+x.(x..x.)H8."�.-�.b8.!�."8.,8.`8.(�.a�.)�. x.)�.b8.,�.&x.-x.bx.+x.-x. O����X�[ۊ�\���\���X]�ܝ[���T��H�
+��	ܙ\˙[\�Y\�H\�0��	�\��X�H8.(�.,�.(�. x.,�.(��.)�.-8.&x.,�.%�.-X
+N�\�
+8.%�.%8.*�.+x.&�.`8.*�.(�.a�."�	۝[J\��X�_H8.(�.,�.(�. x.,�.(��.)�.-8.&x.,�.%�.-X
+NJN	
+���\H�K�Y]�[�\�[�\���X�ȋ
+
+HO��ܙK��\�]
+
+N�\�
+�.)x.bx.,�.!�. �.bx.+x.(x..x.)x.%�.-x.b8.&�.,x.&x.%�.-�. x.a8.)�.bx.`x.)x.bx.)�8.(�.-x.`8.'�.(�."�.*�.&x.bx.,�.`8.'�.-�.b8.+x.`8.(�.-8.b8.(x.`�.*�.(x.b�N�[�\�
+NJN	
+���\��X[�K�Y]�[�\�[�\���X�ȋ
+
+HO�Y�
+X�ۙ�\�J�.)x.bx.,�.!�. �.bx.+x.(x..x.)x.%x.,x.)�.+x.(�.b8.,�.!�.`x.)x.,8.*�.%�.,�.&x.,8.`8. x.b8.,�.%�.,x.bx.!�.*�.(x.%8.`x.)x.bx.)�.`8.(�.-8.b8.(x.`8.%�.*�.%8.bx.)�.(�. �.bx.+x.(x..x.)x."8.(�.-8.!���8.&�.,x.#x."�.-x."8.(�.-8.!�."8.,�. x.%�.,8.`8.&�.-x.(�.&x."8.,8.%�..x. x.`�.*�.)x.%8.`8.&�.a�.&HX\�\�H�JH�]\���\��X[\�
+
+NJNN��[��[ۈ�ۛ�Y���Z][���\�T�\]Y\�
+�[�Y����H�ۜ��؈H�]��؊Ҕ�Ӌ���[��Y�Jܝ[��Y��[�Y����K�[�WK�\N�	�\X�][ۋڜ�ۉ�JN�ۜ�\�HT��ܙX]Sؚ�X�T�
+�؊K[��H��[Y[��ܙX]Q[[Y[�
+	�I�N[�˚�Y�H\��[�˙�ۛ�YH��]�Z][��Iܛ����O˘��\[�H	���\[�I�KIܛ����O˘��]H	�]I�K���ۘ[�˘�X��
+N��][Y[�]
+
+
+HO�T���]���Sؚ�X�T�
+\�
+KL
+NB��[��[ۈ�ۛ�Y^
+�[[�[YK^
+H�ۜ��؈H�]��؊Ȼ��Ȉ
+�^K�\N��^��ݎ��\��]]]�NȈJN�ۜ�HH��[Y[��ܙX]Q[[Y[�
+�H�NK��Y�HT��ܙX]Sؚ�X�T�
+�؊NK��ۛ�YH�[[�[YN��[Y[����K�\[��[
+JNK��X��
+N�][Y[�]
+
+
+HO�T���]���Sؚ�X�T�
+K��Y�NK��[[ݙJ
+NKL
+NB����ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�8.!�.,�.&x."�.-x.bx.`x."8.!�8�%8.(�.,8.&�.&��
+8.*�.b8.!�.%�..8. x.)�.,x.&HMΌ
+H8.`x.)x.,8.(�.,8.&�.&�L��
+8.(�.)�.&�.`8.&�.a�.&x.(�.+x.&�KLMH�M�L�H���x.*�.-8.bx.&x.`8.%8.-�.+x.&JB�OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+��ʈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKB��8.(�.,8.&�.&�.%�.-x.b8.`x.'8.&x. x.%x.(�.)�."8�%8.*�.,�.(�."�.-x.bx.`x."8.!�.(x.,�."8.,�. H�.(�.,8.&�.&�.%x.bx.&x.%�.,�.!�. �.+x.!�.&�.(�.-8.*x.,x.%Ȉ8.a8.(x.b8.`�."�.b8.!8.)�.,�.(x.(�..8.&x.`x.(�.!�O�8.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�. x.,8.%�..8. x.)�.,x.&H8.%�..8. x.`8.!8.*���T�L��O�8.+x.+x.%8.-8.%�K̋��8.(�.)�.&�.`8.&�.a�.&x.(�.+x.&�.`x.)x.bx.)�.%x.-x.a8.'�.)x.c�KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKH
+��ۜ��\�Y]HH
+��JHO����\�[\˙�[�
+
+
+HO����HOOH��JH�[�ۜ��X��Y]HH
+��JHO����\�[\˙�[�
+
+
+HO���X��OOH��JH���\�[\��WN�ʈ8.&�.(�.-8.*x.,x.%�.&x.-x.bx.+x.(�..x.b8.(�.,8.&�.&�.a8.*�.&H
+�[H8.(�.,x.!�.a8.(x.b8.a8.%8.bx. x.,�.*�.&x.%
+H
+��[��[ۈ�\�[Sِ��\[�J��JH�ۜ��H����\[�Y\˙�[�
+
+
+HO����HOOH��JN�]\����˜�\�[H�[��[B��[��[ۈ�]��\[�T�\�[J��K�\�[JH]�H����\[�Y\˙�[�
+
+
+HO����HOOH��JNY�
+X�H�H���K�[YN���K\N��XZ[���\�[N��[N����\[�Y\˜\�
+�NB��ۜ��H˜�\�[N˜�\�[HH�\�[H�[�ܙK�]K���\[�T�\�[\�H�ܙK�]K���\[�T�\�[\��N�ܙK�]K���\[�T�\�[\����WHH˜�\�[N�ܙK�\��\�
+
+N��X�[ۊ��]��\�[H����\[�H���K8. x.,�.*�.&x.%8.`�.*�.bx.&�.(�.-8.*x.,x.%�	���_H8.+x.(�..x.b8.(�.,8.&�.&�	��\�[H��\�Y]J�\�[JK��ܝ��.(�.,x.!�.a8.(x.b8.(�.,8.&�..�I���
+8.`8.%8.-8.(H	��JX���X
+N�]Y��X���
+NB��ʈ8.!8.-�.&x.!8.b8.,�.*�.,�.(�."�.-x.bx.`x."8.!�. �.+x.!�.`8.!8.*�.*�.&x.-�.b8.!�8�%8.(�.,x.!�.a8.(x.b8.a8.%8.bx. x.,�.*�.&x.%8.(�.,8.&�.&�.`�.*�.bx.%�.-�.+x.`8.&�.a�.&x.(�.,�.(�.(�.+x.&�.a8.)�.bx. x.b8.+x.&x.`x.)x.,8.%x.-8.%8.&8.!�.a8.)�.bH
+��[��[ۈ�X��ّ^�\[ۊJH�ۜ��\�H�\�[Sِ��\[�JK���\[�JNY�
+\�\�H�]\����X�Έ��X�H��\�[N��[[�\��YۙY��YHN�ۜ�HH�\�Y]J�\�N�]\����X�ΈK��X���\�[N��\�[�\��YۙY��[�HNB��ʈ8.`8.%x.-8.(H�X��8.`�.*�.bx.%�..8. x.`8.!8.*�.%x.,�.(x.(�.,8.&�.&�. �.+x.!�.&�.(�.-8.*x.,x.%�8�%8.`8.(�.-x.(�. x.%�..8. x.!8.(�.,x.bx.!�.%�.-x.b8. �.bx.+x.(x..x.)x.*�.(�.-�.+x. x.,�.(�.`x.(x.&�.`8.&�.)x.-x.b8.(�.&H
+��[��[ۈ�]Y��X���
+H
+��^�\[ۜ��JK��ܑXX�
+
+JHO��ۜ�H�X��ّ^�\[ۊJNK��X��H��X��K��\�[HH��\�[NK��\�[U[�\��YۙYH�[�\��YۙYJNB��ʈ8.&�.(�.-8.*x.,x.%�.%�.-x.b8.`�.'8.)x.b8.`�.&x. �.bx.+x.(x..x.)x.`x.%x.b8.(�.,x.!�.a8.(x.b8.a8.%8.bx.&�.+x. x.)�.b8.,�.+x.(�..x.b8.(�.,8.&�.&�.a8.*�.&H
+��[��[ۈ[�\��YۙY��\[�Y\�
+H�ۜ��Y[�H�]��]
+
+��^�\[ۜ��JK�X\
+
+JHO�K���\[�JK��[\����X[�JN[\ܝ�]K��[\˙�ܑXX�
+
+�HO����ܛX]	�����ܛX]���\[�H	���Y[��Y
+���ܛX]���\[�JJN�]\��ˋ���Y[�K��[\�
+�HO��OOH�H�	��\�\�[Sِ��\[�J�JNB��ʈ8.(�.+x.&�."�.-x.bx.`x."8.!�.%�.-x.b8.)�.,x.&x.%�.-x.b8.&x.-x.bx.%x. x.+x.(�..x.b
+��[��[ۈ�X�Sي\��H�ۜ�H
+���[��\��K��X�JL
+N�ۜ�[HH��[��\��K��X�J�NY�
+HMJH�]\�����N���H��[YN��.(�.+x.&�H
+KLMJH����N�[H
+��LH�Έ[H
+��LMH����Q^N�MHNY�
+H�JH�]\�����N��̈��[YN��.(�.+x.&��
+M�L�JH����N�[H
+��LM��Έ[H
+��L�H����Q^N��HN�ۜ�\�H�]�]J]K�U�
+�[K��X�J
+K
+�[K��X�JK�K
+JK��]U�]J
+N�]\�����N���ȋ�[YN�8.(�.+x.&��
+��I�\�JX���N�[H
+��L���Έ	�[_KI�\�X���Q^N�\�NB��ʈ8. x.,�.*�.&x.%8.*�.b8.!�.!8.-�.&x. �.+x.!�.`x.%x.b8.)x.,8.*�.,�.(�
+��[��[ۈYSيJHY�K���[Y[�YP]
+^��ۜ�X�[Y\�^U[YJK���[Y[�YP]
+Nܙ]\���X�[�ܝ�X�[]Z[���H8.`8.+x. x.*�.,�.(�.%x.,�.(x.&�.(�.-8.*x.,x.%�8.$�8.)�.,x.&x.*�.b8.!�.!8.,�. �.+H8.a8.(x.b8.`8.&�.)x.-x.b8.(�.&x.`8.(x.-�.b8.+x.*�.b8.!�."�.bx.,�.*�.(�.-�.+x.`x. x.bx.%x.,x.bx.!�.!8.b8.,�8.`x.)x.,8.a8.(x.b8.(�.-�.&x.(�.,x.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.+x.,x.%x.`�.&x.(x.,x.%x.-	�N�B��ۜ��H���][��˘�\�Y�N�ۜ�HK��X���X��ّ^�\[ۊJK��X��Y�
+OOH�Z[H�H�]\���X�[�	�K�]_H8.`8.)�.)x.,�	�˙Z[P�]ٙ�H8.&K��ܝ�˙Z[P�]ٙ�
+��8.&K��]Z[�8.(�.,8.&�.&��8�%8.+x.+x.%8.-8.%�.*�.b8.!�.`�.*�.bx.*�.,x.)�.*�.&x.bx.,�. x.,8.(8.,�.(�.`�.&H	�˙Z[P�]ٙ�H8. �.+x.!�.)�.,x.&x.%x.(�.)�."8."8.,�. x.&x.,x.bx.&x."�.-x.bx.`x."8.!�. x.)x.,x.&�.(8.,�.(�.`�.&H	�˙Z[T�\�ۙ�\��H8."�.(K�
+8.*�.b8.!�.%�..8. x.`8.!8.*�8.a8.(x.b8.%8..x.!8.)�.,�.(x.(�..8.&x.`x.(�.!�XNB��ۜ��HH�X�SيK�]JN�ۜ�YHH�Y�^\��K��˘�X�T�\�ۙ^\�N�]\���X�[�	�Y_H
+	��K��[Y_JX�ܝ�YK]Z[�8.(�.,8.&�.&�L��8�%8.+x.+x.%8.-8.%�K̋��8.(�.)�.&�.(�.)�.(x.%�.-�.!�.)�.,x.&x.&�.-8.%8.(�.+x.&�	��K��H8.`x.)x.bx.)�.%x.-x.a8.'�.)x.c8.`�.*�.bx."�.-x.bx.`x."8.!�.(8.,�.(�.`�.&H	�˘�X�T�\�ۙ^\�H8.)�.,x.&X�X�N��HNB��ʈ8.`8.+x. x.*�.,�.(Έ8.*�.(�.bx.,�.!�.`8.)x. �.%�.-x.b
+��[��[ۈ�ӛ��Y�^�^JH�]\��	��Y�^KI���[���]K��[\�˙]JK��\X�J�K����_KI��^_XB���[��[ۈ\��YT�\]Y\���][\���HY�
+X�[���\]Y\���\�Y�H�H	��X�[��\�ݙH�JH�]\��[�J�.+x.+x. x.`�.&�. �.+x.`�.*�.bx."�.-x.bx.`x."8.!ȊNY�
+Z][\˛[��
+H�]\���\�
+�.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�.%�.-x.b8.%x.bx.+x.!�."�.-x.bx.`x."8.!�.`�.&x. x.)x..8.b8.(x.&x.-x.bH���\���N�ۜ��Y��[YHH�˜�Y��[YH�.%�..8. x. x.,��ۜ�YHHYSي][\��JN�ۜ�[H��˜�\]Y\�[
+�ӛΈ�ӛ���TH��˚�^JK��X�Ә[YN��X��Y]J][\��K��X��K��[YK�\��YY]��]K��[\�˙]K�\�[�X�[��˜\�[�X�[�YSX�[�YK�X�[�Ә[YN��˝Ә[YH�.*�.,x.)�.*�.&x.bx.,�. x.,�
+��Y��[YK��Y��[YK���\[�S�[YN��]K��[\�˘��\[�HOOH�S���.%�..8. x.&�.(�.-8.*x.,x.%Ȉ��]K��[\�˘��\[�K����S�[YN��.`x.'8.&x. x.+x.+x.%8.-8.%ȋ�\��Y\���\��[�\�\�
+K��[YH
+��
+�
+��\��[�\�\�
+K�\�\��[YH
+��H��][\��]N�][\��K�]H�]K��[\�˙]K��[\�����[\
+
+K�JN��˜�[�
+[�ӛ���TH��˚�^JJN][\˙�ܑXX�
+
+JHO�Y�
+K��]\�OOH��[��HK��]\�H��\�Y�Z[�Ȏ�]�Sݙ\��YJJNJN��X�[ۊ�\��YW��ȋ��\�Y�X�][ۈ��ӛ���TH��˚�^JK8.+x.+x. x.`�.&�. �.+x.`�.*�.bx."�.-x.bx.`x."8.!�	�][\˛[��H8.(�.,�.(�. x.,�.(�0��	��˜\�[�X�[X
+N�\�
+8.+x.+x. x.`�.&�. �.+x.`�.*�.bx."�.-x.bx.`x."8.!�	�][\˛[��H8.(�.,�.(�. x.,�.(�.`x.)x.bx.)�8�%8.`8.)x.-�.+x. H�.&�.,x.&x.%�.-�. x.`8.&�.a�.&H��8.`�.&x.*�.&x.bx.,�.%x.b8.,�.!�.'�.-8.(x.'�.c
+N�[�\�
+NB���[��[ۈ\��YP�\�Y�X�][ۑ��K�\��]]�JH�ۜ��HH�X�SيK�]JN�ۜ�[H��˘�\�Y�X�][ے[
+�ӛΈ�ӛ�����K�Y
+K�^�K���[��
+����\[�Y\˙�[�
+
+�HO�˘��HOOHK���\[�JH�JK��[YHK���\[�K��Y��[YN�
+���Y�˙�[�
+
+�HO�˘��HOOHK��Y�
+H�JK��[YHK��Y���X�Ә[YN��X��Y]JK��X��K��[YK��X�S�[YN��K��[YK�]N�	�K�\S�[Y_H8�%	�K�X���[�H8.(�.+x.%	�[ۙ^JK��\��[[�[�X]�X��K�[[�[�Y��J_H8.&�.,�.%�8.`8.)�.)x.,�	�K�[Y_X��]�\�]S�[YN��]�Y]JK��]�\�]JK��[YK��]\Ә[YN��\�T�]\�Y]JJK��[YK�[XY�N�K��]\�OOH�[XY�H���\��]]�N��\��]]�K��\�ۙ\��
+��\�\�˙�[�
+
+JHO�K���HOOH��Y��XY�	��K��Y�OOHK��Y�
+H�JK��[YK�\��Y\���\��[�\�\�
+K��[YH
+��
+�
+��\��[�\�\�
+K�\�\��[YH
+��H��\��YY]��]K��[\�˙]K��[\�����[\
+
+K�JN��˜�[�
+[�ӛ�����K�Y
+JN��X�[ۊ�\��YW��ȋ��\�Y�X�][ۈ��ӛ�����K�Y
+K�.+x.+x. x.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!�."x.&�.,x.&�.*�.(x.&�..x.(�.$�.c�N�\�
+8.+x.+x. x.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!�	�K�YH8.`x.)x.bx.)�8�%8.`8.)x.-�.+x. H�.&�.,x.&x.%�.-�. x.`8.&�.a�.&H��8.`�.&x.*�.&x.bx.,�.%x.b8.,�.!�.'�.-8.(x.'�.c
+NB���QU�˘�\�Y�HH
+���
+HO�Y�
+Y[��\�S]�Sݙ\��Y]����
+JH�]\��Y�
+�]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+JHY�
+[]�Sݙ\��Y]��]K�^�\[ۜԙXYJH����[��\�SH�X�[ۈ�\��H�[�[���OH��]\Ȉ\�XKX�\�OH��]�Sݙ\��Y]��]K��Y[��]�Sݙ\��Y]��]K�]^[X\�S�Y[��H�����]�Sݙ\��Y]��]K�]^[X\�Q\��܈�	�.(�.,x.!�.`�.*�.)x.%8.(�.,�.(�. x.,�.(�.`8.!8.*�.a8.(x.b8.*�.,�.`8.(�.a�."	��	�. x.,�.)x.,x.!�.`�.*�.)x.%8.(�.,�.(�. x.,�.(�.`8.!8.*�."8.(�.-8.!��)��O�����%8.(�.,x.!�.a8.(x.b8.*�.(�..8.&�.)�.b8.,�.a8.(x.b8.(x.-x.`8.!8.*�.*�.(�.-�.+x.(�.+x.%8.`8.&�.a�.&x.*8..x.&x.(�.c0��8.!8.!�.&�.(�.-8.*x.,x.%�.`x.)x.,8."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.%�.-x.b8.`8.)x.-�.+x. O����
+]�Sݙ\��Y]��]K�]^[X\�Q\��܈	��_O���]ۈ�\��H����X�]ۈ�YH��\�Y�S�Y�]�H��.)x.+x.!�.`�.*�.)x.%8.(�.,�.(�. x.,�.(�.+x.-x. x.!8.(�.,x.bx.!�؝]ۏ���X�[ۏ�	
+	���\�Y�S�Y�]�I�K�ۘ�X��H
+
+HO��Y]�Sݙ\��Y]��YJN�]\��B��ۜ�����H���Y^�\[ۜ�
+K��[\�
+JHO�YK����\�T�\]Y\�Y	��ț�[����\�Y�Z[�ȋ�[���\�Y�K�[��Y\�K��]\�I���]K���HOOI��Y��XY	�HYK��\]Y\�Y]
+JN�ۜ��]ԛ���H���˙�[\�
+JHO�K��]\�OOH��[��N�ۜ��Z][�ԛ���H���˙�[\�
+JHO�K��]\�OOH��\�Y�Z[�ȊN�ۜ�[���\�Y����H���˙�[\�
+JHO�K��]\�OOH�[���\�Y�N�ۜ�ܛ�\�Hˋ���]��]
+���˛X\
+
+JHO�K���\[�H�.a8.(x.b8.(�.,8.&�..�JWK��ܝ
+
+K�HO�K���[P��\\�J���JN����[��\�SH�	�]�Sݙ\��Y]��]K�]^[X\�Q\��܈��X�[ۈ�\��H�[\��\�����OH��]\ȏ�. �.bx.+x.(x..x.)x.)x.b8.,�.*�..8.%8.(�.,x.!�.(x.,�.a8.(x.b8.!8.(�.&�0��8.`x.*�.%8.!�. �.bx.+x.(x..x.)x.%�.-x.b8.`�.*�.)x.%8.a8.%8.bx.!8.(�.,x.bx.!�. x.b8.+x.&H8.a8.(x.b8.`�."�.b8.(�.+x.%8.*8..x.&x.(�.c�	�
+]�Sݙ\��Y]��]K�]^[X\�Q\��܊_O��X�[ۏ��	��B�	�[ܙP�\�T�]K�\�[ܙH�	��X�[ۈ�\��H�[\��\����.(�.,�.(�. x.,�.(�.%�.-x.b8.`�.*�.)x.%8.+x.,�."8.(�.,x.!�.a8.(x.b8.!8.(�.&�8. x.(�..8.$�.,�. x.(�.+x.!�.&�.(�.-8.*x.,x.%�.*�.(�.-�.+x."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.`�.*�.bx.`x.!8.&�.)x.!�. x.b8.+x.&x.*�.(�..8.&�."8.,�.&x.)�.&x.(�.)�.(O��X�[ۏ���	��B��X�[ۈ�\��H��]\�\��\��\����\�X�H�\��H��\�����[��.`8.!8.*�.`�.*�.(x.b8.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!�."�.-x.bx.`x."8.!���[����ۙω۝[J�]ԛ��˛[��
+_O���ۙϏ�X[�.%x.bx.+x.!�.%x.(�.)�."8.`x.)x.,8.*�.b8.!�.`�.*�.bx.%�.-x.(O��X[��\�X�O��\�X�O��[��.&�.(�.-8.*x.,x.%�.%�.-x.b8.`8. x.-x.b8.(�.)�. �.bx.+x.!���[����ۙω۝[Jܛ�\˛[��
+_O���ۙϏ�X[�.a8.(x.b8.`x.&�.b8.!�. x.,��X[��\�X�O��\�X�O��[��.*�.b8.!�.`x.)x.bx.)�8.(�.+x.%�.-x.(x.%x.+x.&���[����ۙω۝[J�Z][�ԛ��˛[��
+_O���ۙϏ�X[�. x.,�.)x.,x.!�.%x.-8.%8.%x.,�.(x.!8.,�."�.-x.bx.`x."8.!���X[��\�X�O��\�X�H�\��H��ȏ��[��.%�.-x.(x.%x.+x.&�.`x.)x.bx.)���[����ۙω۝[J[���\�Y���˛[��
+_O���ۙϏ�X[�.(�.+H]Y]8.%x.(�.)�."8.`x.)x.,8.+x.&x..8.(x.,x.%x.-��X[��\�X�O����X�[ۏ���X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ���\[�H�ܚٛ������.!�.,�.&x."�.-x.bx.`x."8.!�.`x.(�. x.%x.,�.(x.&�.(�.-8.*x.,x.%�����X[�\��H�XY\�X���. x.%8. x.,�.(�.c8.%8.&�.(�.-8.*x.,x.%�.`8.'�.-�.b8.+x.`8.&�.-8.%8.(�.,�.(�. x.,�.(�.%�.-x.b8.%x.bx.+x.!�.%8.,�.`8.&x.-8.&x. x.,�.(�.%�.,x.bx.!�.*�.(x.%��X[��]���]ۈ�\��H��[X\�KX�]ۈ�H�YH��[�\�ݘ[]Y]YH�	�[���\�Y���˛[�������\�X�Y�O�.%x.(�.)�."8.!8.,�."�.-x.bx.`x."8.!�.%�.-x.b8.%x.+x.&�.`x.)x.bx.)�
+	۝[J[���\�Y���˛[��
+_JO؝]ۏ��]���]��\��H���\[�K[ݙ\��Y]�YܚY���ܛ�\˛X\
+
+��\[�JHO��ۜ��ۈH���˙�[\�
+JHO�
+K���\[�H�.a8.(x.b8.(�.,8.&�..�HOOH��\[�JN�ۜ��ۓ�]�H�ۋ��[\�
+JHO�K��]\�OOH��[��K�[���ۜ��ە�Z][��H�ۋ��[\�
+JHO�K��]\�OOH��\�Y�Z[�ȊK�[���ۜ��ې[���\�YH�ۋ��[\�
+JHO�K��]\�OOH�[���\�Y�K�[���]\��\�X�H�\��H���\[�K[ݙ\��Y]�X�\�X�[ۋX�\����OH��]ۈ�X�[�^H��]KX�\�Y�KX��\[�OH��
+��\[�J_H�\�XK[X�[H�.`8.&�.-8.%8.`8.!8.*�. �.+x.!�.&�.(�.-8.*x.,x.%�	�
+��\[�J_H��]��\��H���\[�KX�\�ZXY��]����ۙω�
+��\[�J_O���ۙϏ�[��۝[J�ۋ�[��
+_H8.`8.!8.*���[���]���X[�\��H���ۋ���YJ
+JHO�K�ݙ\��JH��[��\�����H��.`8. x.-8.&H�H	۝[J�ۋ��[\�
+JHO�K�ݙ\��JK�[��
+_O��X[��]��]��\��H���\[�K[Y]�X�ȏ��[��.(�.,x.!�.a8.(x.b8.a8.%8.bx.*�.b8.!���۝[J�ۓ�]�_O؏���[���[��\��H��\����.(�.+x.%�.-x.(x.%x.+x.&���۝[J�ە�Z][��_O؏���[���[��\��H��ȏ�.%x.+x.&�.`x.)x.bx.)���۝[J�ې[���\�Y
+_O؏���[���[��\��H��Y��.(�.+x.%8.`8.*�.-x.b8.(�.!����[ۙ^L
+�[T�\���ۊJ_O؏���[���]��]��\��H���\[�KX�\�XX�[ۈ��.%8..x.`8.!8.*�.%�.,x.bx.!�.*�.(x.%�[�\�XKZY[�H��YH�������[���]���\�X�O�JK���[���H�\��H�[\KX����.a8.(x.b8.(x.-x.!�.,�.&x."�.-x.bx.`x."8.!�.`�.&x."�.b8.)�.!�.%�.-x.b8.`8.)x.-�.+x. O��O�]�����X�[ۏ���X�[ۈ�\��H�[�[��]��\��H�[�[ZXY[�ȏ�]���\��H�^YX���ȏ�.(�.,�.(�. x.,�.(�."8.(�.-8.!�����.`8.!8.*�.%�.-x.b8.%x.bx.+x.!�.%x.-8.%8.%x.,�.(O����]���]��]��\��H�X�K]ܘ\��X�O�XY����.`8.!8.*����.)�.,x.&x.%�.-x.b���.&�.(�.-8.*x.,x.%����.&�.(�.,8.`8.(8.%����.'8..x.bx.`8. x.-x.b8.(�.)�. �.bx.+x.!����.*�.%�.,�.&x.,����O���\��H��Y���.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."������XY���O�ܛ��˛X\
+
+JHO�����]ۈ�\��H�[��X���]K[�[�Y^H��
+K�Y
+_H���
+K�Y
+_O؝]ۏ�����
+K�]J_H	�
+K�[YJ_O������
+K���\[�J_O؏�����
+K�\S�[YJ_O����
+K�[\�YYJ_O����[��\��H��Y�H	��\�T�]\�Y]JJK�ۙ_H���
+�\�T�]\�Y]JJK��[YJ_O��[�����\��H��K�ݙ\��H��[��\�����H���K�ݙ\��H��.`8. x.-8.&H����I۝[JK�Y�R�\��_K�۝[JK��R�\��_H8."�.(K����\��H��Y��[H���[ۙ^L
+K��\��[[�[�X]�X��K�[[�[�Y��J_O�����
+K���[���H�����[�H���\��H�[\H��.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(������O���O��X�O��]����X�[ۏ�����]Y\�T�[X�ܐ[
+��]K[�[�Y^H�K��ܑXX�
+
+�]ۊHO��]ۋ�Y]�[�\�[�\���X�ȋ\�[��
+
+HO��ۜ�YX�]ۋ�]\�]��[�^��H��\[�H�Y��\�X^H�X\�H����X�H�[H]��\�\��Y�H\���[�\�X�K��K\�XYH�[X�YURQ[�\���[��XYو�Z[Z[���H\��\�Y�\�H\�Z\��[�ˈ��^�H�XYۈH�ܛX[]���HY���^�\[ۜ˜��YJ���O���˚YOOZY
+JX]�Z]�[�^�\[ۊY
+N[�H]�Z]�[�]�Y[��T�[]Y�\�JY
+NH�]�
+\��܊H��\�
+	�.`8.&�.-8.%8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%8.`8.!8.*�.a8.(x.b8.a8.%8.bN�	��\��܋�Y\��Y�K	��\���N�B�JJN�ۜ��[���\[�P�\�\�H
+��\[�JHO�Y�
+�]K���HOOH	��Y��XY	�H���[YK\��]H\�\��YۛY[�[Z]���\��[��K��\Z[�H[�XYB������Y�XY[ۛHۘ\���Y\[��]\��Y��[��\�H�]K���]K��[\�˘��\[�HH��\[�N�[�\�
+N�]\��B����^�\[ۜȋ�[\�Έ���\[�HK�^�[\���N���\N��S��]�\�]N��S��]\Έ�P�Sӈ��N��[�HK�JNN����]Y\�T�[X�ܐ[
+��]KX�\�Y�KX��\[�WH�K��ܑXX�
+
+�\�
+HO��\��Y]�[�\�[�\���X�ȋ
+
+HO��[���\[�P�\�\��\��]\�]��\�Y�P��\[�JJN�\��Y]�[�\�[�\���^Y�ۈ�
+]�[�
+HO�Y�
+]�[���^HOOH�[�\��]�[���^HOOH��H]�[���]�[�Y�][
+
+N�[���\[�P�\�\��\��]\�]��\�Y�P��\[�JNB�JNJNY��]K���OOOI��Y��XY	�H	
+	���[�\�ݘ[]Y]YI�K�Y[�]�YN	
+���[�\�ݘ[]Y]YH�O˘Y]�[�\�[�\���X�ȋ
+
+HO��Y��]K���HOOI��Y��XY	�Y���[�	�\�ݙI�OȘ\�ݘ[Ȏ��]Y]\�]�Y]ȊN�JN�]\��B��]Y��X���
+N�ۜ�[H���Y^�\[ۜ�
+K��[\�
+JHO�VȘ���Y��\�ݙY�K�[��Y\�K��]\�JN�ۜ�Z[HH[��[\�
+JHO�K��X��OOH�Z[H�N�ۜ��X�H[��[\�
+JHO�K��X��OOH��X�H�N�ۜ��H���][��˘�\�Y�N�ۜ��H�\�Y]J���N�ۜ��L��H�\�Y]J��T�L�ȊN�ۜ�ۛ�ۈHˋ���]��]
+��\[�SX\�\�
+K�X\
+
+
+HO����JK��ۘ�]
+[�X\
+
+JHO�K���\[�JJJWK��[\�
+
+HO�	��OOH�H�N�ۜ�[�[��Hۛ�ۋ��[\�
+��JHO�\�\�[Sِ��\[�J��JJN�ۜ�[�[��X�]�HH[�\��YۙY��\[�Y\�
+N���8.%�.-x.b8.(x.-x. �.bx.+x.(x..x.)x.`8. �.bx.,�.(x.,�.`x.)x.bx.)�.`x.%x.b8.(�.,x.!�.a8.(x.b8.a8.%8.bx. x.,�.*�.&x.%��ʈ8.(�.,8.&�.&���8."8.,x.%8. x.)x..8.b8.(x.%x.,�.(x. x.,8.`8.'�.-�.b8.+x.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�. x.,8.`x.%x.b8.)x.,8. x.,
+��ۜ��T�Y�H���Y�˛X\
+
+�HO�
+�Y����][\ΈZ[K��[\�
+JHO�K��Y�OOH˘��JK�XY���\�\�˙�[�
+
+JHO�K���HOOH��Y��XY�	��K��Y�OOH˘��JK�JJN�ʈ8.(�.,8.&�.&�L�Έ8."8.,x.%8. x.)x..8.b8.(x.%x.,�.(x.(�.+x.&�.%x.-x.a8.'�.)x.c
+��ۜ��X�\�H�N�X˙�ܑXX�
+
+JHO��ۜ��HH�X�SيK�]JN
+�X�\���K���WHH�X�\���K���WH��K][\Έ�HJK�][\˜\�
+JNJN�ۜ��X�S\�Hؚ�X���[Y\��X�\�K��ܝ
+
+K�HO�K��K���K���[P��\\�J���K���JJN�����[��\�SH��X�[ۈ�\��H��]\�\��\��\����\�X�H�\��H��Z[K�[�����\������ȟH���[��.(�.,8.&�.&��
+8.*�.b8.!�	�
+˙Z[P�]ٙ�_H8.%�..8. x.)�.,x.&JO��[����ۙω۝[JZ[K�[��
+_O���ۙϏ�X[�.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�. x.,8.%�..8. x.`8.!8.*�8.a8.(x.b8.%8..x.!8.)�.,�.(x.(�..8.&x.`x.(�.!���X[��\�X�O��\�X�O��[��.(�.,8.&�.&�L��
+8.%x.-x.a8.'�.)x.c8.`8.&�.a�.&x.(�.+x.&�O��[����ۙω۝[J�X˛[��
+_O���ۙϏ�X[�.+x.+x.%8.-8.%�K̋��8.(�.)�.&�.`8.&�.a�.&x.(�.+x.&�8.`�.*�.bx.`8.)�.)x.,�."�.-x.bx.`x."8.!�	�˘�X�T�\�ۙ^\�H8.)�.,x.&O��X[��\�X�O��\�X�O��[��."�.-x.bx.`x."8.!�. x.)x.,x.&�.(x.,�.`x.)x.bx.)���[����ۙω۝[J[��[\�
+JHO�K��]\�OOH�[���\�Y�K�[��
+_O���ۙϏ�X[�.(�.+x.+x.+x.%8.-8.%�.%x.(�.)�."8.%�.,�.&O��X[��\�X�O��\�X�H�\��H��Y���[��.!8.bx.,�.!�.`8. x.-8.&x. x.,�.*�.&x.%��[����ۙω۝[J[��[\�
+JHO�K�ݙ\��JK�[��
+_O���ۙϏ�X[�.%x.bx.+x.!�.`8.(�.b8.!�.%x.-8.%8.%x.,�.(O��X[��\�X�O����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��\�[HX\[������.&�.(�.-8.*x.,x.%�.a8.*�.&x.+x.(�..x.b8.(�.,8.&�.&�.a8.*�.&O�����X[�\��H�XY\�X���.*�.,�.(�."�.-x.bx.`x."8.!�.(x.,�."8.,�. x.(�.,8.&�.&�.%x.bx.&x.%�.,�.!�8.a8.(x.b8.`�."�.b8.!8.)�.,�.(x.(�..8.&x.`x.(�.!�8�%8.%x.,x.bx.!�.!8.(�.,x.bx.!�.`8.%8.-x.(�.)�8.(�.,8.&�.&�."8.,�.a8.)�.bx.`�.*�.bO��X[��]����[��\��H�X[	�[�[��X�]�K�[����][�[ۈ��[�[�˛[��������ȟH���[�[�˛[���8.(�.,x.!�.a8.(x.b8.a8.%8.bx. x.,�.*�.&x.%	�[�[�˛[��H8.&�.(�.-8.*x.,x.%���. x.,�.*�.&x.%8.!8.(�.&�.`x.)x.bx.)ȟO��[����]���	�[�[��X�]�K�[����\��H�[�[��\���.&�.(�.-8.*x.,x.%����
+[�[��X�]�K���[���J_O؏�8.(x.-x. �.bx.+x.(x..x.)x.`8. �.bx.,�.(x.,�.`x.)x.bx.)�.`x.%x.b8.(�.,x.!�.a8.(x.b8.a8.%8.bx.&�.+x. x.)�.b8.,�.+x.(�..x.b8.(�.,8.&�.&�.a8.*�.&H8�%8.(�.,8.&�.&�."8.,x.%8.`8.&�.a�.&x.(�.,�.(�.(�.+x.&�.a8.)�.bx. x.b8.+x.&H8. x.(�..8.$�.,�.`8.)x.-�.+x. x.`�.*�.bx.%�..x. O�����B�]��\��H��\�X\���	�ۛ�ۂ��X\
+
+��JHO��ۜ��\�H�\�[Sِ��\[�J��JN�ۜ���H����\[�Y\˙�[�
+
+
+HO����HOOH��JH��[YN���HN�ۜ��H[��[\�
+JHO�K���\[�HOOH��JK�[���]\��]��\��H��\�X\\���	��\�������ȟH���]����ۙω�
+�˛�[YH��J_O���ۙϏ�[��۝[J�_H8.`8.!8.*�.`�.&x."�.b8.)�.!�.&x.-x.bO��[���]���]��\��H��\�X\X��ȏ���]ۈ�\��H��\X��	��\�OOH�����ۈ[X�\�����H�]K\�\�H��
+��J_H�]K]�[H�����0��8.(�.,�.(�.)�.,x.&O؝]ۏ���]ۈ�\��H��\X��	��\�OOH��T�L�Ȉ��ۈ�YH����H�]K\�\�H��
+��J_H�]K]�[H��T�L�ȏ�L��0��8.(�.,�.(�.(�.+x.&�؝]ۏ���]ۈ�\��H��\X��	��\������ۈ�H�]K\�\�H��
+��J_H�]K]�[H���.(�.,x.!�.a8.(x.b8.(�.,8.&�..؝]ۏ���]����]��JB����[���_B��]�����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��
+���[YJ_O����.(�.,�.(�. x.,�.(�.%�.-x.b8.%x.bx.+x.!�.*�.b8.!�.*�.,x.)�.*�.&x.bx.,�. x.,8.)�.,x.&x.&x.-x.bO�����X[�\��H�XY\�X����
+��\��_O��X[��]����[��\��H�X[	�Z[K�[����][�[ۈ����ȟH��. x.,�.*�.&x.%8.*�.b8.!�	�
+˙Z[P�]ٙ�_H8.&K�8. �.+x.!�	�
+�]K��[\�˙]J_O��[����]���]��\��H��X��YܚY���	؞T�Y���X\
+�
+�HO�]��\��H��X��X�\�	�˚][\˛[�������[\H�H���]��\��H��X��ZXY���]����ۙω�
+˜�Y���[YJ_O���ۙϏ�[���
+˜�Y���[��J_O��[���]������˚][\˛[��O؏���]���]��\��H��X��X��H���]��\��H�݋[[�H���[��.*�.,x.)�.*�.&x.bx.,�. x.,��[�����
+˛XY�˛XY��[YH��H�_O؏��]���]��\��H�݋[[�H���[��.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."��[�����[ۙ^L
+�[T�\��˚][\�J_H8.&�.,�.%�؏��]���]��\��H�݋[[�H���[��ܚ]X�[�Y���[�����˚][\˙�[\�
+JHO�K��]�\�]HOOH�ܚ]X�[�K�[��H�	�˚][\˙�[\�
+JHO�K��]�\�]HOOH�Y��K�[��O؏��]����]����]ۈ�\��H��[X\�KX�]ۈ�H�]K\�\K\�Y�H��˜�Y����_H�	�˚][\˛[�������\�X�Y�O�.+x.+x. x.`�.&�. �.+x.`�.*�.bx."�.-x.bx.`x."8.!�؝]ۏ���]���
+B����[���_B��]�����X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��
+�L�˛�[YJ_O����.(�.,�.(�. x.,�.(�.%�.-x.b8.(�.)�.&�.`8.&�.a�.&x.(�.+x.&������X[�\��H�XY\�X����
+�L�˙\��_O��X[��]����]���	�X�S\��[����]��\��H��X��YܚY����X�S\���X\
+
+�HO��ۜ�YHH�Y�^\�˘�K��˘�X�T�\�ۙ^\�N�ۜ�]HHYH�]K��[\�˙]N�]\��]��\��H��X��X�\����]��\��H��X��ZXY��]����ۙω�
+˘�K��[YJ_O���ۙϏ�[���
+˘�K����J_H8.%�.-�.!�	�
+˘�K��_O��[���]�����˚][\˛[��O؏��]���]��\��H��X��X��H���]��\��H�݋[[�H���[��.&�.-8.%8.(�.+x.&���[�����
+˘�K��_O؏��]���]��\��H�݋[[�H���[��. x.,�.*�.&x.%8."�.-x.bx.`x."8.!���[����\��H��]H��[��\�����H���
+YJ_O؏��]���]��\��H�݋[[�H���[��.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."��[�����[ۙ^L
+�[T�\��˚][\�J_H8.&�.,�.%�؏��]����]����]ۈ�\��H��[X\�KX�]ۈ�H�]K\�\KX�X�OH��˘�K���_H��.+x.+x. x.`�.&�. �.+x.`�.*�.bx."�.-x.bx.`x."8.!�.%�.,x.bx.!�.(�.+x.&�؝]ۏ���]��JB����[���_O�]�����\��H�[\H��.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�. �.+x.!�.(�.,8.&�.&�L��8.%x.,�.(x.%x.,x.)�. x.(�.+x.!�.&x.-x.bO���B���X�[ۏ����X�[ۈ�\��H�[�[���]��\��H�[�[ZXY[�ȏ��]���\��H�^YX���ȏ��\�Y�X�][ۈ]Y]YO����.(�.,�.(�. x.,�.(�.%�.,x.bx.!�.*�.(x.%8.'�.(�.bx.+x.(x. x.,�.*�.&x.%8.*�.b8.!������X[�\��H�XY\�X���. x.%8.%�.-x.b8.`8.)x. �.`8.!8.*�.`8.'�.-�.b8.+x.`8.&�.-8.%8.(�.,�.(�.)x.,8.`8.+x.-x.(�.%0��8.&�..8.b8.(x. �.)�.,�.*�..8.%8.+x.+x. x.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!�.(�.,�.(�.`8.!8.*�.`8.&�.a�.&H���X[��]����]���]��\��H�X�K]ܘ\���X�O��XY����.`8.!8.*����.*�.,�.(����.`8.)�.)x.,����.&�.(�.,8.`8.(8.%����\��H��Y���.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."���. x.,�8.'8..x.bx.`8. x.-x.b8.(�.)�. �.bx.+x.!����. x.,�.*�.&x.%8.*�.b8.!����.*�.%�.,�.&x.,���\��H��Y���.`8.+x. x.*�.,�.(�������XY����O��	[���X�J
+B��X\
+
+JHO��ۜ�HYSيJN�]\�������]ۈ�\��H�[��X���]KY^H��K�YH���K�YO؝]ۏ������[��\��H��Y�H	�K��X��OOH�Z[H���[X�\�����YH�H���
+�X��Y]JK��X��K��ܝ
+_O��[������\��H��[H���K�[Y_O�����
+K�\S�[YJ_O����\��H��Y��[H���K��\��[[�[��[ۙ^JK��\��[[�[�
+H���%�O�����
+
+���Y�˙�[�
+
+�HO�˘��HOOHK��Y�
+H�JK��[YHK��Y�
+_O�X[�\��H��X����
+K�[\�YYJ_O��X[�����\��H��K�ݙ\��H��[��\�����H���
+��ܝ
+_O�����[��\��H��Y�H	��\�T�]\�Y]JJK�ۙ_H���
+�\�T�]\�Y]JJK��[YJ_O��[������\��H��Y���ܘ\���]ۈ�\��H����X�]ۈȈ]KX��H��K�YH��.`8.+x. x.*�.,�.(�."�.-x.bx.`x."8.!�؝]ۏ�������JB����[���H�����[�H�H��\��H�[\H��.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�.!8.bx.,�.!�."�.-x.bx.`x."8.!�������B����O���X�O���]���	�[�[�����\��H�[���.`x.*�.%8.!�8.(�.,�.(�. x.,�.(�.`x.(�. x."8.,�. x.%�.,x.bx.!�.*�.(x.%	۝[J[�[��
+_H8.(�.,�.(�. x.,�.(�8�%8.`�."�.bx.%x.,x.)�. x.(�.+x.!�.%8.bx.,�.&x.&�.&x.`8.'�.-�.b8.+x.)x.%8. �.+x.&�.`8. �.%O�����B���X�[ۏ������]Y\�T�[X�ܐ[
+��]K\�\�H�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO�Y�
+X�[���[\ȊH	��X�[���][��ȊH	��X�[��\�ݙH�JH�]\��[�J�. x.,�.*�.&x.%8.(�.,8.&�.&�. �.+x.!�.&�.(�.-8.*x.,x.%ȊN�]��\[�T�\�[J��]\�]��\���]\�]��[�[
+N�\�
+	؋�]\�]��\�H8���	؋�]\�]��[��\�Y]J��]\�]��[
+K��ܝ��.(�.,x.!�.a8.(x.b8.(�.,8.&�..�X
+N�[�\�
+NJK�
+N����]Y\�T�[X�ܐ[
+��]K\�\K\�Y�H�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO��ۜ��H�T�Y���[�
+
+
+HO���Y����HOOH��]\�]��\T�Y�
+N\��YT�\]Y\���˚][\��^N�˜�Y����K��\\��\�J
+K��Y��[YN�˜�Y���[YK�Ә[YN�˛XY�˛XY��[YH��.*�.,x.)�.*�.&x.bx.,�. x.,�
+�˜�Y���[YK�\�[�X�[�8.)�.,x.&x.%�.-x.b	��]K��[\�˙]_H
+	�˜�Y���[Y_H	�˜�Y���[��_JX�JNJK�
+N����]Y\�T�[X�ܐ[
+��]K\�\KX�X�WH�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO��ۜ��H�X�S\���[�
+
+
+HO���K���HOOH��]\�]��\P�X�JN\��YT�\]Y\���˚][\���^N�˘�K���K�Y��[YN��.%�..8. x. x.,�\�[�X�[�	�˘�K��[Y_H0��	�˘�K����_H8.%�.-�.!�	�˘�K��XJNJK�
+N����]Y\�T�[X�ܐ[
+��]KY^H�K��ܑXX�
+
+�HO���Y]�[�\�[�\���X�ȋ
+
+HO��[�^�\[ۊ��]\�]�^
+JJN����]Y\�T�[X�ܐ[
+��]KX��H�K��ܑXX�
+
+�HO����Y]�[�\�[�\���X�ȋ
+
+HO��ۜ�HH��^�\[ۜ˙�[�
+
+
+HO��YOOH��]\�]���N\��YP�\�Y�X�][ۑ��K
+K���\��JK�X\
+
+�HO���^
+K���[����JNJK�
+NN�ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�^ܝ�^�[8.*�.)x.,�.(�."�.-x.%H
+�8.&�.,x.&x.%�.-�. x.`8.&�.a�.&x.(8.,�.'��OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+���[��[ۈ�[�[�[
+]K��R[���[
+H�ۜ�HH	
+��[�[�N�X\�[Y[�]
+K��YU[Y\�NK��YU[Y\�H�[Y�
+\[وK���۝[��X[�\OOH��[��[ۈ�HK���۝[��X[�\
+
+NK���۝[��X[�\H�[K��\��\���[[ݙJ��[K\�]�Y]�[[�[�NK�[��\�SH�XY\��\��H�[�[ZXY����YH�[�[]H���]_O�����]ۈ�\��H�X�ۋX���YH�[�[���H�\�XK[X�[H�.&�.-8.%���%O؝]ۏ���XY\���]��\��H�[�[X��H��؛�R[O�]���	ٛ��[����\��\��H�[�[Y�����ٛ��[Oٛ��\�����XK�Y[�H�[�N	
+��[�[ݙ\�^H�K�Y[�H�[�N�\]Y\�[�[X][ۑ��[YJ
+
+HO�K��\��\��Y
+�ۈ�JN]Y]ZK��[�JN	
+��[�[���H�K�Y]�[�\�[�\���X�ȋ���S[�[
+N	
+��[�[ݙ\�^H�K�Y]�[�\�[�\���X�ȋ���S[�[�ۘ�N��YHJNB��[��[ۈ���S[�[
+
+H�ۜ�HH	
+��[�[�NY�
+[HK�Y[�H�]\��Y�
+\[وK���۝[��X[�\OOH��[��[ۈ�HK���۝[��X[�\
+
+NK���۝[��X[�\H�[K��\��\���[[ݙJ�ۈ�N	
+��[�[ݙ\�^H�K�Y[�H�YN]Y]ZK����JJN�X\�[Y[�]
+K��YU[Y\�NK��YU[Y\�H�][Y[�]
+
+
+HO��K�Y[�H�YN�K��YU[Y\�H�[�K�
+NB�����]\�HH^X��\�X�Kٚ[\�\���Y���ˈ���^[�X��\��܈]H���Hۈ^ܝ���[��[ۈ�Z[�]�Y]�^ܝ�Y]�
+H�ۜ���X�[�YH�QUЕRST�˙^�\[ۜ˘�Z[
+
+N�ۜ�\�X�[ې��[[�H��X�[�Y�XY\�˚[�^ي�.%�.-8.*8.%�.,�.!ȊN�ۜ��]H
+�[YK\�X�[ۊHO�
+������X�[�Y�[YK�]N�	ۘ[Y_H8�%	���X�[�Y�]_X����Έ��X�[�Y����˙�[\�
+���HO�����\�X�[ې��[[�HOOH\�X�[ۊHJN�ۜ��Y]�H��]
+�.'x.,�. H
+8.'JH��.'x.,�. H�K�]
+�.%�.+x.&H
+8.%�H��.%�.+x.&H�WN�ۜ�[�ۛ�ۈH��X�[�Y����˙�[\�
+���HO�Vȸ.'x.,�. H��.%�.+x.&H�K�[��Y\�����\�X�[ې��[[�JJNY�
+[�ۛ�ۋ�[��
+H�Y]˜\�
+������X�[�Y�[YN��.(�.+x.(�.,8.&�..8.&�.(�.,8.`8.(8.%ȋ���Έ[�ۛ�ۈJN�Y]˜\�
+������X�[�Y�[YN��.(�.)�.(H�JN�]\���Y]�B��ʈ8.%x.,x.)�.*�.(�.bx.,�.!�."�..8.%8. �.bx.+x.(x..x.)x.`x.%x.b8.)x.,8."�.-x.%H8.%x.,�.(x."�.b8.)�.!�.)�.,x.&x.%�.-x.b8.&�.,x."8."8..8.&�.,x.&H
+��ۜ��QUЕRST��H^�\[ۜΈX�[��.%x.,�.(�.,�.!�. x.(�.,8.%�.&�.(�.+x.%�8.(�.,�.(�. x.,�.(�.'8.-8.%8.&�. x.%x.-���Z[�
+
+HO��ۜ�����H�[\�Y^�\[ۜ�
+N�]\���[YN��. x.(�.,8.%�.&�.(�.+x.%��]N��.%x.,�.(�.,�.!�. x.(�.,8.%�.&�.(�.+x.%8�%8."�.b8.+x.!�.)�.b8.,�.!�.*�.(x.,�.(�.%�.-�.!�.a8.(x.b8.'�.&�.!8..x.b8.`x.)x.,8.(�.+x."�.-x.bx.`x."8.!ȋ�XY\�Έȸ.*�.%�.,�.&x.,��.`8.!8.*���.)�.,x.&x.%�.-x.b��.&�.(�.-8.*x.,x.%ȋ�.%�.-8.*8.%�.,�.!ȋ�.&�.,x.#x."�.-H��ݚY\�����8.)�.,x.&x.%�.-x.b�8.`8.)�.)x.,�����8.'8..x.bx.%�.,�.(�.,�.(�. x.,�.(ȋ�.(�.+x.%�ȋ��H8.)�.,x.&x.%�.-x.b�8.`8.)�.)x.,����H8.&8.&x.,�.!8.,�.(ȋ�.(�.+x.%�H��.%x.b8.,�.!�.`8.)�.)x.,�
+8.)�.-
+H��.%x.b8.,�.!�.(�.+x.%��.'8.)x. x.,�.(�."8.,x.&�.!8..x.b��.!8.,�."�.-x.bx.`x."8.!��8.*�.(x.,�.(�.`8.*�.%x..��.(�.,8.%8.,x.&���. x.,�.*�.&x.%8.*�.b8.!ȋ�.`8. x.-8.&H�H����\�\�����8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,�����8."�.-�.b8.+x.)x..x. x.!8.bx.,�����8.%�.bx.,�.(�8.%x.,x.)ȋ���8.(�.*�.,x.*�.+x.bx.,�.!�.+x.-8.!ȋ��K�H\�\����K�H8.&�.,x.#x."�.-x.)x..x. x.!8.bx.,����K�H8."�.-�.b8.+x.)x..x. x.!8.bx.,����K�H8.%�.bx.,�.(�8.%x.,x.)ȋ��K�H8.(�.*�.,x.*�.+x.bx.,�.!�.+x.-8.!ȗK��YΈ�MLKL�L�KN�KMKL��KNL�L�L���LMLN��KM�KN��KM�WK����Έ���˛X\
+
+JHO��ۜ�\��HHK��[��[[�[�OOH�[�ۜ�\Л�HK��\�[P[[�[�OOH�[�ۜ�^[�][ۈHK��\��][ۓ��H
+K���\��JK�]
+LJO˝^���ۜ��\�[H\��H	��\Л�K�\HOOH�[YW�Y�����.(�.+x.%8.%x.(�.!�0��8.`8.)�.)x.,�.%x.b8.,�.!Ȉ�K�\HOOH�[[�[��Y�����.`8.)�.)x.,�.`�. x.)x.bH0��8.(�.+x.%8.%x.b8.,�.!Ȉ�K�\S�[YB��\��H��.a8.(x.b8.'�.&�.'x.,x.b8.!��Ȉ��.a8.(x.b8.'�.&�.'x.,x.b8.!��H��]\���\�T�]\�Y]JJK��[YKK�YK�]KK���\[�KK�\�X�[ۋK�X���[��\Л��^�\[۔�YU[Y\�[\
+K��ȊH���\Л��K�[\�YYH���\Л��K��\�[P[[�[�����\��H�^�\[۔�YU[Y\�[\
+K��H�H���\��H�K��[�����\��H�K��[��[[�[�����\��H	��\Л��^�\[ە[YQY��X�[
+JH���\��H	��\Л��K�[[�[�Y������\�[�^[�][ۈ�.`8.)�.bx.&x.a8.)�.bx.(�.+x."�.-x.bx.`x."8.!ȋ�]�Y]JK��]�\�]JK��[YKYSيJK��ܝK�ݙ\��H��.`8. x.-8.&H���.&�. x.%x.-�����Ș�ȋ��H�K��]X\
+
+�YJHO���ۜ��H�]�Y]��\��Y\�K�YJN��]\���˝\�\�˘X���[�˛�[YK˝Z[˜�Y�\�[��WN�JK�NJK�NK�K�[XY�N�X�[��.%�.,8.`8.&�.-x.(�.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(����Z[�
+
+HO��ۜ�����H��[XY�\˙�[\�
+
+HO�[��[��J�]JJN�]\���[YN��.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���]N��.%�.,8.`8.&�.-x.(�.&x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���XY\�Έȸ.(�.*�.,x.*���.`8.!8.*�.+x.bx.,�.!�.+x.-8.!ȋ�.)�.,x.&x.%�.-x.b��.(�.+x.&���.&�.(�.-8.*x.,x.%ȋ�.'�.&x.,x. x.!�.,�.&H��. x.,��.(�.+x.%8.`8.*�.-x.(�.*�.,�.(�
+8.&�.,�.%�H��.*�.,�.`8.*�.%x..��.*�.)x.,x. x.$8.,�.&H��.*�.%�.,�.&x.,���.*�.%�.,�.&x.,8. x.,�.(�.`8.!�.-8.&H�K��YΈ�ML�L�L�M�LM�̋LM�M�K����Έ���˛X\
+
+
+HO��]\���Y�^�\[ےY�]K��X�K�
+����\[�Y\˙�[�
+
+�HO�˘��HOOH���\[�JH�JK��[YH���\[�K��[\�YYK
+���Y�˙�[�
+
+�
+HO�����HOOH��Y�
+H�JK��[YH��Y��Y��
+K���]\�K�]�Y[��H��.!8.(�.&����.(�.+H����]\���[�[��T�]\��NJK�NK�K��N�X�[���H8.(�.,�.(�.'�.&x.,x. x.!�.,�.&H���Z[�
+
+HO��ۜ�^H���Y^�\[ۜ�
+N�]\���[YN���H��]N���H8.(�.,�.(�.'�.&x.,x. x.!�.,�.&H��XY\�Έȸ.'�.&x.,x. x.!�.,�.&H��.&�.(�.-8.*x.,x.%ȋ�.`8.!8.*�.%�.,x.bx.!�.*�.(x.%��ܚ]X�[��Y���.`8. x.-8.&H�H��.(�.+x.%8.%�.-x.b8.%x.bx.+x.!�.%x.(�.)�."��.(�.,8.%8.,x.&�.!8.)�.,�.(x.`8.*�.-x.b8.(�.!ȗK��YΈ�NNL�LLLM�MK����Έˋ���]��]
+^�X\
+
+JHO�K�[\�YYH�.a8.(x.b8.(�.,8.&�..�JWK�X\
+
+[\�YYJHO��ۜ��H^��[\�
+JHO�
+K�[\�YYH�.a8.(x.b8.(�.,8.&�..�HOOH[\�YYJN�ۜ�ܚ]H���[\�
+JHO�K��]�\�]HOOH�ܚ]X�[�K�[���ۜ��HH���[\�
+JHO�K�ݙ\��JK�[���]\���[\�YYKˋ���]��]
+��X\
+
+JHO�K���\[�JJWK���[���K��[��ܚ]���[\�
+JHO�K��]�\�]HOOH�Y��K�[���K�[T�\���Kܚ]�H�H�HH��.*�..x.!Ȉ�ܚ]�H���. x.)x.,�.!Ȉ��.%x.b8.,ȗNJK�NK�K�Z[N�X�[��.*�.(�..8.&�. x.,�.(�. x.(�.,8.%�.&�.(�.+x.%8.(�.,�.(�.)�.,x.&H���Z[�
+
+HO�
+�[YN��.(�.,�.(�.)�.,x.&H��]N��.*�.(�..8.&�. x.,�.(�. x.(�.,8.%�.&�.(�.+x.%8.(�.,�.(�.)�.,x.&x."8.,�. H�\X�\�H��XY\�Έȸ.)�.,x.&x.%�.-x.b��.&�.(�.-8.*x.,x.%ȋ�.(�.,8.&�.&���.*�.%�.,�.&x.,��.a8.'�.)x.c��.+x.b8.,�.&x.*�.,�.`8.(�.a�."��. �.bx.+x.'8.-8.%8.'�.)x.,�.%��.&�.(�.,8.`8.(8.%�.a8.'�.)x.c8.%�.-x.b8.'�.&��K��YΈ�L�M�NM�LL�L�K����Έ
+]�Sݙ\��Y]��]K��\�][ۜ��JK��[\�
+
+HO�[��[��J��\�[�\���]JH	��
+�]K��[\�˘��\[�HOOH�S����\[�HOOH�]K��[\�˘��\[�JJK�X\
+
+
+HO����\�[�\���]K���\[�K��\�[�\����\�[H����]\����[X�\���[W���[�
+K�[X�\��\��Y���[�
+K�[X�\��\��ܗ���[�
+K
+��\�[���[���JK���[���WJK�JK�K�[۝N�X�[��.`x.&x.)�.`�.&x.bx.(x.(�.,�.(�.`8.%8.-�.+x.&H���Z[�
+
+HO��ۜ��S[۝H��[XY�\˙�[\�
+
+HO�[��[��J�]JJK��YX�J
+X��
+HO��ۜ�[HH��[���]H��K��X�J�H�.a8.(x.b8.(�.,8.&�..�X���[WHHX���[WH�[[�[���\�\ΈNX���[WK�[[�[�
+�HY��
+NX���[WK��\�\����]\��X��K�JN�]\���[YN��.`x.&x.)�.`�.&x.bx.(x.(�.,�.(�.`8.%8.-�.+x.&H��]N��.`x.&x.)�.`�.&x.bx.(x.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�.(�.,�.(�.`8.%8.-�.+x.&H��XY\�Έȸ.`8.%8.-�.+x.&H��.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(�."8.(�.-8.!�
+8.&�.,�.%�H��."8.,�.&x.)�.&x.`8.!8.*��K��YΈ�M��L�K����Έؚ�X��[��Y\��S[۝
+K��ܝ
+
+�WKؗJHO�K���[P��\\�J�JK�X\
+
+�[KWJHO��[KK�[[�[�K��\�\�JK�NK�K�[�Z�N�X�[��.*�.%�.,�.&x.,8.a8.'�.)x.c8.%�.-x.b8.(�.,x.&����Z[�
+
+HO�
+�[YN��.a8.'�.)x.c8.%�.-x.b8.(�.,x.&���]N��.*�.%�.,�.&x.,8.a8.'�.)x.c8.&�.(�.,8."8.,�.)�.,x.&H��XY\�Έȸ.)�.,x.&x.%�.-x.b8.&8..8.(�. x.-8."��.&�.(�.-8.*x.,x.%ȋ�."�.-�.b8.+x.a8.'�.)x.c��.&�.(�.,8.`8.(8.%ȋ�.`8.)�.)x.,�.%�.-x.b8.(�.,x.&���.*�.%�.,�.&x.,8.+x.b8.,�.&x.a8.'�.)x.c��. �.bx.+x.'8.-8.%8.'�.)x.,�.%���ܘY�H]�K��YΈ�MM��N��M��KWK����Έ
+]�R[�Z�T�]K��]�\��JK��]X\
+
+�HO�
+����\��Wٚ[\��JK�X\
+
+�HO�؋��\�[�\���]K[�Z�P��\[�Sي��H����\[�H�����[Wۘ[YH�����[������X�Z]�Y�]���X�Z]�Y�]����\��Y��.+x.b8.,�.&x.*�.,�.`8.(�.a�."���.(�.+x.+x.b8.,�.&H���\��W�\��܈�����ܘY�W�]��JJK�JK�K�]Y]�X�[��]Y]�ȋ��Z[�
+
+HO�
+�[YN��]Y]�ȋ�]N��.&�.,x.&x.%�.-�. x. x.,�.(�.`�."�.bx.!�.,�.&x.(�.,8.&�.&���XY\�Έȸ.`8.)�.)x.,���.'8..x.bx.`�."�.bH��X�[ۈ��[�]H��\��]��.(�.,�.(�.)x.,8.`8.+x.-x.(�.%�K��YΈ̌NM�M����K����Έ��]Y]�˙�[\�
+
+HO�[��[��J��[���]
+K��X�JL
+JJK�X\
+
+
+HO���]�\�\��X�[ۋ�[�]K�\��]�]Z[JK�JK�K�N��ۜ�Q�US��QU�H�^�\[ۜΈ�YK[XY�N��YK�N��YKZ[N��YK[۝N��[�K[�Z�N��[�K]Y]��[�HN�ۜ�^ܝ��X�HH����Q�US��QU�N��ۜ��SW��Q�H�.(�.,�.(�.!�.,�.&W�]Y]���]Y]\�\ܝ���.(�.,�.(�. x.,�.(�.'8.-8.%8.&�. x.%x.-���^�\[ۜȋ��N���H���.(�.,�.(�.!�.,�.&x.(�.,�.(�.)�.,x.&H���Z[K\�\ܝ���.*�.(�..8.&�.(�.,�.(�.`8.%8.-�.+x.&H���[۝K\�[[X\�H���]Y][�Ȏ��]Y][�ȋ��.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���H���[XY�KX�X�KLH���.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(��̈���[XY�KX�X�KL����.!8.)�.,�.(x.`8.*�.-x.(�.*�.,�.(���Ȏ��[XY�KX�X�KLȋ�N�[��[ۈ^ܝ�Y]��\�S�[YK�Y]��۝^H�JHY�
+X�[��^ܝ�JH�]\��[�J�^ܝ8. �.bx.+x.(x..x.)H�N�ۜ�\��ZHB��SW��Q�ؘ\�S�[YWH��\�S�[YB���\X�J�ח�W�WJ����H�B���\X�J�חˋWJ����H�B���\X�J�J����H�B���\X�J׋J�J�����H���\ܝ��ۜ��[\H�۝^�]H
+�]K��[\�˙���HOOH�]K��[\�˝���]K��[\�˙���H�	��]K��[\�˙���_W�����]K��[\�˝�X
+N�ۜ�Y]HH8."�.b8.)�.!�. �.bx.+x.(x..x.)H	��۝^�]H�[��SX�[
+
+_H0��8.&�.(�.-8.*x.,x.%�	��۝^���\[�H
+�]K��[\�˘��\[�HOOH�S���.%�..8. x.&�.(�.-8.*x.,x.%Ȉ��]K��[\�˘��\[�J_H0��8.+x.+x. x.`�.%8.(�	��\��[�\�\�
+K�\�\��[Y_H8.`8.(x.-�.b8.+H	ۛ���[\
+
+_X�ۜ��\�H^ܝ\���ܚ؛����Y]�	�\��Z_W���[\K��Y]JNY�
+�\˛��H��X�[ۊ�^ܝ���\ܝ��\�S�[YK^�[	��Y]˛[��H8."�.-x.%H0��	��Y]˜�YX�J
+K�HO�H
+�˜���˛[��
+_H8.`x.%�.)�0��	ܘ[��SX�[
+
+_X
+N�\�
+8.%8.,�.)�.&x.c8.`�.*�.)x.%	�\��Z_W���[\K��8.`x.)x.bx.)�
+	��Y]˛[��H8."�.-x.%H0��	۝[J�Y]˜�YX�J
+K�HO�H
+�˜���˛[��
+J_H8.`x.%�.)�X
+N�]\���YNB���8.+x.+x.'�.a8.)x.&x.c�8.%�.+x.(�.`8.&�.a�.&H�Ո8. �.+x.!�."�.-x.%x.`x.(�. B��ۜ��\��H�Y]��N^ܝ\���݊�\���XY\���\�������	�\��Z_W���[\K��ݘ
+N��X�[ۊ�^ܝ���\ܝ��\�S�[YK�Ո
+8.(�.,x.!�.`�.*�.)x.%8.%x.,x.)�.`8. �.-x.(�.&H^�[8.a8.(x.b8.a8.%8.bJH0��	ٚ\������˛[��H8.`x.%�.)�
+N�\�
+�.(�.,x.!�.`�.*�.)x.%8.%x.,x.)�.`8. �.-x.(�.&x.a8.'�.)x.c^�[8.a8.(x.b8.a8.%8.bH
+8.%x.bx.+x.!�.%x.b8.+x.+x.-8.&x.`8.%�.+x.(�.c8.`8.&x.a�.%JH8�%8.%8.,�.)�.&x.c8.`�.*�.)x.%8.`8.&�.a�.&H�Ո8.`�.*�.bx.`x.%�.&H���\���N�]\���[�NB��\�[���[��[ۈ�[�^ܝX[��
+HY�
+X�[��^ܝ�JH�]\��[�J�^ܝ8. �.bx.+x.(x..x.)H�NY�
+�]K�]\�]OOH���X�[ۈ�	��؋��YۙY[�
+JH�HY�
+[]�Sݙ\��Y]��]K�]X[]JH�\�
+�. x.,�.)x.,x.!�.`�.*�.)x.%8. �.bx.+x.(x..x.)x."8.(�.-8.!�. x.b8.+x.&x.`8.&�.-8.%^ܝ����N]�Z]�Y]�Sݙ\��Y]��YJNB�Y�
+[]�R[�Z�T�]K��]�\�H]�R[�Z�T�]K��]�\�H]�Z]؋��]�\�����N��]K��[\�˙���KΈ�]K��[\�˝���\[�N��]K��[\�˘��\[�HJNB�H�]�
+\��܊H�]\���\�
+�.`8.%x.(�.-x.(�.(x. �.bx.+x.(x..x.)H^ܝ8.a8.(x.b8.*�.,�.`8.(�.a�."��
+�\��܋�Y\��Y�K��\���NB�B��ۜ��H�]K��[\���[�[�[
+��^ܝ8.(�.,�.(�.!�.,�.&H���]��\��H�^\�X�[ۈ���ϸ."�.b8.)�.!�.)�.,x.&x.%�.-x.b�ς�]��\��H�^\�[��H���X�[�."�.b8.)�.!�.*�.,�.`8.(�.a�."8.(�..x.&�[X�YH�^�\�]���UW��T�U˛X\
+
+
+HO��[ۈ�[YOH�����_H�	ً��\�]OOH���H���[X�Y����O��
+��[YJ_O��[ۏ�
+K���[���_O��[X����X�[��X�[�.%x.,x.bx.!�.`x.%x.b[�]\OH�]H�YH�^���H��[YOH�ً����_H�Z[�H�ՒT�P�W�UWє��_H�X^H�ՒT�P�W�UW��H�Ϗ�X�[��X�[�.%�.-�.!�[�]\OH�]H�YH�^Ȉ�[YOH�ً��H�Z[�H�ՒT�P�W�UWє��_H�X^H�ՒT�P�W�UW��H�Ϗ�X�[���]����\��H�[��YH�^�[[X\�H������]����]��\��H�^\�X�[ۈ���ϸ."�..8.%8. �.bx.+x.(x..x.)x.%�.-x.b8.%x.bx.+x.!�. x.,�.(�
+8.`x.%x.b8.)x.,8."�..8.%8.`8.&�.a�.&HH8."�.-x.%x.`�.&x.a8.'�.)x.c8.`8.%8.-x.(�.)�O�ς�]��\��H����K[\����	�ؚ�X��[��Y\��QUЕRST��B��X\
+
+���JHO�X�[�[�]\OH��X�؛��]K\�Y]H���H�	�^ܝ��X�V��H���X��Y����Hψ	�
+��X�[
+_H��\��H��Y]X��[��]KX��[�H���H��؏��X�[�
+B����[���_B��]����]����]��\��H�^\�X�[ۈ���ϸ.(�..x.&�.`x.&�.&�.a8.'�.)x.c�ς�]��\��H��Yȏ��X�[�[�]\OH��Y[Ȉ�[YOH�^�]��[YOH����X��Yψ^�[
+��
+H8�%8.`x.&x.,8.&x.,��X�[��X�[�[�]\OH��Y[Ȉ�[YOH�^�]��[YOH��݈�ψ�Ո
+8."�.-x.%x.`x.(�. x.`8.%�.b8.,�.&x.,x.bx.&JO�X�[���]����\��H�[����^ܝ\��\��
+
+H��.a8.'�.)x.c^�[8."8.,8.(x.-H]]ٚ[\�8.%�..8. x.!8.+x.)x.,x.(x.&x.c8.%x.(�.-�.!�.*�.,x.)�.%x.,�.(�.,�.!�8.`x.)x.,8.%x.,x.)�.`8.)x. �.`8.&�.a�.&x.%x.,x.)�.`8.)x. �."8.(�.-8.!�.%�.-x.b�SH8.a8.%8.bx.%�.,x.&x.%�.-H���.(�.,x.!�.`�.*�.)x.%8.%x.,x.)�.`8. �.-x.(�.&x.a8.'�.)x.c^�[8.a8.(x.b8.a8.%8.bH8�%8.%x.bx.+x.!�.%x.b8.+x.+x.-8.&x.`8.%�.+x.(�.c8.`8.&x.a�.%x.!8.(�.,x.bx.!�.`x.(�. H8.(�.,8.*�.)�.b8.,�.!�.&x.-x.bx."8.,8.a8.%8.bx.a8.'�.)x.c�Ո8.`x.%�.&H�O����]����]ۈ�\��H����X�]ۈ�YH�^�[��[��.(�. x.`8.)x.-8. O؝]ۏ���]ۈ�\��H��[X\�KX�]ۈ�YH�^�ȏ�.%8.,�.)�.&x.c8.`�.*�.)x.%؝]ۏ��
+N��ۜ��Y��\�H
+
+HO�ؚ�X���^\��QUЕRST��K��ܑXX�
+
+�HO��ۜ�[H	
+�]KX��[�H���H�X
+NY�
+[
+H[�^�۝[�H
+	۝[J�QUЕRST����K��Z[
+
+K����˛[��
+_H8.`x.%�.)�XJN�ۜ��[HH	
+��^�[[X\�H�NY�
+�[JH�[K�^�۝[�H8."�.b8.)�.!�.%�.-x.b8.`8.)x.-�.+x. N�	ܘ[��SX�[
+
+_XN�Y��\�
+
+N�	
+��^�\�]�K�Y]�[�\�[�\���[��H�
+JHO�\T�\�]
+K�\��]��[YJN	
+��^���H�K��[YHH�]K��[\�˙���N	
+��^ȊK��[YHH�]K��[\�˝��Y��\�
+
+NJN	
+��^���H�K�Y]�[�\�[�\���[��H�
+JHO��]K��[\�˙���HH�\�X�Q]JK�\��]��[YJN�]K��[\�˜�\�]H��\��H��Y��\�
+
+NJN	
+��^ȊK�Y]�[�\�[�\���[��H�
+JHO��]K��[\�˝�H�\�X�Q]JK�\��]��[YJN�]K��[\�˜�\�]H��\��H��Y��\�
+
+NJN		
+��]K\�Y]H�K��ܑXX�
+
+�HO�˘Y]�[�\�[�\���[��H�
+
+HO�
+^ܝ��X�V�˙]\�]��Y]HH˘�X��Y
+JJN	
+��^�[��[�K�Y]�[�\�[�\���X�ȋ���S[�[
+N	
+��^�ȊK�Y]�[�\�[�\���X�ȋ
+
+HO��ۜ�X��YHؚ�X���^\��QUЕRST��K��[\�
+�HO�^ܝ��X�V��JNY�
+\X��Y�[��
+H�]\���\�
+�.`8.)x.-�.+x. x.+x.(�.b8.,�.!�.&x.bx.+x.(�H8."�..8.%8. �.bx.+x.(x..x.)H���\���N�ۜ��]H		
+	�[�]ۘ[YOH�^�]�I�K��[�
+
+�HO����X��Y
+K��[YN�ۜ��Y]�HX��Y�X\
+
+�HO��QUЕRST����K��Z[
+
+JNY�
+�]OOH��݈�H�ۜ��\��H�Y]��N^ܝ\���݊�\���XY\���\�������]Y]\�\ܝ���]K��[\�˙���_K��ݘ
+N��X�[ۊ�^ܝ���\ܝ���݈�	ٚ\������˛[��H8.`x.%�.)�0��	ܘ[��SX�[
+
+_X
+N�\�
+�.%8.,�.)�.&x.c8.`�.*�.)x.%�Ո8.`x.)x.bx.)ȊNH[�H^ܝ�Y]��.(�.,�.(�.!�.,�.&W�]Y]��Y]�NB����S[�[
+
+N�[�\�
+NJNB��ʈKKKKKKKKKH8.&�.,x.&x.%�.-�. x.`8.&�.a�.&x.(8.,�.'�KKKKKKKKKH
+�ʈ8."�.-�.b8.+x.a8.'�.)x.c8.%x.bx.+x.!�.`8.&�.a�.&HT��RH8.`8.%�.b8.,�.&x.,x.bx.&H8.a8.(x.b8.!�.,x.bx.&x.`8.&�.(�.,�.)�.c8.`8."�.+x.(�.c8."8.,8.%x.,x.bx.!�."�.-�.b8.+x.a8.'�.)x.c8.`�.*�.bx.`8.&�.a�.&H��ۛ�Y�
+��[��[ۈ\��ZT�Y�
+H�]\����[����B���ܛX[^�J�����B���\X�J�אKV�K^�NWJ����H�B���\X�J׋J�J�����B�����\��\�J
+B���X�J
+NB��[��[ۈ[�[�[S�[YJ[�[
+H�ۜ�^YX����H\��ZT�Y�
+[�[�]Y\�T�[X�܊��^YX���ȊH�JK�^�۝[�
+NY�
+^YX���˛[���H�H�]\��	��]K���]_W��^YX����X�ۜ�YH		
+�ݚY]ԛ���[�[�K�[�^ي[�[
+H
+�N�]\��	��]K���]_W��X�[ۋI�YXB�\�[���[��[ۈ�\\�T[�[
+[�[
+H�ۜ�]HH
+[�[�]Y\�T�[X�܊���H�JK�^�۝[���UW�PT��]K���]WK�]N�ۜ��[YHH	�[�[�[S�[YJ[�[
+_W���]K��[\�˙���_K����\�
+�. x.,�.)x.,x.!�.*�.(�.bx.,�.!�.(8.,�.'�����N�ۜ��\�H]�Z]^ܝ\���\\�J[�[�[YK��X��ܛ�[���ٙ������JNY�
+�\˛��H��X�[ۊ�^ܝ��[XY�H�]K8.&�.,x.&x.%�.-�. x.*�.b8.)�.&x.(�.,�.(�.!�.,�.&x.`8.&�.a�.&x.(8.,�.'�
+	ܙ\˛[�_JX
+N�\�
+�\˛[�HOOH��\�[ۛH��8.&�.,x.&x.%�.-�. x. x.(�.,�.'�.`8.&�.a�.&x.(8.,�.'�.`x.)x.bx.)Έ	ۘ[Y_X�8.&�.,x.&x.%�.-�. x.(8.,�.'�	ۘ[Y_H8.`x.)x.bx.)�
+NH[�H�\�
+�.&�.,x.&x.%�.-�. x.(8.,�.'�.a8.(x.b8.*�.,�.`8.(�.a�."��
+��\˜�X\�ۋ��\���NB�B�\�[���[��[ۈ�\\�TY�J
+H�ۜ����H	
+�ݚY]ԛ���N�ۜ��[YHH	��]K���]_Wٝ[\Y�W���]K��[\�˙���_K����\�
+�. x.,�.)x.,x.!�.*�.(�.bx.,�.!�.(8.,�.'�.%�.,x.bx.!�.*�.&x.bx.,�����NY�
+^ܝ\��\��[��\�
+JH�ۜ��\�H]�Z]^ܝ\���\\�J����[YK��X��ܛ�[���ٌ��ٙ���[N�K��JNY�
+�\˛��H��X�[ۊ�^ܝ��[XY�H���UW�PT��]K���]WK�]K�.&�.,x.&x.%�.-�. x.%�.,x.bx.!�.*�.&x.bx.,�.`8.&�.a�.&x.(8.,�.'��N�]\���\�
+8.&�.,x.&x.%�.-�. x.(8.,�.'�	ۘ[Y_H8.`x.)x.bx.)�
+NB�B���8.%�.,�.!�.*�.,�.(�.+x.!Έ8.%x.b8.+x.(8.,�.'�.%�.-x.)x.,8. x.,�.(�.c8.%8.`8.(�.-x.(�.!�.)x.!�.(x.,�8.`�.*�.bx.'8.)x.`x.&x.b8.&x.+x.&x. x.)�.b8.,�. x.,�.(��[�\�8.%�.,x.bx.!�.*�.&x.bx.,�.`�.&x.!8.(�.,�.)�.`8.%8.-x.(�.)�H�ۜ�[�[�H		
+�ݚY]ԛ���[�[ݚY]ԛ����]\�\��\ݚY]ԛ���\[[�H�K��[\�
+[
+HO�Y[��\��\���۝Z[�����X�\\�H�H	��Y[����\�
+����X�\\�H�JN�ۜ��H]�Z]^ܝ\���]�
+[�[��[YK�X��ܛ�[���ٌ��ٙ����[N�K���XY[�Έ��UW�PT��]K���]WK�]K��X�XY[�Έ8."�.b8.)�.!�. �.bx.+x.(x..x.)H	ܘ[��SX�[
+
+_H0��8.+x.+x. x.`�.%8.(�	��\��[�\�\�
+K�\�\��[Y_H8.`8.(x.-�.b8.+H	ۛ���[\
+
+_X�JN��X�[ۊ�^ܝ��[XY�H���UW�PT��]K���]WK�]K8.&�.,x.&x.%�.-�. x.%�.,x.bx.!�.*�.&x.bx.,�.`8.&�.a�.&x.(8.,�.'�	۟H8.*�.b8.)�.&X
+N�\�
+8.&�.,x.&x.%�.-�. x.(8.,�.'�	ۘ[Y_H8.`x.)x.bx.)�
+	۟H8.*�.b8.)�.&JX
+NH�]�
+JH�\�
+�.&�.,x.&x.%�.-�. x.(8.,�.'�.a8.(x.b8.*�.,�.`8.(�.a�."��
+�K�Y\��Y�K��\���NB�B��ʈ8.`�.*�.b8.&�..8.b8.(x. x.)x.bx.+x.!�.`�.*�.bx.%�..8. x. x.,�.(�.c8.%8.`�.%8.(�.+x.,x.%x.`�.&x.(x.,x.%x.-8.*�.)x.,x.!��[�\�
+��[��[ۈY[�[�\\�P�]ۜ�
+H		
+�ݚY]ԛ���[�[�K��ܑXX�
+
+[�[
+HO�Y�
+[�[��\��\���۝Z[�����X�\\�H�H[�[�]Y\�T�[X�܊��[�[X�[H�JH�]\���ۜ�XYH[�[�]Y\�T�[X�܊��[�[ZXY[�ȊN�ۜ���H��[Y[��ܙX]Q[[Y[�
+��]ۈ�N����\�Ә[YHH�[�[X�[H��X�\\�H�
+�
+XY�������]�N���\HH��]ۈ����]HH�.&�.,x.&x.%�.-�. x.*�.b8.)�.&x.&x.-x.bx.`8.&�.a�.&x.(8.,�.'��Ȏ����]]�X�]J�\�XK[X�[��.&�.,x.&x.%�.-�. x.*�.b8.)�.&x.&x.-x.bx.`8.&�.a�.&x.(8.,�.'��N���[��\�SHݙ��Y]Л�H����\�XKZY[�H��YH��]H�NH�ˌ�RL��L���LXL����M�L���L���L��L�L�Lˌ�MH�V�L�K�XMHHHHLHHHLL�L�L��H���M���Ϗ�ݙϘ���Y]�[�\�[�\���X�ȋ
+JHO�K�����Y�][ۊ
+N�\\�T[�[
+[�[
+NJN
+XY[�[
+K�\[��[
+��NJNB��ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�^ܝ[\�OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+��[��[ۈ�ۛ�Y�Պ�[[�[YKXY\�������Y]�[YJH�]\��^ܝ�Y]��[[�[YK��\X�J���ݟ�
+I�K��K��[YN��Y]�[YH�. �.bx.+x.(x..x.)H�]N��Y]�[YH�[[�[YK��\X�J���ݟ�
+I�K��KXY\�������YΈXY\�˛X\
+
+
+HO�N
+HK�JNB��[��[ۈ^ܝ^�\[ۜ�
+H^ܝ�Y]��.(�.,�.(�. x.,�.(�.'8.-8.%8.&�. x.%x.-��Z[�]�Y]�^ܝ�Y]�
+JNB��ʈOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOB�����OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOH
+�]��X�[ۑ]T�XYHH�[�N��[��[ۈ�\\�T��X�[ۑ]J
+HY�
+��X�[ۑ]T�XYJH�]\����X�[ۑ]T�XYHH�YN��^�\[ۜ�H�N��[XY�\�H�N���[\�H�N��]Y]��H�N���\��[��[�H�[Y�
+\��^K�\�\��^J���\�JJH���\�K��ܑXX�
+
+
+HO����[H��X]�YH��^�\[ۈH�JN�ۜ�X���[��H�Y�Y�\��PX���[��
+NY�
+X���[��H��X���[��HX���[���]K�]\�]H���X�[ۈ�B��\�[���[��[ۈ\P]][�X�]Y��J[��PX��\��H�ۜ�\�\�H؋�]]\�\�
+H�N�ۜ�[XZ[H��[��\�\��[XZ[��K����\��\�J
+N�ۜ�\H�[��ːT��ӑ�Q��N]X��\��H�[�HY�
+[��PX��\��˜�]\�OOH	ܙZ�X�Y	�H���[��PX��\�˜�X\�ێX��\��H[��PX��\��˜�]\�OOH	ٝ[�[Y	��[��PX��\�˝�[YH�]�Z]؋�^PX��\��
+NY�
+\��^K�\�\��^JX��\��JHX��\��HX��\���H�[H�]�
+\��܊Hʈ8."�.b8.)�.!�\�HZYܘ][ۈ8.`�.*�.bx.&�.,x.#x."�.-H�����\8.`8.%8.-8.(x.(�.,x.!�.`8. �.bx.,�.a8.&�.%x.-8.%8.%x.,x.bx.!���[XH8.a8.%8.bB�8.&�.,x.#x."�.-x.+x.-�.b8.&x."8.,8.a8.(x.b8.%�..x. x.+x.&x..8.#x.,�.%x."8.,�. x.!8.b8.,�Y�][8.*�.(�.-�.+HY]Y]H8.`�.&H�����\�
+��ۜ������\��HH\���P�Q[XZ[˖�[XZ[NY�
+X�����\��JH���\��܎X��\��H�[XZ[�[ۘ[YN�[XZ[��N������\��KX�]�N��YK��\[�Y\ΈȊ��KZYܘ][ۗ�[�[�Έ�YHNB�Y�
+XX��\��˘X�]�JH�ۜ�\��܈H�]�\��܊�.&�.,x.#x."�.-x.&x.-x.bx.%�..x. x.(�.,8.!�.,x.&�.*�.(�.-�.+x.(�.,x.!�.a8.(x.b8.a8.%8.bx. x.,�.*�.&x.%8.*�.-8.%�.&8.-8.c8. x.(�..8.$�.,�.%x.-8.%8.%x.b8.+x.'8..x.bx.%8..x.`x.)x.(�.,8.&�.&��N\��܋���HH	�T�P��T���S�QQ	����\��܎B��ۜ��\]Y\�YH��UWԓ�T��X��\�˜��WH�X��\�˜��H��[ۚ]܈��]K���HH�\]Y\�Y�]K�X��\��H[XZ[�X��\�˙[XZ[[XZ[��[�[YN�X��\�˙�[ۘ[YHX��\�˙[XZ[[XZ[���N��\]Y\�Y���\[�Y\Έ\��^K�\�\��^JX��\�˘��\[�Y\�H�X��\�˘��\[�Y\˛X\
+
+�[YJHO���[���[YJK��\\��\�J
+JH��K�X�]�N��YK��YY�XX��\�˛ZYܘ][ۗ�[�[���NY�
+�]K��[\�˘��\[�HOOH�S�	��X�[�X��\����\[�J�]K��[\�˘��\[�JJH�]K��[\�˘��\[�HH�S�Y�
+�]K�Z[T�[[X\�K���\[�H	��X�[�X��\����\[�J�]K�Z[T�[[X\�K���\[�JJH�]K�Z[T�[[X\�K���\[�HH��\[�SX\�\�
+V�O˘��H��	
+���YۙY\�\��K�[��\�SH	�
+�]K�X��\�˙�[�[YJ_O�X[��
+����\���]K���WK��[YJ_O��X[�B��\�[���[��[ۈ[�\���X�[ې\
+
+HY�
+[�\���X�[ې\�[�[��H�]\��[�\���X�[ې\�[�[���ۜ�[�[��H\��ܛT��X�[ۑ[��J
+N[�\���X�[ې\�[�[��H[�[���H��]\��]�Z][�[���B��[�[H�Y�
+[�\���X�[ې\�[�[��OOH[�[��H[�\���X�[ې\�[�[��H�[�B�B��\�[���[��[ۈ�XY��X�[ۑ[��P�X���
+H�����X���]\��[�\��Y�ܙHYZ\��[ۋ��]HX��\��\��ܜ�[[YYX][B���]�[��[�H\���ܙ�]H\����\����]H�Y�]��Y�ܙHYZ\��[ۋ���ۜ��\���ܙX��\��HH]�Z]��Z\�K�[�]Y
+؋�\���ܙ�[��T�\]Z\�Y
+
+K؋�^PX��\��
+K�JNY�
+\���ܙ��]\�OOH	ܙZ�X�Y	�H���\���ܙ��X\�ێ�]\���\���ܙ�\]Z\�Y�\���ܙ��[YKX��\��NB��\�[���[��[ۈ\��ܛT��X�[ۑ[��J
+H�ۜ�\�\�H؋�]]\�\�
+H�N�ۜ�[XZ[H��[��\�\��[XZ[��K��[J
+K����\��\�J
+N�ۜ��\�\��U�ܚ�H\[و�]HOOH	�[�Y�[�Y	�	���]K�X��\��˛�YY	���]K�X��\�˙[XZ[˝���\��\�J
+HOOH[XZ[	��	
+	��\�[	�K�Y[�OOH�[�N�ۜ��[ܔ���HH�\�\��U�ܚ����Ӌ���[��Y�J��]K�X��\�˜��K�]K�X��\�˘��\[�Y\�JH��[����ۛ�X�[���]J	�. x.,�.)x.,x.!�.%x.(�.)�."8.*�.-8.%�.&8.-8.c0��8.`8. x.a�.&�.*�.&x.bx.,�.%�.,�.!�.,�.&x.`x.)x.,8. �.bx.+x.!8.)�.,�.(x.(�.b8.,�.!�.a8.)�.bH8.(�.,x.!�.&�.,x.&x.%�.-�. x.a8.(x.b8.a8.%8.bx."8.&x. x.)�.b8.,�."8.,8.%x.(�.)�."8.*�.,�.`8.(�.a�."	��[�\�\��U�ܚ�NY�
+Y[XZ[
+H؋��Yۓ�]
+
+N�����[��]J�.a8.(x.b8.'�.&�.+x.-x.`8.(x.)x. �.+x.!�.&�.,x.#x."�.-H8. x.(�..8.$�.,�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.`�.*�.(x.b�N�]\���[�NB��ۜ�X��\���Z][Y\�H�][Y[�]
+
+
+HO�Y�
+I
+	���ۛ�X�[ۑ�]I�K�Y[�H	
+	���ۛ�X�[ۓY\��Y�I�K�^�۝[�H	�.$8.,�.&x. �.bx.+x.(x..x.)x.%x.(�.)�."8.*�.-8.%�.&8.-8.c8.%x.+x.&�. x.)x.,x.&�."�.bx.,�8. x.,�.)x.,x.!�.(�.+x.`x.&�.&�."8.,�. x.,x.%8.`8.)�.)x.,�8�%8.(�.,x.!�.a8.(x.b8.a8.%8.bx.+x.+x. x."8.,�. x.(�.,8.&�.&�8.a8.(x.b8.%x.bx.+x.!�.(�.-x.`8.'�.(�."�.*�.(�.-�.+x.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�."�.bx.,��KL
+N�H�ۜ�[��P�X���H]�Z]�XY��X�[ۑ[��P�X���
+NY�[��P�X��˜\���ܙ�\]Z\�Y
+^	
+	��X��\���Z]��X�I�O˜�[[ݙOˊ
+N�܈
+�ۜ�Yو����]�\��	��[�[	�	���]�\�ݙ\�^I�	��[�[ݙ\�^I�JH��ۜ���HH	
+Y
+N�Y�
+��JH��K�Y[�H�YN�B�	
+	���ۛ�X�[ۑ�]I�K�Y[�]�YN�
+	��\�[	�K�Y[�]�YN�
+	����[��]I�K�Y[�Y�[�N	
+	����[��ܛI�K�Y[�]�YN�
+	�ܙ\�]�ܛI�K�Y[�Y�[�N	
+	�ܙ\�]�ܛI�K�]\�]��\��\���ܙI��YI��
+	�ܙ\�]\��܉�K�Y[�]�YN	
+	�ܙ\�]�ܛHKܙ\�]�ܛH��K�^�۝[�I�.%x.,x.bx.!�.(�.*�.,x.*�.'8.b8.,�.&x.*�.b8.)�.&x.%x.,x.)�. x.b8.+x.&x.`8.(�.-8.b8.(x.`�."�.bx.!�.,�.&I�	
+	�ܙ\�]�ܛH���[�[XY	�K�^�۝[�I�.%x.,x.bx.!�.(�.*�.,x.*�.`�.*�.(x.b8.+x.(�.b8.,�.!�.&x.bx.+x.(�H8.%x.,x.)�8.(x.-x.%x.,x.)�.+x.,x. x.*x.(�.`x.)x.,8.%x.,x.)�.`8.)x. �8.a8.(x.b8.`�."�.bx.(�.*�.,x.*�.`8.(�.-8.b8.(x.%x.bx.&x.`8.%8.-8.(H8.(�.,x.!�.a8.(x.b8.`8.&�.-8.%8. �.bx.+x.(x..x.)x."8.&x. x.)�.b8.,�."8.,8.&�.,x.&x.%�.-�. x.*�.,�.`8.(�.a�."	��]\���[�NB�]�Z]\P]][�X�]Y��J[��P�X��˘X��\��NH�]�
+\��܊HY�
+\��܋���HOOH	�T�P��T���S�QQ	�H؋��Yۓ�]
+
+N�����[��]J\��܋�Y\��Y�JNH[�H����ۛ�X�[���]J	�.`8."�.-�.b8.+x.(x.%x.b8.+x.`8.'�.-�.b8.+x.%x.(�.)�."8.*�.-8.%�.&8.-8.c8.(�.,x.!�.a8.(x.b8.*�.,�.`8.(�.a�."8�%8.a8.(x.b8.a8.%8.bx.+x.+x. x."8.,�. x.(�.,8.&�.&�8.`x.)x.,8.(�.,x.!�.a8.(x.b8.a8.%8.bx.(�.-�.&x.(�.,x.&x.)�.b8.,�.&�.,x.&x.%�.-�. x.!�.,�.&x.*�.,�.`8.(�.a�."�	�
+�
+\��܋�Y\��Y�H	�. x.,�.(�.`8."�.-�.b8.+x.(x.%x.b8.+x. �.,x.%8. �.bx.+x.!��K
+
+HO�[�\���X�[ې\
+
+K�\�\��U�ܚ�NB��]\���[�NH�[�[H��X\�[Y[�]
+X��\���Z][Y\�N�B�	
+	��X��\���Z]��X�I�O˜�[[ݙOˊ
+N	
+	��\�[	�K�[�\�H�[�N�܈
+�ۜ�Yو����]�\��	��[�[	�JH��ۜ���HH	
+Y
+N�Y�
+��JH��K�[�\�H�[�N�B�Y�
+�\�\��U�ܚ�	���[ܔ���HOOH��Ӌ���[��Y�J��]K�X��\�˜��K�]K�X��\�˘��\[�Y\�JJH�]\���YN�\\�T��X�[ۑ]J
+N	
+	���ۛ�X�[ۑ�]I�K�Y[�H�YN	
+����[��]H�K�Y[�H�YN	
+��\�[�K�Y[�H�[�N�]K���]HH\��R\�
+
+NY�
+T��UWԓ�T���]K���WK�[��Y\��]K���]JJH�]K���]HH���Y�Y�
+[��][ۋ�\�\��R\�
+
+HOOH�]K���]JH��][ۋ�\�H��Ȉ
+��]K���]N��Y�]K��]�\�H�[��Y�]K��\�P]X�Y[��H�[��Y�]K�]�Y[��Q\��܈H�[��Y�]K�Z[HH�[��Y�]K��\�][ۜ�H�[��Y�]K��^HH����Y�]K�\��܈H�[��Y�]K�\�X[\��܈H�[]�Sݙ\��Y]��]K�Z[HH�[]�Sݙ\��Y]��]K��\�][ۜ�H�[]�Sݙ\��Y]��]K�]X[]HH�[]�Sݙ\��Y]��]K��X��\�H�[]�Sݙ\��Y]��]K��][���H�[]�Sݙ\��Y]��]K�[XY�\�H�[]�Sݙ\��Y]��]K����H�[]�Sݙ\��Y]��]K���Y�X�][ۜ�H�[]�Sݙ\��Y]��]K�X]�]�Y[��HH�N]�Sݙ\��Y]��]K�X]�Y�[Q^�\[ۜ�H]�Sݙ\��Y]��]K�^�\[ۜԙXYHH�[�N]�Sݙ\��Y]��]K�[XY�\ԙXYHH�[�N]�Sݙ\��Y]��]K���ԙXYHH�[�N]�Sݙ\��Y]��]K��ܙQ\��ܜ�H�N]�Sݙ\��Y]��]K��^HH��Z[P��\[�T�]K�]HH��Z[P��\[�T�]K���\[�HH��Z[P��\[�T�]K��]�\�H�[Z[P��\[�T�]K�X]�]�Y[��HH�NZ[P��\[�T�]K�X]�Y�[Q^�\[ۜ�HZ[P��\[�T�]K�]X[]HH�[Z[P��\[�T�]K��\�][ۜ�H�[Z[P��\[�T�]K��X��\�H�[Z[P��\[�T�]K��њ\��H�[Z[P��\[�T�]K�^�\[ۜ�H�[Z[P��\[�T�]K�[XY�\�H�[Z[P��\[�T�]K��ܙQ\��܈H�[Z[P��\[�T�]K�\��܈H�[\]P�[
+
+N�[�\�
+N��H�\�ܙY����K��\X�\�H�\��[ۈ�\\��\�HY�X�H�YۋZ[�[�\������\�H�X�ۘ�[X][ۈ�ܚ�\��܈]�\�H]][�X�]Y\[��H���]Y]YY�؜��۝[�YHY�\�H�Y��\������\��\�\�܈�]]�]\�����\���Y�ܚ�\�
+N��H��\[�H�ܚ��Y]�Y�]��ۈ��[Z]Y�[�����[���\����\�H^\�و[X��\[�HY�ܙY�]\��]�Y[��H�[H�[�[��]�Y]�����\���]\��]Z[�Z\��ܛX[ݙ\��Y]��Y\���[�ۛ�ۈ�Y�\��^H8�%��Y�
+V��^�\[ۜ��	���Y	�	�Z[K\�[[X\�I�	�X�\�Y]��	ٚ[�[��I�	���\��K]\�Y	�	���\��K\�[��K�[��Y\��]K���]JJH�Y]�Sݙ\��Y]�
+K��]�
+
+
+HO��JN�]\���YNB��\�[���[��[ۈ���
+
+H\T�ܙY�]J
+N]]]�[�X��H�[�H]]�[�X��H]�Z]؋��ۜ�[YP]]\�
+
+NH�]�
+JH�����[��]JK�Y\��Y�JNB�]�\�ܙYH�[�N]�\�ܙQ\��܈H�[Y�
+X]]�[�X��H�H��\�ܙYH]�Z]؋��\�ܙJ
+N�B��]�
+\��܊H��\�ܙQ\��܈H\��܎�B�B�	
+����[�[XZ[�K��[YHH؋�ٙ�
+K�[XZ[��	
+����[��ܛH�K�Y]�[�\�[�\���X�Z]�\�[��
+]�[�
+HO�]�[���]�[�Y�][
+
+N�ۜ��]ۈH	
+����[��X�Z]�N�ۜ�\��܈H	
+����[�\��܈�N�]ۋ�\�X�YH�YN�]ۋ�^�۝[�H�. x.,�.)x.,x.!�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�����\��܋�Y[�H�YN�H]�Z]؋��Yے[�	
+����[�[XZ[�K��[YK��[J
+K	
+����[�\���ܙ�K��[YJN]�Z][�\���X�[ې\
+
+NH�]�
+JH�����[��]JK�Y\��Y�H�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.a8.(x.b8.*�.,�.`8.(�.a�."�NH�[�[H�]ۋ�\�X�YH�[�N�]ۋ�^�۝[�H�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.%8.bx.)�.(�.(�.*�.,x.*�.'8.b8.,�.&H�B�JN	
+������S��[��K�Y]�[�\�[�\���X�ȋ
+
+HO��ۜ��]ۈH	
+������S��[��N�]ۋ�\�X�YH�YN	
+����[�\��܈�K�Y[�H�YN�H؋��Yے[��]����J
+NH�]�
+JH�]ۋ�\�X�YH�[�N�����[��]JK�Y\��Y�H�.`8."�.-�.b8.+x.(x.%x.b8.+H����H8.a8.(x.b8.*�.,�.`8.(�.a�."�NB�JN	
+�ٛܙ��\���ܙ�K�Y]�[�\�[�\���X�ȋ\�[��
+
+HO��ۜ�[XZ[H	
+����[�[XZ[�K��[YK��[J
+N�ۜ�\��܈H	
+����[�\��܈�N\��܋�Y[�H�YNY�
+Y[XZ[
+H�����[��]J�. x.(�..8.$�.,�. x.(�.+x. x.+x.-x.`8.(x.)x. x.b8.+x.&x. �.+x.(�.*�.,x.*�.'8.b8.,�.&x.`�.*�.(x.b�N�]\��B��H]�Z]؋��\]Y\�\���ܙ�\�]
+[XZ[
+N�����[��]J�.*�.b8.!�.)x.-8.!�. x.c8.%x.,x.bx.!�.(�.*�.,x.*�.'8.b8.,�.&x.`�.*�.(x.b8.`x.)x.bx.)�8. x.(�..8.$�.,�.%x.(�.)�."[���8.*�.(�.-�.+H�[H�NH�]�
+JH�����[��]JK�Y\��Y�H�.*�.b8.!�.)x.-8.!�. x.c8.%x.,x.bx.!�.(�.*�.,x.*�.'8.b8.,�.&x.`�.*�.(x.b8.a8.(x.b8.*�.,�.`8.(�.a�."�NB�JN	
+�ܙ\�]�ܛH�K�Y]�[�\�[�\���X�Z]�\�[��
+]�[�
+HO�]�[���]�[�Y�][
+
+N�ۜ�\���ܙH	
+�ۙ]�\���ܙ�K��[YN�ۜ��ۙ�\�HH	
+���ۙ�\�T\���ܙ�K��[YN�ۜ�\��܈H	
+�ܙ\�]\��܈�N�ۜ��\��\���ܙI
+	�ܙ\�]�ܛI�K�]\�]��\��\���ܙOOI��YI�Y�
+\���ܙ�[��
+�\��\���ܙ�N�
+H\���ܙOOH�ۙ�\�H
+�\��\���ܙ	��K��K^�K�K�\�
+\���ܙ
+_K��NWK˝\�
+\���ܙ
+JJJH\��܋�^�۝[�H�\��\���ܙ�	�.(�.*�.,x.*�.`�.*�.(x.b8.%x.bx.+x.!�.(x.-x.+x.(�.b8.,�.!�.&x.bx.+x.(�H8.%x.,x.)�8.(x.-x.%x.,x.)�.+x.,x. x.*x.(�.`x.)x.,8.%x.,x.)�.`8.)x. �8.`x.)x.,8.%�.,x.bx.!�.*�.+x.!�."�.b8.+x.!�.%x.(�.!�. x.,x.&I��\���ܙ�[����.(�.*�.,x.*�.'8.b8.,�.&x.%x.bx.+x.!�.(x.-x.+x.(�.b8.,�.!�.&x.bx.+x.(�8.%x.,x.)�.+x.,x. x.*x.(Ȉ��.(�.*�.,x.*�.'8.b8.,�.&x.%�.,x.bx.!�.*�.+x.!�."�.b8.+x.!�.a8.(x.b8.%x.(�.!�. x.,x.&H�\��܋�Y[�H�[�N�]\��B��ۜ��]ۈH	
+�ܙ\�]�X�Z]�N�]ۋ�\�X�YH�YN�HY��\��\���ܙ
+^�]�Z]؋�\���ܙX���[�
+�X�[ێ���[��Wٚ\��	�\���ܙJN�[]H	
+	�ܙ\�]�ܛI�K�]\�]��\��\���ܙ�B�[�H]�Z]؋�\]T\���ܙ
+\���ܙ
+N؋��Yۓ�]
+
+N	
+�ۙ]�\���ܙ�K��[YHH��	
+���ۙ�\�T\���ܙ�K��[YHH�������[��]J�.%x.,x.bx.!�.(�.*�.,x.*�.'8.b8.,�.&x.`�.*�.(x.b8.*�.,�.`8.(�.a�."8.`x.)x.bx.)�8. x.(�..8.$�.,�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&��NH�]�
+JH\��܋�^�۝[�HK�Y\��Y�N\��܋�Y[�H�[�NH�[�[H�]ۋ�\�X�YH�[�NB�JN	
+�؝��[�K�Y]�[�\�[�\���X�ȋ
+
+HO������Y�X�][ۜȊJN	
+�؝�^ܝ�K�Y]�[�\�[�\���X�ȋ�[�^ܝX[��N	
+�؝����]�K�Y]�[�\�[�\���X�ȋ
+
+HO�؋��Yۓ�]
+
+N��Y�]K��]�\�H�[��Y�]K��\�P]X�Y[��H�[��Y�]K�]�Y[��Q\��܈H�[��Y�]K��\]Y\�Y
+����Y�]K��Y[��H�[�N��][ۋ�\�H�����Y������[��]J
+NJN	
+��]]��]\ȊK�Y]�[�\�[�\���X�ȋ
+
+HO������Y�JN	
+�ۘ]����H�K�Y]�[�\�[�\���X�ȋ
+
+HO��ۜ�؈H	
+���YX�\��NY�
+�[��˛X]�YYXJ�X^]�Y�L
+H�K�X]�\�H؋��\��\�����J��[��N]Y]ZK��[�Ә]�
+N�]\��B��]�YX�\���\�Y
+I
+��\�[�K��\��\���۝Z[����YX�\�X��\�Y�JN]Y]ZK��[�Ә]�
+NJN�Y�
+]�[��˛X]�YYXJ�X^]�Y�L
+H�K�X]�\�H]��\�YH�[�N�H���\�YH��[�ܘY�K��]][J�]Y]\�YX�\�X��\�Y�HOOH�H��H�]�
+�H�B��]�YX�\���\�Y
+��\�Y
+NB��]Y]ZK��[�Ә]�
+N�[��˛X]�YYXJ	�X^]�Y�L
+I�K�Y]�[�\�[�\�	��[��I�
+
+HO��	
+	���YX�\��K��\��\���[[ݙJ	��[��N�]Y]ZK��[�Ә]�
+N�JNY�
+]]�[�X��OOH��X�ݙ\�H�H���\���ܙ�\�]�]J
+N[�HY�
+]]�[�X��H]�Z][�\���X�[ې\
+
+N[�HY�
+�\�ܙY
+H]�Z][�\���X�[ې\
+
+N[�HY�
+�\�ܙQ\��܊H����ۛ�X�[���]J	�.!8.-�.&x.*�.%�.,�.&x.,8.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.(�.,x.!�.a8.(x.b8.*�.,�.`8.(�.a�."8�%8.a8.(x.b8.a8.%8.bx.)x.bx.,�.!�.)x.a�.+x. x.+x.-8.&N�	�
+�
+�\�ܙQ\��܋�Y\��Y�H	�. x.,�.(�.`8."�.-�.b8.+x.(x.%x.b8.+x. �.,x.%8. �.bx.+x.!��K\�[��
+
+HO��HY�
+]�Z]؋��\�ܙJ
+JH]�Z][�\���X�[ې\
+
+N[�H�����[��]J	�.a8.(x.b8.'�.&�.*�.%�.,�.&x.,8.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&�.%�.-x.b8.`�."�.bx.%x.b8.+x.a8.%8.bH8. x.(�..8.$�.,�.`8. �.bx.,�.*�..x.b8.(�.,8.&�.&��NH�]�
+\��܊H	
+	���ۛ�X�[ۓY\��Y�I�K�^�۝[�H	�.(�.,x.!�.`8."�.-�.b8.+x.(x.%x.b8.+x.a8.(x.b8.a8.%8.bH8�%8.`8. x.a�.&�.*�.%�.,�.&x.,8.`8.%8.-8.(x.a8.)�.bx.`x.)x.bx.)Έ	�
+�
+\��܋�Y\��Y�H	�. x.,�.(�.`8."�.-�.b8.+x.(x.%x.b8.+x. �.,x.%8. �.bx.+x.!��NB�JN[�H�����[��]J
+Nʈ8. x..x.bx. x.,�.(�.`x.(x.&��.&�.(�.-8.*x.,x.%�.a8.*�.&x.+x.(�..x.b8.(�.,8.&�.&�.a8.*�.&H�8.%�.-x.b8.'8..x.bx.`�."�.bx.%x.,x.bx.!�.a8.)�.bH
+��ۜ��]�Y�\�H�ܙK�]K���\[�T�\�[\��Nؚ�X��[��Y\��]�Y�\�K��ܑXX�
+
+���K�\���WJHO�]�H����\[�Y\˙�[�
+
+
+HO����HOOH��JNY�
+X�H����\[�Y\˜\�
+
+�H���K�[YN���K\N��XZ[���\�[N��[JJN˜�\�[HH�\���H�[JN�]Y��X���
+NB���[Y[��Y]�[�\�[�\���P�۝[��YY����
+N�[��[ۈ�][Y[��YYЛԙ]�Y]��[JH�ۜ��X\�ۈH��[���[K�\��W�\��܈��N�]\���.+x.b8.,�.&x.(�.,�.(�. x.,�.(�.a8.%8.bH�KNWW
+�8.(�.,�.(�. x.,�.(�8.`x.%x.b8.a8.(x.b8.(x.-x.(�.,�.(�. x.,�.(�.)�.,x.&x.%�.-x.b˝\�
+�X\�ۊB�	��K�.+x.b8.,�.&x.a8.%8.bx.&�.,�.!�.*�.b8.)�.&_8.+x.b8.,�.&x.a8.'�.)x.c8.a8.(x.b8.*�.,�.`8.(�.a�."8.+x.b8.,�.&x.a8.(x.b8.a8.%8.b_8.a8.'�.)x.c8.`8.*�.-x.(�˝\�
+�X\�ۊNB���[��[ۈ�][Y[��]�Y]�X�[
+�[JH�]\���][Y[��YYЛԙ]�Y]��[JB���.a8.%8.bx.(�.,x.&�.a8.'�.)x.c8.`x.)x.bx.)�8�%8.a8.(x.b8.'�.&�.(�.,�.(�. x.,�.(�.`�.&x.)�.,x.&x.%x.(�.)�."8.(�.+x.`8.%�.-x.(�.&��Ȃ���.+x.b8.,�.&x.a8.'�.)x.c8.a8.(x.b8.*�.,�.`8.(�.a�."�B�
