@@ -1644,6 +1644,24 @@ function mapLiveDamage(d) {
   };
 }
 
+function openWrongClosureReversal(e,action) {
+  if(state.dataset!=='production'||!Sb.signedIn()||!['lead','admin'].includes(state.role)||!can('approve'))return deny('ยกเลิกผลปิดเคส');
+  if(!['closed','damage'].includes(e.status))return toast('เคสนี้ไม่ได้อยู่ในสถานะปิดหรือยืนยันความเสียหายแล้ว','warn');
+  const returning=action==='return_clarification';
+  const title=returning?'ตีกลับให้ชี้แจงเพิ่มเติม':'ยกเลิกผลปิด — คืนให้ Audit ตรวจใหม่';
+  openModal(title,`<p>${h(caseLabel(e))}</p><p class="alert warn">การทำรายการนี้ไม่ลบยอด หลักฐาน หรือประวัติเดิม ระบบจะทำเครื่องหมายผลความเสียหายเดิมว่า “ยกเลิก” และนำออกจากยอดสรุปปัจจุบัน</p><p>${returning?'คืนเคสไปสถานะรอผู้ชี้แจงส่งข้อมูลเพิ่มเติม':'คืนเคสไปสถานะตอบแล้ว เพื่อให้ Audit ตรวจและปิดผลใหม่'}</p><label>เหตุผลที่ยกเลิกผลเดิม<textarea id="closureReversalReason" maxlength="2000" placeholder="ระบุว่าผลเดิมผิดอย่างไร และต้องตรวจแก้จุดใด"></textarea></label><label><input type="checkbox" id="closureReversalChecked">ตรวจเลขเคส ยอดเดิม หลักฐาน และยืนยันว่าต้องย้อนผลปิดเคสนี้</label><p id="closureReversalStatus" role="status"></p>`,`<button class="ghost-button" id="closureReversalCancel">ยกเลิก</button><button class="primary-button" id="closureReversalConfirm">${h(title)}</button>`);
+  $('#closureReversalCancel').onclick=closeModal;
+  $('#closureReversalConfirm').onclick=async event=>{
+    const reason=$('#closureReversalReason').value.trim();
+    if(!$('#closureReversalChecked').checked||reason.length<10||reason.length>2000)return toast('ต้องตรวจยืนยันและระบุเหตุผล 10–2,000 ตัวอักษร','warn');
+    event.currentTarget.disabled=true;$('#closureReversalStatus').textContent='กำลังบันทึกและอ่านสถานะยืนยัน — ห้ามกดซ้ำ';
+    try{
+      await Sb.reverseWrongCaseClosure({p_id:crypto.randomUUID(),p_case:e.dbId,p_previous_status:e.status,p_action:action,p_reason:reason});
+      closeModal();closeDrawer();await loadLiveOverview(true);render();toast(returning?'ตีกลับให้ชี้แจงแล้ว และเก็บประวัติผลเดิมครบ':'ยกเลิกผลปิดและคืนให้ Audit ตรวจใหม่แล้ว');
+    }catch(error){$('#closureReversalStatus').textContent='ยังไม่ยืนยันผล: '+error.message;toast('ยังย้อนเคสไม่ได้: '+error.message,'warn');event.currentTarget.disabled=false;}
+  };
+}
+
 function hydrateLiveData(quality, operations, exceptions, damages, logs) {
   DB.exceptions = actionableAuditRows(exceptions).map(mapLiveException);
   DB.damages = (damages || []).map(mapLiveDamage);
@@ -4476,6 +4494,7 @@ async function openException(id, options = {}) {
       <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
       <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากเป็นเคส BO กับ STM/PM คนละฝั่ง ให้ใช้ “จับคู่เอง” เลือกเคสคู่ เหตุผล และติ๊กยืนยัน ระบบจะตรวจสิทธิ์กับต้นทางจริงแยกจากเช็กลิสต์ปิดเคสทั่วไป ไม่ต้องกรอกข้อมูลสมมติหรือบันทึกความเสียหายเพื่อให้ผ่าน</p>
       ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
+      ${['lead','admin'].includes(state.role)&&['closed','damage'].includes(e.status)?'<div class="alert warn"><b>ผลปิดผิดสามารถย้อนกลับได้โดยหัวหน้าออดิท/ผู้ดูแลระบบ</b><div class="inline-actions"><button class="ghost-button" id="btnReopenClosedCase">ยกเลิกผลปิด — คืน Audit ตรวจ</button><button class="ghost-button" id="btnReturnClosedCase">ตีกลับให้ชี้แจงเพิ่มเติม</button></div><small>ยอดและหลักฐานเดิมไม่ถูกลบ แต่จะเก็บเป็นประวัติที่ยกเลิกและไม่นับในยอดปัจจุบัน</small></div>':''}
       <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button><button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${closureActionReady ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : closureReviewReady ? "ตรวจผลและปิดเคส" : "ยังตรวจผลไม่ได้"}</button></div>
       <div id="manualPairReview"></div>
       <div id="caseClosureReview"></div>
@@ -4494,6 +4513,8 @@ async function openException(id, options = {}) {
 
   $("#drawerClose").addEventListener("click", closeDrawer);
   $('#btnReturnClarification')?.addEventListener('click',()=>ClarificationReturn.open(e).catch(err=>toast(err.message,'warn')));
+  $('#btnReopenClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'reopen_audit'));
+  $('#btnReturnClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'return_clarification'));
   $('#caseNextQueue')?.addEventListener('click',()=>showReadOnlyCaseQueue(e));
   $('#btnGoMissing')?.addEventListener('click',()=>{
     const first=missingChecks[0]?.key;

@@ -248,6 +248,26 @@ await (async function () {
   eq("123 BBL no-time: ไม่บังคับเวลาธนาคาร", bbl?.sec, 18 * 3600);
 })();
 
+/* COREPAY ฝากเฉพาะ FR8/AT4/SK8 ต้องใช้วันที่ธนาคาร และห้ามย้อนใช้วันที่ทำรายการ */
+(function () {
+  const headers = ["วันที่ทำรายการ", "วันที่ธนาคาร", "จำนวนเงินฝากจริง", "จำนวนเงินถอนจริง", "ชื่อธนาคาร", "สมาชิก", "บัญชีลูกค้า", "เกิดโดย"];
+  const deposit = ["2026-09-28 18:00:00", "2026-09-28 18:36:00", "100", "", "COREPAY", "user-a", "1234567890 | CUSTOMER", "auto"];
+  const settings = { rules: { filterCarryForward: true, pmSuccessOnly: true } };
+  for (const company of ["FR8", "AT4", "SK8"]) {
+    const parsed = Engine.normalize(`${company}_BO_2026-09-28.xlsx`, [headers, deposit], settings, "2026-09-28");
+    eq(`${company} COREPAY deposit: ใช้วันที่ธนาคาร`, parsed.records[0]?.sec, 18 * 3600 + 36 * 60);
+    eq(`${company} COREPAY deposit: ระบุคอลัมน์วันที่ธนาคาร`, parsed.records[0]?.matchTimeColumn, "วันที่ธนาคาร");
+    const missing = Engine.normalize(`${company}_BO_2026-09-28.xlsx`, [headers, [deposit[0], "", ...deposit.slice(2)]], settings, "2026-09-28");
+    eq(`${company} COREPAY deposit: ไม่ fallback เมื่อวันที่ธนาคารว่าง`, missing.records.length, 0);
+    eq(`${company} COREPAY deposit: เก็บเหตุพักตรวจ`, missing.dropped["COREPAY ฝากไม่มีวันที่ธนาคาร"], 1);
+  }
+  const xb = Engine.normalize("3XB_BO_2026-09-28.xlsx", [headers, deposit], settings, "2026-09-28");
+  eq("3XB COREPAY deposit: คงวันที่ทำรายการ", xb.records[0]?.sec, 18 * 3600);
+  const withdrawal = [deposit[0], deposit[1], "", "100", ...deposit.slice(4)];
+  const fr8Withdrawal = Engine.normalize("FR8_BO_2026-09-28.xlsx", [headers, withdrawal], settings, "2026-09-28");
+  eq("FR8 COREPAY withdrawal: คงพฤติกรรมเดิมไม่อยู่ในขอบเขตแก้ฝาก", fr8Withdrawal.records[0]?.sec, 18 * 3600 + 36 * 60);
+})();
+
 /* LOCALPAY ฝากต้องเทียบ PM paymentTime กับ BO เวลาทำรายการ ไม่ใช่เวลาสร้าง BO */
 await (async function () {
   const boRows = [

@@ -2,7 +2,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {receiptExpression} from './patch-parse-receipt-worker.mjs';
-import {patchPdfParser} from './patch-scb-ocr-columns.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
@@ -17,7 +16,7 @@ const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await P
   read("tmn-visual-review.js"),
 ]);
 
-const pdf = patchPdfParser(pdfOriginal);
+const pdf = pdfOriginal;
 
 const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,providerNearTimeTolerance:600,sys123DuplicateTimeTolerance:3600,sys123FallbackTimeTolerance:3600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
@@ -706,19 +705,30 @@ Object.assign(managedFileReader.parameters,{method:'POST',url:'={{ $vars.SUPABAS
 const managedFileSelector=nodes.find(node=>node.name==='เลือกไฟล์ของบริษัท');
 managedFileSelector.parameters.jsCode=managedFileSelector.parameters.jsCode.replace('({json:{job,file},pairedItem:',"({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:");
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
-// Keep the manual/round worker's embedded parser in lockstep with the tested
-// browser parser.  That workflow has its own orchestration graph, so replace
-// only the PdfStm source segment inside code nodes that already embed it.
+// Keep the manual/round worker's embedded parsers in lockstep with the tested
+// browser parsers. That workflow has its own orchestration graph, so replace
+// only source segments inside code nodes that already embed them.
 const roundWorkerPath = path.join(root, "n8n/audit-round-worker.json");
 const roundWorker = JSON.parse(await readFile(roundWorkerPath, "utf8"));
 for (const node of roundWorker.nodes || []) {
-  const code = node.parameters?.jsCode;
-  if (typeof code !== "string" || !code.includes("const PdfStm")) continue;
-  const declaration = code.indexOf("const PdfStm");
-  const parserStart = code.lastIndexOf("/*", declaration);
-  const parserEnd = code.indexOf("\nconst meta=", declaration);
-  if (parserStart < 0 || parserEnd < 0) throw new Error(`หา PdfStm segment ไม่พบใน node ${node.name}`);
-  node.parameters.jsCode = code.slice(0, parserStart) + pdf.trim() + code.slice(parserEnd);
+  let code = node.parameters?.jsCode;
+  if (typeof code !== "string") continue;
+  if (code.includes("const Formats")) {
+    const declaration = code.indexOf("const Formats");
+    const parserStart = code.lastIndexOf("/*", declaration);
+    const nextDeclaration = code.indexOf("const Rules", declaration);
+    const parserEnd = code.lastIndexOf("/*", nextDeclaration);
+    if (parserStart < 0 || nextDeclaration < 0 || parserEnd < parserStart) throw new Error(`หา Formats segment ไม่พบใน node ${node.name}`);
+    code = code.slice(0, parserStart) + formats.trimEnd() + "\n\n\n" + code.slice(parserEnd);
+  }
+  if (code.includes("const PdfStm")) {
+    const declaration = code.indexOf("const PdfStm");
+    const parserStart = code.lastIndexOf("/*", declaration);
+    const parserEnd = code.indexOf("\nconst meta=", declaration);
+    if (parserStart < 0 || parserEnd < 0) throw new Error(`หา PdfStm segment ไม่พบใน node ${node.name}`);
+    code = code.slice(0, parserStart) + pdf.trim() + code.slice(parserEnd);
+  }
+  node.parameters.jsCode = code;
 }
 await writeFile(roundWorkerPath, JSON.stringify(roundWorker, null, 2) + "\n");
 console.log(`built n8n/audit-headless-worker.json (${workflow.nodes.length} nodes)`);
