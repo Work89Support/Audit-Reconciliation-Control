@@ -114,6 +114,7 @@ const ROUTES = [
     group: "ระบบ",
     items: [
       { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
+      { id: "account-holds", label: "พักบัญชี STM", icon: "clock", title: "จัดการบัญชีพักตรวจ / รอ STM", desc: "หัวหน้าออดิทและผู้ดูแลระบบเปิดหรือปลดพักบัญชีที่ถูกระงับ โดยไม่รันซ้ำหรือเปลี่ยนยอดและสถานะเคส", filters: false },
       { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
       { id: "mail-intake", label: "ตรวจเมลเข้า", icon: "intake", title: "ตรวจผู้ส่งและดึงเมลเข้าคลัง", desc: "เพิ่มอีเมลผู้ส่งและสั่งดึงเมลที่ตกหล่นเข้าคลัง แยกจากการรันหรือยืนยันผลกระทบยอด", filters: false },
@@ -235,7 +236,7 @@ function auditRuleBookMarkup(selectedCompany = "") {
 const ROUTE_ROLES = {
   monitor: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "reports", "monthly-audit", "notifications"],
   audit_assistant: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "exceptions", "matching", "clarify", "audit-review", "approvals", "reports", "monthly-audit", "notifications"],
-  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "notifications", "audit-log", "case-settings", "users", "finance"],
+  lead: ["cloud", "dashboard", "daily-summary", "mc8-sheets", "intake", "exceptions", "matching", "clarify", "audit-review", "approvals", "damage", "kpi", "reports", "monthly-audit", "talk", "rules", "account-holds", "notifications", "audit-log", "case-settings", "users", "finance"],
   shift_lead: ["cloud", "daily-summary", "clarify", "notifications"],
   exec: ["dashboard", "daily-summary", "kpi", "reports", "damage", "notifications", "finance"],
   /* ผู้ดูแลระบบต้องตรวจสอบและช่วยงานได้ทุกหน้า รวมหน้าวิเคราะห์ที่ซ่อนจากบทบาททั่วไป */
@@ -6133,6 +6134,15 @@ VIEWS.rules = (root) => {
     }),
   );
 };
+
+VIEWS['account-holds'] = (root) => AccountReviewHolds.mountManager(root,{
+  actor:()=>Sb.authUser()?.id,
+  role:()=>state.role,
+  today:PROD_TODAY,
+  companies:Sb.reviewHoldRegistryCompanies,
+  scopes:Sb.reviewHoldScopes,
+  save:Sb.manageAccountReviewHold,
+});
 
 /* =============================================================
    VIEW: Users & permission
