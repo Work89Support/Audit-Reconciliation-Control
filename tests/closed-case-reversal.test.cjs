@@ -18,6 +18,8 @@ assert.match(sb,/"voided_at=is\.null"/);
 assert.match(sb,/reverse_wrong_case_closure/);
 assert.match(app,/ยกเลิกผลปิด — คืน Audit ตรวจ/);
 assert.match(app,/ตีกลับให้ชี้แจงเพิ่มเติม/);
+assert.match(app,/canReviewClosed: \['lead','admin'\]\.includes\(state\.role\)/);
+assert.match(fs.readFileSync('review-overview.js','utf8'),/enabled:canReviewClosed/);
 assert.match(app,/\['lead','admin'\]\.includes\(state\.role\)/);
 assert.match(app,/p_previous_status:e\.status/);
 console.log('PASS closed-case reversal: lead/admin only, atomic status return, immutable history, active totals exclude voided damage');
