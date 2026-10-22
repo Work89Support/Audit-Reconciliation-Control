@@ -7,7 +7,7 @@ const ReviewOverview = (() => {
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
   const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
-  const canClarifyCase=row=>!holdFor(row)&&['open','answered','pending_next_day'].includes(row.status);
+  const canClarifyCase=row=>!holdFor(row)&&['open','pending_next_day'].includes(row.status);
   function closureReviewAction(row, canReviewClosed = false) {
     if(holdFor(row))return {action:'review',label:'พักตรวจ / รอ STM',enabled:false};
     if(row.status==='pending_next_day')return {action:'review',label:'ตรวจหลักฐานข้ามวัน',enabled:true};

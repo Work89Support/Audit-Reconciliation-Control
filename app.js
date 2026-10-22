@@ -4043,15 +4043,25 @@ function exceptionFilesMarkup(files, e) {
   }).join("")}</div>`;
 }
 
+function exceptionSourceFileIds(e) {
+  const rows=e?.customerDetails?.source_rows;
+  if(!rows||typeof rows!=='object')return [];
+  return [...new Set(Object.values(rows).flatMap(row=>row&&typeof row==='object'?[row.fileId,row.sourceFileId]:[]).filter(Boolean))];
+}
+
 async function loadExceptionSupport(e, options = {}) {
   const host = $("#caseSourceFiles");
   if (!host || state.dataset !== "production" || !Sb.signedIn()) return;
-  const cacheKey = `${e.runId || ""}|${e.clarificationFileId || ""}`;
+  const sourceFileIds=exceptionSourceFileIds(e);
+  const cacheKey = `${e.runId || ""}|${e.clarificationFileId || ""}|${sourceFileIds.sort().join(',')}`;
   try {
     const detailPromise = e._detailLoaded || !e.dbId ? Promise.resolve(null) : Sb.exceptionDetail(e.dbId);
     const filesPromise = exceptionSupportCache.has(cacheKey)
       ? Promise.resolve(exceptionSupportCache.get(cacheKey))
-      : Sb.exceptionFiles(e.runId, e.clarificationFileId).then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
+      : (sourceFileIds.length
+        ? Sb.exceptionFiles(e.runId, e.clarificationFileId, sourceFileIds)
+        : Sb.exceptionFiles(e.runId, e.clarificationFileId))
+        .then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
     const evidencePromise = e._caseEvidenceLoaded ? Promise.resolve(null) : Sb.caseEvidence(e.dbId);
     const [detail, files, storedEvidence] = await Promise.all([detailPromise, filesPromise, evidencePromise]);
     if (storedEvidence) {
@@ -4685,7 +4695,7 @@ async function openException(id, options = {}) {
 
   $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
   if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
-  $("#btnClarify").disabled = !["open", "answered", "pending_next_day"].includes(e.status);
+  $("#btnClarify").disabled = !["open", "pending_next_day"].includes(e.status);
   const clarificationSendStatus = document.createElement('p');
   clarificationSendStatus.id = 'clarificationSendStatus';
   clarificationSendStatus.setAttribute('role','status');
@@ -4694,7 +4704,7 @@ async function openException(id, options = {}) {
   $("#btnClarify").addEventListener("click", async (event) => {
     if (!can("request_clarify")) return deny("ส่งชี้แจง");
     if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
-    if (!["open", "answered", "pending_next_day"].includes(e.status)) return;
+    if (!["open", "pending_next_day"].includes(e.status)) return;
     if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
     const requestKey=caseUiKey(e);
     if(clarificationRequestFlights.has(requestKey))return;
