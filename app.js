@@ -3679,6 +3679,7 @@ VIEWS.exceptions = (root) => {
       onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
       onBatchStatus: confirmAuditStatusBatch,
       onCrossDay: row => row && CrossDayWorkbench.open(mapLiveException(row)),
+      canReviewClosed: ['lead','admin'].includes(state.role),
       onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
       isActive: () => state.route === "exceptions" && state.filters.company === company && auditView === 'review',
       onCompany: () => { state.filters.company = "ALL"; render(); },

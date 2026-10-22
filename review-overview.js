@@ -8,7 +8,7 @@ const ReviewOverview = (() => {
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
   const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
   const canClarifyCase=row=>!holdFor(row)&&['open','answered','pending_next_day'].includes(row.status);
-  function closureReviewAction(row) {
+  function closureReviewAction(row, canReviewClosed = false) {
     if(holdFor(row))return {action:'review',label:'พักตรวจ / รอ STM',enabled:false};
     if(row.status==='pending_next_day')return {action:'review',label:'ตรวจหลักฐานข้ามวัน',enabled:true};
     if (row.status === 'open') return {action:'close',label:'ยืนยันปิดเคส',enabled:true};
@@ -17,7 +17,7 @@ const ReviewOverview = (() => {
       label:row.manual_pair_id||row.case_closure_request_id||row.status==='pair_pending'
         ? 'ตรวจคำขอรออนุมัติ' : row.status==='answered'?'ตรวจคำชี้แจง / ปิดเคส':'ตรวจหลักฐานก่อนปิด',
     };
-    return {action:'review',label:'ปิดเคสแล้ว / ดูประวัติ',enabled:false};
+    return {action:'review',label:'ปิดเคสแล้ว / ดูประวัติ',enabled:canReviewClosed};
   }
   const splitHeaders=['อ้างอิง PM','Provider','บัญชีจ่ายยอดซอย','ยอดขอถอน','PM จ่ายจริง','BO ยอดซอย','ธนาคารจ่ายจริง','PM + ธนาคาร','ต่างจากคำขอ','สถานะ / สิ่งที่ต้องตรวจ'];
   function splitRows(data,values={}) {
@@ -156,7 +156,7 @@ const ReviewOverview = (() => {
   function normalizeHidden(value) {
     return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
   }
-  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,onCrossDay,isActive=()=>true}) {
+  async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,onCrossDay,canReviewClosed=false,isActive=()=>true}) {
     const scopedDate = value => minDate && (!value || value < minDate) ? minDate : value;
     date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
@@ -342,7 +342,7 @@ const ReviewOverview = (() => {
         const clarify=el.querySelector('option[value="clarify"]');
         clarify.textContent='ส่งขอชี้แจง…';
         clarify.disabled=!canClarifyCase(row);
-        const closure = closureReviewAction(row);
+        const closure = closureReviewAction(row, canReviewClosed);
         const closeOption=el.querySelector('option[value="close"]');
         closeOption.disabled=!closure.enabled;
         closeOption.textContent=closure.label+'…';
