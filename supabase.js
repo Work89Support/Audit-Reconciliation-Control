@@ -576,7 +576,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   const runtimeSettings = () => json("/rest/v1/audit_runtime_settings?select=*&id=eq.true&limit=1");
 
   async function damages({ from, to, company, limit = 5000 } = {}) {
-    const filters = ["select=*", "order=business_date.desc,created_at.desc,id.desc"];
+    const filters = ["select=*", "voided_at=is.null", "order=business_date.desc,created_at.desc,id.desc"];
     if (from) filters.push(`business_date=gte.${encodeURIComponent(from)}`);
     if (to) filters.push(`business_date=lte.${encodeURIComponent(to)}`);
     if (company && company !== "ALL") filters.push(`company=eq.${encodeURIComponent(company)}`);
@@ -618,6 +618,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return rows[0];
   }
   const voidDamageReceipt=(id,reason)=>rpc('void_damage_receipt',{p_id:id,p_reason:reason});
+  async function reverseWrongCaseClosure(body) {
+    const result=await rpc('reverse_wrong_case_closure',body);
+    const saved=Array.isArray(result)?result[0]:result;
+    const expected=body.p_action==='return_clarification'?'clarifying':'answered';
+    if(!saved?.id||saved.id!==body.p_case||saved.status!==expected||saved.case_closure_request_id)
+      throw new Error('ยังยืนยันสถานะตีกลับไม่ได้ กรุณาโหลดเคสใหม่ก่อนลองซ้ำ');
+    return saved;
+  }
 
   async function evidenceFiles({ from, to, company, limit = 2000, includeSourceFiles = false } = {}) {
     const filters = [
@@ -1408,6 +1416,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
       throw new Error('คำขอบันทึกแล้ว แต่ยังยืนยันสถานะปิดเคสไม่ได้ กรุณาโหลดใหม่ก่อนลองซ้ำ');
     return saved;
   };
+  const closeDocumentCaseWithResponsibility=async body=>{
+    const saved=await verifyDecision('/rest/v1/rpc/close_document_case_with_responsibility',body,caseClosureRequest,'approve');
+    const e=await exceptionDetail(body.p_case);
+    if(e?.status!=='closed'||e.case_closure_request_id!==saved.id||e.approved_by!==authUser()?.id
+      ||e.employee!==body.p_employee||e.shift!==body.p_shift)
+      throw new Error('คำขอบันทึกแล้ว แต่ยังยืนยันผู้เกี่ยวข้อง กะ และสถานะปิดเคสไม่ได้ กรุณาโหลดใหม่ก่อนลองซ้ำ');
+    return saved;
+  };
   const companyCaseSlas=()=>json('/rest/v1/company_case_sla?select=*&order=company.asc');
   const saveCompanyCaseSla=(company,days)=>json('/rest/v1/rpc/save_company_case_sla',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_company:company,p_days:days})});
 
@@ -1791,7 +1807,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
-    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,
+    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,closeDocumentCaseWithResponsibility,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
@@ -1830,6 +1846,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     approveDamageCollection,
     confirmDamageReceipt,
     voidDamageReceipt,
+    reverseWrongCaseClosure,
     evidenceFiles,
     linkSelectedCaseFile,
     linkWaitingCrossDayFile,

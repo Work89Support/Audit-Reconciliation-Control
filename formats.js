@@ -735,7 +735,8 @@ const Formats = (() => {
     },
     bo_main(f, r, i, company, drop) {
       const boT = stamp(val(f, r, "วันที่ทำรายการ"));
-      const bankT = stamp(val(f, r, "วันที่ธนาคาร")) || boT;
+      const recordedBankT = stamp(val(f, r, "วันที่ธนาคาร"));
+      const bankT = recordedBankT || boT;
       if (!boT) return drop("ไม่มีเวลาที่อ่านได้"), null;
       const dep = num(val(f, r, "จำนวนเงินฝากจริง"));
       const wit = num(val(f, r, "จำนวนเงินถอนจริง"));
@@ -760,12 +761,10 @@ const Formats = (() => {
          เป็นตัวผ่อนกรอบเวลา. เก็บทั้งสอง timestamp เพื่อสอบทานย้อนหลัง. */
       const useBankTime = SYS123_COMPANIES.has(normalizeCompany(company))
         && ch.isBankAccount && !["BBL", "GSB"].includes(ch.channel) && !!bankT;
-      // COREPAY 123: the BO creation timestamp follows the customer's payment;
-      // the second timestamp can be a delayed posting time. Retain both, and
-      // use the first only within the strict member/account/amount PM matcher.
-      const cpPaymentTime = SYS123_COMPANIES.has(normalizeCompany(company))
+      const corepayDeposit = SYS123_COMPANIES.has(normalizeCompany(company))
         && canonicalPm(ch.channel) === "COREPAY" && !!dep;
-      const matchT = cpPaymentTime ? boT : useBankTime ? bankT : boT;
+      if (corepayDeposit && !recordedBankT) return drop("COREPAY ฝากไม่มีวันที่ธนาคาร"), null;
+      const matchT = corepayDeposit || useBankTime ? bankT : boT;
       return {
         rowNo: i + 1,
         source: "bo",
@@ -777,7 +776,7 @@ const Formats = (() => {
         boSec: boT.sec,
         bankDate: bankT.date,
         bankSec: bankT.sec,
-        matchTimeColumn: !cpPaymentTime && useBankTime ? "วันที่ธนาคาร" : "วันที่ทำรายการ",
+        matchTimeColumn: corepayDeposit || useBankTime ? "วันที่ธนาคาร" : "วันที่ทำรายการ",
         amount: Math.round(amount * 100) / 100,
         direction: dep ? "deposit" : "withdraw",
         account: canonicalPm(ch.channel) || ch.terminal || "UNKNOWN",

@@ -133,6 +133,7 @@ assert.doesNotMatch(dailyText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "dai
 
 const workerText = JSON.stringify(worker);
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"));
+assert.notEqual(worker.nodes.find((node) => node.type === "n8n-nodes-base.scheduleTrigger")?.disabled, true, "automatic worker schedule must stay enabled so late files are picked up");
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "TMN ตรวจภาพครบแล้ว?", "PDFs must check narrowly scoped visual-review evidence");

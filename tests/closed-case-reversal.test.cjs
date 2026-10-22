@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const sql=fs.readFileSync('supabase/20261022_reverse_wrong_case_closure.sql','utf8');
+const app=fs.readFileSync('app.js','utf8');
+const sb=fs.readFileSync('supabase.js','utf8');
+
+assert.match(sql,/current_app_role\(\) not in \('lead','admin'\)/);
+assert.match(sql,/action in \('reopen_audit','return_clarification'\)/);
+assert.match(sql,/previous_case jsonb not null/);
+assert.match(sql,/previous_damage jsonb/);
+assert.match(sql,/update public\.damages set voided_at=now\(\),voided_by=auth\.uid\(\),void_reason=/);
+assert.doesNotMatch(sql,/delete from public\.(damages|exceptions|case_closure_requests|case_evidence)/i);
+assert.match(sql,/damage_receipts r where r\.damage_id=d\.id and r\.voided_at is null/);
+assert.match(sql,/case_closure_request_id=null/);
+assert.match(sql,/status=target_status/);
+assert.match(sql,/audit_log/);
+assert.match(sb,/"voided_at=is\.null"/);
+assert.match(sb,/reverse_wrong_case_closure/);
+assert.match(app,/ยกเลิกผลปิด — คืน Audit ตรวจ/);
+assert.match(app,/ตีกลับให้ชี้แจงเพิ่มเติม/);
+assert.match(app,/\['lead','admin'\]\.includes\(state\.role\)/);
+assert.match(app,/p_previous_status:e\.status/);
+console.log('PASS closed-case reversal: lead/admin only, atomic status return, immutable history, active totals exclude voided damage');
