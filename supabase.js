@@ -1330,7 +1330,9 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     }
   }
   const submitManualPair=body=>json('/rest/v1/rpc/submit_manual_case_pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const crossDayWorkbench=body=>body?.p_case\n    ?rpc('cross_day_workbench_for_case',{p_case:body.p_case})\n    :rpc('cross_day_workbench',body);
+  const crossDayWorkbench=body=>body?.p_case
+    ?rpc('cross_day_workbench_for_case',{p_case:body.p_case})
+    :rpc('cross_day_workbench',body);
   const submitCrossDayPair=body=>rpc('submit_cross_day_pair',body);
   async function crossDayPair(id){const rows=await json(`/rest/v1/cross_day_pair_requests?id=eq.${encodeURIComponent(id)}&select=*&limit=1`);return rows[0]||null;}
   async function pendingCrossDayPairs(){const rows=[];for(const table of ['cross_day_pair_requests','cross_day_image_reviews'])for(let offset=0;;offset+=200){const page=await json(`/rest/v1/${table}?status=eq.pending&select=*&order=submitted_at.asc,id.asc&limit=200&offset=${offset}`);if(!Array.isArray(page))throw Error('อ่านคิวข้ามวันไม่สำเร็จ');rows.push(...page.map(q=>table==='cross_day_image_reviews'?{...q,source_mode:'image',stm_row:q.source_page}:q));if(page.length<200)break;}return rows;}
