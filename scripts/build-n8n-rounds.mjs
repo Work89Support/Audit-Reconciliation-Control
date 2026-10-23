@@ -23,7 +23,7 @@ queue.parameters.options = {...queue.parameters.options, timeout: 30000};
 queue.retryOnFail=true; queue.maxTries=2; queue.waitBetweenTries=10000;
 const condition=(id,name,expression,position)=>({id,name,type:'n8n-nodes-base.if',typeVersion:2.2,position,parameters:{conditions:{options:{caseSensitive:true,leftValue:'',typeValidation:'strict',version:2},conditions:[{id:id+'-test',leftValue:expression,rightValue:true,operator:{type:'boolean',operation:'true',singleValue:true}}],combinator:'and'},options:{}}});
 const rounds={name:'Audit - Round Dispatcher - Drain Useful Queue',active:false,settings:{executionOrder:'v1',timezone:'Asia/Bangkok',executionTimeout:2400},pinData:{},nodes:[
-  {id:'round-clock',name:'รอบตรวจ 08:00 · 16:30 · 19:00',type:'n8n-nodes-base.scheduleTrigger',typeVersion:1.2,position:[-880,0],parameters:{rule:{interval:[{field:'cronExpression',expression:'0 0 8,19 * * *'},{field:'cronExpression',expression:'0 30 16 * * *'}]}}},
+  {id:'round-clock',name:'รอบตรวจ 08:00 · 11:00 · 19:00',type:'n8n-nodes-base.scheduleTrigger',typeVersion:1.2,position:[-880,0],parameters:{rule:{interval:[{field:'cronExpression',expression:'0 0 8,11,19 * * *'}]}}},
   {id:'manual-round',name:'เริ่มรอบด้วยมือ',type:'n8n-nodes-base.manualTrigger',typeVersion:1,position:[-880,200],parameters:{}},
   queue,
   {id:'one-round',name:'เริ่มหนึ่งรอบ',type:'n8n-nodes-base.code',typeVersion:2,position:[-420,0],parameters:{jsCode:'return [{json:{}}];'}},
@@ -35,7 +35,7 @@ const rounds={name:'Audit - Round Dispatcher - Drain Useful Queue',active:false,
   {id:'round-pause',name:'พักก่อนงานถัดไป',type:'n8n-nodes-base.wait',typeVersion:1.1,position:[900,100],parameters:{resume:'timeInterval',amount:5,unit:'seconds'}},
   {id:'round-done',name:'หยุดเมื่อคิวหมดหรือมี Worker อื่นทำอยู่',type:'n8n-nodes-base.code',typeVersion:2,position:[460,-140],parameters:{jsCode:"return [{json:{finished_at:new Date().toISOString(),message:'จบรอบ: ไม่มีงานที่ทำต่อได้ ไม่เรียก Worker ซ้ำ'}}];"}}
 ],connections:{
-  'รอบตรวจ 08:00 · 16:30 · 19:00':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
+  'รอบตรวจ 08:00 · 11:00 · 19:00':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
   'เริ่มรอบด้วยมือ':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
   'Supabase: ตรวจไฟล์และจัดคิว':{main:[[edge('เริ่มหนึ่งรอบ')]]},
   'เริ่มหนึ่งรอบ':{main:[[edge('ดูคิวที่ทำได้จริง')]]},
