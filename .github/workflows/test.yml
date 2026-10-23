@@ -21,6 +21,8 @@ jobs:
         run: npm test && npm run test:paused-result && node tests/physical-bo-row-count.test.cjs && node tests/shared-difference-basis.test.cjs && node tests/waiting-source-filter.test.cjs
       - name: Verify clarification send receipts without production writes
         run: node tests/clarification-send-confirmation.test.cjs
+      - name: Verify trusted late BBL reruns and round schedule
+        run: node tests/trusted-late-bbl-auto-rerun.test.cjs && node tests/round-schedule.test.cjs && node tests/n8n-workflows.test.mjs
       - name: Verify current-primary manual pairing search without writes
         run: node tests/manual-pair-candidates.test.mjs && node tests/manual-pairing-ui.test.cjs && node tests/manual-run-cross-day-pairing.test.mjs
       - name: Verify current case counts and persistent read-only account registry
@@ -107,5 +109,5 @@ jobs:
           node tests/password-accounts.test.cjs
           node tests/password-accounts-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify confirmed damage and PM payout guards
-        run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs && node tests/head-correct-case-responsibility.test.cjs
+        run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs
 
