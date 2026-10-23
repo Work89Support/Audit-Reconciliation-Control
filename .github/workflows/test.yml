@@ -23,6 +23,8 @@ jobs:
         run: node tests/clarification-send-confirmation.test.cjs
       - name: Verify trusted late BBL reruns and round schedule
         run: node tests/trusted-late-bbl-auto-rerun.test.cjs && node tests/parse-result-timeout-fix.test.cjs && node tests/round-schedule.test.cjs && node tests/n8n-workflows.test.mjs
+      - name: Verify production queue resilience and completed-job preservation
+        run: node tests/exception-insert-guard-cache.test.cjs && node tests/preserve-completed-unblocked-job.test.cjs && node tests/worker-queue-retry.test.cjs
       - name: Verify current-primary manual pairing search without writes
         run: node tests/manual-pair-candidates.test.mjs && node tests/manual-pairing-ui.test.cjs && node tests/manual-run-cross-day-pairing.test.mjs
       - name: Verify current case counts and persistent read-only account registry
