@@ -10,7 +10,7 @@
   "nodes": [
     {
       "id": "round-clock",
-      "name": "รอบตรวจ 08:00 · 16:30 · 19:00",
+      "name": "รอบตรวจ 08:00 · 11:00 · 19:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -22,11 +22,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 0 8,19 * * *"
-            },
-            {
-              "field": "cronExpression",
-              "expression": "0 30 16 * * *"
+              "expression": "0 0 8,11,19 * * *"
             }
           ]
         }
@@ -269,7 +265,7 @@
     }
   ],
   "connections": {
-    "รอบตรวจ 08:00 · 16:30 · 19:00": {
+    "รอบตรวจ 08:00 · 11:00 · 19:00": {
       "main": [
         [
           {
