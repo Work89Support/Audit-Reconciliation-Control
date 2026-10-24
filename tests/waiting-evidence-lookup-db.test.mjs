@@ -5,7 +5,7 @@ const {PGlite}=await import(pathToFileURL(process.argv[2]).href);
 const db=await PGlite.create();
 const migration=fs.readFileSync('supabase/20261014_waiting_evidence_uuid_lookup.sql','utf8');
 const permissionRepair=fs.readFileSync('supabase/20261024_restore_waiting_evidence_execute.sql','utf8');
-await db.exec(`create role authenticated;create schema auth;create schema storage;
+await db.exec(`create role authenticated;create role anon;create schema auth;create schema storage;
 create function auth.uid() returns uuid language sql stable as $$select current_setting('app.user')::uuid$$;
 create function current_user_active() returns boolean language sql stable as $$select current_setting('app.active')='true'$$;
 create function has_company_access(c text) returns boolean language sql stable as $$select c=current_setting('app.company')$$;
