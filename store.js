@@ -43,7 +43,6 @@ const Store = (() => {
       fileMissing: true,
       criticalException: true,
       slaBreach: true,
-      cycleDue: true,
       channelEmail: true,
       channelTelegram: false,
       channelInApp: true,

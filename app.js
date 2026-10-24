@@ -97,7 +97,7 @@ const ROUTES = [
       { id: "clarify", label: "ติดตามคำชี้แจง", icon: "clarify", title: "งานชี้แจงแยกตามบริษัท", desc: "ส่งและติดตามเอกสารจากผู้ชี้แจงตาม SLA บริษัท เมื่อส่งกลับให้ Audit ตรวจในหน้า Audit รอตรวจ", filters: true },
       { id: "audit-review", label: "Audit รอตรวจ", icon: "exceptions", title: "Audit รอตรวจเอกสาร", desc: "เอกสารหรือคำตอบจากผู้ชี้แจงกลับมาแล้ว ตรวจในเคสเดิมก่อนส่งหัวหน้าอนุมัติปิด", filters: true },
       { id: "approvals", label: "อนุมัติ / ปิดเคส", icon: "approvals", title: "คำขอรออนุมัติ", desc: "รายการที่ชี้แจงแล้วรอ Audit Lead ตรวจทาน อนุมัติ หรือส่งกลับ", filters: true },
-      { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกความเสียหายรายวัน แยกตามรอบชี้แจง 1-15, 16-25, 26-สิ้นเดือน", filters: true },
+      { id: "damage", label: "ทะเบียนความเสียหาย", icon: "damage", title: "Damage Register", desc: "บันทึกผลตรวจและความเสียหายแบบเรียลไทม์ ค้นย้อนหลังตามช่วงวัน", filters: true },
     ],
   },
   {
@@ -115,7 +115,7 @@ const ROUTES = [
     items: [
       { id: "rules", label: "Bank Rules", icon: "rules", title: "กฎธนาคารและ Tolerance", desc: "ปรับกฎรายธนาคารได้โดยไม่ต้องแก้โปรแกรม ทุกการเปลี่ยนถูกบันทึกใน audit log", filters: false },
       { id: "account-holds", label: "พักบัญชี STM", icon: "clock", title: "จัดการบัญชีพักตรวจ / รอ STM", desc: "หัวหน้าออดิทและผู้ดูแลระบบเปิดหรือปลดพักบัญชีที่ถูกระงับ โดยไม่รันซ้ำหรือเปลี่ยนยอดและสถานะเคส", filters: false },
-      { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง เลย SLA หรือใกล้ครบรอบชี้แจง พร้อมตั้งกฎและช่องทางได้", filters: false },
+      { id: "notifications", label: "การแจ้งเตือน", icon: "bell", title: "ศูนย์การแจ้งเตือน", desc: "แจ้งเมื่อไฟล์ขาด พบ exception ระดับสูง หรือเคสเลย SLA พร้อมตั้งกฎและช่องทางได้", filters: false },
       { id: "audit-log", label: "Audit Log", icon: "log", title: "บันทึกการใช้งานระบบ", desc: "ทุก note, status, approval, การตั้งค่า ถูกบันทึกพร้อมเวลาและผู้ทำรายการ", filters: true },
       { id: "mail-intake", label: "ตรวจเมลเข้า", icon: "intake", title: "ตรวจผู้ส่งและดึงเมลเข้าคลัง", desc: "เพิ่มอีเมลผู้ส่งและสั่งดึงเมลที่ตกหล่นเข้าคลัง แยกจากการรันหรือยืนยันผลกระทบยอด", filters: false },
       { id: "users", label: "ผู้ใช้และสิทธิ์", icon: "users", title: "ผู้ใช้ บทบาท และบริษัท", desc: "กำหนดหน้าที่และบริษัทที่ผู้ใช้แต่ละคนรับผิดชอบ สิทธิ์ถูกบังคับซ้ำที่ฐานข้อมูล", filters: false },
@@ -4565,7 +4565,7 @@ async function openException(id, options = {}) {
     headClose.addEventListener('click',()=>{
       if(!['lead','admin'].includes(state.role)||!can('approve'))return deny('ปิดเคส');
       if(quickCloseEligible)return confirmQuickClose(e);
-      if(state.dataset==='production')return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+      if (state.dataset === 'production') return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
       $('#btnApprove')?.click();
     });
     $('#btnCrossCompanyPair').after(headClose);
@@ -5307,7 +5307,8 @@ async function loadLiveDamage(force = false) {
 async function openDamageCollection(row) {
   if (!can('close_case') || !Sb.signedIn()) return deny('อนุมัติยอดเรียกเก็บ');
   if (!row.collectionReady || liveDamageState.collectionError) return toast('โหลดสมุดยอดโอนคืนให้ครบก่อน','warn');
-  const category=DamageSummary.classify(row.cause).category;
+  const classification=DamageSummary.classify(row.cause),category=classification.category;
+  if (classification.observation) return toast('รายการนี้เป็นข้อสังเกต 0 บาท จึงไม่ส่งเข้าการเงินหรืออนุมัติเรียกเก็บ','warn');
   if (!['employee','backoffice','pm','game','external'].includes(category)) return toast('ประเภทเดิมยังไม่ชัดเจน ไม่เรียกเก็บอัตโนมัติ','warn');
   const collection=row.collection;
   if (!collection) {
@@ -5397,6 +5398,8 @@ function renderLiveDamage(root) {
   const categoryRows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
   const teamRows = categoryRows.filter(d => !liveDamageState.team || liveDamageState.team === 'ALL' || DamageSummary.teamCode(d) === liveDamageState.team);
   const rows = teamRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeKey(d) === liveDamageState.employee);
+  const observationRows=rows.filter(d=>DamageSummary.classify(d.cause).observation);
+  const financialRows=rows.filter(d=>!DamageSummary.classify(d.cause).observation);
   const classifiedSummary = DamageSummary.summarize(rows);
   const drillTable = (records, field, title) => {
     const summary = DamageSummary.groupBy(records, field);
@@ -5408,12 +5411,12 @@ function renderLiveDamage(root) {
   });
   const total = classifiedSummary.total;
   const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
-  const open = rows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
+  const open = financialRows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
   const loadedAt = liveDamageState.updatedAt ? displayTime(liveDamageState.updatedAt) : "-";
   root.innerHTML = `
     <section class="panel damage-period"><div><h2>สรุปความเสียหายรายเดือน</h2><p class="hint">บริษัทตามตัวกรองด้านบน · ช่วงที่ใช้อยู่ ${h(rangeLabel())} · กันยายน 2569 แสดงตั้งแต่ 15/09 ตามขอบเขตระบบ</p></div><label>เลือกเดือน<input type="month" id="damageMonth" min="2026-09" value="${h(state.filters.from.slice(0,7))}"></label><button class="primary-button sm" id="damageMonthApply">แสดงทั้งเดือน</button><button class="ghost-button sm" id="damageDrillReset">ล้างตัวกรองรายละเอียด</button></section>
     <section class="damage-definition panel">
-      <div><p class="eyebrow">ความเสียหายที่ยืนยันแล้ว</p><h2>ทะเบียนนี้ไม่ใช่รายการผิดปกติทั้งหมด</h2><p class="hint">ไฟล์ Evidence จะแสดงเป็น “หลักฐานรอตรวจ” ก่อน และจะเข้าทะเบียนเมื่อผู้ตรวจยืนยันเคสเป็นความเสียหายแล้วเท่านั้น · อัปเดตล่าสุด ${h(loadedAt)}</p></div>
+      <div><p class="eyebrow">ทะเบียนผลตรวจ</p><h2>ความเสียหายจริงและข้อสังเกต 0 บาท</h2><p class="hint">ข้อสังเกตเก็บชื่อ กะ เหตุการณ์ และหลักฐาน แต่ไม่เพิ่มยอดความเสียหายและไม่ส่งเข้าการเงิน · อัปเดตล่าสุด ${h(loadedAt)}</p></div>
       <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
     </section>
     ${liveDamageState.collectionError ? `<div class="alert bad">ยังยืนยันยอดสุทธิไม่ได้: ${h(liveDamageState.collectionError)} · ไม่แสดงเป็นศูนย์และไม่อนุญาตบันทึกเพิ่มจนกว่าจะโหลดสมุดยอดสำเร็จ</div>` : ''}
@@ -5423,12 +5426,12 @@ function renderLiveDamage(root) {
     <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · ทีม ${h(!liveDamageState.team || liveDamageState.team==='ALL' ? 'ทุกทีม' : liveDamageState.team)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
     ${drillTable(categoryRows, 'team', 'ยอดรวมแยกรหัสทีม')}
     ${drillTable(teamRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
-    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แยกผู้รับผิดชอบเรียกเก็บจากผู้เกี่ยวข้อง · ผู้มีสิทธิ์ต้องตรวจหลักฐานก่อนอนุมัติ · ไม่หักยอดข้ามคนหรือข้ามเคส</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${rows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายที่ยืนยันแล้ว</td></tr>'}</tbody></table></div></section>
+    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แสดงเฉพาะความเสียหายจริง · ข้อสังเกต 0 บาทไม่เข้าการเงิน</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายจริงที่ต้องเรียกเก็บ</td></tr>'}</tbody></table></div></section>
     <section class="status-strip four">
-      <article><span>รายการความเสียหายจริง</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
+      <article><span>รายการในทะเบียน</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
-      <article class="${open ? "warn" : "ok"}"><span>ยังไม่ปิดทางการเงิน</span><strong>${num(open)}</strong><small>ตรวจจากสถานะจริง</small></article>
-      <article class="${evidenceRows.length ? "warn" : "ok"}"><span>หลักฐานรอตรวจ</span><strong>${liveDamageState.evidenceReady ? num(evidenceRows.length) : "—"}</strong><small>${liveDamageState.evidenceReady ? "ยังไม่ใช่ความเสียหายจนกว่าจะยืนยัน" : "โหลดรายการหลักฐานไม่สำเร็จ"}</small></article>
+      <article class="${observationRows.length ? "warn" : "ok"}"><span>ข้อสังเกต 0 บาท</span><strong>${num(observationRows.length)}</strong><small>ไม่ส่งเข้าการเงิน</small></article>
+      <article class="${open ? "warn" : "ok"}"><span>ความเสียหายรอการเงิน</span><strong>${num(open)}</strong><small>ไม่รวมข้อสังเกต</small></article>
     </section>
     <section class="grid-2">
       <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany">${rows.length ? "" : '<div class="empty-box">ยังไม่มีข้อมูลสำหรับสร้างกราฟ</div>'}</div></div>
@@ -5440,9 +5443,9 @@ function renderLiveDamage(root) {
         return `<tr><td>${h(file.business_date)}</td><td><b>${h(company)}</b></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="doc_clarify" data-file-company="${h(company)}" data-file-date="${h(file.business_date)}" data-file-status="evidence" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่างหลักฐาน</small></button></td><td>${h(file.subject || "-")}<small class="sub">${h(file.sender || "-")}</small></td><td><span class="badge amber">รอผูกและยืนยันเคส</span></td></tr>`;
       }).join("") || `<tr><td colspan="5" class="empty">${liveDamageState.evidenceReady ? "ยังไม่มีไฟล์หลักฐานในช่วงนี้" : "ยังโหลดรายการไฟล์หลักฐานไม่สำเร็จ — กดรีเฟรชเพื่อลองใหม่"}</td></tr>`}</tbody></table></div>
     </section>
-    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนความเสียหายจริง</h2></div><span class="health ok">ข้อมูลจริง</span></div>
-      <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
-      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="8"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้ตามตัวกรอง</strong><span>ลองล้างตัวกรอง หรือเปิดเคส ตรวจหลักฐาน แล้วเลือก “บันทึกเป็นความเสียหาย”</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนผลตรวจและความเสียหาย</h2></div><span class="health ok">ข้อมูลจริง</span></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผลตรวจ</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
+      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td><span class="badge ${c.observation?'amber':'red'}">${c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย'}</span></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="9"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>รวมถึงยังไม่มีข้อสังเกต 0 บาทตามตัวกรอง · ลองล้างตัวกรอง หรือเปิดเคสเพื่อตรวจหลักฐาน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
     </section>`;
   if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
   $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
@@ -5463,10 +5466,10 @@ function renderLiveDamage(root) {
     if (classifiedSummary.issues.length || liveDamageState.collectionError || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
     exportSheets('confirmed-damages', [
       {name:'สรุปประเภท',headers:['ประเภท','จำนวน','ยอดที่บันทึก (บาท)'],widths:[38,14,24],rows:classifiedSummary.groups.map(g=>[g.label,g.count,g.amount])},
-      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ','รหัสทีม'],widths:[16,14,42,42,30,18,24,60,14,24,16,24,22,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d),DamageSummary.teamCode(d)];})},
+      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ผลตรวจ','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ','รหัสทีม'],widths:[16,14,42,42,34,30,18,24,60,14,24,16,24,22,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย',DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d),DamageSummary.teamCode(d)];})},
       ...['team','employee'].map(field=>({name:field==='team'?'สรุปรหัสทีม':'สรุปพนักงาน',headers:[field==='team'?'รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส',...Object.values(DamageSummary.categories),'เสียหายเดิมรวม',...Object.values(DamageSummary.categories).map(c=>c+'สุทธิคงเหลือ'),'โอนคืนแล้ว','รอยืนยัน (เคส)'],widths:[48,...Array(17).fill(24)],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total,...g.netGroups.map(c=>c.pending?`รอยืนยัน ${c.pending} เคส; คงเหลือยืนยันแล้ว ${c.net}`:c.net),g.netGroups.reduce((s,c)=>s+c.paid,0),g.netGroups.reduce((s,c)=>s+c.pending,0)])})),
-      {name:'เรียกเก็บรายเคส',headers:['เคส','บริษัท','ประเภท','ผู้รับผิดชอบ','รหัส','กะ','อนุมัติเรียกเก็บ','โอนคืนแล้ว','สุทธิคงเหลือ'],widths:[42,14,30,30,24,18,24,24,24],rows:rows.map(d=>{const t=DamageSummary.collectionTotals(d);return[d.id,d.company,DamageSummary.categories[DamageSummary.classify(d.cause).category],d.collection?.party_name || 'รอยืนยัน',d.collection?.party_code || '',d.collection?.shift || '',...['approved','paid','net'].map(k=>t[k]??'รอยืนยัน')];})},
-      {name:'ประวัติโอนคืน',headers:['เคส','บริษัท','วันที่โอน','ยอด','รหัสโอน','ไฟล์หลักฐาน ID','สถานะ','เหตุผลยกเลิก'],widths:[42,14,16,24,42,42,20,60],rows:rows.flatMap(d=>(d.receipts || []).map(r=>[d.id,d.company,r.paid_at,Number(r.amount),r.transfer_reference,r.source_file_id,r.voided_at?'ยกเลิกแล้ว':'ยืนยันแล้ว',r.void_reason || '']))}
+      {name:'เรียกเก็บรายเคส',headers:['เคส','บริษัท','ประเภท','ผู้รับผิดชอบ','รหัส','กะ','อนุมัติเรียกเก็บ','โอนคืนแล้ว','สุทธิคงเหลือ'],widths:[42,14,30,30,24,18,24,24,24],rows:financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return[d.id,d.company,DamageSummary.categories[DamageSummary.classify(d.cause).category],d.collection?.party_name || 'รอยืนยัน',d.collection?.party_code || '',d.collection?.shift || '',...['approved','paid','net'].map(k=>t[k]??'รอยืนยัน')];})},
+      {name:'ประวัติโอนคืน',headers:['เคส','บริษัท','วันที่โอน','ยอด','รหัสโอน','ไฟล์หลักฐาน ID','สถานะ','เหตุผลยกเลิก'],widths:[42,14,16,24,42,42,20,60],rows:financialRows.flatMap(d=>(d.receipts || []).map(r=>[d.id,d.company,r.paid_at,Number(r.amount),r.transfer_reference,r.source_file_id,r.voided_at?'ยกเลิกแล้ว':'ยืนยันแล้ว',r.void_reason || '']))}
     ]);
   });
   $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));
@@ -8034,10 +8037,6 @@ function runNotificationRules() {
     const over = DB.exceptions.filter((e) => e.overSla && !["closed", "approved"].includes(e.status));
     if (over.length) Store.notify("warn", `เคสเลย SLA ${over.length} รายการ`, "ต้องเร่งติดตามชี้แจงภายในวันนี้", "exceptions");
   }
-  if (r.cycleDue) {
-    const open = DB.damageCycles.filter((c) => c.status === "open");
-    if (open.length) Store.notify("info", `รอบชี้แจง ${open[0].name} ยังไม่ปิด`, `มี ${DB.damages.filter((d) => d.cycle === open[0].code).length} เคสรอสรุป`, "damage");
-  }
   updateBell();
 }
 
@@ -8113,7 +8112,6 @@ VIEWS.notifications = (root) => {
             ["fileMissing", "แจ้งเมื่อไฟล์ขาดหรือส่งผิดบริษัท"],
             ["criticalException", "แจ้งเมื่อพบ exception ระดับ Critical"],
             ["slaBreach", "แจ้งเมื่อมีเคสเลย SLA"],
-            ["cycleDue", "แจ้งเมื่อใกล้ครบรอบชี้แจง"],
           ]
             .map(([k, l]) => `<label><input type="checkbox" data-nrule="${k}" ${rules[k] ? "checked" : ""} /> ${h(l)}</label>`)
             .join("")}
@@ -8432,9 +8430,7 @@ function setCompanySystem(code, system) {
 /* คืนค่าสายชี้แจงของเคสหนึ่ง — ยังไม่ได้กำหนดระบบให้ถือเป็นรายรอบไว้ก่อนและติดธงไว้ */
 function trackOfException(e) {
   const sys = systemOfCompany(e.company);
-  if (!sys) return { track: "cycle", system: null, unassigned: true };
-  const m = sysMeta(sys);
-  return { track: m.track, system: sys, unassigned: false };
+  return { track: "daily", system: sys, unassigned: !sys };
 }
 
 /* เติม track ให้ทุกเคสตามระบบของบริษัท — เรียกทุกครั้งที่ข้อมูลหรือการแมปเปลี่ยน */
@@ -8468,13 +8464,7 @@ function cycleOf(iso) {
 function dueOf(e) {
   if(e.documentDueAt){const label=displayTime(e.documentDueAt);return {label,short:label,detail:'SLA เอกสารตามบริษัท ณ วันส่งคำขอ ไม่เปลี่ยนเมื่อส่งซ้ำหรือแก้ตั้งค่า และไม่ยืนยันความเสียหายอัตโนมัติ'};}
   const c = DB.settings.clarify;
-  const t = e.track || trackOfException(e).track;
-  if (t === "daily") {
-    return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ระบบ XB — ออดิทส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ จากนั้นชี้แจงกลับภายใน ${c.dailyRespondHours} ชม. (ส่งทุกเคส ไม่ดูความรุนแรง)` };
-  }
-  const cy = cycleOf(e.date);
-  const due = shiftDays(cy.to, c.cycleRespondDays);
-  return { label: `${due} (${cy.name})`, short: due, detail: `ระบบ 123 — ออดิท 1/2/3 รวบรวมถึงวันปิดรอบ ${cy.to} แล้วตีไฟล์ให้ชี้แจงภายใน ${c.cycleRespondDays} วัน`, cycle: cy };
+  return { label: `${e.date} เวลา ${c.dailyCutoff} น.`, short: c.dailyCutoff + " น.", detail: `ติดตามแบบเรียลไทม์ — ส่งให้หัวหน้ากะภายใน ${c.dailyCutoff} ของวันตรวจ และชี้แจงกลับภายใน ${c.dailyRespondHours} ชม.` };
 }
 
 /* เอกสาร: สร้างเลขที่ */
@@ -8607,8 +8597,8 @@ VIEWS.clarify = (root) => {
   }
   retagTracks();
   const all = scopedExceptions().filter((e) => !["closed", "approved"].includes(e.status));
-  const daily = all.filter((e) => e.track === "daily");
-  const cyc = all.filter((e) => e.track === "cycle");
+  const daily = all;
+  const cyc = [];
   const c = DB.settings.clarify;
   const XB = sysMeta("XB");
   const S123 = sysMeta("SYS123");
@@ -8633,8 +8623,8 @@ VIEWS.clarify = (root) => {
 
   root.innerHTML = `
     <section class="status-strip four">
-      <article class="${daily.length ? "warn" : "ok"}"><span>ระบบ XB (ส่ง ${h(c.dailyCutoff)} ทุกวัน)</span><strong>${num(daily.length)}</strong><small>ส่งหัวหน้ากะทุกเคส ไม่ดูความรุนแรง</small></article>
-      <article><span>ระบบ 123 (ตีไฟล์เป็นรอบ)</span><strong>${num(cyc.length)}</strong><small>ออดิท 1/2/3 รวบเป็นรอบ ให้เวลาชี้แจง ${c.cycleRespondDays} วัน</small></article>
+      <article class="${daily.length ? "warn" : "ok"}"><span>รายการชี้แจงแบบเรียลไทม์</span><strong>${num(daily.length)}</strong><small>ไม่รวบรอรายเดือน</small></article>
+      <article><span>กำหนดติดตาม</span><strong>${h(c.dailyCutoff)} น.</strong><small>ใช้กับทุกระบบและทุกบริษัท</small></article>
       <article><span>ชี้แจงกลับมาแล้ว</span><strong>${num(all.filter((e) => e.status === "answered").length)}</strong><small>รอออดิทตรวจทาน</small></article>
       <article class="bad"><span>ค้างเกินกำหนด</span><strong>${num(all.filter((e) => e.overSla).length)}</strong><small>ต้องเร่งติดตาม</small></article>
     </section>
@@ -8645,7 +8635,7 @@ VIEWS.clarify = (root) => {
         <small class="head-sub">สายชี้แจงมาจากระบบต้นทาง ไม่ใช่ความรุนแรง — ตั้งครั้งเดียว ระบบจำไว้ให้</small></div>
         <span class="health ${pendingActive.length ? "attention" : pending.length ? "" : "ok"}">${pending.length ? `ยังไม่ได้กำหนด ${pending.length} บริษัท` : "กำหนดครบแล้ว"}</span>
       </div>
-      ${pendingActive.length ? `<p class="hint danger">บริษัท <b>${h(pendingActive.join(", "))}</b> มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้บอกว่าอยู่ระบบไหน — ระบบจัดเป็นรายรอบไว้ก่อน กรุณาเลือกให้ถูก</p>` : ""}
+      ${pendingActive.length ? `<p class="hint danger">บริษัท <b>${h(pendingActive.join(", "))}</b> มีข้อมูลเข้ามาแล้วแต่ยังไม่ได้กำหนดระบบต้นทาง — ยังคงติดตามแบบเรียลไทม์</p>` : ""}
       <div class="sysmap">
         ${known
           .map((code) => {
@@ -8656,7 +8646,7 @@ VIEWS.clarify = (root) => {
               <div><strong>${h(co.name || code)}</strong><span>${num(n)} เคสในช่วงนี้</span></div>
               <div class="sysmap-btns">
                 <button class="chip-btn ${cur === "XB" ? "on amber" : ""}" data-sys="${h(code)}" data-val="XB">XB · รายวัน</button>
-                <button class="chip-btn ${cur === "SYS123" ? "on blue" : ""}" data-sys="${h(code)}" data-val="SYS123">123 · รายรอบ</button>
+                <button class="chip-btn ${cur === "SYS123" ? "on blue" : ""}" data-sys="${h(code)}" data-val="SYS123">123 · เรียลไทม์</button>
                 <button class="chip-btn ${cur ? "" : "on"}" data-sys="${h(code)}" data-val="">ยังไม่ระบุ</button>
               </div>
             </div>`;
@@ -8691,9 +8681,9 @@ VIEWS.clarify = (root) => {
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" hidden aria-hidden="true">
       <div class="panel-heading">
-        <div><p class="eyebrow">${h(S123.name)}</p><h2>รายการที่รวบเป็นรอบ</h2>
+        <div><p class="eyebrow">${h(S123.name)}</p><h2>ประวัติรายรอบเดิม</h2>
         <small class="head-sub">${h(S123.desc)}</small></div>
       </div>
       ${

@@ -1392,7 +1392,9 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
   const pendingDocumentClosurePreview=id=>rpc('pending_document_closure_preview',{p_case:id});
   const submitCaseClosure=body=>json('/rest/v1/rpc/submit_case_closure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const submitProcessErrorCase=body=>json('/rest/v1/rpc/submit_process_error_case',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const decideCaseClosure=body=>verifyDecision('/rest/v1/rpc/decide_case_closure',body,caseClosureRequest);
+  const decideProcessErrorCase=body=>verifyDecision('/rest/v1/rpc/decide_process_error_case',body,caseClosureRequest,body.p_action);
   const approveOwnDocumentClosure=async body=>{
     const saved=await verifyDecision('/rest/v1/rpc/approve_own_document_closure',body,caseClosureRequest,'approve');
     const e=await exceptionDetail(saved.exception_id);
@@ -1413,6 +1415,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     if(e?.status!=='closed'||e.case_closure_request_id!==saved.id||e.approved_by!==authUser()?.id
       ||e.employee!==body.p_employee||e.shift!==body.p_shift)
       throw new Error('คำขอบันทึกแล้ว แต่ยังยืนยันผู้เกี่ยวข้อง กะ และสถานะปิดเคสไม่ได้ กรุณาโหลดใหม่ก่อนลองซ้ำ');
+    return saved;
+  };
+  const closeProcessErrorCase=async body=>{
+    const saved=await verifyDecision('/rest/v1/rpc/close_process_error_case',body,caseClosureRequest,'approve');
+    const e=await exceptionDetail(body.p_case);
+    if(e?.status!=='closed'||e.case_closure_request_id!==saved.id||e.approved_by!==authUser()?.id
+      ||e.employee!==body.p_employee||e.shift!==body.p_shift)
+      throw new Error('คำขอบันทึกแล้ว แต่ยังยืนยันข้อสังเกต ผู้เกี่ยวข้อง กะ และสถานะปิดเคสไม่ได้ กรุณาโหลดใหม่ก่อนลองซ้ำ');
     return saved;
   };
   const companyCaseSlas=()=>json('/rest/v1/company_case_sla?select=*&order=company.asc');
@@ -1796,10 +1806,10 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
-    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,closeDocumentCaseWithResponsibility,
+    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,closeDocumentCaseWithResponsibility,closeProcessErrorCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
-    pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,decideCaseClosure,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
+    pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,submitProcessErrorCase,decideCaseClosure,decideProcessErrorCase,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
     companyHubResults,
     mailSources,mailPullRequests,registerMailSource,requestMailPull,
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,

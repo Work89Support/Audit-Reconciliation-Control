@@ -18,5 +18,5 @@ assert.doesNotMatch(sql,/update public\.exceptions set (?:system_amount|bank_amo
 const app=fs.readFileSync('app.js','utf8'),sb=fs.readFileSync('supabase.js','utf8');
 assert.match(app,/return !e\.closureRequestId && Boolean/);
 assert.match(app,/if \(state\.dataset === 'production'\) return CaseClosure\.openSubmit\(e\)/);
-assert.match(sb,/"case_closure_request_id", "document_due_at"/);
+assert.match(sb,/"case_closure_request_id".*"document_due_at"/);
 console.log('Document closure: optional approval reason, self limits, role/evidence/SLA/snapshot guards and separated queues passed');

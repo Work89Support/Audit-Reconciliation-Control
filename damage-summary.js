@@ -6,10 +6,13 @@ const DamageSummary = (() => {
   const teamCodes = Object.freeze(['X1','X8','X5']);
   function classify(cause) {
     const current = String(cause || '').match(/^\[damage:v2:(employee|backoffice|external|pm|game)\]\s*/);
-    if (current) return { category: current[1], subcategory: '', detail: String(cause).slice(current[0].length) };
+    if (current) {
+      const raw=String(cause).slice(current[0].length), observation=/^\[process_error:v1\]\s*/.test(raw);
+      return { category: current[1], subcategory: '', observation, detail: raw.replace(/^\[process_error:v1\]\s*/, '') };
+    }
     const match = String(cause || '').match(/^\[damage:v1:(employee|system|external)(?::(X1|X3|X5))?\]\s*/);
-    if (!match || (match[2] && match[1] !== 'employee')) return { category: 'unclassified', subcategory: '', detail: String(cause || '') };
-    return { category: match[1], subcategory: match[2] || '', detail: String(cause).slice(match[0].length) };
+    if (!match || (match[2] && match[1] !== 'employee')) return { category: 'unclassified', subcategory: '', observation:false, detail: String(cause || '') };
+    return { category: match[1], subcategory: match[2] || '', observation:false, detail: String(cause).slice(match[0].length) };
   }
   function encodeDetails(category, detail) {
     if (!['employee','backoffice','external','pm','game'].includes(category)) throw new Error('เลือกประเภทความเสียหายก่อน');
@@ -41,6 +44,7 @@ const DamageSummary = (() => {
   }
   function identityLabel(row) { return `${employeeLabel(row)} · ${shiftLabel(row)} · ${row.company || 'รอยืนยันบริษัท'} · ${row.employeeCode || 'รอยืนยันรหัส (เคส '+(row.id || row.dbId || 'ไม่ระบุ')+')'}`; }
   function collectionTotals(row) {
+    if (classify(row.cause).observation) return { approved:0, paid:0, net:0 };
     if (!row.collectionReady || !row.collection) return { approved:null, paid:null, net:null };
     const approved=cents(row.collection.approved_amount), paid=cents(row.collection.paid_amount);
     if (approved===null || paid===null || paid>approved) return {approved:null,paid:null,net:null};
