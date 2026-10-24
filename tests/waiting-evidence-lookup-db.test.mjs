@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url';
 const {PGlite}=await import(pathToFileURL(process.argv[2]).href);
 const db=await PGlite.create();
 const migration=fs.readFileSync('supabase/20261014_waiting_evidence_uuid_lookup.sql','utf8');
+const permissionRepair=fs.readFileSync('supabase/20261024_restore_waiting_evidence_execute.sql','utf8');
 await db.exec(`create role authenticated;create schema auth;create schema storage;
 create function auth.uid() returns uuid language sql stable as $$select current_setting('app.user')::uuid$$;
 create function current_user_active() returns boolean language sql stable as $$select current_setting('app.active')='true'$$;
@@ -14,6 +15,7 @@ create policy scoped on exceptions for select to authenticated using(current_use
 create function can_attach_waiting_cross_day_evidence(c uuid) returns boolean language sql stable security definer as $$
 select current_user_active() and current_setting('app.role') in ('monitor','lead','admin')
 and exists(select 1 from exceptions where id=c and status='pending_next_day' and has_company_access(company))$$;
+revoke all on function can_attach_waiting_cross_day_evidence(uuid) from public,authenticated;
 create table storage.objects(bucket_id text,name text unique);
 alter table storage.objects enable row level security;
 create policy waiting_cross_day_object_insert on storage.objects for insert to authenticated with check(
@@ -25,7 +27,9 @@ const user='abcdefab-0000-4000-8000-000000000001';
 const id='abcdefab-0000-4000-8000-000000000002';
 await db.query("insert into exceptions values($1,'FR8','pending_next_day')",[id]);
 const original=(await db.query("select with_check from pg_policies where policyname='waiting_cross_day_object_insert'")).rows[0].with_check;
-await db.exec(migration);await db.exec(migration);
+assert.equal((await db.query("select has_function_privilege('authenticated','can_attach_waiting_cross_day_evidence(uuid)','execute') ok")).rows[0].ok,false);
+await db.exec(migration);await db.exec(migration);await db.exec(permissionRepair);await db.exec(permissionRepair);
+assert.equal((await db.query("select has_function_privilege('authenticated','can_attach_waiting_cross_day_evidence(uuid)','execute') ok")).rows[0].ok,true);
 const patched=(await db.query("select with_check from pg_policies where policyname='waiting_cross_day_object_insert'")).rows[0].with_check;
 assert.match(patched,/e.id =\s+CASE/);assert.doesNotMatch(patched,/\(e.id\)::text/);
 const path=`case-evidence/${id}/${user}/abcdefab-0000-4000-8000-000000000003`;
