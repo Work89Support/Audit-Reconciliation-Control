@@ -106,9 +106,9 @@ const ReviewOverview = (() => {
     const withinHour=!p&&e?.ex_type==='time_diff'&&/^\d{4}-\d{2}-\d{2}$/.test(e.bo_date||'')&&e.bo_date===e.stm_date
       &&typeof seconds==='number'&&Number.isFinite(seconds)&&Math.abs(seconds)<=3600;
     const reason=e?.status==='closed'?'Audit ยืนยันปิดแล้ว — ดูเหตุผลและหลักฐานการปิดเคส':withinHour?'เวลาอยู่ใน 60 นาที แต่ระบบยังไม่ยืนยันคู่ — ตรวจข้อมูลลูกค้า เลขอ้างอิง และคู่ซ้ำ':(p?.manualReview?'เติมมือ: ต้องตรวจเอกสาร':p?.method||e?.detail||'');
-    return [p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',...side('stm'),...side('bo'),seconds==null?'ไม่มีเวลา':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
+    return [...side('stm'),...side('bo'),p?'จับคู่ได้':withinHour?(e?.status==='closed'?'ใน 60 นาที — Audit ปิดแล้ว':'ใน 60 นาที — รอยืนยันคู่รายการ'):e.type_name||e.ex_type||'ต้องตรวจ',auditLabel(row),e?.code||'คู่รายการ',row.account,row.direction==='deposit'?'ฝาก':row.direction==='withdraw'?'ถอน':'ไม่ระบุประเภท',seconds==null?'ไม่มีเวลา':`${Math.floor(Math.abs(seconds)/60)} นาที ${Math.abs(seconds)%60} วินาที`,reason+payout+(noteReview?' · '+noteReview:''),e?.resolution_note||''];
   }
-  const sheetHeaders=['ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท',...detailHeaders.map(h=>'STM/PM · '+h),...detailHeaders.map(h=>'BO · '+h),'ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
+  const sheetHeaders=[...detailHeaders.map(h=>'STM/PM · '+h),...detailHeaders.map(h=>'BO · '+h),'ผลตรวจระบบ','สถานะ Audit','เลขเคส','บัญชีบริษัท / Provider','ประเภท','ต่างเวลา','เหตุผลระบบ','หมายเหตุ Audit'];
   const allHeaders=[...sheetHeaders,'เอกสารอ้างอิง'];
   function columnValue(row,i) {
     if(i===26)return row.case?'เปิดหลักฐาน / เมล':'คู่สำเร็จ ยังไม่ยืนยัน Audit';
@@ -119,7 +119,7 @@ const ReviewOverview = (() => {
     }
     return sheetRow(row)[i];
   }
-  function filterColumns(rows,rules={},sort={column:14,direction:'asc'}) {
+  function filterColumns(rows,rules={},sort={column:9,direction:'asc'}) {
     const cell=(r,i)=>columnValue(r,Number(i));
     const filtered=rows.filter(r=>Object.entries(rules).every(([i,f])=>{
       const raw=cell(r,i),s=String(raw??'').toLowerCase(),v=String(f.value??'').trim().toLowerCase();
@@ -128,7 +128,7 @@ const ReviewOverview = (() => {
       if(f.op==='equals')return s===v;
       if(f.op==='gte'||f.op==='lte'){
         if(raw==null||raw===''||v==='')return false;
-        const numeric=[6,15,23].includes(Number(i));
+        const numeric=[1,10,23].includes(Number(i));
         const a=numeric?Number(raw):s,b=numeric?Number(v.replace(/,/g,'')):v;
         return f.op==='gte'?a>=b:a<=b;
       }
@@ -136,32 +136,32 @@ const ReviewOverview = (() => {
     }));
     const key=r=>{
       const i=Number(sort.column),v=cell(r,i);
-      if(i===5||i===14){
+      if(i===0||i===9){
         const valid=x=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(String(x));
-        return valid(v)?v:(i===14&&valid(cell(r,5))?cell(r,5):null);
+        return valid(v)?v:(i===9&&valid(cell(r,0))?cell(r,0):null);
       }
       return v;
     };
     return filtered.sort((a,b)=>{
       const x=key(a),y=key(b),empty=v=>v==null||v==='';
       if(empty(x)||empty(y))return Number(empty(x))-Number(empty(y));
-      const n=[6,15,23].includes(Number(sort.column))?Number(x)-Number(y):String(x).localeCompare(String(y),'th',{numeric:true});
+      const n=[1,10,23].includes(Number(sort.column))?Number(x)-Number(y):String(x).localeCompare(String(y),'th',{numeric:true});
       return sort.direction==='desc'?-n:n;
     });
   }
-  const columnKey='audit-sheet-columns-v2-stm-first';
+  const columnKey='audit-sheet-columns-v3-stm-bo-audit';
   // Carry hidden-column preferences by meaning, not the old physical index.
-  const migrateHidden=value=>normalizeHidden(value).map(i=>i>=5&&i<=13?i+9:i>=14&&i<=22?i-9:i);
-  const compactHidden=[2,9,11,12,13,18,20,21,22,25];
+  const migrateHidden=value=>normalizeHidden(value).map(i=>i<=4?i+18:i<=13?i-5:i<=22?i-5:i);
+  const compactHidden=[20,4,6,7,8,13,15,16,17,25];
   function normalizeHidden(value) {
-    return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=2&&i<=26))] : [];
+    return Array.isArray(value) ? [...new Set(value.filter(i=>Number.isInteger(i)&&i>=0&&i<=26&&![18,19].includes(i)))] : [];
   }
   async function mount(root, {company,date,minDate='',load,loadRecommendations,onRecommendation,onCase,onCompany,onExport,onConfirm,onBulkClose,onDateChange,onBatchStatus,onCrossDay,canReviewClosed=false,isActive=()=>true}) {
     const scopedDate = value => minDate && (!value || value < minDate) ? minDate : value;
     date = scopedDate(date);
     const instance = {}; instances.set(root,instance);
     let data, view, page = 0, generation = 0;
-    let columnRules={},columnSort={column:14,direction:'asc'};
+    let columnRules={},columnSort={column:9,direction:'asc'};
     let preliminaryOnly=false;
     const selected=new Set();
     let pendingActions=new Map(), statusSelected=new Set();
@@ -171,7 +171,8 @@ const ReviewOverview = (() => {
     let hidden=[];
     try {
       const saved=localStorage.getItem(columnKey);
-      hidden=saved===null?migrateHidden(JSON.parse(localStorage.getItem('audit-sheet-columns-v1'))):normalizeHidden(JSON.parse(saved));
+      const previous=localStorage.getItem('audit-sheet-columns-v2-stm-first')??localStorage.getItem('audit-sheet-columns-v1');
+      hidden=saved===null?migrateHidden(JSON.parse(previous)):normalizeHidden(JSON.parse(saved));
     } catch (_) {}
     const values = {status:'all', direction:'all', account:'', query:''};
     const savedView=workspaces.get(company+'|'+date);
@@ -189,7 +190,7 @@ const ReviewOverview = (() => {
     }
     function rowHtml(row) {
       const cells=sheetRow(row);
-      return `<tr>${cells.map((v,i)=>`<td class="sheet-col-${i} ${[6,15].includes(i)?'sheet-money':''}">${i===1&&row.case?`<select aria-label="สถานะ Audit ${escape(row.case.code)}" data-audit-action="${escape(row.id)}"><option value="">${escape(v)}</option><option value="review">ตรวจรายละเอียด</option><option value="files">เลือกหลักฐาน / Preview</option><option value="close">ยืนยันปิดเคส…</option><option value="clarify">รอชี้แจง…</option><option value="answer">ตรวจคำตอบ…</option></select>`:i===0?`<span class="sheet-result ${row.pair?'is-match':'is-review'}">${escape(v)}</span>`:[6,15].includes(i)?amount(v):escape(v??'—')||'—'}</td>`).join('')}<td>${row.case?`<button class="ghost-button sm" data-overview-case="${escape(row.id)}">📎 หลักฐาน / เมล</button>`:'คู่สำเร็จยังไม่ใช่การอนุมัติปิดเคส'}</td></tr>`;
+      return `<tr>${cells.map((v,i)=>`<td class="sheet-col-${i} ${[1,10].includes(i)?'sheet-money':''}">${i===19&&row.case?`<select aria-label="สถานะ Audit ${escape(row.case.code)}" data-audit-action="${escape(row.id)}"><option value="">${escape(v)}</option><option value="review">ตรวจรายละเอียด</option><option value="files">เลือกหลักฐาน / Preview</option><option value="close">ยืนยันปิดเคส…</option><option value="clarify">รอชี้แจง…</option><option value="answer">ตรวจคำตอบ…</option></select>`:i===18?`<span class="sheet-result ${row.pair?'is-match':'is-review'}">${escape(v)}</span>`:[1,10].includes(i)?amount(v):escape(v??'—')||'—'}</td>`).join('')}<td>${row.case?`<button class="ghost-button sm" data-overview-case="${escape(row.id)}">📎 หลักฐาน / เมล</button>`:'คู่สำเร็จยังไม่ใช่การอนุมัติปิดเคส'}</td></tr>`;
     }
     function draw(error='') {
       if (!root.isConnected || instances.get(root)!==instance || !isActive()) return;
@@ -214,7 +215,7 @@ const ReviewOverview = (() => {
       const table=root.querySelector('.review-overview-table');
       table.classList.add('audit-sheet');
       if(typeof EvidenceRecommendations!=='undefined' && onRecommendation) EvidenceRecommendations.decorateRows(table,rows.slice(page*50,page*50+50),data?.recommendationLinks,data?.run?.id,onRecommendation);
-      table.querySelector('thead').innerHTML=`<tr><th colspan="5">ผลตรวจระบบ / Audit</th><th colspan="9" class="stm-group">STM / PM</th><th colspan="9" class="bo-group">BO / ระบบ</th><th colspan="4">ผลเทียบ / หลักฐาน</th></tr><tr>${[...sheetHeaders,'เอกสารอ้างอิง'].map(x=>`<th>${escape(x)}</th>`).join('')}</tr>`;
+      table.querySelector('thead').innerHTML=`<tr><th colspan="9" class="stm-group">STM / PM</th><th colspan="9" class="bo-group">BO / ระบบ</th><th colspan="9">ผล Audit / หลักฐาน</th></tr><tr>${[...sheetHeaders,'เอกสารอ้างอิง'].map(x=>`<th>${escape(x)}</th>`).join('')}</tr>`;
       const toolbar=document.createElement('div'); toolbar.className='audit-sheet-tools';
       toolbar.innerHTML=`<span>เลือกสถานะเพื่อเปิดตรวจและยืนยัน • ไม่ส่งข้อความอัตโนมัติ</span><button class="ghost-button" id="overviewExport" ${!onExport||!data?.complete?'disabled':''}>Export Excel ตามตัวกรอง (${rows.length})</button>`;
       table.parentElement.before(toolbar);
@@ -269,7 +270,7 @@ const ReviewOverview = (() => {
         });
       }
       const chooser=document.createElement('details');chooser.className='audit-column-picker';
-      chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${i<2?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
+      chooser.innerHTML=`<summary>เลือกคอลัมน์ <span data-column-count></span></summary><div class="audit-column-options"><p>ซ่อนเฉพาะหน้าจอ • Export ยังคงข้อมูลครบทุกช่อง<br>ผลตรวจระบบและสถานะ Audit แสดงเสมอ</p><div><button type="button" class="ghost-button sm" data-columns="compact">มุมมองกระชับ</button> <button type="button" class="ghost-button sm" data-columns="all">แสดงทุกช่อง</button></div>${[...sheetHeaders,'เอกสารอ้างอิง'].map((name,i)=>`<label><input type="checkbox" data-column="${i}" ${hidden.includes(i)?'':'checked'} ${[18,19].includes(i)?'disabled':''}>${escape(name)}</label>`).join('')}</div>`;
       toolbar.append(chooser);
       const applyColumns=()=>{
         const invisible=new Set(hidden);
