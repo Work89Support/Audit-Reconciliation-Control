@@ -1650,7 +1650,7 @@ function openWrongClosureReversal(e,action) {
   if(!['closed','damage'].includes(e.status))return toast('เคสนี้ไม่ได้อยู่ในสถานะปิดหรือยืนยันความเสียหายแล้ว','warn');
   const returning=action==='return_clarification';
   const title=returning?'ตีกลับให้ชี้แจงเพิ่มเติม':'ยกเลิกผลปิด — คืนให้ Audit ตรวจใหม่';
-  openModal(title,`<p>${h(caseLabel(e))}</p><p class="alert warn">การทำรายการนี้ไม่ลบยอด หลักฐาน หรือประวัติเดิม ระบบจะทำเครื่องหมายผลความเสียหายเดิมว่า “ยกเลิก” และนำออกจากยอดสรุปปัจจุบัน</p><p>${returning?'คืนเคสไปสถานะรอผู้ชี้แจงส่งข้อมูลเพิ่มเติม':'คืนเคสไปสถานะตอบแล้ว เพื่อให้ Audit ตรวจและปิดผลใหม่'}</p><label>เหตุผลที่ยกเลิกผลเดิม<textarea id="closureReversalReason" maxlength="2000" placeholder="ระบุว่าผลเดิมผิดอย่างไร และต้องตรวจแก้จุดใด"></textarea></label><label><input type="checkbox" id="closureReversalChecked">ตรวจเลขเคส ยอดเดิม หลักฐาน และยืนยันว่าต้องย้อนผลปิดเคสนี้</label><p id="closureReversalStatus" role="status"></p>`,`<button class="ghost-button" id="closureReversalCancel">ยกเลิก</button><button class="primary-button" id="closureReversalConfirm">${h(title)}</button>`);
+  openModal(title,`<p>${h(caseLabel(e))}</p><p class="alert warn">การทำรายการนี้ไม่ลบยอด หลักฐาน หรือประวัติเดิม ระบบจะทำเครื่องหมายผลความเสียหายเดิมว่า “ยกเลิก” และนำออกจากยอดสรุปปัจจุบัน${e.manualPairId?' · เคสนี้ปิดจากการจับคู่ ระบบจะยกเลิกผลคู่ ปลดคู่จอง และคืนทั้งสองเคสให้ตรวจใหม่':''}</p><p>${returning?'คืนเคสไปสถานะรอผู้ชี้แจงส่งข้อมูลเพิ่มเติม':'คืนเคสไปสถานะตอบแล้ว เพื่อให้ Audit ตรวจและปิดผลใหม่'}</p><label>เหตุผลที่ยกเลิกผลเดิม<textarea id="closureReversalReason" maxlength="2000" placeholder="ระบุว่าผลเดิมผิดอย่างไร และต้องตรวจแก้จุดใด"></textarea></label><label><input type="checkbox" id="closureReversalChecked">ตรวจเลขเคส ยอดเดิม หลักฐาน และยืนยันว่าต้องย้อนผลปิดเคสนี้${e.manualPairId?'พร้อมเคสคู่':''}</label><p id="closureReversalStatus" role="status"></p>`,`<button class="ghost-button" id="closureReversalCancel">ยกเลิก</button><button class="primary-button" id="closureReversalConfirm">${h(title)}</button>`);
   $('#closureReversalCancel').onclick=closeModal;
   $('#closureReversalConfirm').onclick=async event=>{
     const reason=$('#closureReversalReason').value.trim();
@@ -1658,7 +1658,7 @@ function openWrongClosureReversal(e,action) {
     event.currentTarget.disabled=true;$('#closureReversalStatus').textContent='กำลังบันทึกและอ่านสถานะยืนยัน — ห้ามกดซ้ำ';
     try{
       await Sb.reverseWrongCaseClosure({p_id:crypto.randomUUID(),p_case:e.dbId,p_previous_status:e.status,p_action:action,p_reason:reason});
-      closeModal();closeDrawer();await loadLiveOverview(true);render();toast(returning?'ตีกลับให้ชี้แจงแล้ว และเก็บประวัติผลเดิมครบ':'ยกเลิกผลปิดและคืนให้ Audit ตรวจใหม่แล้ว');
+      closeModal();closeDrawer();await loadLiveOverview(true);render();toast(returning?'ตีกลับให้ชี้แจงแล้ว และเก็บประวัติผลเดิมครบ':e.manualPairId?'ยกเลิกผลปิดคู่ ปลดคู่จอง และคืนทั้งสองเคสให้ Audit ตรวจใหม่แล้ว':'ยกเลิกผลปิดและคืนให้ Audit ตรวจใหม่แล้ว');
     }catch(error){$('#closureReversalStatus').textContent='ยังไม่ยืนยันผล: '+error.message;toast('ยังย้อนเคสไม่ได้: '+error.message,'warn');event.currentTarget.disabled=false;}
   };
 }
