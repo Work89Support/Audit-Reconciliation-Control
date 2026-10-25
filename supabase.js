@@ -878,7 +878,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history',
-    'read_manual_primary','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices','audit_source_exclusion_states','audit_source_exclusion_preview','audit_source_workspace',
+    'read_manual_primary','read_manual_primary_saved','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices','audit_source_exclusion_states','audit_source_exclusion_preview','audit_source_workspace',
     'audit_current_cases_scoped','audit_search_current_cases_scoped']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
@@ -1036,14 +1036,9 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     try{v=await rpc('read_manual_primary',{p_company:company,p_date:date});}
     catch(error){
       if(!/canceling statement due to statement timeout|statement timeout/i.test(error.message))throw error;
-      const rows=await json(`/rest/v1/manual_primary_results?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=id,company,business_date,recheck_id,base_run_id,previous_id,report,accepted_by,accepted_at,reason&order=accepted_at.desc,id.desc&limit=1`,{recoverRead:true});
-      v=rows[0]||null;
-      if(v){
-        const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status,error_count&limit=1`,{recoverRead:true});
-        if(jobs[0]?.last_run_id!==v.base_run_id&&jobs[0]?.status==='completed'&&Number(jobs[0]?.error_count||0)===0)return null;
-        v={...v,stale:jobs[0]?.last_run_id!==v.base_run_id,review_needed:true,sourceCheckError:error.message,
-          review_reason:'แสดงผลหลักที่ยืนยันไว้แล้ว แต่การตรวจความสดของไฟล์ต้นทางใช้เวลานานเกินกำหนด · ห้ามยืนยันหรือปิดงานจากหน้านี้จนตรวจไฟล์สำเร็จ'};
-      }
+      v=await rpc('read_manual_primary_saved',{p_company:company,p_date:date});
+      if(v)v={...v,sourceCheckError:error.message,
+        review_reason:'แสดงผลหลักที่ยืนยันไว้แล้ว แต่การตรวจความสดของไฟล์ต้นทางใช้เวลานานเกินกำหนด · ห้ามยืนยันหรือปิดงานจากหน้านี้จนตรวจไฟล์สำเร็จ'};
     }
     if(v&&!v.stale){try{v.case_set=await rpc('read_manual_primary_case_set',{p_id:v.id});}catch(error){v.caseSetError=error.message;}}
     return v;
