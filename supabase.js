@@ -819,10 +819,21 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     const run = await matchedEvidence(company, date);
     if (!run) return { run: null, cases: [], complete: true };
     if(run.primaryResult){
-      const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true});history.push(...page);if(page.length<500)break;}
-      const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id)),current=history.filter(e=>ids.has(e.id));
+      const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id));
+      const history=[];let current=[];let caseHistoryDeferred=false;
+      if(run.primaryResult.sourceCheckError){
+        const values=[...ids].filter(Boolean);
+        for(let index=0;index<values.length;index+=100){
+          const page=await json(`/rest/v1/exceptions?id=in.(${values.slice(index,index+100).map(encodeURIComponent).join(',')})&select=*&order=created_at.desc,id.asc`,{includeHistorical:true,recoverRead:true});
+          current.push(...page);
+        }
+        caseHistoryDeferred=true;
+      }else{
+        for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true});history.push(...page);if(page.length<500)break;}
+        current=history.filter(e=>ids.has(e.id));
+      }
       const waitingIds=new Set((run.primaryResult.case_set?.items||[]).filter(i=>i.row_kind==='waiting').map(i=>i.exception_id));
-      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>waitingIds.has(e.id)),complete:!run.primaryResult.sourceCheckError,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
+      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),caseHistoryDeferred,waitingHistory:current.filter(e=>waitingIds.has(e.id)),complete:!run.primaryResult.sourceCheckError,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
     }
     if (!run.id) return {run,cases:[],complete:false};
     let confirmedRechecks=[],recheckReportError='';
