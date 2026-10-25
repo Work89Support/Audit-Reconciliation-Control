@@ -822,7 +822,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
       const history=[];for(let offset=0;;offset+=500){const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true});history.push(...page);if(page.length<500)break;}
       const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id)),current=history.filter(e=>ids.has(e.id));
       const waitingIds=new Set((run.primaryResult.case_set?.items||[]).filter(i=>i.row_kind==='waiting').map(i=>i.exception_id));
-      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>waitingIds.has(e.id)),complete:true,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
+      return {run,cases:ManualPrimary.cases(run.primaryResult,current),caseHistory:history.filter(e=>!ids.has(e.id)),waitingHistory:current.filter(e=>waitingIds.has(e.id)),complete:!run.primaryResult.sourceCheckError,confirmations:[],confirmedRechecks:[],primaryResult:run.primaryResult};
     }
     if (!run.id) return {run,cases:[],complete:false};
     let confirmedRechecks=[],recheckReportError='';
@@ -1020,7 +1020,23 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   const manualPrimaryPreview=id=>json('/rest/v1/rpc/manual_primary_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
   const acceptManualPrimary=body=>json('/rest/v1/rpc/accept_manual_primary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
   const acceptManualPrimaryWithCases=body=>json('/rest/v1/rpc/accept_manual_primary_with_cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
-  const readManualPrimary=async(company,date)=>{const v=await rpc('read_manual_primary',{p_company:company,p_date:date});if(v&&!v.stale)v.case_set=await rpc('read_manual_primary_case_set',{p_id:v.id});return v;};
+  async function readManualPrimary(company,date){
+    let v;
+    try{v=await rpc('read_manual_primary',{p_company:company,p_date:date});}
+    catch(error){
+      if(!/canceling statement due to statement timeout|statement timeout/i.test(error.message))throw error;
+      const rows=await json(`/rest/v1/manual_primary_results?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=id,company,business_date,recheck_id,base_run_id,previous_id,report,accepted_by,accepted_at,reason&order=accepted_at.desc,id.desc&limit=1`,{recoverRead:true});
+      v=rows[0]||null;
+      if(v){
+        const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id,status,error_count&limit=1`,{recoverRead:true});
+        if(jobs[0]?.last_run_id!==v.base_run_id&&jobs[0]?.status==='completed'&&Number(jobs[0]?.error_count||0)===0)return null;
+        v={...v,stale:jobs[0]?.last_run_id!==v.base_run_id,review_needed:true,sourceCheckError:error.message,
+          review_reason:'แสดงผลหลักที่ยืนยันไว้แล้ว แต่การตรวจความสดของไฟล์ต้นทางใช้เวลานานเกินกำหนด · ห้ามยืนยันหรือปิดงานจากหน้านี้จนตรวจไฟล์สำเร็จ'};
+      }
+    }
+    if(v&&!v.stale){try{v.case_set=await rpc('read_manual_primary_case_set',{p_id:v.id});}catch(error){v.caseSetError=error.message;}}
+    return v;
+  }
   const manualPrimaryCasesPreview=id=>json('/rest/v1/rpc/manual_primary_cases_preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p_id:id}),timeoutMs:45000});
   const activateManualPrimaryCases=body=>json('/rest/v1/rpc/activate_manual_primary_cases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),timeoutMs:45000});
   const auditSourceArchiveManifest=(company,date,includeEvidence)=>rpc('audit_source_archive_manifest',{p_company:company,p_date:date,p_include_evidence:!!includeEvidence});
