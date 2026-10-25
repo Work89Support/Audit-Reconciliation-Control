@@ -1,0 +1,47 @@
+-- Accept 7M internal transfers whose stored account direction is the same on
+-- both cases when the BO transaction text proves the actual transfer flow.
+-- This changes no existing case and does not run reconciliation.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+
+create or replace function public.validate_7m_internal_transfer_pair(p_bo uuid,p_stm uuid)
+returns jsonb language plpgsql stable security definer set search_path=public,pg_temp as $$
+declare a public.exceptions%rowtype; b public.exceptions%rowtype; seconds_apart integer;
+begin
+ select * into a from public.exceptions where id=p_bo;
+ select * into b from public.exceptions where id=p_stm;
+ if a.id is null or b.id is null or a.id=b.id
+   or not public.has_company_access(a.company) or not public.has_company_access(b.company)
+ then raise exception 'ไม่พบคู่เคสหรือไม่มีสิทธิ์บริษัท' using errcode='42501'; end if;
+ if upper(a.company) not in ('7M','UFABET7M') or upper(a.company)<>upper(b.company)
+   or a.ex_type<>'missing_stm' or b.ex_type<>'missing_bo'
+   or a.business_date is distinct from b.business_date
+   or nullif(btrim(a.account),'') is null or nullif(btrim(b.account),'') is null or a.account=b.account
+   or a.direction not in ('ฝาก','ถอน') or b.direction not in ('ฝาก','ถอน')
+   or not (a.direction<>b.direction
+     or (a.direction=b.direction and b.direction='ถอน' and a.bo_raw ~* '(โยก(เงิน)?เข้า|รับยอด)')
+     or (a.direction=b.direction and b.direction='ฝาก' and a.bo_raw ~* 'โยก(เงิน)?ออก'))
+   or a.currency is distinct from 'THB' or b.currency is distinct from 'THB'
+   or a.system_amount is null or a.system_amount<=0 or a.system_amount is distinct from b.bank_amount
+   or a.occurred_at is null or b.occurred_at is null
+   or coalesce(length(btrim(a.bo_raw)),0)<2 or coalesce(length(btrim(b.stm_raw)),0)<2
+   or a.bo_raw !~* '(โยก(เงิน)?(เข้า|ออก)?|รับยอด|ย้ายเงิน|internal[[:space:]]*transfer)'
+ then raise exception 'คู่โอนภายในต้องเป็น 7M คนละบัญชี ทิศทางสัมพันธ์กับโยกเข้า/ออก ยอดตรง วันเดียวกัน และ BO ระบุโยกเงินหรือรับยอด'; end if;
+ seconds_apart:=abs(extract(epoch from (a.occurred_at-b.occurred_at)))::integer;
+ if seconds_apart>300 then raise exception 'เวลา BO กับ STM/PM ของคู่โอนภายในต้องห่างไม่เกิน 5 นาที'; end if;
+ if a.superseded_by_exception_id is not null or b.superseded_by_exception_id is not null
+   or exists(select 1 from public.damages d where d.exception_id in(a.id,b.id))
+   or not public.manual_pair_source_ready(a.id,'bo') or not public.manual_pair_source_ready(b.id,'stm')
+ then raise exception 'ต้องใช้เคสเปิดจากผลหลักล่าสุด ต้นทาง BO/STM ต้องอ่านสำเร็จ ไม่ถูกจอง และไม่มีทะเบียนความเสียหาย'; end if;
+ return jsonb_build_object('bo',to_jsonb(a),'stm',to_jsonb(b),'difference',0,
+   'review_type','seven_m_internal_transfer','seconds_apart',seconds_apart,
+   'method','manual-seven-m-internal-transfer-cross-account');
+end $$;
+revoke all on function public.validate_7m_internal_transfer_pair(uuid,uuid) from public,anon,authenticated;
+
+insert into public.audit_log(actor,action,entity,target,detail)
+values('authorized policy migration','update','approval_policy','UFABET7M internal transfer direction',
+ 'Allow same stored account direction only when BO raw text proves the internal transfer flow. No existing cases changed.');
+notify pgrst,'reload schema';
+commit;
