@@ -1053,7 +1053,7 @@ const Engine = (() => {
     });
 
     /* PM เครือ 123 ใช้ตัวตนลูกค้าแทน Ref/เวลาเป็นคีย์หลัก:
-       - AUTOPEER / COREPAY / LOCALPAY ฝาก-ถอน และ AZPAY ฝาก:
+       - AUTOPEER / COREPAY / MYPAY / LOCALPAY ฝาก-ถอน และ AZPAY ฝาก:
          รหัสสมาชิก + เลขบัญชีสมาชิก + ยอดเงินจริง
        - CYBERPLUS ฝากใช้ 3 จุดเหมือนกัน ส่วนถอนใช้รหัสสมาชิก + ยอด
        ทุกกรณีต้องเป็นบริษัท/Provider/ทิศทางเดียวกัน
@@ -1066,6 +1066,7 @@ const Engine = (() => {
       ["COREPAY", new Set(["deposit", "withdraw"])],
       ["CYBERPLUS", new Set(["deposit", "withdraw"])],
       ["LOCALPAY", new Set(["deposit", "withdraw"])],
+      ["MYPAY", new Set(["deposit", "withdraw"])],
     ]);
     /* BO เครือ 123 บางไฟล์ถูก normalize เป็นรายการ BO ปกติ (isPmChannel=false)
        แต่ยังมี Provider ชัดเจนใน account. ต้องให้กฎตัวตน 3 จุดรับรายการนี้ด้วย
