@@ -821,7 +821,8 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     if(run.primaryResult){
       const ids=new Set((run.primaryResult.case_set?.items||[]).map(i=>i.exception_id));
       const history=[];let current=[];let caseHistoryDeferred=false;
-      if(run.primaryResult.sourceCheckError){
+      const deferHistoricalCases=!!run.primaryResult.sourceCheckError||Number(run.matched||0)>1000;
+      if(deferHistoricalCases){
         const values=[...ids].filter(Boolean);
         for(let index=0;index<values.length;index+=100){
           const page=await json(`/rest/v1/exceptions?id=in.(${values.slice(index,index+100).map(encodeURIComponent).join(',')})&select=*&order=created_at.desc,id.asc`,{includeHistorical:true,recoverRead:true});
