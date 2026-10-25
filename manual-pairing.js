@@ -25,17 +25,26 @@ const ManualPairing=(()=>{
       ?/(?:โยก(?:เงิน)?เข้า|รับยอด)/i.test(raw)
       :/(?:โยก(?:เงิน)?ออก)/i.test(raw);
   };
+  const sameAccountAdjustmentMatches=(bo,stm)=>{
+    if(!bo||!stm||bo.account!==stm.account||!['ฝาก','ถอน'].includes(stm.direction))return false;
+    const raw=String(bo.bo_raw||'');
+    const outgoing=/(?:ปรับ(?:ยอด|เงิน)?ออก|โยก(?:เงิน)?ออก|โอน(?:เงิน)?ออก|ถอนภายใน)/i.test(raw);
+    const incoming=/(?:ปรับ(?:ยอด|เงิน)?เข้า|โยก(?:เงิน)?เข้า|โอน(?:เงิน)?เข้า|(?:^|[\s:=-])รับยอด(?:$|[\s:=-]))/i.test(raw);
+    return stm.direction==='ถอน'?outgoing&&!incoming:incoming&&!outgoing;
+  };
   const internalTransferCandidate=p=>{
     const bo=p.snapshot?.bo,stm=p.snapshot?.stm;
     if(!['lead','admin'].includes(state.role)||p.mode!=='internal'||!bo||!stm)return false;
     const boCompany=String(bo.company||'').toUpperCase(),stmCompany=String(stm.company||'').toUpperCase();
     const boSec=timeSeconds(bo.occurred_at),stmSec=timeSeconds(stm.occurred_at);
+    const sameAccount=bo.account&&stm.account&&bo.account===stm.account;
     return ['7M','UFABET7M'].includes(boCompany)&&boCompany===stmCompany
-      && bo.business_date===stm.business_date&&bo.account&&stm.account&&bo.account!==stm.account
-      && bo.currency==='THB'&&stm.currency==='THB'&&internalTransferDirectionMatches(bo,stm)
+      && bo.business_date===stm.business_date&&bo.account&&stm.account
+      && bo.currency==='THB'&&stm.currency==='THB'
+      && (sameAccount?sameAccountAdjustmentMatches(bo,stm):internalTransferDirectionMatches(bo,stm))
       && Number(bo.system_amount)>0&&Number(bo.system_amount)===Number(stm.bank_amount)
       && Number.isFinite(boSec)&&Number.isFinite(stmSec)&&Math.abs(boSec-stmSec)<=300
-      && /(?:โยก(?:เงิน)?(?:เข้า|ออก)?|รับยอด|ย้ายเงิน|internal\s*transfer)/i.test(String(bo.bo_raw||''));
+      && /(?:ปรับ(?:ยอด|เงิน)?(?:เข้า|ออก)|โยก(?:เงิน)?(?:เข้า|ออก)?|โอน(?:เงิน)?(?:เข้า|ออก)|รับยอด|ถอนภายใน|ย้ายเงิน|internal\s*transfer)/i.test(String(bo.bo_raw||''));
   };
   const selfApprovalCandidate=p=>state.role==='audit_assistant'?sourcePairCandidate(p):['lead','admin'].includes(state.role)&&p.mode==='same'&&p.bo_company===p.stm_company&&p.difference!=null&&Number.isFinite(Number(p.difference))&&Number(p.difference)>=0&&Number(p.difference)<=5&&(sourcePairCandidate(p)||!!(p._hasStoredEvidence||p.evidence_id||p.snapshot?.bo?.clarification_file_id||p.snapshot?.stm?.clarification_file_id));
   const decisionBlockReason=p=>!Sb.signedIn()?'กรุณาเข้าสู่ระบบก่อนตรวจคำขอ':!can('approve')?'บัญชีนี้ไม่มีสิทธิ์อนุมัติ — ให้หัวหน้าทีม / ผู้ดูแลระบบตรวจ':p.status!=='pending'?'คำขอนี้ไม่ได้รออนุมัติ':state.role==='audit_assistant'&&!sourcePairCandidate(p)?'ผู้ช่วย Audit ปิดเองได้เฉพาะบริษัทเดียวกัน ยอดแต่ละฝั่งไม่เกิน 30,000 บาท ต่างไม่เกิน 5 บาท และต้นทางครบ — รายการนี้ต้องให้หัวหน้าอนุมัติ':p.submitted_by===Sb.authUser()?.id&&!selfApprovalCandidate(p)?'หัวหน้าปิดคำขอตัวเองได้เฉพาะบริษัทเดียวกัน ต่างไม่เกิน 5 บาท มี BO/STM ต้นทางจริง หรือหลักฐานตามสิทธิ์ มิฉะนั้นให้หัวหน้าอีกบัญชีตรวจ':'';
@@ -136,8 +145,8 @@ const ManualPairing=(()=>{
       ...(mode==='cross'?[['wrong_company','ลงรายการผิดบริษัท / โยกยอดระหว่างบริษัท']]:[]),
       ['other','อื่น ๆ — ระบุเหตุผลเอง']
     ];
-    const modalTitle=mode==='internal'?'จับคู่ข้ามบัญชีภายในบริษัท':mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท';
-    const policyText=mode==='internal'?'งานเคสเท่านั้น — ไม่สั่งรันและไม่แก้ผลกระทบยอด · เฉพาะ 7M คนละบัญชี ทิศทางสัมพันธ์กับโยกเข้า/ออก ยอดตรง วันเดียวกัน เวลาไม่เกิน 5 นาที':'จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b>';
+    const modalTitle=mode==='internal'?'จับคู่รายการภายในบริษัท':mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท';
+    const policyText=mode==='internal'?'งานเคสเท่านั้น — ไม่สั่งรันและไม่แก้ผลกระทบยอด · เฉพาะ 7M บัญชีเดียวกันหรือข้ามบัญชี ยอดตรง วันเดียวกัน เวลาไม่เกิน 5 นาที · บัญชีเดียวกันต้องเป็น STM ออก ↔ BO ปรับออก หรือ STM เข้า ↔ BO ปรับเข้า':'จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b>';
     openModal(modalTitle,`<div class="manual-pair-form"><div class="pair-policy">${policyText}<span>เลือกเคส BO และ STM/PM ที่สัมพันธ์กันจริง · ระบบตรวจต้นทางซ้ำและบันทึก Audit · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label>${mode==='internal'?'<label>บัญชี BO<select id="pairBoAccount" disabled><option value="">ค้นหาก่อน แล้วเลือกบัญชี BO</option></select></label>':''}<button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label><p id="pairReadiness" class="pair-field-hint" role="status">ยังทำรายการไม่ได้: เลือกเคสคู่ · เลือกเหตุผลหลัก · ติ๊กยืนยันว่าตรวจรายการแล้ว</p></section></div>`, '<button class="ghost-button" id="pairExisting" hidden>เปิดคำขอเดิม</button><button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit" disabled>ส่งให้หัวหน้าทีมอนุมัติ</button>');
     $('#pairSearchStatus').textContent='ค้นวันก่อน วันเดียวกัน และวันถัดไปจากวันอ้างอิง';
     $('#pairCancel').onclick=closeModal;
@@ -268,7 +277,7 @@ const ManualPairing=(()=>{
         candidates=account?candidatePool.filter(candidate=>String(internalSides(candidate).bo.account||'')===account):[];
       }else candidates=candidatePool.slice();
       selected=null;$('#pairChecked').checked=false;$('#pairCompare').textContent='';
-      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น':c.status==='clarifying'?'รอผู้ชี้แจง — เตรียมคู่เท่านั้น':'เปิด'}</option>`).join('');
+      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${h(c.direction||'-')} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น':c.status==='clarifying'?'รอผู้ชี้แจง — เตรียมคู่เท่านั้น':'เปิด'}</option>`).join('');
       if(candidates.length===1){selected=candidates[0];$('#pairCandidate').value=selected.id;renderComparison();}
       updateSubmitLabel();
     };
@@ -283,8 +292,8 @@ const ManualPairing=(()=>{
         const wantedDirection=mode==='internal'?null:e.direction;
         const found=await Sb.manualPairCandidates($('#pairCompany').value,$('#pairDate').value,e.type==='missing_stm'?'missing_bo':'missing_stm',wantedDirection);
         if(version!==searchVersion)return;
-        const internalCandidates=mode==='internal'?found.filter(c=>c.id!==e.dbId&&c.account!==current.account&&c.business_date===current.business_date):[];
-        candidatePool=found.filter(c=>c.id!==e.dbId&&(mode==='internal'?c.account!==current.account&&c.business_date===current.business_date:c.direction===e.direction)&&(mode!=='cross'||submissionEligible({type:c.ex_type,status:c.status})));
+        const internalCandidates=mode==='internal'?found.filter(c=>c.id!==e.dbId&&c.business_date===current.business_date):[];
+        candidatePool=found.filter(c=>c.id!==e.dbId&&(mode==='internal'?c.business_date===current.business_date:c.direction===e.direction)&&(mode!=='cross'||submissionEligible({type:c.ex_type,status:c.status})));
         if(mode==='internal'){
           const accounts=[...new Set(internalCandidates.map(candidate=>String(internalSides(candidate).bo.account||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
           candidatePool=candidatePool.filter(candidate=>internalTransferCandidate({mode,snapshot:internalSides(candidate)}));
@@ -334,7 +343,7 @@ const ManualPairing=(()=>{
       const reason=reasonType==='other'?'อื่น ๆ: '+detail:'เหตุผล: '+reasonOption[1]+(detail?'\nรายละเอียด: '+detail:'');
       if(reason.length>2000)return toast('เหตุผลรวมรายละเอียดต้องไม่เกิน 2,000 ตัวอักษร','warn');
       const {bo,stm}=sides();
-      if(mode==='internal'&&!internalTransferCandidate({mode,snapshot:{bo,stm}}))return toast('คู่ข้ามบัญชีต้องเป็น 7M คนละบัญชี ทิศทางสัมพันธ์กับโยกเข้า/ออก ยอดตรง วันเดียวกัน เวลาไม่เกิน 5 นาที และ BO ระบุโยกเงิน/รับยอด','warn');
+      if(mode==='internal'&&!internalTransferCandidate({mode,snapshot:{bo,stm}}))return toast('คู่ภายในต้องเป็น 7M ยอดตรง วันเดียวกัน เวลาไม่เกิน 5 นาที; ถ้าบัญชีเดียวกัน STM ออกต้องคู่ BO ปรับออก และ STM เข้าต้องคู่ BO ปรับเข้า','warn');
       if(Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))>500)return toast('ผลต่างเกิน 5 บาท จับคู่ไม่ได้','warn');
       const file=$('#pairFile').files[0];if(mode==='cross'&&!file&&!evidenceId)return toast('ข้ามบริษัทต้องแนบหลักฐาน','warn');
       const direct=canDirectClose();
