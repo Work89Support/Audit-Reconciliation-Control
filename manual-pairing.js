@@ -102,6 +102,7 @@ const ManualPairing=(()=>{
     const requestId=crypto.randomUUID();let candidatePool=[],candidates=[],selected=amountDifference?current:null,evidenceId=null,sent=false,preparationSession=false;
     const sides=()=>({bo:amountDifference||e.type==='missing_stm'?current:selected,stm:amountDifference||e.type==='missing_bo'?current:selected});
     const preparationOnly=()=>{
+      if(mode==='internal')return false;
       // A preparation session never turns into a write session after refresh.
       if(Object.values(sides()).some(row=>row&&['missing_bo','missing_stm'].includes(row.ex_type)&&['clarifying','answered'].includes(row.status)))preparationSession=true;
       return preparationSession;
@@ -277,7 +278,7 @@ const ManualPairing=(()=>{
         candidates=account?candidatePool.filter(candidate=>String(internalSides(candidate).bo.account||'')===account):[];
       }else candidates=candidatePool.slice();
       selected=null;$('#pairChecked').checked=false;$('#pairCompare').textContent='';
-      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${h(c.direction||'-')} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น':c.status==='clarifying'?'รอผู้ชี้แจง — เตรียมคู่เท่านั้น':'เปิด'}</option>`).join('');
+      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${h(c.direction||'-')} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?(mode==='internal'?'ชี้แจงแล้ว — ปิดได้เมื่อคู่ผ่านกฎ 7M':'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น'):c.status==='clarifying'?(mode==='internal'?'รอผู้ชี้แจง — ปิดได้เมื่อคู่ผ่านกฎ 7M':'รอผู้ชี้แจง — เตรียมคู่เท่านั้น'):'เปิด'}</option>`).join('');
       if(candidates.length===1){selected=candidates[0];$('#pairCandidate').value=selected.id;renderComparison();}
       updateSubmitLabel();
     };
@@ -317,6 +318,7 @@ const ManualPairing=(()=>{
       const diff=Math.abs(Math.round(Number(bo.system_amount)*100)-Math.round(Number(stm.bank_amount)*100))/100;
       $('#pairCompare').innerHTML=`${sourceCard(selected,'เคสคู่ที่เลือก',sourceRaw(selected))}<div class="pair-comparison"><div><span>ยอด BO</span><strong>${money(bo.system_amount)} <small>บาท</small></strong></div><div><span>ยอด STM/PM</span><strong>${money(stm.bank_amount)} <small>บาท</small></strong></div></div><p class="pair-difference ${diff>5?'over':'within'}">ผลต่าง <b>${money(diff)} บาท</b> · ${diff>5?'เกิน 5 บาท จับคู่ไม่ได้':'อยู่ในเกณฑ์ยอด — ต้องตรวจบริบทและรออนุมัติ'}</p>`;
       if(preparationOnly())$('#pairCompare').innerHTML+='<p class="pair-field-hint" role="status">เตรียมคู่โดยคงสถานะเดิมเท่านั้น — ยังไม่ส่งคำขอ ไม่จับคู่ ไม่เปลี่ยนสถานะ และเก็บคำชี้แจงกับไฟล์เดิมไว้</p>';
+      else if(mode==='internal'&&Object.values(sides()).some(row=>['clarifying','answered'].includes(row?.status)))$('#pairCompare').innerHTML+='<p class="pair-field-hint" role="status">คู่ภายใน 7M ที่ยอด วัน เวลา และต้นทางผ่านกฎสามารถปิดได้ โดยเก็บคำชี้แจง ไฟล์ และประวัติเดิมไว้ใน Audit</p>';
       if(amountDifference)$('#pairCompare .pair-card').outerHTML=sourceCard({...current,ex_type:'missing_bo'},'STM/PM ในเคสเดียวกัน',current.stm_raw);
     };
     $('#pairCandidate').onchange=()=>{selected=candidates.find(c=>c.id===$('#pairCandidate').value)||null;$('#pairChecked').checked=false;renderComparison();};
