@@ -83,7 +83,7 @@ const ManualPairing=(()=>{
     if(amountDifference&&current.ex_type!=='amount_diff')return toast('ประเภทเคสเปลี่ยน กรุณารีเฟรช','warn');
     const companies=companyMaster().map(c=>typeof c==='string'?c:c.code).filter(c=>c&&canAccessCompany(c)&&(mode==='cross'?c!==e.company:c===e.company));
     if(!companies.length)return toast('ไม่มีสิทธิ์บริษัทคู่ที่เลือก','warn');
-    const requestId=crypto.randomUUID();let candidates=[],selected=amountDifference?current:null,evidenceId=null,sent=false,preparationSession=false;
+    const requestId=crypto.randomUUID();let candidatePool=[],candidates=[],selected=amountDifference?current:null,evidenceId=null,sent=false,preparationSession=false;
     const sides=()=>({bo:amountDifference||e.type==='missing_stm'?current:selected,stm:amountDifference||e.type==='missing_bo'?current:selected});
     const preparationOnly=()=>{
       // A preparation session never turns into a write session after refresh.
@@ -113,7 +113,7 @@ const ManualPairing=(()=>{
     };
     const updateSubmitLabel=()=>{
       const preparation=preparationOnly(),direct=canDirectClose(),problems=readinessProblems();
-      $('#pairSubmit').textContent=preparation?'เตรียมคู่เท่านั้น — คงสถานะเดิม':direct?'ปิดเคส':'ส่งให้หัวหน้าทีมอนุมัติ';
+      $('#pairSubmit').textContent=preparation?'เตรียมคู่เท่านั้น — คงสถานะเดิม':direct?(mode==='internal'?'ปิดทั้งสองเคส':'ปิดเคส'):'ส่งให้หัวหน้าทีมอนุมัติ';
       $('#pairSubmit').disabled=preparation||blocked||saving||checking||problems.length>0;
       const readiness=typeof document!=='undefined'?document.getElementById('pairReadiness'):$('#pairReadiness');
       if(readiness)readiness.textContent=preparation?'เคสอยู่ระหว่างชี้แจง จึงเตรียมคู่ได้อย่างเดียว':problems.length?'ยังทำรายการไม่ได้: '+problems.join(' · '):direct?'พร้อมปิดเคส — ระบบจะตรวจสถานะจริงอีกครั้งก่อนบันทึก':'พร้อมส่งให้หัวหน้าทีมอนุมัติ';
@@ -131,7 +131,7 @@ const ManualPairing=(()=>{
     ];
     const modalTitle=mode==='internal'?'จับคู่ข้ามบัญชีภายในบริษัท':mode==='same'?'จับคู่เอง':'จับคู่ข้ามบริษัท';
     const policyText=mode==='internal'?'งานเคสเท่านั้น — ไม่สั่งรันและไม่แก้ผลกระทบยอด · เฉพาะ 7M คนละบัญชี ฝาก/ถอนสวนทาง ยอดตรง วันเดียวกัน เวลาไม่เกิน 5 นาที':'จับคู่ BO ↔ STM/PM ทีละคู่ · ผลต่างไม่เกิน <b>5 บาท</b>';
-    openModal(modalTitle,`<div class="manual-pair-form"><div class="pair-policy">${policyText}<span>เลือกเคส BO และ STM/PM ที่สัมพันธ์กันจริง · ระบบตรวจต้นทางซ้ำและบันทึก Audit · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label><button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label><p id="pairReadiness" class="pair-field-hint" role="status">ยังทำรายการไม่ได้: เลือกเคสคู่ · เลือกเหตุผลหลัก · ติ๊กยืนยันว่าตรวจรายการแล้ว</p></section></div>`, '<button class="ghost-button" id="pairExisting" hidden>เปิดคำขอเดิม</button><button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit" disabled>ส่งให้หัวหน้าทีมอนุมัติ</button>');
+    openModal(modalTitle,`<div class="manual-pair-form"><div class="pair-policy">${policyText}<span>เลือกเคส BO และ STM/PM ที่สัมพันธ์กันจริง · ระบบตรวจต้นทางซ้ำและบันทึก Audit · ไม่บันทึกเป็นความเสียหาย</span></div><section class="pair-step"><h3><span>1</span> ตรวจรายการต้นทาง</h3>${sourceCard(current,caseLabel(e),sourceRaw(current))}</section><section class="pair-step"><h3><span>2</span> เลือกรายการที่จะจับคู่</h3><div class="pair-search-grid"><label>บริษัทคู่<select id="pairCompany">${companies.map(c=>`<option>${h(c)}</option>`).join('')}</select></label><label>วันที่เคสคู่<input id="pairDate" type="date" value="${h(e.date)}"></label>${mode==='internal'?'<label>บัญชี BO<select id="pairBoAccount" disabled><option value="">ค้นหาก่อน แล้วเลือกบัญชี BO</option></select></label>':''}<button class="ghost-button" id="pairSearch">ค้นหาเคสคู่</button></div><p id="pairSearchStatus" class="pair-search-status" role="status">เลือกวันที่ แล้วกดค้นหาเคสคู่</p><label>เคสคู่<select id="pairCandidate"><option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option></select></label><div id="pairCompare"></div></section><section class="pair-step"><h3><span>3</span> ระบุเหตุผลและยืนยัน</h3><label>เหตุผลหลัก<select id="pairReasonType"><option value="">เลือกเหตุผลที่ตรงกับเคส</option>${reasonOptions.map(([key,label])=>`<option value="${h(key)}">${h(label)}</option>`).join('')}</select></label><p class="pair-field-hint">เลือกเหตุผลหลักได้โดยไม่ต้องพิมพ์ซ้ำ แต่ยังต้องตรวจรายการและหลักฐาน</p><label><span id="pairReasonLabel">รายละเอียดเพิ่มเติม (ถ้ามี)</span><textarea id="pairReason" maxlength="2000" rows="3" placeholder="เพิ่มเลขอ้างอิงหรือบริบทที่ช่วยให้หัวหน้าทีมตรวจได้"></textarea></label><p id="pairReasonHelp" class="pair-field-hint">หากเลือก “อื่น ๆ” ต้องอธิบายอย่างน้อย 10 ตัวอักษร · เหตุผลรวมไม่เกิน 2,000 ตัวอักษร</p><label>แนบหลักฐาน ${mode==='cross'?'(บังคับสำหรับข้ามบริษัท)':'(ถ้ามี)'}<input id="pairFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv,.txt"></label><p class="pair-field-hint">หลักฐานจะเก็บในคลังและผูกกับเคสต้นทาง</p><label class="pair-confirm"><input type="checkbox" id="pairChecked"><span>ตรวจบัญชี อ้างอิง วันเวลา และเหตุผลแล้ว<br><small>ยืนยันว่าเป็นรายการที่สัมพันธ์กันจริง</small></span></label><p id="pairReadiness" class="pair-field-hint" role="status">ยังทำรายการไม่ได้: เลือกเคสคู่ · เลือกเหตุผลหลัก · ติ๊กยืนยันว่าตรวจรายการแล้ว</p></section></div>`, '<button class="ghost-button" id="pairExisting" hidden>เปิดคำขอเดิม</button><button class="ghost-button" id="pairCancel">ยกเลิก</button><button class="primary-button" id="pairSubmit" disabled>ส่งให้หัวหน้าทีมอนุมัติ</button>');
     $('#pairSearchStatus').textContent='ค้นวันก่อน วันเดียวกัน และวันถัดไปจากวันอ้างอิง';
     $('#pairCancel').onclick=closeModal;
     const existingButton=$('#pairExisting');
@@ -252,8 +252,23 @@ const ManualPairing=(()=>{
     $('#pairReason').oninput=updateSubmitLabel;
     $('#pairChecked').onchange=updateSubmitLabel;
     let searchVersion=0;
-    const resetChoice=()=>{searchVersion++;candidates=[];selected=null;$('#pairCompare').textContent='';$('#pairChecked').checked=false;$('#pairCandidate').innerHTML='<option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option>';$('#pairSearchStatus').textContent='เลือกวันที่ แล้วกดค้นหาเคสคู่';updateSubmitLabel();};
+    const resetChoice=()=>{searchVersion++;candidatePool=[];candidates=[];selected=null;$('#pairCompare').textContent='';$('#pairChecked').checked=false;$('#pairCandidate').innerHTML='<option value="">ยังไม่ได้เลือก — ค้นหาก่อน</option>';if(mode==='internal'){$('#pairBoAccount').innerHTML='<option value="">ค้นหาก่อน แล้วเลือกบัญชี BO</option>';$('#pairBoAccount').disabled=true;}$('#pairSearchStatus').textContent='เลือกวันที่ แล้วกดค้นหาเคสคู่';updateSubmitLabel();};
     $('#pairCompany').onchange=resetChoice;$('#pairDate').onchange=resetChoice;
+    const internalSides=candidate=>e.type==='missing_stm'?{bo:current,stm:candidate}:{bo:candidate,stm:current};
+    const renderCandidateChoices=()=>{
+      if(mode==='internal'){
+        const account=$('#pairBoAccount').value;
+        candidates=account?candidatePool.filter(candidate=>String(internalSides(candidate).bo.account||'')===account):[];
+      }else candidates=candidatePool.slice();
+      selected=null;$('#pairChecked').checked=false;$('#pairCompare').textContent='';
+      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น':c.status==='clarifying'?'รอผู้ชี้แจง — เตรียมคู่เท่านั้น':'เปิด'}</option>`).join('');
+      if(candidates.length===1){selected=candidates[0];$('#pairCandidate').value=selected.id;renderComparison();}
+      updateSubmitLabel();
+    };
+    $('#pairBoAccount')?.addEventListener?.('change',()=>{
+      renderCandidateChoices();
+      $('#pairSearchStatus').textContent='บัญชี BO '+$('#pairBoAccount').value+' · พบ '+candidates.length+' เคสที่ผ่านเงื่อนไขและปิดทั้งสองเคสได้'+(candidates.length===1?' · เลือกให้อัตโนมัติ':'');
+    });
     $('#pairSearch').onclick=async event=>{
       resetChoice();const version=searchVersion;
       event.target.disabled=true;$('#pairSearchStatus').textContent='กำลังค้นหาเคสคู่…';
@@ -261,11 +276,20 @@ const ManualPairing=(()=>{
         const wantedDirection=mode==='internal'?(e.direction==='ฝาก'?'ถอน':'ฝาก'):e.direction;
         const found=await Sb.manualPairCandidates($('#pairCompany').value,$('#pairDate').value,e.type==='missing_stm'?'missing_bo':'missing_stm',wantedDirection);
         if(version!==searchVersion)return;
-        candidates=found;
-        candidates=candidates.filter(c=>c.id!==e.dbId&&(mode==='internal'?c.direction!==e.direction&&c.account!==current.account&&c.business_date===current.business_date:c.direction===e.direction)&&(mode!=='cross'||submissionEligible({type:c.ex_type,status:c.status})));
-        $('#pairSearchStatus').textContent='พบ '+candidates.length+' เคสจากผลหลักปัจจุบัน · ค้นวันก่อน–วันเดียวกัน–วันถัดไป · แสดงครบทุกหน้า'+(candidates.length===1?' · เลือกคู่เดียวให้อัตโนมัติ':'');
-        $('#pairCandidate').innerHTML='<option value="">เลือกเคส</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น':c.status==='clarifying'?'รอผู้ชี้แจง — เตรียมคู่เท่านั้น':'เปิด'}</option>`).join('');
-        if(candidates.length===1){selected=candidates[0];$('#pairCandidate').value=selected.id;renderComparison();}
+        candidatePool=found.filter(c=>c.id!==e.dbId&&(mode==='internal'?c.direction!==e.direction&&c.account!==current.account&&c.business_date===current.business_date:c.direction===e.direction)&&(mode!=='cross'||submissionEligible({type:c.ex_type,status:c.status})));
+        if(mode==='internal'){
+          candidatePool=candidatePool.filter(candidate=>internalTransferCandidate({mode,snapshot:internalSides(candidate)}));
+          const accounts=[...new Set(candidatePool.map(candidate=>String(internalSides(candidate).bo.account||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
+          $('#pairBoAccount').innerHTML='<option value="">เลือกบัญชีที่ BO แสดง</option>'+accounts.map(account=>`<option value="${h(account)}">${h(account)}</option>`).join('');
+          $('#pairBoAccount').disabled=!accounts.length;
+          if(accounts.length===1)$('#pairBoAccount').value=accounts[0];
+          renderCandidateChoices();
+          $('#pairSearchStatus').textContent=accounts.length?'พบบัญชี BO '+accounts.length+' บัญชี · เลือกบัญชีเพื่อแสดงเฉพาะเคสที่ผ่านเงื่อนไขและปิดทั้งสองเคสได้':'ไม่พบคู่ที่ยอด เวลา ทิศทาง และบัญชีผ่านเงื่อนไขปิดทั้งสองเคส';
+          if(accounts.length===1)$('#pairSearchStatus').textContent='บัญชี BO '+accounts[0]+' · พบ '+candidates.length+' เคสที่ผ่านเงื่อนไขและปิดทั้งสองเคสได้'+(candidates.length===1?' · เลือกให้อัตโนมัติ':'');
+        }else{
+          renderCandidateChoices();
+          $('#pairSearchStatus').textContent='พบ '+candidates.length+' เคสจากผลหลักปัจจุบัน · ค้นวันก่อน–วันเดียวกัน–วันถัดไป · แสดงครบทุกหน้า'+(candidates.length===1?' · เลือกคู่เดียวให้อัตโนมัติ':'');
+        }
       }catch(err){if(version===searchVersion){candidates=[];$('#pairCandidate').innerHTML='<option value="">โหลดไม่สำเร็จ</option>';$('#pairSearchStatus').textContent=err.message;}}
       finally{event.target.disabled=false;}
     };
@@ -314,7 +338,7 @@ const ManualPairing=(()=>{
         if(!pair?.id)throw new Error('ยังไม่พบผลยืนยันคำขอ ไม่ส่งคำขอใหม่');
         if(direct&&pair.status!=='approved')throw new Error('ยังยืนยันการปิดเคสไม่ได้');
         sent=true;closeModal();await refresh([bo.id,stm.id]);
-        if(direct)toast('ปิดเคสและบันทึกผลอนุมัติเรียบร้อยแล้ว','success');
+        if(direct)toast(mode==='internal'?'ปิดทั้งสองเคสและบันทึก Audit เรียบร้อยแล้ว':'ปิดเคสและบันทึกผลอนุมัติเรียบร้อยแล้ว','success');
         else {await openException(e.id);showCaseSubmissionReceipt('request',e.id);}
       }catch(err){toast((sent?(direct?'บันทึกปิดเคสแล้ว แต่โหลดหน้าจอไม่สำเร็จ: ':'บันทึกจับคู่แล้ว แต่โหลดหน้าจอไม่สำเร็จ: '):(direct?'ยังยืนยันการปิดเคสไม่ได้ กรุณาตรวจสถานะหรือลองในหน้าต่างเดิม: ':'ยังยืนยันคำขอไม่ได้ กรุณาลองในหน้าต่างเดิมเพื่อไม่สร้างคำขอซ้ำ: '))+err.message,'warn');}
       finally{saving=false;event.target.disabled=sent||blocked||preparationOnly();nextCheck=0;}
