@@ -25,7 +25,8 @@ assert.match(primary, /sourceCheckError:error\.message/);
 assert.match(primary, /ห้ามยืนยันหรือปิดงานจากหน้านี้จนตรวจไฟล์สำเร็จ/);
 assert.match(overview, /complete:!run\.primaryResult\.sourceCheckError/,
   'an unverified source snapshot must remain visibly incomplete');
-assert.match(overview, /if\(run\.primaryResult\.sourceCheckError\)/);
+assert.match(overview, /Number\(run\.matched\|\|0\)>1000/,
+  'large accepted results must not scan all historical company-day cases');
 assert.match(overview, /exceptions\?id=in\.\(/,
   'large accepted results must load only their current case-set IDs');
 assert.match(overview, /caseHistoryDeferred=true/);
