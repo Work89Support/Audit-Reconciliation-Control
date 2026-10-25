@@ -836,18 +836,20 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     } catch(error) { confirmationError=error.message; }
     // Read prior-run waiting cases for this company-day, including approved
     // closures. They annotate exact BO source rows, never add transactions.
-    const waitingHistory=[];
-    for(let offset=0;;offset+=500){
-      const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&customer_details->>waiting_source=eq.true&superseded_by_exception_id=is.null&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`);
-      waitingHistory.push(...page);if(page.length<500)break;
-    }
+    const waitingHistory=[];let waitingHistoryError='';
+    try{
+      for(let offset=0;;offset+=500){
+        const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&customer_details->>waiting_source=eq.true&superseded_by_exception_id=is.null&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true,recoverRead:true});
+        waitingHistory.push(...page);if(page.length<500)break;
+      }
+    }catch(error){waitingHistoryError=error.message;}
     const cases = [];
     for (let offset = 0; offset < 20000; offset += 500) {
       const page = await json(`/rest/v1/exceptions?run_id=eq.${encodeURIComponent(run.id)}&superseded_by_exception_id=is.null&select=*&order=id.asc&limit=500&offset=${offset}`);
       cases.push(...page);
-      if (page.length < 500) return { run, cases, waitingHistory, complete: true, confirmations, confirmationError,confirmedRechecks,recheckReportError };
+      if (page.length < 500) return { run, cases, waitingHistory, waitingHistoryError, complete: true, confirmations, confirmationError,confirmedRechecks,recheckReportError };
     }
-    return { run, cases, waitingHistory, complete: false, confirmations, confirmationError,confirmedRechecks,recheckReportError };
+    return { run, cases, waitingHistory, waitingHistoryError, complete: false, confirmations, confirmationError,confirmedRechecks,recheckReportError };
   }
 
   /* ไฟล์ประกอบของเคส = ไฟล์ทั้งหมดที่ใช้สร้าง recon run + ไฟล์ชี้แจงที่จับคู่เคส */
