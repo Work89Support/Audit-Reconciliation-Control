@@ -82,6 +82,9 @@
     if(/(?:^|[-_])CP$/.test(pmRef))return 'CP';
     return 'OTHER';
   }
+  function providerDisplayName(provider){
+    return {AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider]||'';
+  }
   function isSevenM(value){return ['7M','UFABET7M'].includes(String(value||'').toUpperCase());}
   function isSys123(value){return ['AT4','FR8','SK8'].includes(String(value||'').toUpperCase());}
   function sheetOf(row){const source=sourceSheetOf(row);if(source&&['deposit','withdraw'].includes(directionOf(row?.direction)))return source;let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
@@ -380,7 +383,7 @@
     if(!isSys123(row.company))return null;
     const original=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
     const provider=providerOf(original)!=='OTHER'?providerOf(original):providerOfRow(row);
-    const providerName={AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider];
+    const providerName=providerDisplayName(provider);
     const number=original.match(/^(\d{6,})\s*(?::.*)?$/)?.[1]||String(row.account||'').match(/^\d{6,}$/)?.[0];
     if(!providerName&&!number&&!hasSide(row,'bo'))return null;
     // FR8 retains its agreed Manual account label. Normal AT4/SK8 banks
@@ -423,6 +426,13 @@
       if(systemGroup){if(!groups.has(systemGroup.key))groups.set(systemGroup.key,systemGroup);groups.get(systemGroup.key).rows.push(row);continue;}
       const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
       const provider=providerOfRow(row),source=sourceSheetOf(row);
+      if(isSevenM(row.company)&&!source&&provider!=='OTHER'){
+        const base=providerDisplayName(provider),direction=accountDisplayDirection(row);
+        const key=`bo-account:provider:${base}:${direction}`;
+        if(!groups.has(key))groups.set(key,{key,account:base,label:`${base} · ${direction==='withdraw'?'ถอน':'ฝาก'}`,direction,rows:[]});
+        groups.get(key).rows.push(row);
+        continue;
+      }
       const bank=!source&&provider==='OTHER'&&(isStatement(row)||/\b(?:SCB|BBL|KBANK|KTB|TTB|BAY|TMN)\b/i.test(account));
       const tmn=/\bTMN\b/i.test(account)||String(registryCatalog?.byAccount?.(String(row.account).replace(/\D/g,''))?.bank||row.bank||row.pm?.bank||'').toUpperCase()==='TMN';
       const split=!combinedBorrow(row)&&(!bank||isSys123(row.company)||(isSevenM(row.company)&&tmn));
