@@ -895,6 +895,14 @@ await (async () => {
   eq('123 COREPAY: normalized BO without PM flag still closes on member + account + amount',r.matched,1);
   eq('123 COREPAY: normalized BO uses strict three-point method instead of time fallback',r.matchEvidence[0]?.method,'sys123-member-account-amount');
 
+  const mypayStm=rec({...base,company:'FR8',subco:'FR8',account:'MYPAY',direction:'deposit',amount:1250,sec:90,memberCode:'fr8-new-user',custAccount:'987-654-3210'});
+  const mypayBo=rec({...base,company:'FR8',subco:'FR8',account:'MYPAY',isPmChannel:false,direction:'deposit',amount:1250,sec:79000,memberCode:'fr8-new-user',custAccount:'9876543210'});
+  r=await run([mypayStm],[mypayBo]);
+  eq('FR8 MYPAY new account: member + customer account + amount closes despite time difference',r.matched,1);
+  eq('FR8 MYPAY new account: evidence records strict three-point method',r.matchEvidence[0]?.method,'sys123-member-account-amount');
+  r=await run([mypayStm],[{...mypayBo,custAccount:'1111111111'}]);
+  eq('FR8 MYPAY new account: conflicting customer account stays open',r.matched,0);
+
   r=await run([stm],[{...bo,custAccount:'9999999999'}]);
   eq('123 AUTOPEER: conflicting customer account stays open',r.matched,0);
   r=await run([stm],[{...bo,memberCode:'different-member'}]);
