@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const schema=require('../mc8-sheet-schema.js');
 delete globalThis.MC8SheetSchema;
-const {rowsOf,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,tableView,providerFooter,pmAmountHeader,buildAuditExportSheets,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
+const {rowsOf,accountReviewGroups,filter,filterAndSortEntries,columnMatch,mount,providerOf,sheetOf,summarize,summaries,tableView,providerFooter,pmAmountHeader,buildAuditExportSheets,COMPANIES,SHEETS}=require('../mc8-live-sheets.js');
 assert.equal(providerOf('พร้อมเพย์-ANT-AU(anypay)(QR)'), 'ANT');
 assert.equal(providerOf('anypay'), 'ANT');
 assert.equal(providerOf('CHANT'), 'OTHER');
@@ -25,6 +25,14 @@ assert.equal(filter(rows,'COREPAY','deposit','review').length,0);
 assert.equal(filter(rows,'COREPAY','deposit','pending_next_day').length,1);
 assert.equal(filter(rows,'AUTOPEER','deposit','all').length,0);
 assert.equal(providerOf('ATP / Autopeer'),'AT');assert.equal(providerOf('CPXM'),'CP');assert.equal(providerOf('M24'),'M');assert.equal(providerOf('LOCALPAY'),'LP');
+const sevenMAutopeerGroups=accountReviewGroups([
+  {key:'bo-atp-d',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'ATP PAYMENT ฝาก 00000ATP',direction:'deposit',boAmount:100,boRaw:'ATP PAYMENT ฝาก 00000ATP | 100',bo:{}},
+  {key:'bo-autopeer-d',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'deposit',boAmount:200,boRaw:'AUTOPEER | 200',bo:{}},
+  {key:'bo-atp-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'ATP PAYMENT ถอน 00000ATP',direction:'withdraw',boAmount:300,boRaw:'ATP PAYMENT ถอน 00000ATP | 300',bo:{}},
+  {key:'bo-autopeer-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'withdraw',boAmount:400,boRaw:'AUTOPEER | 400',bo:{}},
+]);
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.label).sort(),['AUTOPEER · ถอน','AUTOPEER · ฝาก'],'7M ATP and AUTOPEER BO labels must share canonical provider headings');
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.rows.length).sort(),[2,2],'canonical 7M headings must retain every BO row without changing totals');
 assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
 const totals=summarize(rows);assert.equal(totals.pmCount,1);assert.equal(totals.pmCents,35500);assert.equal(totals.boCount,2);assert.equal(totals.boCents,50500);assert.equal(totals.crossDayCount,1);assert.equal(totals.crossDayBoCents,15000);assert.equal(totals.diffBeforeCents,0);assert.equal(totals.diffAfterCents,-15000);
 assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO transaction must be deduplicated');
