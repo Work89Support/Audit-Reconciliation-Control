@@ -146,7 +146,8 @@ const compactBoKeepRows = [
 ];
 const compactBoKeep = Formats.parse("UFABET7M_BO_DW_2026-08-27.xlsx", compactBoKeepRows, "2026-08-27");
 eq("BO แบบย่อ: ไม่นับแถวคั่น KEEP - เป็นธุรกรรม", compactBoKeep.records.length, 1);
-eq("BO แบบย่อ: บันทึกจำนวนแถว KEEP - ที่ตัดออก", compactBoKeep.dropped["แถวคั่นระบบ KEEP - (ไม่นำมากระทบยอด)"], 2);
+eq("BO แบบย่อ: เก็บ KEEP - เป็นข้อมูลประกอบ", compactBoKeep.aux.length, 2);
+eq("BO แบบย่อ: KEEP - ไม่กระทบยอดและไม่สร้างเคส", compactBoKeep.aux.every(row => row.kind === "xb_information" && row.infoCategory === "เก็บ"), true);
 
 const transactionBoRows = [
   ["รหัส", "เวลา", "ประเภท", "ประเภทดำเนินการ", "ยูสเซอร์", "ธนาคาร", "จำนวน", "จำนวนที่ได้รับ", "ค่าธรรมเนียม", "เวลาทำรายการ", "หมายเหตุ", "ผู้ดำเนินการ"],

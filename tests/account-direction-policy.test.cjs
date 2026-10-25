@@ -49,7 +49,7 @@ for(const account of ['0812792075','0639274201']){
   assert.deepEqual(api.summarize(groups.flatMap(g=>g.rows)),totals);
   assert.equal(JSON.stringify(rows),before,'no amounts, matches or cases mutated');
   const sheets=api.buildAuditExportSheets(rows,'UFABET7M','2026-10-09',true,schema).slice(2);
-  assert.equal(sheets.length,2);assert.ok(sheets.some(s=>s.name.endsWith('ฝาก'))&&sheets.some(s=>s.name.endsWith('ถอน')));
+  assert.equal(sheets.length,2);assert.ok(sheets.some(s=>s.name.includes('ฝาก'))&&sheets.some(s=>s.name.includes('ถอน')));
   const orphan={...rows[2],boAccountLabel:''};
   const orphanGroup=api.accountReviewGroups([orphan])[0];
   assert.match(orphanGroup.label,/TMN/);assert.ok(!orphanGroup.label.includes('ไม่มี BO'),'STM-only TMN uses named account without hiding its waiting record');
@@ -66,11 +66,11 @@ console.log('7M TMN direction labels and numeric/STM-only aliases passed with un
   assert.equal(groups.length,2);
   assert.equal(withdraw.rows.length,3,'keep both equal-amount source rows');
   assert.equal(api.summarize(withdraw.rows).boCents,999900);
-  assert.match(withdraw.label,/สรวิศา.*ถอน/);
+  assert.equal(withdraw.label,'ถอน TMN สรวิศา 0639274201');
   assert.deepEqual(api.filter(rows,'all','all','all',withdraw.key),withdraw.rows);
   assert.deepEqual(api.filter(rows,'all','withdraw','all',withdraw.key),withdraw.rows,'withdrawal filter includes verified transfer withdrawals');
   const exportSheets=api.buildAuditExportSheets(rows,'UFABET7M','2026-10-09',true,schema);
-  const output=exportSheets.find(s=>s.name.endsWith('ถอน'));
+  const output=exportSheets.find(s=>s.name.includes('ถอน'));
   assert.equal(output.rows.length,3);
   assert.ok(output.rows.every(r=>r[output.headers.indexOf('ประเภท')]==='ถอน'));
   assert.equal(output.footerRows[0][output.headers.indexOf('BO ถอน')],9999);

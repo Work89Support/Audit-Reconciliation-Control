@@ -512,13 +512,6 @@ const Formats = (() => {
       if (!amount) return drop("ยอดเงินเป็นศูนย์"), null;
       const type = val(f, r, "ประเภท");
       const companyAccount = val(f, r, "บัญชีบริษัทแบบย่อ");
-      // The 7M BO export can contain bookkeeping separator rows whose company
-      // account is literally `KEEP -`.  They carry an amount but are not a
-      // customer transaction or a provider/bank account.  Treating them as an
-      // STM identity creates five false BO-only rows in the 2026-09-20 audit.
-      if (/^KEEP\s*[-–—]?$/i.test(companyAccount)) {
-        return drop("แถวคั่นระบบ KEEP - (ไม่นำมากระทบยอด)"), null;
-      }
       const customerAccount = val(f, r, "บัญชีลูกค้าแบบย่อ");
       const note = val(f, r, "โน้ต");
       const pm = canonicalPm(companyAccount);
@@ -526,6 +519,7 @@ const Formats = (() => {
         ? "withdraw"
         : "deposit";
       const ref = (note.match(/\b(?:P2C|DEP|WD|WIT)[-A-Z0-9]+\b/i) || [])[0] || note;
+      const keepInformation = normalizeCompany(company) === "UFABET7M" && /^KEEP\s*[-–—]?$/i.test(companyAccount);
       return {
         rowNo: i + 1,
         source: "bo",
@@ -536,6 +530,13 @@ const Formats = (() => {
         boSec: t.sec,
         amount: Math.round(amount * 100) / 100,
         direction,
+        ...(keepInformation ? {
+          kind: "xb_information",
+          infoCategory: "เก็บ",
+          originalType: type.trim(),
+          operation: type.trim(),
+          exclusionReason: "ข้อมูลประกอบ 7M · ไม่กระทบยอดและไม่สร้างเคส",
+        } : {}),
         account: pm || companyAccount || "UNKNOWN",
         boIdentityRaw: companyAccount,
         channel: pm || companyAccount,

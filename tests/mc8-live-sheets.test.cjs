@@ -31,8 +31,8 @@ const sevenMAutopeerGroups=accountReviewGroups([
   {key:'bo-atp-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'ATP PAYMENT ถอน 00000ATP',direction:'withdraw',boAmount:300,boRaw:'ATP PAYMENT ถอน 00000ATP | 300',bo:{}},
   {key:'bo-autopeer-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'withdraw',boAmount:400,boRaw:'AUTOPEER | 400',bo:{}},
 ]);
-assert.deepEqual(sevenMAutopeerGroups.map(group=>group.label).sort(),['AUTOPEER · ถอน','AUTOPEER · ฝาก'],'7M ATP and AUTOPEER BO labels must share canonical provider headings');
-assert.deepEqual(sevenMAutopeerGroups.map(group=>group.rows.length).sort(),[2,2],'canonical 7M headings must retain every BO row without changing totals');
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.label).sort(),['ATP PAYMENT ถอน 00000ATP','ATP PAYMENT ฝาก 00000ATP','AUTOPEER · ถอน','AUTOPEER · ฝาก'],'7M account headings must preserve exact directional BO labels and clarify legacy labels without a direction');
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.rows.length).sort(),[1,1,1,1],'7M deposit and withdrawal groups must remain separate without changing totals');
 assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
 const totals=summarize(rows);assert.equal(totals.pmCount,1);assert.equal(totals.pmCents,35500);assert.equal(totals.boCount,2);assert.equal(totals.boCents,50500);assert.equal(totals.crossDayCount,1);assert.equal(totals.crossDayBoCents,15000);assert.equal(totals.diffBeforeCents,0);assert.equal(totals.diffAfterCents,-15000);
 assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO transaction must be deduplicated');

@@ -12,6 +12,7 @@
     ||company==='MR9'&&/บัญชี\s*PM\s*บ้านอื่น/i.test(String(value||'')));
   const combinedBorrow=row=>['3XB','MR9'].includes(row.company)&&isBorrowAccount(row.boAccountLabel||row.account,row.company);
   const XB_COMPANIES=Object.freeze(['3XB','MC8','MR9','PS8','UR9']);
+  const INFORMATION_COMPANIES=Object.freeze([...XB_COMPANIES,'UFABET7M']);
   const SEVEN_M_BORROW_SHEET='บัญชีPM บ้านอื่น(ยืม)';
   const MANUAL_ACCOUNTS=Object.freeze({FR8:['999999999999'],AT4:['0000000009'],SK8:['1111111111','2222222222']});
   const MANUAL_SHEETS=Object.freeze(Object.values(MANUAL_ACCOUNTS).flat().map(account=>`${account} : Manual`));
@@ -118,7 +119,7 @@
         const result=await readRows(file,data.run.business_date);
         if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
         for(const r of result){
-          if(XB_COMPANIES.includes(company)&&r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind==='xb_information'){
+          if(INFORMATION_COMPANIES.includes(company)&&r.company===company&&(r.boDate||r.date)===data.run.business_date&&r.kind==='xb_information'){
             data.xbInformation.push({...r,sourceFile:file.file_name,sourceFileId:file.id});
             continue;
           }
@@ -405,7 +406,8 @@
     const original=String(named?.boAccountLabel||(/\bTMN\b/i.test(label)?label:`TMN ${shortHolder(meta?.name)} ${identity}`));
     const base=original.replace(/ฝาก|ถอน/g,'').replace(/[·]+/g,' ').replace(/\s+/g,' ').trim();
     const direction=accountDisplayDirection(row);
-    return {key:`bo-account:bank:${identity}:${direction}`,account:base,label:`${base} · ${direction==='withdraw'?'ถอน':'ฝาก'}`,direction,rows:[]};
+    const sourceLabel=[label,original].find(value=>new RegExp(direction==='withdraw'?'ถอน':'ฝาก').test(value));
+    return {key:`bo-account:bank:${identity}:${direction}`,account:base,label:sourceLabel||`${direction==='withdraw'?'ถอน':'ฝาก'} ${base}`,direction,rows:[]};
   }
   function bankDisplayLabel(row,label){
     // Display only. Bind a full account number to this company's unique bank
@@ -427,9 +429,10 @@
       const account=String(row.boAccountLabel||row.account||'ไม่ระบุบัญชี').trim();
       const provider=providerOfRow(row),source=sourceSheetOf(row);
       if(isSevenM(row.company)&&!source&&provider!=='OTHER'){
-        const base=providerDisplayName(provider),direction=accountDisplayDirection(row);
-        const key=`bo-account:provider:${base}:${direction}`;
-        if(!groups.has(key))groups.set(key,{key,account:base,label:`${base} · ${direction==='withdraw'?'ถอน':'ฝาก'}`,direction,rows:[]});
+        const direction=accountDisplayDirection(row);
+        const label=/ฝาก|ถอน/.test(account)?account:`${account} · ${direction==='withdraw'?'ถอน':'ฝาก'}`;
+        const key=`bo-account:${account}:${direction}`;
+        if(!groups.has(key))groups.set(key,{key,account,label,direction,rows:[]});
         groups.get(key).rows.push(row);
         continue;
       }
@@ -442,8 +445,16 @@
       const base=bank&&!split?account.replace(/ฝาก|ถอน/g,'').replace(/\s+/g,' ').trim():account;
       const displayBase=bankDisplayLabel(row,base);
       const label=split&&!new RegExp(direction==='deposit'?'ฝาก':'ถอน').test(displayBase)?`${displayBase} · ${thaiDirection({...row,direction})}`:displayBase;
-      if(!groups.has(key))groups.set(key,{key,account,label,direction,rows:[]});
+      if(!groups.has(key))groups.set(key,{key,account,label,direction,bank,rows:[]});
       groups.get(key).rows.push(row);
+    }
+    for(const group of groups.values()){
+      if(!group.bank||!group.rows.some(row=>isSevenM(row.company)))continue;
+      const directions=[...new Set(group.rows.map(row=>directionOf(row.direction)).filter(Boolean))];
+      if(directions.length!==1)continue;
+      const sourceLabel=group.rows.map(row=>String(row.boAccountLabel||'').trim())
+        .find(label=>new RegExp(directions[0]==='withdraw'?'ถอน':'ฝาก').test(label));
+      if(sourceLabel)group.label=sourceLabel;
     }
     return [...groups.values()].sort((a,b)=>a.account.localeCompare(b.account,'th'));
   }
@@ -792,8 +803,9 @@
   const XB_INFO_NAMES=['เก็บ','ฝาก AFF','โบนัส','ยกเลิก'];
   const XB_INFO_HEADERS=['รหัส','เวลา BO','ประเภท','ประเภทดำเนินการ','ยูสเซอร์','บัญชี BO','จำนวน','ผู้ดำเนินการ','หมายเหตุ','ไฟล์ BO ต้นทาง','แถวต้นทาง','สถานะข้อมูล'];
   function informationSheets(records,company){
-    if(!XB_COMPANIES.includes(company))return [];
-    return XB_INFO_NAMES.map(name=>({name,headers:[...XB_INFO_HEADERS],rows:(records||[]).filter(r=>r.infoCategory===name).map(r=>[r.ref||'',stamp({date:r.boDate||r.date,sec:r.boSec??r.sec}),r.originalType||'',r.operation||'',r.memberCode||'',r.boIdentityRaw||r.account||'',r.amount,r.performedBy||r.username||'',r.note||'',r.sourceFile||'',r.rowNo,'ข้อมูลประกอบ · ไม่กระทบยอด · ไม่เป็นเคส'])}));
+    if(!INFORMATION_COMPANIES.includes(company))return [];
+    const names=isSevenM(company)?XB_INFO_NAMES.filter(name=>(records||[]).some(r=>r.infoCategory===name)):XB_INFO_NAMES;
+    return names.map(name=>({name,headers:[...XB_INFO_HEADERS],rows:(records||[]).filter(r=>r.infoCategory===name).map(r=>[r.ref||'',stamp({date:r.boDate||r.date,sec:r.boSec??r.sec}),r.originalType||'',r.operation||'',r.memberCode||'',r.boIdentityRaw||r.account||'',r.amount,r.performedBy||r.username||'',r.note||'',r.sourceFile||'',r.rowNo,'ข้อมูลประกอบ · ไม่กระทบยอด · ไม่เป็นเคส'])}));
   }
   function buildAuditExportSheets(rows,company,date,complete=true,schema=root.MC8SheetSchema,coverage=null,information=null){
     if(!schema?.sheets?.length)throw new Error('ไม่พบโครงหัวตาราง Audit');
