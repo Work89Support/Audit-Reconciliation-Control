@@ -276,15 +276,16 @@ const ManualPairing=(()=>{
         const wantedDirection=mode==='internal'?(e.direction==='ฝาก'?'ถอน':'ฝาก'):e.direction;
         const found=await Sb.manualPairCandidates($('#pairCompany').value,$('#pairDate').value,e.type==='missing_stm'?'missing_bo':'missing_stm',wantedDirection);
         if(version!==searchVersion)return;
+        const internalCandidates=mode==='internal'?found.filter(c=>c.id!==e.dbId&&c.direction!==e.direction&&c.account!==current.account&&c.business_date===current.business_date):[];
         candidatePool=found.filter(c=>c.id!==e.dbId&&(mode==='internal'?c.direction!==e.direction&&c.account!==current.account&&c.business_date===current.business_date:c.direction===e.direction)&&(mode!=='cross'||submissionEligible({type:c.ex_type,status:c.status})));
         if(mode==='internal'){
+          const accounts=[...new Set(internalCandidates.map(candidate=>String(internalSides(candidate).bo.account||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
           candidatePool=candidatePool.filter(candidate=>internalTransferCandidate({mode,snapshot:internalSides(candidate)}));
-          const accounts=[...new Set(candidatePool.map(candidate=>String(internalSides(candidate).bo.account||'')).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
           $('#pairBoAccount').innerHTML='<option value="">เลือกบัญชีที่ BO แสดง</option>'+accounts.map(account=>`<option value="${h(account)}">${h(account)}</option>`).join('');
           $('#pairBoAccount').disabled=!accounts.length;
           if(accounts.length===1)$('#pairBoAccount').value=accounts[0];
           renderCandidateChoices();
-          $('#pairSearchStatus').textContent=accounts.length?'พบบัญชี BO '+accounts.length+' บัญชี · เลือกบัญชีเพื่อแสดงเฉพาะเคสที่ผ่านเงื่อนไขและปิดทั้งสองเคสได้':'ไม่พบคู่ที่ยอด เวลา ทิศทาง และบัญชีผ่านเงื่อนไขปิดทั้งสองเคส';
+          $('#pairSearchStatus').textContent=accounts.length?'พบบัญชี BO '+accounts.length+' บัญชี · เลือกบัญชีเพื่อค้นหาเคสที่ผ่านเงื่อนไขปิดทั้งสองเคส':'ไม่พบบัญชี BO ฝั่งตรงข้ามในผลหลักปัจจุบัน';
           if(accounts.length===1)$('#pairSearchStatus').textContent='บัญชี BO '+accounts[0]+' · พบ '+candidates.length+' เคสที่ผ่านเงื่อนไขและปิดทั้งสองเคสได้'+(candidates.length===1?' · เลือกให้อัตโนมัติ':'');
         }else{
           renderCandidateChoices();
