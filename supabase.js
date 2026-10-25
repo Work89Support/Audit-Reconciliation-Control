@@ -1371,6 +1371,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
       throw new Error('ยังยืนยันสถานะปิดคู่ในฐานข้อมูลไม่ได้ กรุณาตรวจสถานะก่อนลองซ้ำ');
     return saved;
   }
+  async function closeInternalTransferPair(body) {
+    const saved=await verifyDecision('/rest/v1/rpc/close_internal_transfer_pair',body,manualPair,'approve');
+    if(saved.mode!=='internal'||saved.bo_case_id!==body.p_bo||saved.stm_case_id!==body.p_stm)throw new Error('คู่ข้ามบัญชีที่บันทึกไม่ตรงกับรายการที่เลือก');
+    const cases=await Promise.all([body.p_bo,body.p_stm].map(exceptionDetail));
+    if(cases.some(e=>!e||e.status!=='closed'||e.manual_pair_id!==saved.id||e.approved_by!==authUser()?.id))
+      throw new Error('ยังยืนยันสถานะปิดคู่ข้ามบัญชีในฐานข้อมูลไม่ได้ กรุณาตรวจสถานะก่อนลองซ้ำ');
+    return saved;
+  }
   async function pendingCaseClosures() {
     const rows=[];
     for(let offset=0;;offset+=200){
@@ -1806,7 +1814,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
-    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeDocumentCase,closeDocumentCaseWithResponsibility,closeProcessErrorCase,
+    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeInternalTransferPair,closeDocumentCase,closeDocumentCaseWithResponsibility,closeProcessErrorCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,submitProcessErrorCase,decideCaseClosure,decideProcessErrorCase,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
