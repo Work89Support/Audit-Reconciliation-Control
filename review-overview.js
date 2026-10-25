@@ -279,9 +279,11 @@ const ReviewOverview = (() => {
           if(tr.children.length===1){tr.firstElementChild.colSpan=27-hidden.length;return;}
           [...tr.children].forEach((td,i)=>td.hidden=invisible.has(i));
         });
-        [[0,5],[5,14],[14,23],[23,27]].forEach(([start,end],g)=>{
+        [[0,9],[9,18],[18,27]].forEach(([start,end],g)=>{
           const count=Array.from({length:end-start},(_,i)=>i+start).filter(i=>!invisible.has(i)).length;
-          const th=table.querySelector('thead tr').children[g];th.hidden=count===0;th.colSpan=Math.max(1,count);
+          const th=table.querySelector('thead tr').children[g];
+          if(!th)return;
+          th.hidden=count===0;th.colSpan=Math.max(1,count);
         });
         chooser.querySelector('[data-column-count]').textContent=`(${27-hidden.length}/27)`;
         chooser.querySelectorAll('[data-column]').forEach(el=>el.checked=!invisible.has(Number(el.dataset.column)));
