@@ -16,18 +16,30 @@ for(const guard of [
   "manual_pair_source_ready(b.id,'stm')",
   'manual-seven-m-internal-transfer-same-account',
 ]) assert.ok(sql.includes(guard),`missing SQL guard: ${guard}`);
+const latestLineageSql=fs.readFileSync('supabase/20261025_manual_pair_latest_primary_lineage.sql','utf8');
+assert.match(latestLineageSql,/manual_pair_scoped_source_ready\(a\.id,''BO''\)/);
+assert.match(latestLineageSql,/manual_pair_scoped_source_ready\(b\.id,''STM''\)/);
+assert.match(latestLineageSql,/reviewed_pdf_recoveries/);
 assert.doesNotMatch(sql,/update public\.exceptions set (system_amount|bank_amount)=/i);
+const clarifyingSql=fs.readFileSync('supabase/20261025_7m_internal_transfer_clarifying_pair.sql','utf8');
+assert.match(clarifyingSql,/p_mode=''internal'' and a\.status in\(''open'',''clarifying'',''answered''\)/);
+assert.match(clarifyingSql,/p\.mode=''internal'' and old\.status in \(''open'',''clarifying'',''answered''\)/);
+assert.match(clarifyingSql,/manual_pair_internal_source_key\(a,''BO''\)/);
+assert.match(clarifyingSql,/source_rows',lower\(p_side\),'fileId'/);
+assert.match(clarifyingSql,/source_rows',lower\(p_side\),'row'/);
+assert.match(clarifyingSql,/pair_row\.mode='internal'/);
+assert.match(clarifyingSql,/No case rows are changed by this migration/);
 
 const code=fs.readFileSync('manual-pairing.js','utf8');
 const client=fs.readFileSync('supabase.js','utf8');
 assert.match(client,/rpc\/close_internal_transfer_pair/);
 assert.match(code,/sameAccountAdjustmentMatches/);
 
-async function runScenario({direction,stmRaw,boRaw,wrongRaw}){
+async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open'}){
   const nodes={},calls=[];
   const node=id=>nodes[id]??={value:'',checked:false,files:[],disabled:false,textContent:'',innerHTML:'',closest:s=>node(s),querySelector:s=>node(s),addEventListener:(event,handler)=>{if(event==='change')node(id).onchange=handler;}};
   const stm={id:`stm-${direction}`,code:`7M-STM-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:02:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_bo',bank_amount:7000,stm_raw:stmRaw,status:'open'};
-  const bo={id:`bo-${direction}`,code:`7M-BO-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:00:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_stm',system_amount:7000,bo_raw:boRaw,status:'open'};
+  const bo={id:`bo-${direction}`,code:`7M-BO-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:00:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_stm',system_amount:7000,bo_raw:boRaw,status:boStatus,response_text:'เก็บคำชี้แจงเดิม',clarification_file_id:'original-file'};
   const wrongBo={...bo,id:`wrong-bo-${direction}`,code:`7M-WRONG-${direction}`,bo_raw:wrongRaw};
   let html='',candidateArgs=null;
   const byId=new Map([[stm.id,stm],[bo.id,bo],[wrongBo.id,wrongBo]]);
@@ -45,12 +57,19 @@ async function runScenario({direction,stmRaw,boRaw,wrongRaw}){
   assert.match(node('pairCandidate').innerHTML,new RegExp(direction),'candidate must show direction');
   node('pairCandidate').value=bo.id;node('pairCandidate').onchange();
   assert.equal(node('pairSubmit').textContent,'ปิดทั้งสองเคส');
+  if(boStatus!=='open'){
+    assert.match(node('pairCandidate').innerHTML,/ปิดได้เมื่อคู่ผ่านกฎ 7M/);
+    assert.match(node('pairCompare').innerHTML,/เก็บคำชี้แจง ไฟล์ และประวัติเดิมไว้ใน Audit/);
+  }
   node('pairReasonType').value='internal_transfer';node('pairChecked').checked=true;
   await node('pairSubmit').onclick({target:node('pairSubmit')});
   assert.equal(calls.filter(call=>call[0]==='close').length,1);
+  assert.equal(bo.response_text,'เก็บคำชี้แจงเดิม');
+  assert.equal(bo.clarification_file_id,'original-file');
 }
 
 await runScenario({direction:'ถอน',stmRaw:'โอนเงินออก 7,000',boRaw:'ปรับยอดออก โอนเงินออก 7,000',wrongRaw:'ปรับยอดเข้า 7,000'});
 await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'ปรับยอดเข้า รับเงินเข้า 7,000',wrongRaw:'ปรับยอดออก 7,000'});
+await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'โยกเงินเข้า 7,000',wrongRaw:'โยกเงินออก 7,000',boStatus:'clarifying'});
 
 console.log('7M same-account pairing: STM out to BO adjust out and STM in to BO adjust in passed');

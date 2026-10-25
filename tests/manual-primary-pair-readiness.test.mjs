@@ -28,6 +28,10 @@ create function primary_case_is_current(p uuid) returns boolean language sql sta
 const migration=fs.readFileSync('supabase/20261020_manual_primary_pair_readiness.sql','utf8');
 assert.doesNotMatch(migration,/\b(update|insert into|delete from)\s+public\.(exceptions|recon_runs|daily_recon_jobs|manual_primary_results|manual_primary_case_items)\b/i);
 await db.exec(migration);await db.exec(migration);
+const latestLineageMigration=fs.readFileSync('supabase/20261025_manual_pair_latest_primary_lineage.sql','utf8');
+const latestLineageFunction=latestLineageMigration.slice(0,latestLineageMigration.indexOf('do $patch$'))+'commit;';
+await db.exec(`create table reviewed_pdf_recoveries(source_file_id uuid,company text,business_date date,status text,superseded_at timestamptz);`);
+await db.exec(latestLineageFunction);
 
 const primary=id(1),recheck=id(2),boFile=id(3),stmFile=id(4);
 const stamp=[
@@ -58,6 +62,12 @@ for(const [caseId,code,type,systemAmount,bankAmount,boRaw,stmRaw,details] of cas
 const ready=async(caseId,side)=>(await db.query('select manual_pair_scoped_source_ready($1,$2) ready',[caseId,side])).rows[0].ready;
 for(const caseId of [id(6),id(12),id(13)])assert.equal(await ready(caseId,'BO'),true);
 for(const caseId of [id(10),id(14),id(15)])assert.equal(await ready(caseId,'STM'),true);
+const newerPrimary=id(30),newerRecheck=id(31);
+await db.query('insert into account_recheck_jobs values($1,\'confirmed\',$2,\'ALL\',\'all\')',[newerRecheck,report]);
+await db.query("insert into manual_primary_results values($1,'FR8','2026-10-19',$2,null,$3,$4,now()+interval '1 minute')",[newerPrimary,newerRecheck,report,stamp]);
+for(const caseId of [id(6),id(10)])await db.query('insert into manual_primary_case_items values($1,$2)',[newerPrimary,caseId]);
+assert.equal(await ready(id(6),'BO'),true,'latest case-set membership overrides retained historical manual_primary_id');
+assert.equal(await ready(id(10),'STM'),true,'latest STM case remains ready without rewriting case history');
 await db.exec("delete from storage.objects where name='pm.xlsx'");assert.equal(await ready(id(10),'STM'),false,'missing stored evidence remains blocked');
 await db.exec("insert into storage.objects values('pm.xlsx','audit-files');update daily_recon_jobs set status='running'");assert.equal(await ready(id(10),'STM'),false,'running scope remains blocked');
 await db.exec("update daily_recon_jobs set status='queued'");await db.query("select set_config('test.sources',$1,false)",[JSON.stringify(stamp.slice(0,1))]);assert.equal(await ready(id(6),'BO'),false,'changed accepted source set remains blocked');
