@@ -1069,14 +1069,28 @@ await (async () => {
 
   const duplicateSource = await run(
     [
-      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', raw: '03:58 deposit 10.00 same customer' }),
-      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', raw: '03:58 deposit 10.00 same customer' }),
+      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', rowNo: 77, raw: '03:58 deposit 10.00 same customer' }),
+      tmn(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', rowNo: 77, raw: '03:58 deposit 10.00 same customer' }),
     ],
     [bo(10, 3 * 3600 + 58 * 60, { account: 'TMN-SORAWISA' })],
   );
   eq('7M TMN duplicate OCR: แถวเดียวกันจาก DOCX เดียวถูกนับครั้งเดียว', duplicateSource.stmCount, 1);
   eq('7M TMN duplicate OCR: รายงานจำนวนแถวที่ตัดอย่างตรวจสอบได้', duplicateSource.tmnOcrDuplicateRowsSuppressed, 1);
   eq('7M TMN duplicate OCR: คู่จริงยังปิดได้', duplicateSource.matched, 1);
+
+  const sameVisibleValues = await run(
+    [
+      tmn(25, 4 * 3600 + 12 * 60 + 34, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', rowNo: 81, raw: '04:12:34 deposit 25.00 same customer' }),
+      tmn(25, 4 * 3600 + 12 * 60 + 34, { account: 'TMN-SORAWISA', source_file_id: 'same-docx', rowNo: 82, raw: '04:12:34 deposit 25.00 same customer' }),
+    ],
+    [
+      bo(25, 4 * 3600 + 12 * 60 + 34, { account: 'TMN-SORAWISA', rowNo: 91 }),
+      bo(25, 4 * 3600 + 12 * 60 + 34, { account: 'TMN-SORAWISA', rowNo: 92 }),
+    ],
+  );
+  eq('7M TMN ยอดและเวลาซ้ำ: คนละแถวต้องเก็บครบ', sameVisibleValues.stmCount, 2);
+  eq('7M TMN ยอดและเวลาซ้ำ: จับคู่ได้ครบทั้งสองรายการ', sameVisibleValues.matched, 2);
+  eq('7M TMN ยอดและเวลาซ้ำ: ไม่ถูกนับเป็น OCR ซ้ำ', sameVisibleValues.tmnOcrDuplicateRowsSuppressed, 0);
 
   const missingUnreadable = await run(
     [tmn(50, 8 * 3600, { account: 'TMN-SORAWISA' })],

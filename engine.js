@@ -564,18 +564,17 @@ const Engine = (() => {
       return false;
     });
     /* A DOCX can contain overlapping phone screenshots of the same TMN row.
-       The OCR service then emits that exact transaction twice from one source
-       file.  Collapse only byte-equivalent transaction evidence from the same
-       source file; rows with a different description, amount, time or source
-       remain separate because TMN has no immutable transaction id. */
+       Collapse only the exact same physical source row. Distinct rows must stay
+       separate even when time, amount and OCR text are identical because TMN
+       can contain multiple real transactions with the same visible values. */
     const tmnOcrSeen = new Set();
     let tmnOcrDuplicateRowsSuppressed = 0;
     stmRecords = stmRecords.filter((row) => {
       if (!isSevenMTmnOcr(row)) return true;
       const sourceId = String(row.source_file_id || "").trim();
-      const rawEvidence = identityText(row.raw);
-      if (!sourceId || !rawEvidence) return true;
-      const key = [sourceId, recordKey(row), rawEvidence].join("|");
+      const sourceRow = Number(row.rowNo);
+      if (!sourceId || !Number.isInteger(sourceRow)) return true;
+      const key = `${sourceId}|${sourceRow}`;
       if (!tmnOcrSeen.has(key)) {
         tmnOcrSeen.add(key);
         return true;

@@ -269,7 +269,7 @@ const PdfStm = (() => {
       if (year > 2400) year -= 543;
       return `${year}-${String(thaiMonths[match[2]]).padStart(2, "0")}-${String(Number(match[1])).padStart(2, "0")}`;
     };
-    const timeOnly = /^(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/;
+    const timeOnly = /^(\d{1,2}:\d{2}(?::\d{2})?)[.\s]*$/;
     // Google Drive OCR commonly renders the baht glyph as a Latin B in
     // screenshots embedded in Word.  Keep the sign mandatory: unsigned OCR
     // fragments must never become financial evidence.
@@ -295,17 +295,27 @@ const PdfStm = (() => {
       for (const cell of cells) {
         if (/^รายการ$/.test(cell) || dateOf(cell) || /^เมื่อวานนี้$/.test(cell)) continue;
         if (feeText.test(cell)) {
-          events.push({ kind: "fee", direction: "withdraw", desc: cell });
+          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2}(?::\d{2})?)(?:[.\s]|$)/);
+          const inlineAmount = cell.match(signedAmount);
+          events.push({ kind: "fee", direction: "withdraw", desc: cell,
+            time: inlineTime?.[1] || null,
+            amount: inlineAmount ? Math.abs(numOf(inlineAmount[2])) : null });
           continue;
         }
         if (depositText.test(cell)) {
-          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/);
-          events.push({ kind: "customer", direction: "deposit", desc: cell, time: inlineTime?.[1] || null });
+          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2}(?::\d{2})?)(?:[.\s]|$)/);
+          const inlineAmount = cell.match(signedAmount);
+          events.push({ kind: "customer", direction: "deposit", desc: cell,
+            time: inlineTime?.[1] || null,
+            amount: inlineAmount ? Math.abs(numOf(inlineAmount[2])) : null });
           continue;
         }
         if (withdrawText.test(cell)) {
-          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2})(?::\d{2})?[.\s]*$/);
-          events.push({ kind: "customer", direction: "withdraw", desc: cell, time: inlineTime?.[1] || null });
+          const inlineTime = cell.match(/(?:^|\s)(\d{1,2}:\d{2}(?::\d{2})?)(?:[.\s]|$)/);
+          const inlineAmount = cell.match(signedAmount);
+          events.push({ kind: "customer", direction: "withdraw", desc: cell,
+            time: inlineTime?.[1] || null,
+            amount: inlineAmount ? Math.abs(numOf(inlineAmount[2])) : null });
           continue;
         }
         const amountMatch = cell.match(signedAmount);
@@ -328,24 +338,28 @@ const PdfStm = (() => {
       // preserved inside every column, so align values to events in that same
       // order. Keep fees in the withdrawal sequence so their negative amounts
       // cannot leak into customer withdrawals.
-      const amountIndex = { deposit: 0, withdraw: 0 };
       const amountsByDirection = {
         deposit: amounts.filter((item) => item.direction === "deposit"),
         withdraw: amounts.filter((item) => item.direction === "withdraw"),
       };
-      for (const event of events) {
-        const candidates = amountsByDirection[event.direction] || [];
-        const item = candidates[amountIndex[event.direction] || 0];
-        if (item) {
-          event.amount = item.amount;
-          amountIndex[event.direction] = (amountIndex[event.direction] || 0) + 1;
-        }
+      for (const direction of ["deposit", "withdraw"]) {
+        const missing = events.filter((event) => event.direction === direction && !Number.isFinite(event.amount));
+        const missingCustomers = missing.filter((event) => event.kind === "customer");
+        const candidates = amountsByDirection[direction] || [];
+        const targets = candidates.length === missingCustomers.length && missingCustomers.length < missing.length
+          ? missingCustomers : missing;
+        targets.forEach((event, index) => {
+          const item = candidates[index];
+          if (item) event.amount = item.amount;
+        });
       }
-      let timeIndex = 0;
-      for (const event of events) {
-        if (event.time != null) continue;
-        if (timeIndex < times.length) event.time = times[timeIndex++];
-      }
+      const missingTimeEvents = events.filter((event) => event.time == null);
+      const missingTimeCustomers = missingTimeEvents.filter((event) => event.kind === "customer");
+      const timeTargets = times.length === missingTimeCustomers.length && missingTimeCustomers.length < missingTimeEvents.length
+        ? missingTimeCustomers : missingTimeEvents;
+      timeTargets.forEach((event, index) => {
+        if (index < times.length) event.time = times[index];
+      });
       // Screenshot crops can contain a partial row from the adjacent screen.
       // Keep only customer events whose own time and signed amount are both
       // proven. Orphan amounts and incomplete descriptions are never promoted.
@@ -434,7 +448,6 @@ const PdfStm = (() => {
   }
   function parseTMN(pages, businessDate) {
     const rows = [];
-    const seen = new Set();
     // n8n/PDF.js occasionally inserts spaces or zero-width characters inside
     // the Thai transaction type ("เงิน เข้า") and can flatten more than one
     // visual row into the same text line.  Normalize only layout whitespace;
@@ -449,9 +462,6 @@ const PdfStm = (() => {
     const flattened = new RegExp(source + "(?=\\s+\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s+\\d{1,2}:\\d{2}:\\d{2}|$)", "g");
     const add = (m, raw) => {
       const detail = m[5].trim();
-      const key = `${m[1]}|${m[2]}|${m[3]}|${Math.abs(numOf(m[4]))}|${numOf(m[7])}`;
-      if (seen.has(key)) return;
-      seen.add(key);
       rows.push({
         date: isoOf(m[1]),
         sec: secOf(m[2]),

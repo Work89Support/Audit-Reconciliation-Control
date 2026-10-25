@@ -125,6 +125,17 @@ const TMN_NO_HEADING = `
 const tmnNoHeading = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-20.pdf", TMN_NO_HEADING, "2026-09-20");
 eq("TMN filename fallback: ตัด fee เมื่อ n8n ทำหัวคอลัมน์หาย", tmnNoHeading.records.length, 1);
 eq("TMN filename fallback: คงยอดลูกค้าจริง", tmnNoHeading.records[0]?.amount, 100);
+
+const TMN_IDENTICAL_TIME_AMOUNT = `
+TrueMoney Wallet เลขที่บัญชี 0812792075
+เงินเข้า เงินออก ยอดคงเหลือ
+20/09/2026 10:15:30 เงินเข้า 100.00 0811111111 1,000.00 1,100.00
+20/09/2026 10:15:30 เงินเข้า 100.00 0822222222 1,000.00 1,100.00
+`;
+const tmnIdenticalTimeAmount = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-20.pdf", TMN_IDENTICAL_TIME_AMOUNT, "2026-09-20");
+eq("TMN native: เวลาและยอดซ้ำต้องเก็บครบทุกแถว", tmnIdenticalTimeAmount.records.length, 2);
+eq("TMN native: เวลาวินาทีตรงตาม STM", tmnIdenticalTimeAmount.records.map((row) => row.sec).join(","), `${10 * 3600 + 15 * 60 + 30},${10 * 3600 + 15 * 60 + 30}`);
+eq("TMN native: ยอดซ้ำตรงตาม STM", tmnIdenticalTimeAmount.records.map((row) => row.amount).join(","), "100,100");
 const staleTmnOcr = P.parseStructuredOcr(
   "UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-09-20.pdf",
   { rows: [{ date: "2026-09-20", sec: 43200, direction: "withdraw", amount: 0.29, balance: 100 }] },
@@ -365,6 +376,37 @@ const TMN_WALLET_CONTINUATION_NO_HEADER = `
 const tmnWalletContinuation = await P.parseText("UFABET7M_STM_TMN_สรวิศา_W_2026-09-28.docx", TMN_WALLET_CONTINUATION_NO_HEADER, "2026-09-28");
 eq("TMN OCR continuation: ไม่มีคำว่ารายการก็อ่านแถวที่มีหลักฐานครบ", tmnWalletContinuation.records.length, 2);
 eq("TMN OCR continuation: คงทิศทางถอน", tmnWalletContinuation.records.every((row) => row.direction === "withdraw"), true);
+
+const TMN_WALLET_DUPLICATE_TIME_AMOUNT = `
+รายการ
+รับเงินจาก คนซ้ำหนึ่ง ก***
+รับเงินจาก คนซ้ำสอง ข***
++B 100.00
++B 100.00
+10:15:30
+10:15:30
+25 ตุลาคม 2569
+`;
+const tmnWalletDuplicateTimeAmount = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_D_2026-10-25.pdf", TMN_WALLET_DUPLICATE_TIME_AMOUNT, "2026-10-25");
+eq("TMN OCR: เวลาและยอดซ้ำต้องเก็บครบตามภาพ", tmnWalletDuplicateTimeAmount.records.length, 2);
+eq("TMN OCR: ไม่ตัดวินาทีจากภาพ", tmnWalletDuplicateTimeAmount.records.map((row) => row.sec).join(","), `${10 * 3600 + 15 * 60 + 30},${10 * 3600 + 15 * 60 + 30}`);
+eq("TMN OCR: ยอดซ้ำไม่ถูกยุบ", tmnWalletDuplicateTimeAmount.records.map((row) => row.amount).join(","), "100,100");
+
+const TMN_WALLET_FEE_WITHOUT_TIME = `
+รายการ
+รับเงินจาก คนแรก ก***
+ค่าธรรมเนียมการรับเงินโอน
+รับเงินจาก คนสอง ข***
++B 120.00
+-B 1.20
++B 90.00
+22:03:11
+22:04:12
+25 ตุลาคม 2569
+`;
+const tmnWalletFeeWithoutTime = await P.parseText("UFABET7M_STM_TMN_รุ่งฟ้า_D_2026-10-25.pdf", TMN_WALLET_FEE_WITHOUT_TIME, "2026-10-25");
+eq("TMN OCR: fee ไม่มีเวลาไม่เลื่อนเวลาลูกค้า", tmnWalletFeeWithoutTime.records.length, 2);
+eq("TMN OCR: เวลาเรียงตรงตามสองรายการลูกค้า", tmnWalletFeeWithoutTime.records.map((row) => row.sec).join(","), `${22 * 3600 + 3 * 60 + 11},${22 * 3600 + 4 * 60 + 12}`);
 
 /* ---- KBANK ปกติ (K PLUS) ที่ไม่มี "LINE BK" ต้องยังเป็น KBANK ไม่ใช่ LBK ---- */
 const KPLUS = `
