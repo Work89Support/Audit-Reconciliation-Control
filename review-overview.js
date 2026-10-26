@@ -8,6 +8,20 @@ const ReviewOverview = (() => {
   const labels = { all:'ทั้งหมด', matched:'จับคู่สำเร็จ', review:'รอ Audit ตรวจ', clarification:'รอชี้แจง / ตรวจคำตอบ', closed:'ปิดเคสแล้ว' };
   const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
   const canClarifyCase=row=>!holdFor(row)&&['open','pending_next_day'].includes(row.status);
+  function displayedCaseCode(item,fallbackCompany='',fallbackDate='') {
+    const code=String(item?.code||item?.id||'').trim();
+    const date=String(item?.business_date||item?.date||fallbackDate||'').slice(0,10);
+    const legacy=code.match(/^EX-(\d+)(?:$|-C)/i);
+    if(date==='2026-10-25'&&legacy){
+      const ordinal=Number(legacy[1])-3000;
+      if(ordinal>0&&ordinal<=999){
+        const rawCompany=String(item?.company||fallbackCompany||'').trim().toUpperCase();
+        const company=rawCompany==='UFABET7M'?'7M':rawCompany;
+        return `${company}-25.10.2026-${String(ordinal).padStart(3,'0')}`;
+      }
+    }
+    return code;
+  }
   function closureReviewAction(row, canReviewClosed = false) {
     if(holdFor(row))return {action:'review',label:'พักตรวจ / รอ STM',enabled:false};
     if(row.status==='pending_next_day')return {action:'review',label:'ตรวจหลักฐานข้ามวัน',enabled:true};
@@ -53,13 +67,13 @@ const ReviewOverview = (() => {
     if (['clarifying','answered'].includes(e.status)) return 'clarification';
     return 'review';
   }
-  function model(data) {
+  function model(data,fallbackCompany='',fallbackDate='') {
     const preliminary = typeof PreliminaryReview !== 'undefined' ? PreliminaryReview.manualCandidates(data) : new Set();
     const evidence = Array.isArray(data.run?.summary?.match_evidence) ? data.run.summary.match_evidence : [];
     const confirmed=new Map((data.confirmations||[]).map(c=>[c.pair_index,c]));
     const pairs = evidence.map((e,i) => ({ id:`pair-${i}`, pairIndex:i,confirmation:confirmed.get(i),category:e.manualReview ? 'review' : 'matched', pair:e, direction:e.direction, account:e.account || '', search:JSON.stringify(e) }));
     const visibleCases=auditPolicy?auditPolicy.filter(data.cases,evidence):data.cases;
-    const cases = visibleCases.map(e => ({ id:e.id, preliminary:preliminary.has(e.id), category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) }));
+    const cases = visibleCases.map(source => {const e={...source,code:displayedCaseCode(source,fallbackCompany,data?.run?.business_date||fallbackDate)};return { id:e.id, preliminary:preliminary.has(e.id), category:caseState(e), case:e, direction:e.direction === 'ฝาก' ? 'deposit' : e.direction === 'ถอน' ? 'withdraw' : e.direction, account:e.account || '', search:JSON.stringify(e) };});
     return { rows:[...pairs,...cases], evidenceCount:evidence.length, reportedMatched:Number(data.run?.matched || 0), counts:Object.fromEntries(Object.keys(labels).map(k => [k, k === 'all' ? pairs.length + cases.length : [...pairs,...cases].filter(r => r.category === k).length])) };
   }
   function filter(rows, values) {
@@ -379,10 +393,10 @@ const ReviewOverview = (() => {
         if(g!==generation||!isActive()||instances.get(root)!==instance)return;
         if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}}
         if(g!==generation||!isActive()||instances.get(root)!==instance)return;
-        data=next;view=model(data);selected.clear();draw();window.scrollTo(x,y);
+        data=next;view=model(data,company,date);selected.clear();draw();window.scrollTo(x,y);
       } catch(e){if(g===generation&&isActive())draw((afterSave?'บันทึกแล้ว แต่':'')+'โหลดผลล่าสุดไม่ได้ — ยังไม่สรุปว่าไม่มีเคส กรุณาลองโหลดใหม่: '+e.message);}
     }
-    async function refresh(){const g=++generation;selected.clear();data=null;view=null;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data);draw();}catch(e){if(g===generation)draw(e.message);}}
+    async function refresh(){const g=++generation;selected.clear();data=null;view=null;draw();try{const next=await load(company,date);if(g!==generation)return;if(next.run?.id&&loadRecommendations){try{next.recommendationLinks=await loadRecommendations({runId:next.run.id});}catch(e){next.recommendationError=e.message;}if(g!==generation)return;}data=next;view=model(data,company,date);draw();}catch(e){if(g===generation)draw(e.message);}}
     root.auditRefreshInPlace=async()=>{
       if(!isActive()||instances.get(root)!==instance)return false;
       await refreshInPlace({afterSave:true});return true;
