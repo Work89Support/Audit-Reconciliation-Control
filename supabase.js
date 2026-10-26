@@ -1066,6 +1066,10 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   const setSourceExcluded=b=>rpc('set_audit_source_excluded',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_excluded:b.excluded,p_reason:b.reason});
   const setAuditRunHold=b=>rpc('set_audit_run_hold',{p_company:b.company,p_date:b.date,p_paused:b.paused,p_reason:b.reason,p_expected_revision:b.expectedRevision});
   const correctAuditSource=b=>rpc('correct_audit_source',{p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_name:b.name,p_company:b.company,p_date:b.date,p_kind:b.kind,p_replacement_id:b.replacementId,p_excluded:b.excluded,p_reason:b.reason});
+  const recordAuditSourceReparse=b=>rpc('record_audit_source_reparse',{
+    p_file_id:b.fileId,p_expected_revision:b.expectedRevision,p_expected_checksum:b.expectedChecksum,
+    p_parser_version:b.parserVersion,p_row_count:b.rowCount,p_parse_error:b.parseError||null,p_quality:b.quality||{},
+  });
   const pendingSourceUploads=new Map();
   const pendingManualSources=new Map();
   async function addAuditManualSource(b,file){
@@ -1856,7 +1860,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     requestAccountRecheck,listAccountRechecks,accountRecheckDetail,confirmAccountRecheck,manualPrimaryPreview,acceptManualPrimary,acceptManualPrimaryWithCases,readManualPrimary,manualPrimaryCasesPreview,activateManualPrimaryCases,
     auditSourceArchiveManifest,
     auditSourceArchiveValidate,
-    fileRunManagement,effectiveAuditFiles,sourceRevisionHistory,sourceExclusionPreview,setSourceExcluded,sourceWorkspace,setAuditRunHold,correctAuditSource,
+    fileRunManagement,effectiveAuditFiles,sourceRevisionHistory,sourceExclusionPreview,setSourceExcluded,sourceWorkspace,setAuditRunHold,correctAuditSource,recordAuditSourceReparse,
     uploadAuditSourceCorrection,addAuditManualSource,
     cfg,
     saveConfig,
