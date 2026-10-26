@@ -14,10 +14,10 @@ assert.equal(accepted.label,'ใช้ผลรันมือเป็นผล
 assert.equal(accepted.automatic,'รอบอัตโนมัติ: พักรัน');
 assert.equal(accepted.manual,null);
 assert.match(app,/const missingText = \(row\) => cloudMissingGroupsText\(row.missing_groups\)/);
-assert.match(app,/dailyResultStatus\(lifecycle\|\|\{\},row\)/);
+assert.match(app,/dailyResultStatus\(checklistRow\|\|\{\},row\)/);
 assert.match(app,/เคสรวมชุดปัจจุบัน/);
 assert.match(app,/ค้าง \$\{num\(lifecycle.open_count\)\} · ปิดแล้ว \$\{num\(lifecycle.resolved_count\)\}/);
-assert.match(app,/ผลหลัก \$\{lifecycle\?\.primaryFileCount==null/);
+assert.match(app,/ผลหลัก \$\{checklistRow\?\.primaryFileCount==null/);
 assert.match(app,/h\(missingText\(row\)\)/);
 assert.match(app,/if \(row.primaryResult \|\| row.status === "completed"\) item.completed\+\+/);
 console.log('PASS Dashboard: structured missing files, shared primary/manual/automatic status, received vs accepted files and open/closed case labels; input unchanged');

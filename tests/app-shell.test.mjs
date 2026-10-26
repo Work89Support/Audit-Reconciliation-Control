@@ -157,10 +157,10 @@ assert.match(app, /!boFiles[\s\S]+title: "ยังขาดรายงาน B
 assert.match(app, /date === PROD_TODAY && !selectedQuality\.some/, "หน้ารายวันต้องเลื่อนไปวันที่ล่าสุดที่มีผลจริงเมื่อวันนี้ยังไม่มีผลรัน");
 assert.match(app, /Audit Sheet · ภาพรวมทุกบริษัท/, "หน้ารายวันต้องมีตารางภาพรวมแบบสเปรดชีต");
 assert.match(app, /function dailyAuditSheetRows\(date\)[\s\S]+dailyCompanyState\.checklist[\s\S]+dailyCompanyState\.quality/, "ตารางทุกบริษัทต้องใช้ snapshot วันที่เดียวกับรายละเอียดรายบริษัท");
-assert.match(app, /const hasCurrentCounts = \(!primary \|\| !!primary\.case_set\) && row\.open_count != null && row\.resolved_count != null/, "lifecycle ต้องมาจากชุดเคสของผลหลักเดียวกัน ไม่ใช้เคสประวัติ");
-assert.match(app, /const exceptionCount = generatedExceptionCount/, "จำนวนผลตรวจต้องแยกจากจำนวนเคสค้างและปิด ไม่ใช้ยอดคนละรอบ");
+assert.match(app, /const hasCurrentCounts = \(!primary \|\| !!primary\.case_set\) && lifecycle\?\.total_count != null/, "lifecycle ต้องมาจากชุดเคสของผลหลักเดียวกัน ไม่ใช้เคสประวัติ");
+assert.match(app, /const exceptionCount = hasCurrentCounts \? Number\(lifecycle\.total_count \|\| 0\) : generatedExceptionCount/, "จำนวนผลตรวจต้องใช้สมาชิกชุดเคสปัจจุบันเมื่อพร้อม ไม่ใช้ยอดคนละรอบ");
 assert.match(readFileSync(new URL('../daily-case-summary.js',import.meta.url),'utf8'), /รอสร้างชุดเคสปัจจุบัน/, "ผลหลักที่ยังไม่มีชุดเคสต้องระบุสถานะอย่างชัดเจน");
-assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\.open_count[\s\S]+lifecycle\.resolved_count/, "รายการล่าสุดบนแดชบอร์ดต้องใช้ยอด lifecycle ชุดเดียวกับรายละเอียดรายบริษัท");
+assert.match(app, /const currentExceptionCount = \(row\) =>[\s\S]+lifecycle\?\.total_count/, "รายการล่าสุดบนแดชบอร์ดต้องใช้ยอด lifecycle ชุดเดียวกับรายละเอียดรายบริษัท");
 assert.match(app, /\$\{num\(currentExceptionCount\(row\)\)\} เคสรวมชุดปัจจุบัน/, "แดชบอร์ดต้องระบุชัดว่าแสดงเคสรวมชุดปัจจุบัน พร้อมแยกค้างและปิดแล้ว");
 assert.match(app, /completed_review: \{ label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" \}/, "สถานะเคสคงค้างต้องแสดงภาษาไทย ไม่หลุดชื่อสถานะภายใน");
 assert.match(app, /Sb\.quality\(\{ from: date, to: date, limit: 500 \}\)/, "หน้ารายวันต้องโหลดผลทุกบริษัทเพื่อสร้างตารางภาพรวมจริง");

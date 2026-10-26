@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync('supabase/20261026_current_case_counts_scoped.sql','utf8');
+const sb=fs.readFileSync('supabase.js','utf8');
+const app=fs.readFileSync('app.js','utf8');
+assert.match(sql,/audit_current_case_rows_scoped\(p_from,p_to,p_company\)/);
+assert.match(sql,/count\(\*\) filter\(where coalesce\(e\.status,'open'\) not in\('closed','approved'\)\)/);
+assert.match(sql,/left join counts c using\(company,business_date\)/);
+assert.match(sb,/audit_current_case_counts_scoped/);
+assert.match(app,/liveOverviewState\.caseCounts/);
+assert.match(app,/dailyCompanyState\.caseCounts/);
+assert.doesNotMatch(app,/const exceptionTotal = hasLifecycleCounts[\s\S]+checklistInRange\.reduce/);
+console.log('PASS every summary surface uses exact current-case membership, including zero-case scopes');

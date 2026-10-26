@@ -539,6 +539,14 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return primaryOverlays(await json(`/rest/v1/v_daily_company_checklist?${filters.join("&")}`),{caseCountsOnly:true});
   }
 
+  async function currentCaseCounts({ from, to, company } = {}) {
+    return rpc("audit_current_case_counts_scoped", {
+      p_from: from || null,
+      p_to: to || null,
+      p_company: company === "ALL" ? "ALL" : company || "ALL",
+    });
+  }
+
   async function boFirstCoverage({ from, to, company, limit = 5000 } = {}) {
     /* อ่านเฉพาะผลรันที่ daily_recon_jobs ยืนยันว่าเป็นรันล่าสุด
        view เดิมอ่าน bo_first JSON ของรันเก่าทั้งหมดก่อนกรอง จึง timeout
@@ -1887,6 +1895,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     clarificationMatches,
     evidenceUsage,
     currentExceptions,
+    currentCaseCounts,
     caseEvidenceFlags,
     currentExceptionsSummary,
     searchExceptions,
