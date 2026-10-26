@@ -5,8 +5,8 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.86-ktb-bo-source-lifecycle";
-const PARSER_VERSION = "1.9.86-ktb-bo-source-lifecycle";
+const WORKER_VERSION = "1.9.93-3xb-ps8-manual-baseline";
+const PARSER_VERSION = "1.9.93-3xb-ps8-manual-baseline";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -20,6 +20,54 @@ const pdf = pdfOriginal;
 
 const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,providerNearTimeTolerance:600,sys123DuplicateTimeTolerance:3600,sys123FallbackTimeTolerance:3600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
+
+/* Automatic runs must consume the same reviewed source scope shown in the
+   file-management screen. Reading mail_batches directly bypassed exclusions
+   and replacement revisions, so an original file and its corrected upload
+   could both enter one 7M run. */
+const effectiveFileSelectionCode = `
+const job=$('Supabase: จองหนึ่งงาน').first().json;
+const candidates=[];
+const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']);
+const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase();
+const sys123=new Set(['AT4','FR8','SK8']);
+const jobCompany=String(job.company||'').toUpperCase();
+for(const b of $input.all().map(x=>x.json)){
+  const batchDate=String(b.business_date||'').slice(0,10);
+  const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10);
+  for(const raw of (b.source_files||[])){
+    if(raw.excluded===true) continue;
+    const physicalId=raw.physical_source_file_id||raw.id;
+    if(!physicalId) throw new Error('ไฟล์ที่เลือกไม่มี physical source id');
+    const f={...raw,logical_source_file_id:raw.id,id:physicalId};
+    const company=String(f.company||b.company||'').toUpperCase();
+    const ext=String(f.file_name||'').split('.').pop().toLowerCase();
+    const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||''));
+    const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''));
+    if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue;
+    if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind))
+      candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});
+  }
+}
+candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name)));
+const readable=candidates.filter(f=>f.parsed===true||/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''))||!healthyNames.has(keyOf(f.file_name)));
+const seenNames=new Set();
+const selected=readable.filter(f=>{
+  const bblFile=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''));
+  const key=bblFile?'BBL:'+String(f.id):keyOf(f.file_name);
+  if(seenNames.has(key)) return false;
+  seenNames.add(key);
+  return true;
+});
+const physicalIds=new Set();
+for(const file of selected){
+  if(physicalIds.has(file.id)) throw new Error('ไฟล์จริงซ้ำใน effective source scope: '+file.file_name);
+  physicalIds.add(file.id);
+}
+const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}}));
+if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company);
+return out;`;
 
 const normalizeCode = `${runtime}
 const meta=$('วนทีละไฟล์').item.json;
@@ -401,6 +449,10 @@ const deployedReconcileCode = reconcileCode
     `worker_version:'${WORKER_VERSION}'`,
   )
   .replace(
+    'xb_provider_column_policy:true,',
+    'xb_provider_column_policy:true,mr9_effective_source_scope:true,mr9_mypay_actual_payout:true,mr9_source_row_occurrence_preserved:true,mc8_effective_source_scope:true,mc8_azpay_rows_preserved:true,mc8_provider_next_day_preserved:true,ur9_effective_source_scope:true,ur9_manual_baseline:true,ur9_provider_boundary_rows_preserved:true,at4_effective_source_scope:true,at4_manual_baseline:true,at4_corepay_base_amount:true,at4_bank_date_only:true,sk8_effective_source_scope:true,sk8_manual_baseline:true,sk8_bbl_notime_amount_only:true,three_xb_effective_source_scope:true,three_xb_manual_baseline:true,three_xb_bank_residual_exact_amount:true,three_xb_bank_residual_matched:result.threeXbBankResidualMatched||0,ps8_effective_source_scope:true,ps8_manual_baseline:true,ps8_single_residual_case:true,',
+  )
+  .replace(
     "1.9.2-xb-sapan-raw-id-recovery",
     "1.9.21-xb-no-stale-duplicate",
   )
@@ -486,12 +538,11 @@ const nodes = [
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [60, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
-    // System 123 KTB can publish 23:00-23:59 statement entries under the next
-    // calendar day. Read one adjacent batch as evidence, then the selector below
-    // admits only KTB statements from that adjacent day (never BO or other banks).
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/mail_batches?business_date=gte.{{ $json.business_date }}&business_date=lte.{{ DateTime.fromISO($json.business_date,{zone:'Asia/Bangkok'}).plus({days:1}).toISODate() }}&select=id,business_date,company,source_files(id,file_name,storage_path,kind,company,parsed,row_count,checksum,size_bytes,created_at,source_file_ocr(provider,confidence,page_count,line_count,extracted_text,rows,updated_at))", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi", options: { response: { response: {} } },
+    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
+    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
+    jsonBody: "={{ JSON.stringify({ p_company: $json.company, p_date: $json.business_date }) }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; const candidates=[]; const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']); const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase(); const sys123=new Set(['AT4','FR8','SK8']); const jobCompany=String(job.company||'').toUpperCase(); for(const b of $input.all().map(x=>x.json)){const batchDate=String(b.business_date||'').slice(0,10); const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10); for(const f of (b.source_files||[])){const company=String(f.company||b.company||'').toUpperCase(); const ext=String(f.file_name||'').split('.').pop().toLowerCase(); const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||'')); const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue; if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind)) candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});}} candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))); const healthyNames=new Set(candidates.filter(f=>f.parsed===true).map(f=>keyOf(f.file_name))); const readable=candidates.filter(f=>f.parsed===true||/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''))||!healthyNames.has(keyOf(f.file_name))); const seenNames=new Set(); const selected=readable.filter(f=>{const bblFile=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||'')); const key=bblFile?'BBL:'+String(f.id):keyOf(f.file_name); if(seenNames.has(key)) return false; seenNames.add(key); return true;}); const out=selected.map(file=>({json:{job,file},pairedItem:{item:0}})); if(!out.length) throw new Error('ไม่พบไฟล์กระทบยอดที่รองรับสำหรับ '+job.business_date+' '+job.company); return out;" }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
+  { parameters: { jsCode: effectiveFileSelectionCode }, id: "filter-files", name: "เลือกไฟล์ของบริษัท", type: "n8n-nodes-base.code", typeVersion: 2, position: [520, 220] },
   { parameters: { batchSize: 1, options: {} }, id: "file-loop", name: "วนทีละไฟล์", type: "n8n-nodes-base.splitInBatches", typeVersion: 3, position: [740, 220] },
   http("download", "ดาวน์โหลดไฟล์จาก Storage", [980, 340], {
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -687,11 +738,6 @@ const connections = {
 const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
 const {patchWorkerPreflightGate}=await import('./worker-preflight-gate.mjs');
 patchWorkerPreflightGate(workflow);
-// Read append-only source corrections without mutating original file receipts.
-const managedFileReader=nodes.find(node=>node.name==='Supabase: อ่านรายการไฟล์ของวัน');
-Object.assign(managedFileReader.parameters,{method:'POST',url:'={{ $vars.SUPABASE_URL }}/rest/v1/rpc/effective_audit_source_batches',sendBody:true,specifyBody:'json',jsonBody:'={{ JSON.stringify({p_company:$json.company,p_date:$json.business_date}) }}'});
-const managedFileSelector=nodes.find(node=>node.name==='เลือกไฟล์ของบริษัท');
-managedFileSelector.parameters.jsCode=managedFileSelector.parameters.jsCode.replace('({json:{job,file},pairedItem:',"({json:{job,file:{...file,selection_id:file.id,id:file.physical_source_file_id||file.id}},pairedItem:");
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
 // Keep the manual/round worker's embedded parsers in lockstep with the tested
 // browser parsers. That workflow has its own orchestration graph, so replace

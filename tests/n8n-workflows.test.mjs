@@ -146,6 +146,11 @@ assert.equal(worker.connections["ใช้รายการ TMN ที่ตร
 assert.match(worker.nodes.find(node => node.name === "เป็น PDF?").parameters.conditions.conditions[0].leftValue, /docx/, "Word statements must enter document OCR");
 assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /'docx'/, "worker must select classified Word statements");
 assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.url, /effective_audit_source_batches/, "worker must read corrected, non-quarantined source receipts");
+assert.equal(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.method, "POST", "effective source scope must be called as an RPC");
+assert.match(worker.nodes.find(node => node.name === "Supabase: อ่านรายการไฟล์ของวัน").parameters.jsonBody, /p_company[\s\S]*p_date/, "effective source RPC must be scoped to the claimed company and business date");
+assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /raw\.excluded===true/, "excluded source revisions must fail closed in the worker as well as the RPC");
+assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /physical_source_file_id\|\|raw\.id/, "replacement revisions must download and record the effective physical file");
+assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /physicalIds\.has\(file\.id\)/, "one physical source file must not enter an automatic run twice");
 const managedSql=await readFile(new URL('../supabase/20261012_file_run_management.sql',import.meta.url),'utf8');
 assert.match(managedSql,/between p_date and p_date\+1/,"managed sources retain the exact job/adjacent-day boundary");
 assert.match(managedSql,/where not coalesce\(\(value->>'excluded'\)\:\:boolean,false\)/,"quarantined sources must not enter automatic processing");
@@ -231,7 +236,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.86-ktb-bo-source-lifecycle'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.93-3xb-ps8-manual-baseline'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -244,7 +249,7 @@ assert.match(workerText, /records:f\.format\.source==='bo'\?\(f\.records\|\|\[\]
 assert.match(workerText, /aux:\(f\.aux\|\|\[\]\)\.map\(r=>stampSource\(r,f\)\)/,
   "business rules must receive auxiliary rows with source-file lineage");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.86-ktb-bo-source-lifecycle'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.93-3xb-ps8-manual-baseline'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -276,7 +281,27 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.86-ktb-bo-source-lifecycle'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.93-3xb-ps8-manual-baseline'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /mr9_effective_source_scope:true/, "MR9 release must record effective source revision scope");
+assert.match(workerText, /mc8_effective_source_scope:true/, "MC8 release must record effective source revision scope");
+assert.match(workerText, /mc8_azpay_rows_preserved:true/, "MC8 release must preserve every AZPAY physical source row");
+assert.match(workerText, /mc8_provider_next_day_preserved:true/, "MC8 release must retain next-day provider settlements in request-day scope");
+assert.match(workerText, /ur9_effective_source_scope:true/, "UR9 release must record effective source revision scope");
+assert.match(workerText, /ur9_manual_baseline:true/, "UR9 release must record the reviewed manual baseline");
+assert.match(workerText, /ur9_provider_boundary_rows_preserved:true/, "UR9 release must preserve unmatched provider boundary rows for review");
+assert.match(workerText, /at4_effective_source_scope:true/, "AT4 release must use only the current source revision");
+assert.match(workerText, /at4_manual_baseline:true/, "AT4 release must record the reviewed manual baseline");
+assert.match(workerText, /at4_corepay_base_amount:true/, "AT4 release must use the COREPAY integer base amount");
+assert.match(workerText, /at4_bank_date_only:true/, "AT4 release must use the BO bank timestamp without creation-time fallback");
+assert.match(workerText, /sk8_effective_source_scope:true/, "SK8 release must use only the current source revision");
+assert.match(workerText, /sk8_manual_baseline:true/, "SK8 release must record the reviewed manual baseline");
+assert.match(workerText, /three_xb_manual_baseline:true/, "3XB release must record the reviewed manual baseline");
+assert.match(workerText, /three_xb_bank_residual_exact_amount:true/, "3XB release must record the safe residual bank rule");
+assert.match(workerText, /ps8_manual_baseline:true/, "PS8 release must record the reviewed manual baseline");
+assert.match(workerText, /ps8_single_residual_case:true/, "PS8 release must retain only the one real residual case");
+assert.match(workerText, /sk8_bbl_notime_amount_only:true/, "SK8 release must close BBL no-time rows only by exact amount multiplicity");
+assert.match(workerText, /mr9_mypay_actual_payout:true/, "MR9 release must record MYPAY actual-payout policy");
+assert.match(workerText, /mr9_source_row_occurrence_preserved:true/, "MR9 release must record source-row occurrence preservation");
 assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
 assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
 assert.match(workerText, /sys123_ktb_bo_first_suppressed_rows=result\.sys123KtbBoFirstSuppressedRows\|\|\[\]/,

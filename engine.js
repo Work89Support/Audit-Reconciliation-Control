@@ -1999,6 +1999,42 @@ const Engine = (() => {
       matched.push({ s, b, dt: timeDistance(s, b), rescueMatch: true, tmnOcrTimeCorrection: isSevenMTmnOcr(s) });
     });
 
+    /* 3XB normal-bank statements can post the same physical transaction with
+       a materially different clock and customer-account presentation from BO.
+       Manual Audit verifies the residual by company account + business date +
+       direction + exact amount after every stronger identity/time pass. Apply
+       that same rule only when the remaining pair is reciprocal 1:1. Repeated
+       equal amounts stay open because their row identity is ambiguous. */
+    const threeXbBankResidualMatched = new Set();
+    const threeXbBankResidualCandidate = (s, b) => auditCompanyOf(s) === "3XB"
+      && auditCompanyOf(b) === "3XB" && !s.isPmChannel && !b.isPmChannel
+      && sameCompany(s, b) && s.date === b.date && isIsoDate(s.date)
+      && !!s.direction && s.direction === b.direction
+      && s.account === b.account && Number.isFinite(s.amount) && s.amount > 0
+      && s.amount === b.amount && !s.noTime && !b.noTime
+      && Number.isFinite(s.sec) && Number.isFinite(b.sec);
+    const threeXbBankCandidates = new Map(), threeXbBankPeers = new Map();
+    stmLeft2.forEach((s) => {
+      if (rescuedStm.has(s) || s.isPmChannel || auditCompanyOf(s) !== "3XB") return;
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((ci) => !boUsed[ci] && threeXbBankResidualCandidate(s, boRecords[ci]));
+      threeXbBankCandidates.set(s, rows);
+      rows.forEach((ci) => {
+        let peers = threeXbBankPeers.get(ci);
+        if (!peers) threeXbBankPeers.set(ci, (peers = []));
+        peers.push(s);
+      });
+    });
+    threeXbBankCandidates.forEach((rows, s) => {
+      if (rows.length !== 1) return;
+      const ci = rows[0];
+      if (boUsed[ci] || (threeXbBankPeers.get(ci) || []).length !== 1) return;
+      const b = boRecords[ci];
+      boUsed[ci] = 1;
+      threeXbBankResidualMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), threeXbBankResidualMatch: true });
+    });
+
     /* FR8 statement ธนาคารปกติแสดงเลขบัญชีผู้โอนเพียง 4 หลักท้าย ขณะที่ BO
        อาจเก็บบัญชีสมาชิกคนละเลข (เช่นบัญชีที่ลงทะเบียนไว้) ทั้งที่ชื่อผู้โอน,
        ยอด และเวลาเป็นรายการเดียวกัน กฎ customer-account conflict ด้านบนจึง
@@ -2135,7 +2171,7 @@ const Engine = (() => {
 
     // pass 3: STM ที่เหลือ = ไม่มีฝั่ง BO
     stmLeft2.forEach((s) => {
-      if (!rescuedStm.has(s) && !fr8BankNameMatched.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
+      if (!rescuedStm.has(s) && !threeXbBankResidualMatched.has(s) && !fr8BankNameMatched.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
     });
 
     // pass 4: BO ที่เหลือ = ไม่มีฝั่ง STM หรือเป็นรายการซ้ำ
@@ -2310,6 +2346,7 @@ const Engine = (() => {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
       xbProviderRefMatched: matched.filter(m => m.xbProviderRefMatch).length,
+      threeXbBankResidualMatched: matched.filter(m => m.threeXbBankResidualMatch).length,
       xbProviderDuplicateRowsSuppressed,
       tmnOcrDuplicateRowsSuppressed,
       sys123KtbBoFirstSuppressed: ktbBoFirstSurplusSuppressed.size,
@@ -2358,7 +2395,7 @@ const Engine = (() => {
         settlementSec: m.s.settlementSec ?? null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
-        method: m.ktbAmountSetMatch ? "sys123-ktb-account-day-amount-multiset" : m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbBankTimeMatch ? "sys123-ktb-bank-time-amount-reciprocal" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.ktbAmountSetMatch ? "sys123-ktb-account-day-amount-multiset" : m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbBankTimeMatch ? "sys123-ktb-bank-time-amount-reciprocal" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.threeXbBankResidualMatch ? "3xb-bank-residual-exact-amount" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
@@ -2376,6 +2413,7 @@ const Engine = (() => {
         sys123ProviderMatched: !!m.sys123ProviderMatch,
         sys123ProviderGroupMatched: !!m.sys123ProviderGroupMatch,
         rescueMatched: !!m.rescueMatch,
+        threeXbBankResidualMatched: !!m.threeXbBankResidualMatch,
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         ktbNextDayBankTimeMatched: !!m.ktbNextDayBankTimeMatch,
