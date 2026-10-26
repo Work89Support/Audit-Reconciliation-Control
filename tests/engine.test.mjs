@@ -246,6 +246,9 @@ await (async function () {
   eq("XB normal bank: ยังคงใช้เวลารายการ BO", xb?.sec, 18 * 3600);
   const bbl = Engine.normalize("AT4_BO_2026-09-28.xlsx", [headers, [...row.slice(0, 4), "BBL 6517248040", ...row.slice(5)]], st, "2026-09-28").records[0];
   eq("123 BBL no-time: ไม่บังคับเวลาธนาคาร", bbl?.sec, 18 * 3600);
+  const missingBankTime = Engine.normalize("FR8_BO_2026-09-28.xlsx", [headers, [[row[0], "", ...row.slice(2)]].flat()], st, "2026-09-28");
+  eq("123 timed bank: ไม่ fallback ไปเวลาสร้างเมื่อวันที่ธนาคารว่าง", missingBankTime.records.length, 0);
+  eq("123 timed bank: เก็บเหตุพักตรวจเมื่อวันที่ธนาคารว่าง", missingBankTime.dropped["ระบบ 123 ธนาคารมีเวลาแต่ไม่มีวันที่ธนาคาร"], 1);
 })();
 
 /* COREPAY ฝากเฉพาะ FR8/AT4/SK8 ต้องใช้วันที่ธนาคาร และห้ามย้อนใช้วันที่ทำรายการ */
@@ -672,14 +675,18 @@ await (async () => {
 })();
 
 await (async () => {
-  const s=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,ktbNextDayCandidateOnly:true});
-  const b=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:120,amount:100,crossDay:true,boDate:'2026-09-28',bankDate:'2026-09-29',matchTimeColumn:'วันที่ธนาคาร'});
+  const s=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-29',sec:1*3600+42*60,amount:100,ktbNextDayCandidateOnly:true});
+  const b=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-28',sec:23*3600+31*60,amount:100,boDate:'2026-09-28',bankDate:'2026-09-28',matchTimeColumn:'วันที่ธนาคาร',lateNight:true});
   let r=await run([s],[b]);
-  eq('123 KTB next-day: strict bank-time candidate closes',r.matched,1);
-  eq('123 KTB next-day: method is auditable',r.matchEvidence[0]?.method,'sys123-ktb-next-day-bank-time-reciprocal');
-  r=await run([{...s,rowNo:6301}],[{...b,rowNo:6302,sec:600}]);
-  eq('123 KTB next-day: mismatched bank time stays evidence-only',r.matched,0);
-  eq('123 KTB next-day: unmatched candidate creates no false case',r.exceptions.length,1);
+  eq('123 KTB next-day: BO 23xx closes against STM D+1 at any time',r.matched,1);
+  eq('123 KTB next-day: method is auditable',r.matchEvidence[0]?.method,'sys123-ktb-next-day-unique-amount');
+  r=await run([{...s,rowNo:6301},{...s,rowNo:6302,sec:3*3600}],[b]);
+  eq('123 KTB next-day: ambiguous STM candidates stay open',r.matched,0);
+  eq('123 KTB next-day: ambiguous late BO is a cross-day case, not waiting STM',r.exceptions.filter(e=>e.type==='cross_day').length,1);
+  r=await run([{...s,rowNo:6303}],[{...b,rowNo:6304,sec:22*3600+59*60}]);
+  eq('123 KTB next-day: BO before 23:00 is not eligible',r.matched,0);
+  r=await run([{...s,rowNo:6305,direction:'withdraw'}],[b]);
+  eq('123 KTB next-day: direction mismatch stays open',r.matched,0);
 })();
 
 await (async () => {
