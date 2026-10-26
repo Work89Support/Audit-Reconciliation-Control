@@ -11,7 +11,7 @@
     "test:monthly-audit": "node tests/monthly-scoped-users.test.cjs",
     "test:source-archive": "node tests/audit-source-archive.test.cjs",
     "test:account-recheck": "node scripts/build-account-recheck-worker.mjs && node tests/account-recheck.test.cjs",
-    "test:file-run-management": "node tests/file-run-management.test.cjs && node tests/file-run-confirm.test.cjs && node tests/file-workflow-layout.test.cjs && node tests/manual-source-upload.test.mjs",
+    "test:file-run-management": "node tests/file-run-management.test.cjs && node tests/file-run-confirm.test.cjs && node tests/file-workflow-layout.test.cjs && node tests/file-run-reparse.test.cjs && node tests/manual-source-upload.test.mjs",
     "test:evidence-library": "node tests/case-evidence-library.test.mjs",
     "test:bulk-closure": "node tests/bulk-document-closure.test.cjs && npm run test:assistant-documents",
     "test:assistant-documents": "node tests/assistant-document-only-close.test.cjs && node tests/direct-document-close.test.cjs && node tests/direct-employee-damage-close.test.cjs && node tests/document-closure.test.cjs && node tests/audit-assistant-role.test.cjs",

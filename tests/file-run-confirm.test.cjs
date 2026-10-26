@@ -21,7 +21,7 @@ global.document={activeElement:previous,body:{appendChild(el){assert.equal(el,di
  const close=ui.confirmAction({title:'ปิด',message:'x'});dialog.listeners.close();assert.equal(await close,false);
  assert.equal(opened,5);assert.equal(closed,5);
  const app=fs.readFileSync('app.js','utf8'),scope=app.slice(app.indexOf('function openFileRunManagement('),app.indexOf('function chooseFileRunManagement('));
- assert.doesNotMatch(scope,/window\.confirm/);assert.equal((scope.match(/FileRunManagement\.confirmAction/g)||[]).length,4);
+ assert.doesNotMatch(scope,/window\.confirm/);assert.equal((scope.match(/FileRunManagement\.confirmAction/g)||[]).length,5);
  assert.match(scope,/ยังไม่รันจนกดยืนยันในขั้นถัดไป/);
  console.log('PASS file review confirmation: no automatic writes/run, cancel and Escape safe, permission rechecked, original editor retained, HTML escaped, browser confirm removed from file workflow');
 })().catch(e=>{console.error(e);process.exitCode=1;});
