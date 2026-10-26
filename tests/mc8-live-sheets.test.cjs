@@ -65,6 +65,22 @@ assert.deepEqual(mr9BoFirstGroups.map(group=>group.label).sort(),[
   'พร้อมเพย์-ATP(autopeer)(P2P) · ฝาก','พร้อมเพย์-CP(corepay)(QR) · ฝาก','พร้อมเพย์-M24(mypays24)(P2P) · ฝาก',
 ].sort(),'XB summary pages must come only from exact BO account labels');
 assert.deepEqual(mr9BoFirstGroups.map(group=>group.rows.length).sort(),[2,2,2],'PM-only rows attach to the unique BO account/provider page instead of opening duplicate canonical pages');
+const mr9LegacyProviderRows=accountReviewGroups(rowsOf({run:{summary:{match_evidence:[
+  {company:'MR9',account:'AUTOPEER',direction:'deposit',boAmount:100,stmAmount:100,bo:{date:'2026-10-25'},stm:{date:'2026-10-25'},customer:{bo:{bank:'พร้อมเพย์-ATP(autopeer)(P2P)'},stm:{}}},
+  {company:'MR9',account:'COREPAY',direction:'deposit',boAmount:200,stmAmount:200,bo:{date:'2026-10-25'},stm:{date:'2026-10-25'},customer:{bo:{bank:'พร้อมเพย์-CP(corepay)(QR)'},stm:{}}},
+  {company:'MR9',account:'MYPAY',direction:'deposit',boAmount:300,stmAmount:300,bo:{date:'2026-10-25'},stm:{date:'2026-10-25'},customer:{bo:{bank:'พร้อมเพย์-M24(mypays24)(P2P)'},stm:{}}},
+]}},cases:[
+  {id:'legacy-at-bo',company:'MR9',account:'AUTOPEER',direction:'ฝาก',status:'open',system_amount:11,bo_date:'2026-10-25',customer_details:{bo:{bank:'AUTOPEER'}}},
+  {id:'legacy-cp-bo',company:'MR9',account:'COREPAY',direction:'ฝาก',status:'open',system_amount:12,bo_date:'2026-10-25',customer_details:{bo:{bank:'COREPAY'}}},
+  {id:'legacy-m-bo',company:'MR9',account:'MYPAY',direction:'ฝาก',status:'open',system_amount:13,bo_date:'2026-10-25',customer_details:{bo:{bank:'MYPAY'}}},
+  {id:'legacy-at-pm',company:'MR9',account:'AUTOPEER',direction:'ฝาก',status:'open',bank_amount:9,stm_date:'2026-10-25'},
+  {id:'legacy-cp-pm',company:'MR9',account:'COREPAY',direction:'ฝาก',status:'open',bank_amount:8,stm_date:'2026-10-25'},
+  {id:'legacy-m-pm',company:'MR9',account:'MYPAY',direction:'ฝาก',status:'open',bank_amount:7,stm_date:'2026-10-25'},
+]},'MR9'));
+assert.deepEqual(mr9LegacyProviderRows.map(group=>group.label).sort(),[
+  'พร้อมเพย์-ATP(autopeer)(P2P) · ฝาก','พร้อมเพย์-CP(corepay)(QR) · ฝาก','พร้อมเพย์-M24(mypays24)(P2P) · ฝาก',
+].sort(),'legacy canonical BO and PM-only rows must fold into the sole exact BO page');
+assert.deepEqual(mr9LegacyProviderRows.map(group=>group.rows.length).sort(),[3,3,3],'legacy canonical rows remain visible once without opening duplicate pages');
 assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
 const totals=summarize(rows);assert.equal(totals.pmCount,1);assert.equal(totals.pmCents,35500);assert.equal(totals.boCount,2);assert.equal(totals.boCents,50500);assert.equal(totals.crossDayCount,1);assert.equal(totals.crossDayBoCents,15000);assert.equal(totals.diffBeforeCents,0);assert.equal(totals.diffAfterCents,-15000);
 assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO transaction must be deduplicated');
