@@ -5,8 +5,8 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.80-seven-m-repeated-internal-transfer";
-const PARSER_VERSION = "1.9.80-seven-m-repeated-internal-transfer";
+const WORKER_VERSION = "1.9.81-ktb-next-day-anytime";
+const PARSER_VERSION = "1.9.81-ktb-next-day-anytime";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -469,8 +469,8 @@ try {
 return [{json:{text,pdf_readable:readable,native_quality:diagnostics,numpages:source.numpages||null},pairedItem:{item:0}}];`;
 
 const nodes = [
-  { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80] },
-  { parameters: {}, id: "manual", name: "ทดสอบด้วยมือ", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [-1040, 240] },
+  { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "STOP · ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80], disabled: true },
+  { parameters: {}, id: "manual", name: "STOP · ทดสอบด้วยมือ", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [-1040, 240], disabled: true },
   { parameters: { inputSource: "passthrough" }, id: "a19bc85c-c123-4897-a385-c2a65bac7a15", name: "รับงานจากรอบตรวจ", type: "n8n-nodes-base.executeWorkflowTrigger", typeVersion: 1.1, position: [-1040, 400] },
   { ...http("queue", "Supabase: ตรวจไฟล์และจัดคิว", [-820, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -653,8 +653,8 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
 ];
 
 const connections = {
-  "ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
-  "ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
+  "STOP · ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
+  "STOP · ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "รับงานจากรอบตรวจ": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
   "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "Supabase: คืนคิวที่สั่งรันใหม่", type: "main", index: 0 }]] },
   "Supabase: คืนคิวที่สั่งรันใหม่": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
