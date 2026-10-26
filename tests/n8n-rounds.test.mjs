@@ -15,7 +15,9 @@ for(const wf of [parent,child]){
   for(const lane of outputs.main) for(const e of lane) assert.ok(names.has(e.node));
  }
 }
-assert.equal(child.nodes.find(n=>n.id==='schedule').disabled,true);
+assert.equal(child.nodes.some(n=>n.id==='schedule'),false,'child must not contain a legacy schedule trigger');
+assert.equal(child.nodes.some(n=>n.id==='manual'),false,'child must not contain a legacy manual trigger');
+assert.equal(child.nodes.some(n=>n.id==='queue'),false,'child must not own dispatcher queue refresh');
 assert.equal(child.nodes.find(n=>n.id==='claim').alwaysOutputData,true);
 assert.equal(child.connections['รับงานจากรอบตรวจ'].main[0][0].node,'รวมเป็นหนึ่งรอบ','child must not requeue failed work every iteration');
 assert.equal(parent.settings.timezone,'Asia/Bangkok');

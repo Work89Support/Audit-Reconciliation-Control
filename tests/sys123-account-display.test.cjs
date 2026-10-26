@@ -6,11 +6,11 @@ add('999999999999 : Manual','deposit');add('999999999999 : Manual','withdraw');
 add('AUTOPEER','withdraw',false);add('CYBERPLUS','deposit',false);
 const before=JSON.stringify(rows),groups=api.accountReviewGroups(rows);
 assert.equal(groups.length,10);
-assert.deepEqual(new Set(groups.map(g=>g.label)),new Set(['4311918665 : Manual ถอน','4311918665 : Manual ฝาก','AUTOPEER ถอน','AUTOPEER ฝาก','COREPAY ถอน','COREPAY ฝาก','CYBERPLUS ถอน','CYBERPLUS ฝาก','999999999999 : Manual ถอน','999999999999 : Manual ฝาก']));
+assert.deepEqual(new Set(groups.map(g=>g.label)),new Set(['4311918665 : Manual ถอน','4311918665 : Manual ฝาก','AUTOPEER-ATPPRDEXT307 : AUTOPEER ถอน','AUTOPEER-ATPPRDEXT307 : AUTOPEER ฝาก','CPXM-598 : CP ถอน','CPXM-598 : CP ฝาก','Cyberplus-3 : Cyberplus ถอน','Cyberplus-3 : Cyberplus ฝาก','999999999999 : Manual ถอน','999999999999 : Manual ฝาก']));
 assert.equal(groups.flatMap(g=>g.rows).length,rows.length);assert.equal(new Set(groups.flatMap(g=>g.rows)).size,rows.length);
 assert.deepEqual(api.summarize(groups.flatMap(g=>g.rows)),api.summarize(rows));
 assert.equal(JSON.stringify(rows),before,'do not alter source labels, amounts, matches or case states');
-for(const g of groups)assert.deepEqual(api.filter(rows,'all','all','all',g.key),g.rows);
+for(const g of groups)assert.deepEqual(api.filter(rows,'all','all','all',g.key).map(r=>r.key).sort(),g.rows.map(r=>r.key).sort());
 const exported=api.buildAuditExportSheets(rows,'FR8','2026-10-09',true,schema);
 assert.equal(exported.length,12);assert.equal(new Set(exported.map(s=>s.name)).size,12);
 assert.deepEqual(exported[1].rows.map(r=>r[1]),groups.map(g=>g.label));
@@ -31,4 +31,4 @@ for(const company of ['AT4','SK8']){
   const bankSheets=api.buildAuditExportSheets(bankRows,company,'2026-10-09',true,schema);
   assert.deepEqual(bankSheets.slice(2).map(s=>s.name),[`${bank} ถอน`,`${bank} ฝาก`]);
 }
-console.log('FR8/AT4/SK8 direction groups, bank-number labels, alias consolidation and unchanged persisted evidence passed');
+console.log('FR8/AT4/SK8 direction groups, exact BO headings, alias consolidation and unchanged persisted evidence passed');

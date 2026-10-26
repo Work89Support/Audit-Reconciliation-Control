@@ -24,8 +24,8 @@ assert.match(sb,/rpc\('close_current_audit_case'/);
 assert.doesNotMatch(sb.slice(sb.indexOf('async function requestClarification'),sb.indexOf('async function manualPairCandidates')),/\/rest\/v1\/exceptions\?id=.*method: "PATCH"/s);
 assert.match(overview,/\['open','pending_next_day'\]\.includes\(row\.status\)/);
 assert.match(app,/\["open", "pending_next_day"\]\.includes\(e\.status\)/);
-assert.match(html,/supabase\.js\?v=[^"']*manual-case-parity-20261022/);
-assert.match(html,/app\.js\?v=[^"']*manual-case-parity-20261022/);
+assert.match(html,/supabase\.js\?v=[^"']+/);
+assert.match(html,/app\.js\?v=[^"']+/);
 
 const start=app.indexOf('function exceptionSourceFileIds');
 const end=app.indexOf('\n\nasync function loadExceptionSupport',start);

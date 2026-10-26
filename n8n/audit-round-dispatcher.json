@@ -10,7 +10,7 @@
   "nodes": [
     {
       "id": "round-clock",
-      "name": "รอบตรวจ 08:00 · 11:00 · 19:00",
+      "name": "รอบตรวจ 08:00 · 19:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -22,7 +22,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 0 8,11,19 * * *"
+              "expression": "0 0 8,19 * * *"
             }
           ]
         }
@@ -40,6 +40,24 @@
       "parameters": {}
     },
     {
+      "id": "queue",
+      "name": "Supabase: ตรวจไฟล์และจัดคิว",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -640,
+        0
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      },
       "parameters": {
         "method": "POST",
         "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs",
@@ -63,25 +81,7 @@
           },
           "timeout": 30000
         }
-      },
-      "id": "queue",
-      "name": "Supabase: ตรวจไฟล์และจัดคิว",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        -640,
-        0
-      ],
-      "credentials": {
-        "supabaseApi": {
-          "id": "dGndiinLb7AKnjIu",
-          "name": "Supabase account"
-        }
-      },
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 10000,
-      "alwaysOutputData": true
+      }
     },
     {
       "id": "one-round",
@@ -265,7 +265,7 @@
     }
   ],
   "connections": {
-    "รอบตรวจ 08:00 · 11:00 · 19:00": {
+    "รอบตรวจ 08:00 · 19:00": {
       "main": [
         [
           {

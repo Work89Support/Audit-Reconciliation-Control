@@ -17,7 +17,7 @@ const TmnVisualReview = (() => {
         p.company !== job.company || p.businessDate !== job.business_date || !isoDate(p.businessDate)) fail('source identity changed');
     if (!/^[a-f0-9]{64}$/.test(p.sourceSha256 || '') ||
         (/^[a-f0-9]{64}$/.test(file.checksum) && p.sourceSha256 !== file.checksum)) fail('PDF hash missing or changed');
-    const expectedAccount = p.company === 'UFABET7M' && /รุ่งฟ้า/.test(file.file_name || '') ? '0812792075' :
+    const expectedAccount = p.company === 'UFABET7M' && /รุ[่้]งฟ้า/.test(file.file_name || '') ? '0812792075' :
       p.company === 'UFABET7M' && /สรวิศา/.test(file.file_name || '') ? '0639274201' : '';
     if (file.kind !== 'stm_pdf' || !/(?:^|[_\s-])TMN(?:[_\s-]|$)/i.test(file.file_name || '') ||
         !expectedAccount || p.account !== expectedAccount ||

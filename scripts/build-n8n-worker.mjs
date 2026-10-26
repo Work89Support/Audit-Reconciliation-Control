@@ -5,8 +5,8 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.81-ktb-next-day-anytime";
-const PARSER_VERSION = "1.9.81-ktb-next-day-anytime";
+const WORKER_VERSION = "1.9.86-ktb-bo-source-lifecycle";
+const PARSER_VERSION = "1.9.86-ktb-bo-source-lifecycle";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -220,9 +220,10 @@ const qualityErrors=files.filter(f=>f.parse_error).map(f=>({id:f.file.id,file_na
 const parseResults=files.map(f=>({id:f.file.id,file_name:f.file.file_name,parsed:!f.parse_error&&f.parser_version==='${PARSER_VERSION}',row_count:f.row_count||0,attempted_row_count:f.attempted_row_count||0,candidate_row_count:f.candidate_row_count||0,ocr_input_count:f.ocr_input_count||0,ocr_page_count:f.ocr_page_count||0,ocr_errors:f.ocr_errors||0,parse_error:f.parse_error||null,parser_version:f.parser_version||null,dropped:f.dropped||{}}));
 if(qualityErrors.length) return [{json:{job,result:null,exceptions:[],files:parseResults,quality_errors:qualityErrors},pairedItem:{item:0}}];
 const stm=[],bo=[];
+const stampSource=(row,f)=>({...row,source_file:f.file.file_name,source_file_id:f.file.id,source_checksum:f.file.checksum||null,source_created_at:f.file.created_at||''});
 for(const f of files){
   if(f.format&&f.format.source==='aux') continue;
-  const records=(f.records||[]).map(r=>({...r,source_file:f.file.file_name,source_file_id:f.file.id,source_checksum:f.file.checksum||null,source_created_at:f.file.created_at||''}));
+  const records=(f.records||[]).map(r=>stampSource(r,f));
   if(f.format&&f.format.source==='bo') bo.push(...records);
   else stm.push(...records);
 }
@@ -283,7 +284,13 @@ if(sevenMUnconfirmedPendingRowsSuppressed){
   const eligible=stm.filter(r=>!pendingRows.includes(r)||confirmedPending.has(r));
   stm.length=0;stm.push(...eligible);
 }
-const parsed=files.filter(f=>f.format&&(f.format.source==='bo'||f.format.source==='aux')).map(f=>({records:f.format.source==='bo'?(f.records||[]):[],aux:f.aux||[]}));
+// Business rules can emit exceptions independently from Engine. They must receive
+// the same source lineage as the reconciliation rows; otherwise a valid Rule
+// exception cannot pass the primary-result evidence gate.
+const parsed=files.filter(f=>f.format&&(f.format.source==='bo'||f.format.source==='aux')).map(f=>({
+  records:f.format.source==='bo'?(f.records||[]).map(r=>stampSource(r,f)):[],
+  aux:(f.aux||[]).map(r=>stampSource(r,f)),
+}));
 const biz=Rules.run(parsed,${settings});
 const boFirstCoverage=(()=>{
   const clean=v=>String(v||'').trim().toUpperCase();
@@ -381,8 +388,9 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
   customer_details:{...(e.customerDetails||{}),source_rows:{bo:e.boSource||null,stm:e.stmSource||null}},
   employee:e.employee||null,shift:e.shift||null,cause:e.cause||null,detail:e.detail||null,stm_raw:String(e.stmRaw||'').slice(0,4000),bo_raw:String(e.boRaw||'').slice(0,4000)
 }));
+boFirstCoverage.sys123_ktb_bo_first_suppressed_rows=result.sys123KtbBoFirstSuppressedRows||[];
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_manual_bank_safe_close:true,sys123_manual_bank_time_amount:true,sys123_notime_amount_only:true,sys123_customer_identity_tags:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_ktb_bank_time_required:true,sys123_ktb_account_day_amount_multiset:true,sys123_ktb_bo_first_suppressed:result.sys123KtbBoFirstSuppressed||0,sys123_manual_bank_safe_close:true,sys123_manual_bank_time_amount:true,sys123_bbl_gsb_notime_amount_only:true,sys123_customer_identity_tags:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
@@ -469,30 +477,7 @@ try {
 return [{json:{text,pdf_readable:readable,native_quality:diagnostics,numpages:source.numpages||null},pairedItem:{item:0}}];`;
 
 const nodes = [
-  { parameters: { rule: { interval: [{ field: "minutes", minutesInterval: 10 }] } }, id: "schedule", name: "STOP · ทุก 10 นาที", type: "n8n-nodes-base.scheduleTrigger", typeVersion: 1.2, position: [-1040, 80], disabled: true },
-  { parameters: {}, id: "manual", name: "STOP · ทดสอบด้วยมือ", type: "n8n-nodes-base.manualTrigger", typeVersion: 1, position: [-1040, 240], disabled: true },
   { parameters: { inputSource: "passthrough" }, id: "a19bc85c-c123-4897-a385-c2a65bac7a15", name: "รับงานจากรอบตรวจ", type: "n8n-nodes-base.executeWorkflowTrigger", typeVersion: 1.1, position: [-1040, 400] },
-  { ...http("queue", "Supabase: ตรวจไฟล์และจัดคิว", [-820, 160], {
-    method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
-    sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}", options: { response: { response: {} } },
-  }), retryOnFail: true, maxTries: 6, waitBetweenTries: 10000 },
-  { ...http("restore-manual-rerun", "Supabase: คืนคิวที่สั่งรันใหม่", [-600, 160], {
-    method: "PATCH",
-    url: "={{ $vars.SUPABASE_URL }}/rest/v1/daily_recon_jobs?rerun_requested_at=not.is.null&status=in.(queued,needs_review,error,waiting_files,completed)&is_archived=eq.false&business_date=gte.{{ DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate() }}&business_date=lte.{{ DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }}",
-    authentication: "predefinedCredentialType",
-    nodeCredentialType: "supabaseApi",
-    sendHeaders: true,
-    headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] },
-    sendBody: true,
-    specifyBody: "json",
-    // Consume the rerun request while restoring the job. All requested jobs are
-    // changed to queued in this PATCH before the claim step, so clearing the
-    // marker prevents a completed needs_review job from being queued again on
-    // every subsequent worker tick.
-    jsonBody: "={{ JSON.stringify({ status: 'queued', attempt_count: 0, claimed_at: null, claimed_by: null, last_error: null, updated_at: DateTime.now().toISO() }) }}",
-    options: { response: { response: {} } },
-  }), alwaysOutputData: true, retryOnFail: true, maxTries: 3, waitBetweenTries: 3000 },
   { parameters: { jsCode: "return [{json:{started_at:new Date().toISOString()}}];" }, id: "single-cycle", name: "รวมเป็นหนึ่งรอบ", type: "n8n-nodes-base.code", typeVersion: 2, position: [-380, 160] },
   http("claim", "Supabase: จองหนึ่งงาน", [-160, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
@@ -546,14 +531,14 @@ const nodes = [
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: receiptExpression, options: { response: { response: {} } },
   }),
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "loose", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return x.quality_errors.length === 0 && Array.isArray(x.job.missing_groups) && x.job.missing_groups.length === 0;})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "loose", version: 2 }, conditions: [{ id: "quality-ok", leftValue: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;const missing=Array.isArray(x.job.missing_groups)?x.job.missing_groups:[];const missingFileGroup=missing.some(g=>Array.isArray(g)||typeof g==='string');return x.quality_errors.length===0&&!missingFileGroup;})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-quality", name: "ไฟล์ผ่าน Quality Gate?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 80] },
   { parameters: { jsCode: "const x=$('กระทบยอดและสร้าง Exception').first().json; return [{json:{p_run:{business_date:x.job.business_date,company:x.job.company,run_by:x.result.run_by,elapsed_ms:x.result.elapsed_ms,stm_count:x.result.stm_count,bo_count:x.result.bo_count,matched:x.result.matched,match_rate:x.result.match_rate,exception_count:x.exceptions.length,no_stm_count:x.result.no_stm_count,file_ids:x.result.file_ids,summary:x.result.summary}},pairedItem:{item:0}}];" }, id: "prepare-run-payload", name: "เตรียมข้อมูลผลการรัน", type: "n8n-nodes-base.code", typeVersion: 2, position: [1640, 20] },
   http("insert-run", "Supabase: สร้างผลการรัน", [1860, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/create_recon_run_with_timeout", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=representation" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ JSON.stringify($json) }}", options: { timeout: 180000, response: { response: {} } },
   }),
-  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').first().json; const run=$json; const runId=run.id; if(!runId) throw new Error('Supabase ไม่คืน run id'); const rows=source.exceptions.map(e=>({...e,run_id:runId})); const size=200; if(!rows.length) return [{json:{...source,run_id:runId,exception_rows:[]},pairedItem:{item:0}}]; const out=[]; for(let i=0;i<rows.length;i+=size) out.push({json:{...source,exceptions:[],run_id:runId,exception_rows:rows.slice(i,i+size),batch_no:Math.floor(i/size)+1,batch_total:Math.ceil(rows.length/size)},pairedItem:{item:0}}); return out;" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [2080, 20] },
+  { parameters: { jsCode: "const source=$('กระทบยอดและสร้าง Exception').first().json; const raw=$json; const parse=v=>{if(typeof v!=='string') return v; try{return JSON.parse(v)}catch{return v}}; const run=parse(raw); const nested=parse(run?.create_recon_run_with_timeout??run?.data??run?.body); const row=Array.isArray(run)?run[0]:Array.isArray(nested)?nested[0]:(nested&&typeof nested==='object'?nested:run); const runId=row?.id; if(!runId) throw new Error('Supabase ไม่คืน run id: '+JSON.stringify(raw).slice(0,500)); const rows=source.exceptions.map(e=>({...e,run_id:runId})); const size=200; if(!rows.length) return [{json:{...source,run_id:runId,exception_rows:[]},pairedItem:{item:0}}]; const out=[]; for(let i=0;i<rows.length;i+=size) out.push({json:{...source,exceptions:[],run_id:runId,exception_rows:rows.slice(i,i+size),batch_no:Math.floor(i/size)+1,batch_total:Math.ceil(rows.length/size)},pairedItem:{item:0}}); return out;" }, id: "prepare-save", name: "เตรียมบันทึก Exception", type: "n8n-nodes-base.code", typeVersion: 2, position: [2080, 20] },
   { ...http("insert-exceptions", "Supabase: บันทึก Exception", [2080, 20], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/exceptions", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }, { name: "Prefer", value: "return=minimal" }] }, sendBody: true, specifyBody: "json",
@@ -653,11 +638,7 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
 ];
 
 const connections = {
-  "STOP · ทุก 10 นาที": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
-  "STOP · ทดสอบด้วยมือ": { main: [[{ node: "Supabase: ตรวจไฟล์และจัดคิว", type: "main", index: 0 }]] },
   "รับงานจากรอบตรวจ": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
-  "Supabase: ตรวจไฟล์และจัดคิว": { main: [[{ node: "Supabase: คืนคิวที่สั่งรันใหม่", type: "main", index: 0 }]] },
-  "Supabase: คืนคิวที่สั่งรันใหม่": { main: [[{ node: "รวมเป็นหนึ่งรอบ", type: "main", index: 0 }]] },
   "รวมเป็นหนึ่งรอบ": { main: [[{ node: "Supabase: จองหนึ่งงาน", type: "main", index: 0 }]] },
   "Supabase: จองหนึ่งงาน": { main: [[{ node: "มีงานในคิว?", type: "main", index: 0 }]] },
   "มีงานในคิว?": { main: [[{ node: "Supabase: อ่านรายการไฟล์ของวัน", type: "main", index: 0 }], [{ node: "จบรอบ Worker", type: "main", index: 0 }]] },

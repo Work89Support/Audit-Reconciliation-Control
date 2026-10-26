@@ -731,21 +731,28 @@ const PdfStm = (() => {
      บรรทัดสรุปท้าย ("รายการถอนทั้งหมด ...") ไม่ขึ้นต้นด้วยวันที่ จึงถูกข้ามอัตโนมัติ           */
   function parseKtb(pages) {
     const rows = [];
-    pages.forEach((lines) => {
+    pages.forEach((lines, pageIndex) => {
       lines.forEach((l, i) => {
         const t = l.text;
         if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(t)) return;              // ต้องขึ้นต้นด้วยวันที่
         const amts = l.items.filter((it) => AMT.test(it.s.trim()));
         if (amts.length < 2) return;                                       // ต้องมี ยอด + คงเหลือ
-        // เวลา: ในบรรทัดนี้ก่อน ไม่มีค่อยดูบรรทัดถัดไป (ที่ไม่ใช่แถวใหม่)
+        // เวลา: ในบรรทัดนี้ก่อน หากไม่มีให้รับเฉพาะบรรทัดเวลาล้วนเท่านั้น
+        // ห้ามหยิบ HH:MM จากข้อความรายละเอียด/หัวกระดาษบรรทัดถัดไป เพราะจะ
+        // เปลี่ยนเวลาของแถว KTB และสร้างคู่/เคสผิดจากเวลาที่ไม่ได้อยู่กับรายการ
         let time = (t.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
         if (!time) {
           const nx = lines[i + 1];
-          if (nx && !/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(nx.text)) time = (nx.text.match(/\b(\d{1,2}:\d{2})\b/) || [])[1];
+          const standalone = nx && String(nx.text || "").trim().match(/^(\d{1,2}:\d{2})(?::\d{2})?$/);
+          if (standalone) time = standalone[1];
         }
         const kind = (t.match(/(เงินโอนเข้า|โอนเงินออก|รับโอนเงิน|โอนเงิน|ฝากเงิน|ถอนเงิน|หักบัญชี|ดอกเบี้ย|ค่าธรรมเนียม)/) || [])[1] || "";
-        const secVal = secOf(time); // KTB บางบัญชีไม่แสดงเวลา -> ถอยไปโหมด noTime เหมือน BBL (จับคู่ด้วยบัญชี+ยอด+ทิศทาง)
+        // หากพิสูจน์เวลาธนาคารไม่ได้ ให้เก็บแถวไว้เป็นหลักฐาน noTime แต่
+        // quality gate จะหยุดรอบอัตโนมัติ; KTB ห้ามถอยไปจับด้วยยอดอย่างเดียว
+        const secVal = secOf(time);
         rows.push({
+          page: pageIndex + 1,
+          sourceLine: i + 1,
           date: isoOf(t),
           sec: secVal === null ? 0 : secVal,
           noTime: secVal === null,
@@ -1110,7 +1117,11 @@ const PdfStm = (() => {
     // BBL row may be isolated from the current-day quality gate.
     const outOfDayDirectionRows = [];
     const invalidRows = rows.filter((r) => {
-      const invalid = !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction;
+      // KTB reconciliation requires the printed bank timestamp.  A zero
+      // placeholder/noTime value is retained as evidence but must never pass
+      // the quality gate or enter automatic matching/case creation.
+      const ktbTimeMissing = head.bank === "KTB" && r.noTime === true;
+      const invalid = !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction || ktbTimeMissing;
       const previousDate = businessDate && /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
         ? new Date(Date.parse(businessDate+'T00:00:00Z')-86400000).toISOString().slice(0,10) : null;
       if (invalid && head.bank === 'BBL' && previousDate && r.date === previousDate
@@ -1132,7 +1143,14 @@ const PdfStm = (() => {
       }
     }
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
-      unreadRows, invalidRows: invalidRows.map((r) => ({ raw: r.raw, reason: "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้" })),
+      unreadRows, invalidRows: invalidRows.map((r) => ({
+        raw: r.raw,
+        page: r.page || null,
+        sourceLine: r.sourceLine || null,
+        reason: head.bank === "KTB" && r.noTime === true
+          ? "KTB ไม่มีเวลาธนาคารที่ยืนยันได้ — ห้ามจับคู่หรือสร้างเคสอัตโนมัติ"
+          : "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้",
+      })),
       outOfDayDirectionRows,
       ...(head.bank==='BBL'?{businessDayPolicy:'bbl_previous_day_direction_v1',businessDate:businessDate||null}:{}) };
 
@@ -1213,7 +1231,7 @@ const PdfStm = (() => {
         lateNight: r.sec >= 82800,
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
-        ...(head.bank === 'BBL' ? {page:r.page,sourceLine:r.sourceLine} : {}),
+        ...(['BBL', 'KTB'].includes(head.bank) ? {page:r.page,sourceLine:r.sourceLine} : {}),
         internalTransferHint: !!r.internalTransferHint,
         ocrWalletScreenshot: !!r.ocrWalletScreenshot,
         ocrDateCandidateOnly,

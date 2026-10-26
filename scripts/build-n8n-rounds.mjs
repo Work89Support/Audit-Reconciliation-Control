@@ -4,8 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const worker = JSON.parse(await readFile(path.join(root, 'n8n/audit-headless-worker.json'), 'utf8'));
-// Separate staged artifact: do not disable the production timer until the parent is tested.
-worker.nodes.find(n => n.id === 'schedule').disabled = true;
+// The Dispatcher owns all automatic/manual round starts.  The Worker must have
+// only the execute-workflow entry point; do not recreate legacy schedule or
+// manual triggers because they can start a second competing round.
+worker.nodes = worker.nodes.filter(n => !['schedule', 'manual', 'queue', 'restore-manual-rerun'].includes(n.id));
+delete worker.connections['STOP · ทุก 10 นาที'];
+delete worker.connections['STOP · ทดสอบด้วยมือ'];
+delete worker.connections['Supabase: ตรวจไฟล์และจัดคิว'];
+delete worker.connections['Supabase: คืนคิวที่สั่งรันใหม่'];
 if (!worker.nodes.some(n => n.name === 'รับงานจากรอบตรวจ')) {
   worker.nodes.push({id:'round-subworkflow',name:'รับงานจากรอบตรวจ',type:'n8n-nodes-base.executeWorkflowTrigger',typeVersion:1.1,position:[-1040,400],parameters:{inputSource:'passthrough'}});
 }
@@ -15,15 +21,22 @@ worker.nodes.find(n => n.id === 'summary').parameters.jsCode = "const job=$('Sup
 worker.settings.timezone='Asia/Bangkok';
 
 const edge = node => ({node,type:'main',index:0});
-const queue=structuredClone(worker.nodes.find(n=>n.id==='queue'));
-queue.position=[-640,0]; queue.alwaysOutputData=true;
-const credentials=structuredClone(queue.credentials);
-queue.parameters.options = {...queue.parameters.options, timeout: 30000};
-// Queue refresh is idempotent; pause between bounded attempts on outages.
-queue.retryOnFail=true; queue.maxTries=2; queue.waitBetweenTries=10000;
+const credentials={supabaseApi:{id:'dGndiinLb7AKnjIu',name:'Supabase account'}};
+const queue={
+  id:'queue',name:'Supabase: ตรวจไฟล์และจัดคิว',type:'n8n-nodes-base.httpRequest',typeVersion:4.2,
+  position:[-640,0],alwaysOutputData:true,retryOnFail:true,maxTries:2,waitBetweenTries:10000,credentials,
+  parameters:{
+    method:'POST',url:'={{ $vars.SUPABASE_URL }}/rest/v1/rpc/queue_due_daily_recon_jobs',
+    authentication:'predefinedCredentialType',nodeCredentialType:'supabaseApi',
+    sendHeaders:true,headerParameters:{parameters:[{name:'Content-Type',value:'application/json'}]},
+    sendBody:true,specifyBody:'json',
+    jsonBody:"={{ JSON.stringify({ p_from: DateTime.now().setZone('Asia/Bangkok').startOf('month').toISODate(), p_to: DateTime.now().setZone('Asia/Bangkok').plus({ days: 1 }).toISODate() }) }}",
+    options:{response:{response:{}},timeout:30000},
+  },
+};
 const condition=(id,name,expression,position)=>({id,name,type:'n8n-nodes-base.if',typeVersion:2.2,position,parameters:{conditions:{options:{caseSensitive:true,leftValue:'',typeValidation:'strict',version:2},conditions:[{id:id+'-test',leftValue:expression,rightValue:true,operator:{type:'boolean',operation:'true',singleValue:true}}],combinator:'and'},options:{}}});
 const rounds={name:'Audit - Round Dispatcher - Drain Useful Queue',active:false,settings:{executionOrder:'v1',timezone:'Asia/Bangkok',executionTimeout:2400},pinData:{},nodes:[
-  {id:'round-clock',name:'รอบตรวจ 08:00 · 11:00 · 19:00',type:'n8n-nodes-base.scheduleTrigger',typeVersion:1.2,position:[-880,0],parameters:{rule:{interval:[{field:'cronExpression',expression:'0 0 8,11,19 * * *'}]}}},
+  {id:'round-clock',name:'รอบตรวจ 08:00 · 19:00',type:'n8n-nodes-base.scheduleTrigger',typeVersion:1.2,position:[-880,0],parameters:{rule:{interval:[{field:'cronExpression',expression:'0 0 8,19 * * *'}]}}},
   {id:'manual-round',name:'เริ่มรอบด้วยมือ',type:'n8n-nodes-base.manualTrigger',typeVersion:1,position:[-880,200],parameters:{}},
   queue,
   {id:'one-round',name:'เริ่มหนึ่งรอบ',type:'n8n-nodes-base.code',typeVersion:2,position:[-420,0],parameters:{jsCode:'return [{json:{}}];'}},
@@ -35,7 +48,7 @@ const rounds={name:'Audit - Round Dispatcher - Drain Useful Queue',active:false,
   {id:'round-pause',name:'พักก่อนงานถัดไป',type:'n8n-nodes-base.wait',typeVersion:1.1,position:[900,100],parameters:{resume:'timeInterval',amount:5,unit:'seconds'}},
   {id:'round-done',name:'หยุดเมื่อคิวหมดหรือมี Worker อื่นทำอยู่',type:'n8n-nodes-base.code',typeVersion:2,position:[460,-140],parameters:{jsCode:"return [{json:{finished_at:new Date().toISOString(),message:'จบรอบ: ไม่มีงานที่ทำต่อได้ ไม่เรียก Worker ซ้ำ'}}];"}}
 ],connections:{
-  'รอบตรวจ 08:00 · 11:00 · 19:00':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
+  'รอบตรวจ 08:00 · 19:00':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
   'เริ่มรอบด้วยมือ':{main:[[edge('Supabase: ตรวจไฟล์และจัดคิว')]]},
   'Supabase: ตรวจไฟล์และจัดคิว':{main:[[edge('เริ่มหนึ่งรอบ')]]},
   'เริ่มหนึ่งรอบ':{main:[[edge('ดูคิวที่ทำได้จริง')]]},

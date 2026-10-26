@@ -1454,6 +1454,212 @@ const Engine = (() => {
     // the name as searchable evidence, but do not let it veto an exact tail.
     const sys123BankIdentityConflict = (identity) =>
       identity.tailConflict || (!identity.tailMatch && identity.nameConflict);
+
+    /* KTB ของระบบ 123 ต้องยึดเวลาธนาคารจริง ไม่ใช่บัญชีลูกค้าที่ BO เก็บไว้
+       (ซึ่งอาจเป็นบัญชีลงทะเบียนและไม่ใช่คู่โอนจริงใน statement) จับเฉพาะ
+       บริษัท/บัญชีบริษัท/ทิศทาง/วัน/ยอดตรง และต่างฝ่ายต่างเลือกเวลาใกล้ที่สุด
+       เพียงหนึ่งเดียวภายในกรอบ 10 นาที รายการที่เวลาเสมอกันหรือกำกวมยังคง
+       เปิดให้ Audit ตรวจ ไม่ใช้ลำดับแถวตัดสินแทนหลักฐาน. */
+    const isSys123KtbTimedPair = (s, b) => isSys123NormalBankPair(s, b)
+      && String(s.bank || s.channel || '').trim().toUpperCase() === 'KTB'
+      && sameCompany(s, b) && s.date === b.date && isIsoDate(s.date)
+      && s.account === b.account && !!s.direction && s.direction === b.direction
+      && Number.isFinite(s.amount) && s.amount > 0 && s.amount === b.amount
+      && !s.noTime && !b.noTime && Number.isFinite(s.sec) && Number.isFinite(b.sec)
+      && b.matchTimeColumn === 'วันที่ธนาคาร'
+      && timeDistance(s, b) <= exactUniqueTol;
+    const uniqueNearestPair = (rows, valueOf) => {
+      if (!rows.length) return null;
+      let best = rows[0], tied = false;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i].dt < best.dt) {
+          best = rows[i];
+          tied = false;
+        } else if (rows[i].dt === best.dt) tied = true;
+      }
+      return tied ? null : valueOf(best);
+    };
+    /* Decide a complete KTB account/day/direction amount multiset before the
+       row-level nearest-time pass.  If nearest-time consumes only a few rows
+       first, the remaining two sides can look unbalanced even though the
+       original statement and BO groups reconcile completely (the FR8 manual
+       workbook is a real example: the same 23 amounts are ordered by different
+       bank times).  Reserving only fully balanced groups keeps this strict:
+       company, account, bank date, direction, row count, every duplicate
+       amount, real timestamps, and BO's bank-time source must all agree. */
+    const ktbFullSetKey = (r) => [
+      auditCompanyOf(r), String(r.account || '').replace(/\D/g, ''), r.date,
+      r.direction,
+    ].join('|');
+    const isKtbFullSetRow = (r, side) => sys123Companies.has(auditCompanyOf(r))
+      && !r.isPmChannel
+      // BO normal-bank rows keep the company's account label/channel (for
+      // example `3473031801 : sms`) rather than the statement bank code.
+      // The group remains KTB-scoped by the STM side and the same account,
+      // date and direction key, so this does not widen the rule to other banks.
+      && (side === 'bo' || String(r.bank || r.channel || '').trim().toUpperCase() === 'KTB')
+      && isIsoDate(r.date) && !!r.direction
+      && Number.isFinite(r.amount) && r.amount > 0
+      && !r.noTime && Number.isFinite(r.sec)
+      && (side !== 'bo' || r.matchTimeColumn === 'วันที่ธนาคาร');
+    const fullStmKtbGroups = new Map(), fullBoKtbGroups = new Map();
+    stmRecords.forEach((row) => {
+      if (!isKtbFullSetRow(row, 'stm')) return;
+      const key = ktbFullSetKey(row), group = fullStmKtbGroups.get(key) || [];
+      group.push(row); fullStmKtbGroups.set(key, group);
+    });
+    boRecords.forEach((row) => {
+      if (!isKtbFullSetRow(row, 'bo')) return;
+      const key = ktbFullSetKey(row), group = fullBoKtbGroups.get(key) || [];
+      group.push(row); fullBoKtbGroups.set(key, group);
+    });
+    const fullAmountCounts = (rows) => {
+      const counts = new Map();
+      rows.forEach((row) => {
+        const amount = Math.round(row.amount * 100);
+        counts.set(amount, (counts.get(amount) || 0) + 1);
+      });
+      return counts;
+    };
+    const amountCountsCover = (available, required) => [...required]
+      .every(([amount, count]) => (available.get(amount) || 0) >= count);
+    const needsKtbAmountSetReservation = (stmGroup, boGroup) => {
+      if (stmGroup.length < 2) return false;
+      const candidates = (row, peers) => peers
+        .filter((peer) => peer.amount === row.amount && timeDistance(row, peer) <= exactUniqueTol)
+        .map((peer) => ({ peer, dt: timeDistance(row, peer) }));
+      const hasNoUniqueNearest = (row, peers) => {
+        const rows = candidates(row, peers);
+        if (!rows.length) return true;
+        const best = Math.min(...rows.map((entry) => entry.dt));
+        return rows.filter((entry) => entry.dt === best).length !== 1;
+      };
+      return stmGroup.some((row) => hasNoUniqueNearest(row, boGroup))
+        || boGroup.some((row) => hasNoUniqueNearest(row, stmGroup));
+    };
+    const completeKtbAmountSetKeys = new Set();
+    fullStmKtbGroups.forEach((stmGroup, key) => {
+      const boGroup = fullBoKtbGroups.get(key) || [];
+      if (boGroup.length && stmGroup.length >= boGroup.length
+        && amountCountsCover(fullAmountCounts(stmGroup), fullAmountCounts(boGroup))
+        && (stmGroup.length !== boGroup.length || needsKtbAmountSetReservation(stmGroup, boGroup))) {
+        completeKtbAmountSetKeys.add(key);
+      }
+    });
+    const ktbBankTimeCandidates = new Map();
+    const ktbBankTimePeers = new Map();
+    stmRecords.forEach((s) => {
+      if (completeKtbAmountSetKeys.has(ktbFullSetKey(s))) {
+        ktbBankTimeCandidates.set(s, []);
+        return;
+      }
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || [])
+        .filter((i) => !boUsed[i] && isSys123KtbTimedPair(s, boRecords[i]))
+        .map((i) => ({ i, dt: timeDistance(s, boRecords[i]) }));
+      ktbBankTimeCandidates.set(s, rows);
+      rows.forEach(({ i, dt }) => {
+        let peers = ktbBankTimePeers.get(i);
+        if (!peers) ktbBankTimePeers.set(i, (peers = []));
+        peers.push({ s, dt });
+      });
+    });
+    const ktbBankTimeMatched = new Set();
+    ktbBankTimeCandidates.forEach((rows, s) => {
+      const i = uniqueNearestPair(rows, (row) => row.i);
+      if (i == null || boUsed[i]) return;
+      if (uniqueNearestPair(ktbBankTimePeers.get(i) || [], (row) => row.s) !== s) return;
+      const b = boRecords[i];
+      boUsed[i] = 1;
+      ktbBankTimeMatched.add(s);
+      matched.push({ s, b, dt: timeDistance(s, b), ktbBankTimeMatch: true });
+    });
+
+    /* รายงานมือ FR8 แสดงว่า KTB อาจเรียงเวลา STM และ BO คนละลำดับ
+       ทั้งที่ชุดยอดของบัญชี/วัน/ทิศทางตรงกันครบ หลังจากจับคู่เวลาใกล้ที่ชัดเจนแล้ว
+       จึงปิดส่วนที่เหลือได้เฉพาะเมื่อ multiset ของยอดเงินตรงกันทั้งกลุ่ม
+       จำนวนซ้ำทุกยอดต้องเท่ากัน ห้ามตัดยอดซ้ำทิ้ง และห้ามใช้กฎนี้กับแถวที่ขาดเวลา. */
+    const ktbAmountSetGroupKey = (r) => [
+      auditCompanyOf(r), String(r.account || '').replace(/\D/g, ''), r.date,
+      r.direction,
+    ].join('|');
+    const isSys123KtbAmountSetRow = (r, side) => sys123Companies.has(auditCompanyOf(r))
+      && !r.isPmChannel
+      && (side === 'bo' || String(r.bank || r.channel || '').trim().toUpperCase() === 'KTB')
+      && isIsoDate(r.date) && !!r.direction
+      && Number.isFinite(r.amount) && r.amount > 0
+      && !r.noTime && Number.isFinite(r.sec)
+      && (side !== 'bo' || r.matchTimeColumn === 'วันที่ธนาคาร');
+    const matchedStmBeforeKtbSet = new Set(matched.map((m) => m.s));
+    const stmKtbGroups = new Map(), boKtbGroups = new Map();
+    stmRecords.forEach((s, order) => {
+      if (matchedStmBeforeKtbSet.has(s) || !isSys123KtbAmountSetRow(s, 'stm')) return;
+      const key = ktbAmountSetGroupKey(s);
+      if (!stmKtbGroups.has(key)) stmKtbGroups.set(key, []);
+      stmKtbGroups.get(key).push({ row: s, order });
+    });
+    boRecords.forEach((b, i) => {
+      if (boUsed[i] || !isSys123KtbAmountSetRow(b, 'bo')) return;
+      const key = ktbAmountSetGroupKey(b);
+      if (!boKtbGroups.has(key)) boKtbGroups.set(key, []);
+      boKtbGroups.get(key).push({ row: b, i, order: i });
+    });
+    const amountKey = (r) => Math.round(r.amount * 100);
+    const amountCounts = (rows) => {
+      const counts = new Map();
+      rows.forEach(({ row }) => counts.set(amountKey(row), (counts.get(amountKey(row)) || 0) + 1));
+      return counts;
+    };
+    const amountCountsContain = (available, required) => [...required]
+      .every(([amount, count]) => (available.get(amount) || 0) >= count);
+    const byTimeThenSource = (a, b) => a.row.sec - b.row.sec
+      || Number(a.row.rowNo ?? a.order) - Number(b.row.rowNo ?? b.order)
+      || a.order - b.order;
+    const ktbAmountSetMatched = new Set();
+    const ktbBoFirstSurplusSuppressed = new Set();
+    stmKtbGroups.forEach((stmGroup, key) => {
+      const boGroup = boKtbGroups.get(key) || [];
+      if (!boGroup.length || stmGroup.length < boGroup.length) return;
+      if (!amountCountsContain(amountCounts(stmGroup), amountCounts(boGroup))) return;
+      const stmByAmount = new Map(), boByAmount = new Map();
+      stmGroup.forEach((entry) => {
+        const amount = amountKey(entry.row);
+        if (!stmByAmount.has(amount)) stmByAmount.set(amount, []);
+        stmByAmount.get(amount).push(entry);
+      });
+      boGroup.forEach((entry) => {
+        const amount = amountKey(entry.row);
+        if (!boByAmount.has(amount)) boByAmount.set(amount, []);
+        boByAmount.get(amount).push(entry);
+      });
+      boByAmount.forEach((boRows, amount) => {
+        const stmRows = stmByAmount.get(amount);
+        stmRows.sort(byTimeThenSource);
+        boRows.sort(byTimeThenSource);
+        const unused = new Set(stmRows);
+        boRows.forEach((boEntry) => {
+          const stmEntry = [...unused].sort((a, b) => timeDistance(a.row, boEntry.row) - timeDistance(b.row, boEntry.row)
+            || byTimeThenSource(a, b))[0];
+          unused.delete(stmEntry);
+          boUsed[boEntry.i] = 1;
+          ktbAmountSetMatched.add(stmEntry.row);
+          matched.push({
+            s: stmEntry.row,
+            b: boEntry.row,
+            dt: timeDistance(stmEntry.row, boEntry.row),
+            ktbAmountSetMatch: true,
+          });
+        });
+        unused.forEach((entry) => ktbBoFirstSurplusSuppressed.add(entry.row));
+      });
+      stmGroup.forEach((entry) => {
+        if (!ktbAmountSetMatched.has(entry.row)) ktbBoFirstSurplusSuppressed.add(entry.row);
+      });
+    });
+    if (ktbBoFirstSurplusSuppressed.size) {
+      const retained = stmRecords.filter((row) => !ktbBoFirstSurplusSuppressed.has(row));
+      stmRecords.length = 0;
+      stmRecords.push(...retained);
+    }
     const identityCandidate = (s, b) => {
       if (!sameCompany(s, b) || !String(s.company || s.subco || "").trim()) return false;
       if (isSys123PmPair(s, b) || xbProviderRefConflict(s, b) || xbMemberConflict(s, b)) return false;
@@ -1480,7 +1686,7 @@ const Engine = (() => {
     const identityAmbiguous = new Set();
     // Count on original inputs on BOTH sides, before consumption, to avoid order-dependent matches.
     for (const s of stmRecords) {
-      if (xbProviderRefMatched.has(s)) continue;
+      if (xbProviderRefMatched.has(s) || ktbBankTimeMatched.has(s) || ktbAmountSetMatched.has(s)) continue;
       const candidates = (exactIdx.get(key2(s.account, s.amount)) || []).filter(i => identityCandidate(s, boRecords[i]));
       if (!candidates.length) continue;
       const i = candidates[0], b = boRecords[i];
@@ -1544,6 +1750,7 @@ const Engine = (() => {
         if (providerIdentityMatched.has(s)) return;
         if (providerNearTimeMatched.has(s)) return;
         if (sys123ProviderMatched.has(s)) return;
+        if (ktbBankTimeMatched.has(s) || ktbAmountSetMatched.has(s)) return;
         if (identityMatched.has(s)) return;
         const cands = exactIdx.get(key2(s.account, s.amount));
         let best = -1;
@@ -1987,6 +2194,9 @@ const Engine = (() => {
       /* จุดตรวจที่ 4: ธนาคารและเลขบัญชีปลายทางของลูกค้าต้องตรงกับที่สลิปธนาคารระบุ */
       const hit = String(m.s.desc || m.s.raw || "").match(FROM_RE);
       if (!hit) return;
+      // KTB 123 ใช้บัญชีบริษัท+ทิศทาง+วันที่ธนาคาร+เวลาธนาคาร+ยอดเป็นเกณฑ์
+      // ข้อมูลคู่โอนในคำอธิบายเก็บเป็นหลักฐาน แต่ไม่ใช่ตัว veto คู่ที่ชัดเจน.
+      if (m.ktbBankTimeMatch) return;
       const stmBank = hit[1]?.toUpperCase() === 'KBNK' ? 'KBANK' : BANK_ALIAS[(hit[1] || "").toUpperCase()] || (hit[1] || "").toUpperCase();
       const stmTail = hit[2];
       const boBank = BANK_ALIAS[String(m.b.custBank || "").toUpperCase()] || String(m.b.custBank || "").toUpperCase();
@@ -2001,9 +2211,6 @@ const Engine = (() => {
        ส่วน BBL/GSB ที่ STM ไม่มีเวลา ให้ใช้คู่ที่ Engine จับด้วยบริษัท + บัญชี
        + วัน + ทิศทาง + ยอดตรงกัน โดยไม่บังคับเวลา/User/ชื่อ เพราะต้นทางไม่มี
        หลักฐานเหล่านั้นให้ตรวจ. ยอดหรือจำนวนรายการที่เกินคู่จริงยังคงเป็นเคส. */
-    const sys123NoTimeManualGuardedAccounts = new Set([
-      'AT4|2090879114', // KTB เบญจพร D
-    ]);
     const isManualBo = (row) => /เติม\s*มือ|เติมเอง|manual/i.test(String(row && (row.via || row.channel) || ''));
     const manualAutoCloseEligible = (m) => {
       const company = auditCompanyOf(m.b);
@@ -2019,7 +2226,11 @@ const Engine = (() => {
       const stmGroup = stmRecords.concat([...ktbNextDayCandidateMatched]).filter(sameGroup);
       const manualGroup = boGroup.filter(isManualBo);
       if (!m.s.noTime && !m.b.noTime && Number.isFinite(m.s.sec) && Number.isFinite(m.b.sec)) {
-        if (sys123BankIdentityConflict(identity)) return false;
+        if (m.ktbAmountSetMatch) {
+          m.sys123ManualAmountSetMatched = true;
+          return true;
+        }
+        if (!m.ktbBankTimeMatch && sys123BankIdentityConflict(identity)) return false;
         if (m.b.matchTimeColumn !== 'วันที่ธนาคาร' && !m.ktbNextDayBankTimeMatch) return false;
         if (m.dt > exactUniqueTol) return false;
         const timedCandidate = (left, right) => left.amount === right.amount
@@ -2027,7 +2238,7 @@ const Engine = (() => {
           && timeDistance(left, right) <= exactUniqueTol;
         const stmCandidates = stmGroup.filter((row) => timedCandidate(row, m.b));
         const boCandidates = manualGroup.filter((row) => timedCandidate(m.s, row));
-        const identityAssisted = identity.tailMatch || identity.nameMatch || m.sys123BankIdentityMatch;
+        const identityAssisted = m.ktbBankTimeMatch || identity.tailMatch || identity.nameMatch || m.sys123BankIdentityMatch;
         // Repeated manual amounts are common in System 123. They remain safe
         // to close when the pair already selected by the matcher is the unique
         // nearest choice from both sides. Equal-distance ties remain review
@@ -2059,19 +2270,9 @@ const Engine = (() => {
       }
       const noTimeBank = String(m.s.bank || m.s.channel || m.b.bank || m.b.channel || '').trim().toUpperCase();
       if (noTimeBank === 'BBL' || noTimeBank === 'GSB') return true;
-      if (!sys123NoTimeManualGuardedAccounts.has(`${company}|${account}`)) return false;
-      if (sys123BankIdentityConflict(identity)) return false;
-      const users = manualGroup.map((row) => identityText(row.memberCode));
-      const amounts = manualGroup.map((row) => Number(row.amount).toFixed(2));
-      const currentUser = identityText(m.b.memberCode);
-      const currentAmount = Number(m.b.amount).toFixed(2);
-      if (!manualGroup.length || !currentUser) return false;
-      if (users.filter((user) => user === currentUser).length !== 1) return false;
-      if (amounts.filter((amount) => amount === currentAmount).length !== 1) return false;
-      if (stmGroup.filter((row) => row.amount === m.s.amount).length !== 1) return false;
-      const boTotal = boGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      const stmTotal = stmGroup.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      return boTotal <= stmTotal + 0.001;
+      // KTB ต้องมีเวลาธนาคารจริงทั้งสองฝั่งเสมอ กฎ noTime ใช้ได้เฉพาะ
+      // statement ที่ธนาคารไม่ให้เวลาโดยโครงสร้าง (BBL/GSB) เท่านั้น
+      return false;
     };
     matched.forEach((m) => {
       if (isManualBo(m.b)) {
@@ -2111,6 +2312,16 @@ const Engine = (() => {
       xbProviderRefMatched: matched.filter(m => m.xbProviderRefMatch).length,
       xbProviderDuplicateRowsSuppressed,
       tmnOcrDuplicateRowsSuppressed,
+      sys123KtbBoFirstSuppressed: ktbBoFirstSurplusSuppressed.size,
+      sys123KtbBoFirstSuppressedRows: [...ktbBoFirstSurplusSuppressed].map((row) => ({
+        fileId: row.source_file_id || null,
+        row: row.rowNo ?? null,
+        company: auditCompanyOf(row),
+        account: row.account || null,
+        date: row.date || null,
+        direction: row.direction || null,
+        amount: Number(row.amount || 0),
+      })),
       customerIdentityMatched: matched.filter(m => m.customerIdentityMatch).length,
       sys123ProviderMatched: matched.filter(m => m.sys123ProviderMatch).length,
       exceptions,
@@ -2147,7 +2358,7 @@ const Engine = (() => {
         settlementSec: m.s.settlementSec ?? null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
-        method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.ktbAmountSetMatch ? "sys123-ktb-account-day-amount-multiset" : m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbBankTimeMatch ? "sys123-ktb-bank-time-amount-reciprocal" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
@@ -2168,7 +2379,10 @@ const Engine = (() => {
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         ktbNextDayBankTimeMatched: !!m.ktbNextDayBankTimeMatch,
+        ktbBankTimeMatched: !!m.ktbBankTimeMatch,
+        ktbAmountSetMatched: !!m.ktbAmountSetMatch,
         sys123ManualBankTimeMatched: !!m.sys123ManualBankTimeMatched,
+        sys123ManualAmountSetMatched: !!m.sys123ManualAmountSetMatched,
         sys123CustomerLast4Matched: !!m.sys123CustomerLast4Match,
         sys123CustomerNameMatched: !!m.sys123CustomerNameMatch,
         sys123ManualAutoClosed: !!m.sys123ManualAutoClosed,

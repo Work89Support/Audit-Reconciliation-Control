@@ -219,12 +219,25 @@ eq("BO Sapan: แยก provider id หลัง colon เท่านั้น"
 eq("BO Sapan: เก็บหมายเหตุต้นฉบับไว้เป็นหลักฐาน", sapanBo.records[0].note, "sapan: 6aa8a28b6f7ddd65ebf16ce8 | โอนจริง 1300 สำเร็จ 1265.99 คืน 34.01");
 
 /* ---------- Rules: duplicate ต้องไม่ข้ามวัน ---------- */
-const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
+const recBase = (o) => ({ date: "2026-08-01", boSec: 36000, sec: 36000, account: "A-1", amount: 500, direction: "deposit", memberCode: "M1", custAccount: "0011223344", ref: "r", manual: true, raw: "raw", company: "C", username: "u", ...o });
 const dupCount = (records) => Rules.run([{ records, aux: [] }], { businessRules: { dupWindowSec: 300, largeThreshold: 0 } }).exceptions.filter((e) => e.type === "duplicate").length;
 
 eq("duplicate: คนละวัน ไม่ใช่ซ้ำ", dupCount([recBase({ date: "2026-08-01", ref: "r1" }), recBase({ date: "2026-08-02", ref: "r2" })]), 0);
 eq("duplicate: วันเดียวกัน+ใกล้กัน = ซ้ำ", dupCount([recBase({ boSec: 36000, sec: 36000, ref: "r1" }), recBase({ boSec: 36100, sec: 36100, ref: "r2" })]), 1);
 eq("duplicate: ref เดียวกัน ไม่นับ", dupCount([recBase({ ref: "same" }), recBase({ boSec: 36100, sec: 36100, ref: "same" })]), 0);
+eq("duplicate: สมาชิกเดียวกันแต่คนละเลขบัญชี ไม่ใช่ซ้ำ", dupCount([recBase({ ref: "r1", custAccount: "0011223344" }), recBase({ boSec: 36100, sec: 36100, ref: "r2", custAccount: "9988776655" })]), 0);
+eq("duplicate: เลขบัญชีเดียวกันแต่คนละสมาชิก ไม่ใช่ซ้ำ", dupCount([recBase({ ref: "r1", memberCode: "M1" }), recBase({ boSec: 36100, sec: 36100, ref: "r2", memberCode: "M2" })]), 0);
+eq("duplicate: identity ไม่ครบ ห้ามกล่าวหาว่าซ้ำ", dupCount([recBase({ ref: "r1", custAccount: "" }), recBase({ boSec: 36100, sec: 36100, ref: "r2", custAccount: "" })]), 0);
+
+const duplicateWithSource = Rules.run(
+  [{ records: [
+    recBase({ boSec: 36000, sec: 36000, ref: "src-1", source_file_id: "bo-file", rowNo: 41 }),
+    recBase({ boSec: 36100, sec: 36100, ref: "src-2", source_file_id: "bo-file", rowNo: 42 }),
+  ], aux: [] }],
+  { businessRules: { dupWindowSec: 300, largeThreshold: 0 } },
+).exceptions.find((e) => e.type === "duplicate");
+eq("duplicate: เก็บไฟล์ BO ต้นทาง", duplicateWithSource.boSource.fileId, "bo-file");
+eq("duplicate: เก็บแถว BO ต้นทาง", duplicateWithSource.boSource.row, 42);
 
 /* ---------- Rules: cross-day ต้องมีวันที่จริงครบสองฝั่ง ---------- */
 const crossDayCount = (record) =>

@@ -6,6 +6,7 @@ const live = await load("audit-mail-ingest.json");
 const backfill = await load("audit-mail-backfill.json");
 const daily = await load("audit-daily-reconcile.json");
 const worker = await load("audit-headless-worker.json");
+const dispatcher = await load("audit-round-dispatcher.json");
 const reconciliationCode = worker.nodes.find(n => n.name === "กระทบยอดและสร้าง Exception").parameters.jsCode;
 const identitySource = reconciliationCode.slice(reconciliationCode.indexOf('const exceptionIdentity='), reconciliationCode.indexOf('\nconst eligibleExceptions=', reconciliationCode.indexOf('const exceptionIdentity=')));
 const exceptionIdentity = new Function(identitySource + '\nreturn exceptionIdentity;')();
@@ -132,9 +133,9 @@ assert.match(dailyText, /queue_due_daily_recon_jobs/);
 assert.doesNotMatch(dailyText, /eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}/, "daily workflow must not embed a JWT/service key");
 
 const workerText = JSON.stringify(worker);
-assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"));
-assert.equal(worker.nodes.find((node) => node.type === "n8n-nodes-base.scheduleTrigger")?.disabled, true, "worker timer must stay disabled; Dispatcher owns automatic rounds");
-assert.equal(worker.nodes.find((node) => node.type === "n8n-nodes-base.manualTrigger")?.disabled, true, "worker manual trigger must stay disabled; Dispatcher owns manual test rounds");
+assert.equal(worker.nodes.some((node) => node.type === "n8n-nodes-base.scheduleTrigger"), false, "worker must not retain a legacy timer; Dispatcher owns automatic rounds");
+assert.equal(worker.nodes.some((node) => node.type === "n8n-nodes-base.manualTrigger"), false, "worker must not retain a direct manual trigger; Dispatcher owns manual test rounds");
+assert.equal(worker.nodes.filter((node) => node.type.endsWith("Trigger")).length, 1, "worker must expose exactly one Dispatcher entry trigger");
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.executeWorkflowTrigger" && node.name === "รับงานจากรอบตรวจ"), "worker must accept only Dispatcher sub-workflow calls");
 assert.ok(worker.nodes.some((node) => node.type === "n8n-nodes-base.extractFromFile"));
 assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดยตรง" && node.parameters.operation === "pdf"), "text PDFs must use native extraction before OCR");
@@ -207,20 +208,11 @@ assert.equal(worker.connections["ไม่มีคำเตือนและ�
 assert.equal(worker.connections["ไม่มีคำเตือนและเขียนผลต่อได้?"].main[1][0].node, "จบรอบ Worker");
 assert.equal(worker.connections["เตรียมข้อมูลผลการรัน"].main[0][0].node, "Supabase: สร้างผลการรัน");
 assert.match(workerText, /p_limit[^}]*1/, "each execution must claim exactly one unambiguous job");
-assert.match(workerText, /startOf\('month'\)/, "automatic catch-up must prioritize the current operating month");
-const queueDueJobs = worker.nodes.find((node) => node.name === "Supabase: ตรวจไฟล์และจัดคิว");
-assert.equal(queueDueJobs.retryOnFail, true, "the idempotent queue refresh must retry transient Supabase timeouts");
-assert.ok(queueDueJobs.maxTries >= 3, "the queue refresh needs enough retry attempts under load");
-assert.ok(queueDueJobs.waitBetweenTries >= 3000, "the queue refresh must pause before retrying Supabase");
-assert.equal(worker.connections["Supabase: ตรวจไฟล์และจัดคิว"].main[0][0].node, "Supabase: คืนคิวที่สั่งรันใหม่", "manual reruns must be restored after the automatic quality refresh");
-assert.equal(worker.connections["Supabase: คืนคิวที่สั่งรันใหม่"].main[0][0].node, "รวมเป็นหนึ่งรอบ", "queue RPC rows must collapse before claiming");
-const restoreManualRerun = worker.nodes.find((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่");
-assert.equal(restoreManualRerun.parameters.method, "PATCH");
-assert.match(restoreManualRerun.parameters.url, /rerun_requested_at=not\.is\.null/);
-assert.doesNotMatch(restoreManualRerun.parameters.jsonBody, /rerun_requested_at: null/, "preserve manual request priority until finish consumes it");
-assert.equal(restoreManualRerun.retryOnFail, true, "bulk historical reruns must retry a transient Supabase timeout");
-assert.ok(restoreManualRerun.maxTries >= 3, "manual rerun recovery needs enough retry attempts under queue load");
-assert.ok(restoreManualRerun.waitBetweenTries >= 3000, "manual rerun recovery must pause before retrying Supabase");
+assert.equal(worker.nodes.some((node) => node.name === "Supabase: ตรวจไฟล์และจัดคิว"), false, "queue ownership must not be duplicated inside Worker");
+assert.equal(worker.nodes.some((node) => node.name === "Supabase: คืนคิวที่สั่งรันใหม่"), false, "retired rerun restoration must not return on rebuild");
+const queueDueJobs = dispatcher.nodes.find((node) => node.name === "Supabase: ตรวจไฟล์และจัดคิว");
+assert.ok(queueDueJobs, "Dispatcher must own the queue refresh");
+assert.match(queueDueJobs.parameters.url, /queue_due_daily_recon_jobs/);
 assert.equal(worker.connections["รวมเป็นหนึ่งรอบ"].main[0][0].node, "Supabase: จองหนึ่งงาน");
 assert.equal(worker.connections["Supabase: ปิดงานสำเร็จ"].main[0][0].node, "จบรอบ Worker");
 assert.match(workerText, /จองหนึ่งงาน'\)\.first\(\)/, "processing must use the single claimed job");
@@ -239,15 +231,20 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.81-ktb-next-day-anytime'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.86-ktb-bo-source-lifecycle'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
 assert.match(workerText, /OCR Word อ่านรายการลดลงจากรอบก่อน/, "a DOCX parse regression must preserve the previous accepted result");
 assert.match(workerText, /row_count:reportedRowCount/, "a failed DOCX regression must not overwrite the prior accepted row count");
 assert.match(workerText, /parserVersionErrors/, "a partially deployed workflow must stop when normalize and reconcile parser versions differ");
+assert.match(workerText, /const stampSource=/, "worker must define one source-lineage stamp for reconciliation and rule rows");
+assert.match(workerText, /records:f\.format\.source==='bo'\?\(f\.records\|\|\[\]\)\.map\(r=>stampSource\(r,f\)\):\[\]/,
+  "business rules must receive BO rows with source-file lineage");
+assert.match(workerText, /aux:\(f\.aux\|\|\[\]\)\.map\(r=>stampSource\(r,f\)\)/,
+  "business rules must receive auxiliary rows with source-file lineage");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.81-ktb-next-day-anytime'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.86-ktb-bo-source-lifecycle'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -279,12 +276,16 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.81-ktb-next-day-anytime'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.86-ktb-bo-source-lifecycle'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /sys123_normal_bank_time_column:true/, "worker summary must identify the System 123 bank-time column rule");
 assert.match(workerText, /sys123_ktb_next_day_candidate:true/, "worker summary must identify guarded KTB next-day candidates");
+assert.match(workerText, /sys123_ktb_bo_first_suppressed_rows=result\.sys123KtbBoFirstSuppressedRows\|\|\[\]/,
+  "worker summary must retain exact KTB source rows suppressed by BO-first scope");
 assert.match(workerText, /sys123_manual_bank_safe_close:true/, "worker summary must identify approved manual bank auto-close accounts");
 assert.match(workerText, /sys123_manual_bank_time_amount:true/, "worker summary must identify bank-time manual matching");
-assert.match(workerText, /sys123_notime_amount_only:true/, "worker summary must identify the System 123 BBL\/GSB no-time amount-only policy");
+assert.match(workerText, /sys123_bbl_gsb_notime_amount_only:true/, "worker summary must scope no-time amount-only matching to BBL\/GSB");
+assert.match(workerText, /sys123_ktb_bank_time_required:true/, "worker summary must identify the KTB printed-bank-time quality gate");
+assert.match(workerText, /sys123_ktb_account_day_amount_multiset:true/, "worker summary must identify the guarded KTB account-day amount multiset fallback");
 assert.match(workerText, /sys123_customer_identity_tags:true/, "worker summary must identify last-four and customer-name evidence");
 assert.match(appSource, /ท้าย 4 \/ ชื่อลูกค้า/, "System 123 exception search must advertise customer identity tags");
 assert.match(appSource, /sys123CustomerTags/, "System 123 exception search must include customer identity evidence");

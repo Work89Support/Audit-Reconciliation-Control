@@ -9,7 +9,7 @@ const entry=app.slice(app.indexOf('async function enterProductionApp()'),app.ind
   const state={dataset:'production',route:'clarify',filters:{from:'2026-10-15',to:'2026-10-15',company}};
   const context={state,DB:{exceptions:old,damages:[],auditLog:[]},liveOverviewState:{key:`2026-10-15|2026-10-15|${company}`,quality:[],exceptionsReady:true,requestId:0},
    moreCaseState:{},VISIBLE_DATE_FROM:'2026-10-15',liveInteractionVersion:0,AccountReviewHolds:{set(){}},isLiveCompanyRow:()=>true,actionableAuditRows:r=>r,informationalAuditRows:()=>[],matchedStaleAuditCount:()=>0,
-   Sb:{dailyStatus:async()=>[],operations:async()=>[],quality:async()=>[],dailyChecklist:async()=>[],boFirstCoverage:async()=>[],runtimeSettings:async()=>[],reviewHoldScopes:async()=>[],
+   Sb:{dailyStatus:async()=>[],operations:async()=>[],quality:async()=>[],dailyChecklist:async()=>[],currentCaseCounts:async()=>[],boFirstCoverage:async()=>[],runtimeSettings:async()=>[],reviewHoldScopes:async()=>[],
     currentExceptionsSummary:async args=>{reads++;limit=args.limit;return new Promise((resolve,reject)=>release={resolve,reject});},damages:async()=>[],auditLogs:async()=>[],notifications:async()=>[],clarificationMatches:async()=>[],reconciliationEvidence:async()=>[]},
    hydrateLiveData:(q,o,e)=>{hydrations++;context.DB.exceptions=e;},updateBell(){},offerLiveOverviewUpdate(){},Date};
   vm.createContext(context);vm.runInContext(load,context);

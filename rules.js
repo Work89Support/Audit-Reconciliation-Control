@@ -95,6 +95,14 @@ const Rules = (() => {
       hasEvidence: false,
       stmRaw: o.stmRaw || "— ตรวจจากรายงานหลังบ้าน ไม่ต้องใช้ statement —",
       boRaw: o.boRaw || o.raw || "",
+      /* Rules.run receives the same stamped BO rows as the reconciliation
+         engine.  Keep that physical row identity on rule-only exceptions as
+         well; otherwise duplicate/cross-day cases cannot prove which uploaded
+         BO file and row produced the case. */
+      boSource:
+        o.source_file_id && o.rowNo != null
+          ? { fileId: o.source_file_id, row: o.rowNo }
+          : null,
       boTime: hhmmss(o.boSec ?? sec),
       boDate: o.boDate || o.date || "",
       notes: [],
@@ -230,7 +238,14 @@ const Rules = (() => {
     const seen = new Map();
     /* นับเฉพาะรายการที่คนกดเอง (เติมมือ/ถอนมือ/manual) — auto ที่ลูกค้าฝากซ้ำเป็นเรื่องปกติ */
     records.filter(isManual).forEach((r) => {
-      const k = [r.date, r.account, r.amount.toFixed(2), r.direction, r.memberCode || r.custAccount || ""].join("|");
+      /* เวลาและยอดอย่างเดียวไม่พอจะกล่าวหาว่าเติมซ้ำ โดยเฉพาะ SYS123 ที่
+         provider เดียวกันอาจมียอดซ้ำจากลูกค้าหลายคน ต้องรู้ทั้งยูสเซอร์และ
+         เลขบัญชีลูกค้าก่อน และทั้งสองค่าต้องตรงกัน จึงค่อยใช้เวลาเป็นหน้าต่าง
+         ช่วยตรวจ การขาด identity ให้คงเป็น unmatched/review ไม่ใช่ duplicate */
+      const member = String(r.memberCode || r.username || "").trim().toLowerCase();
+      const customerAccount = String(r.custAccount || "").replace(/[^0-9a-z]/gi, "").toLowerCase();
+      if (!member || !customerAccount) return;
+      const k = [r.date, r.account, r.amount.toFixed(2), r.direction, member, customerAccount].join("|");
       const prev = seen.get(k);
       if (prev && r.date === prev.date && Math.abs(r.boSec - prev.boSec) <= windowSec && r.ref !== prev.ref) {
         out.push(

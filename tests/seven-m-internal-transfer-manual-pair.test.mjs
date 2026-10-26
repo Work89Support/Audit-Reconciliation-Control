@@ -29,11 +29,17 @@ assert.match(clarifyingSql,/source_rows',lower\(p_side\),'fileId'/);
 assert.match(clarifyingSql,/source_rows',lower\(p_side\),'row'/);
 assert.match(clarifyingSql,/pair_row\.mode='internal'/);
 assert.match(clarifyingSql,/No case rows are changed by this migration/);
+const finalPolicySql=fs.readFileSync('supabase/20261026_7m_internal_transfer_same_account_only.sql','utf8');
+assert.match(finalPolicySql,/a\.account is distinct from b\.account/);
+assert.match(finalPolicySql,/a\.direction is distinct from b\.direction/);
+assert.match(finalPolicySql,/Cross-account A-to-B remains evidence only/);
+assert.doesNotMatch(finalPolicySql,/manual-seven-m-internal-transfer-cross-account/);
 
 const code=fs.readFileSync('manual-pairing.js','utf8');
 const client=fs.readFileSync('supabase.js','utf8');
 assert.match(client,/rpc\/close_internal_transfer_pair/);
 assert.match(code,/sameAccountAdjustmentMatches/);
+assert.doesNotMatch(code,/internalTransferDirectionMatches/,'cross-account relation must not close cases');
 
 async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open'}){
   const nodes={},calls=[];
@@ -41,16 +47,19 @@ async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open'}){
   const stm={id:`stm-${direction}`,code:`7M-STM-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:02:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_bo',bank_amount:7000,stm_raw:stmRaw,status:'open'};
   const bo={id:`bo-${direction}`,code:`7M-BO-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:00:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_stm',system_amount:7000,bo_raw:boRaw,status:boStatus,response_text:'เก็บคำชี้แจงเดิม',clarification_file_id:'original-file'};
   const wrongBo={...bo,id:`wrong-bo-${direction}`,code:`7M-WRONG-${direction}`,bo_raw:wrongRaw};
+  const crossBo={...bo,id:`cross-bo-${direction}`,code:`7M-CROSS-${direction}`,account:'TMN-2'};
   let html='',candidateArgs=null;
-  const byId=new Map([[stm.id,stm],[bo.id,bo],[wrongBo.id,wrongBo]]);
-  const context={state:{dataset:'production',role:'lead'},DB:{companies:['UFABET7M'],exceptions:[]},crypto:{randomUUID:()=>`request-${direction}`},h:String,money:n=>Number(n).toFixed(2),$:s=>node(s.slice(1)),caseLabel:e=>e.id,companyMaster:()=>['UFABET7M'],canAccessCompany:()=>true,toast:m=>calls.push(['toast',m]),openModal:(title,body)=>{calls.push(['title',title]);html=body;node('pairCompany').value='UFABET7M';node('pairDate').value='2026-10-25';},closeModal:()=>{},render:()=>{},openException:async()=>{},Sb:{signedIn:()=>true,authUser:()=>({id:'lead'}),exceptionDetail:async id=>byId.get(id),manualPairCandidates:async(...args)=>{candidateArgs=args;return [wrongBo,bo];},pendingManualPairs:async()=>[],submitManualPair:async()=>{throw Error('must direct close')},closeInternalTransferPair:async payload=>{calls.push(['close',payload]);return {id:payload.p_id,status:'approved'};}}};
+  const byId=new Map([[stm.id,stm],[bo.id,bo],[wrongBo.id,wrongBo],[crossBo.id,crossBo]]);
+  const context={state:{dataset:'production',role:'lead'},DB:{companies:['UFABET7M'],exceptions:[]},crypto:{randomUUID:()=>`request-${direction}`},h:String,money:n=>Number(n).toFixed(2),$:s=>node(s.slice(1)),caseLabel:e=>e.id,companyMaster:()=>['UFABET7M'],canAccessCompany:()=>true,toast:m=>calls.push(['toast',m]),openModal:(title,body)=>{calls.push(['title',title]);html=body;node('pairCompany').value='UFABET7M';node('pairDate').value='2026-10-25';},closeModal:()=>{},render:()=>{},openException:async()=>{},Sb:{signedIn:()=>true,authUser:()=>({id:'lead'}),exceptionDetail:async id=>byId.get(id),manualPairCandidates:async(...args)=>{candidateArgs=args;return [wrongBo,crossBo,bo];},pendingManualPairs:async()=>[],submitManualPair:async()=>{throw Error('must direct close')},closeInternalTransferPair:async payload=>{calls.push(['close',payload]);return {id:payload.p_id,status:'approved'};}}};
   vm.createContext(context);vm.runInContext(code+';this.api=ManualPairing;',context);
   await context.api.open({dbId:stm.id,id:stm.code,company:'UFABET7M',date:'2026-10-25',direction,type:'missing_bo',status:'open'},'internal');
   assert.equal(calls[0][1],'จับคู่รายการภายในบริษัท');
-  assert.match(html,/บัญชีเดียวกันหรือข้ามบัญชี/);
+  assert.match(html,/ปิดได้เฉพาะ 7M บัญชีเดียวกัน/);
+  assert.match(html,/ความสัมพันธ์ A → B เก็บเป็นหลักฐานได้แต่ใช้ปิดแทนกันไม่ได้/);
   await node('pairSearch').onclick({target:node('pairSearch')});
   assert.equal(candidateArgs[3],null,'internal search must inspect both directions');
   assert.match(node('pairBoAccount').innerHTML,/TMN-1/,'same STM and BO account must be selectable');
+  assert.doesNotMatch(node('pairBoAccount').innerHTML,/TMN-2/,'cross-account relation must not be offered as a closing pair');
   node('pairBoAccount').value='TMN-1';node('pairBoAccount').onchange();
   assert.match(node('pairCandidate').innerHTML,new RegExp(bo.id));
   assert.doesNotMatch(node('pairCandidate').innerHTML,new RegExp(wrongBo.id),'opposite adjustment semantic must be rejected');

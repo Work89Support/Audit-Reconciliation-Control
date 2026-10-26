@@ -687,6 +687,110 @@ await (async () => {
   eq('123 KTB next-day: BO before 23:00 is not eligible',r.matched,0);
   r=await run([{...s,rowNo:6305,direction:'withdraw'}],[b]);
   eq('123 KTB next-day: direction mismatch stays open',r.matched,0);
+
+  const noTimeStm=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-28',sec:0,noTime:true,amount:75,rowNo:6306});
+  const noTimeBo=rec({company:'AT4',subco:'AT4',account:'2090879114',bank:'KTB',channel:'KTB',direction:'deposit',date:'2026-09-28',sec:0,noTime:true,amount:75,rowNo:6307,via:'เติมมือ',matchTimeColumn:'วันที่ธนาคาร'});
+  r=await run([noTimeStm],[noTimeBo]);
+  eq('123 KTB no-time: amount-only pair cannot auto-close',r.matchEvidence.some(e=>e.sys123ManualBankTimeMatched||e.sys123ManualAutoClosed),false);
+  eq('123 KTB no-time: matched row remains manual review',r.exceptions.filter(e=>e.type==='manual_review').length,1);
+})();
+
+await (async () => {
+  const base={company:'FR8',subco:'FR8',account:'3473031801',bank:'KTB',channel:'KTB',direction:'withdraw',date:'2026-10-25',noTime:false};
+  const stm=rec({...base,amount:70,sec:1*3600+4*60,custAccountLast4:'1111',custName:'ชื่อใน statement'});
+  const bo=rec({...base,amount:70,sec:1*3600+4*60+8,matchTimeColumn:'วันที่ธนาคาร',custAccount:'99999992222',custName:'บัญชีลงทะเบียนคนละชื่อ'});
+  let r=await run([stm],[bo],{...settings,exactUniqueTolerance:600});
+  eq('123 KTB same-day: bank time and amount match despite customer identity mismatch',r.matched,1);
+  eq('123 KTB same-day: no false wrong-account case from counterparty text',r.exceptions.length,0);
+  eq('123 KTB same-day: auditable reciprocal method',r.matchEvidence[0]?.method,'sys123-ktb-bank-time-amount-reciprocal');
+
+  const repeatedStm=[
+    {...stm,rowNo:7601,amount:50,sec:2*3600},
+    {...stm,rowNo:7602,amount:50,sec:2*3600+4*60},
+  ];
+  const repeatedBo=[
+    {...bo,rowNo:7701,amount:50,sec:2*3600+5},
+    {...bo,rowNo:7702,amount:50,sec:2*3600+4*60+5},
+  ];
+  r=await run(repeatedStm,repeatedBo,{...settings,exactUniqueTolerance:600});
+  eq('123 KTB same-day: repeated amounts pair by reciprocal nearest bank time',r.matched,2);
+  eq('123 KTB same-day: both repeated rows retain bank-time evidence',r.matchEvidence.filter(e=>e.ktbBankTimeMatched).length,2);
+
+  const tiedBo=[
+    {...repeatedBo[0],rowNo:7801,sec:2*3600+2*60},
+    {...repeatedBo[1],rowNo:7802,sec:2*3600+2*60},
+  ];
+  r=await run(repeatedStm,tiedBo,{...settings,exactUniqueTolerance:600});
+  eq('123 KTB same-day: equal-distance duplicates close when the complete amount multiset balances',r.matched,2);
+  eq('123 KTB same-day: duplicate source rows are retained',r.matchEvidence.filter(e=>e.method==='sys123-ktb-account-day-amount-multiset').length,2);
+
+  const incompleteBo=[tiedBo[0]];
+  r=await run(repeatedStm,incompleteBo,{...settings,exactUniqueTolerance:600});
+  eq('123 KTB BO-first: one BO row closes against the available STM amount',r.matched,1);
+  eq('123 KTB BO-first: surplus duplicate STM does not become a false case',r.exceptions.length,0);
+  eq('123 KTB BO-first: surplus duplicate source row is counted',r.sys123KtbBoFirstSuppressed,1);
+
+  const manualBo={...bo,rowNo:7901,direction:'deposit',amount:100,sec:3*3600+5,via:'เติมมือ'};
+  const manualStm={...stm,rowNo:7902,direction:'deposit',amount:100,sec:3*3600};
+  r=await run([manualStm],[manualBo],{...settings,exactUniqueTolerance:600});
+  eq('123 KTB manual deposit: valid bank-time pair does not create manual review',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 KTB manual deposit: automatic close evidence retained',r.matchEvidence[0]?.sys123ManualBankTimeMatched,true);
+
+  const shiftedManualStm=[
+    {...manualStm,rowNo:7911,amount:200,sec:44*60},
+    {...manualStm,rowNo:7912,amount:50,sec:1*3600+28*60},
+  ];
+  const shiftedManualBo=[
+    {...manualBo,rowNo:7921,amount:50,sec:1*3600+22*60},
+    {...manualBo,rowNo:7922,amount:200,sec:29*60},
+  ];
+  r=await run(shiftedManualStm,shiftedManualBo,{...settings,exactUniqueTolerance:60});
+  eq('123 KTB manual deposit: reordered bank times close when the full amount multiset balances',r.matched,2);
+  eq('123 KTB manual deposit: reordered rows do not create manual review',r.exceptions.filter(e=>e.type==='manual_review').length,0);
+  eq('123 KTB manual deposit: multiset method is auditable',r.matchEvidence.filter(e=>e.ktbAmountSetMatched).length,2);
+
+  const partlyNearStm=[
+    {...manualStm,rowNo:7931,amount:100,sec:1*3600},
+    {...manualStm,rowNo:7932,amount:200,sec:2*3600},
+    {...manualStm,rowNo:7933,amount:300,sec:3*3600},
+  ];
+  const reorderedBo=[
+    {...manualBo,rowNo:7941,amount:100,sec:1*3600+5},
+    {...manualBo,rowNo:7942,amount:300,sec:2*3600+5},
+    {...manualBo,rowNo:7943,amount:200,sec:3*3600+5},
+  ];
+  r=await run(partlyNearStm,reorderedBo,{...settings,exactUniqueTolerance:60});
+  eq('123 KTB full multiset: reserve balanced group before one near pair consumes it',r.matched,3);
+  eq('123 KTB full multiset: every reordered row records the multiset method',r.matchEvidence.filter(e=>e.ktbAmountSetMatched).length,3);
+  eq('123 KTB full multiset: complete manual group creates no false cases',r.exceptions.length,0);
+
+  const boFirstStm=[
+    {...manualStm,rowNo:7951,amount:100,sec:1*3600},
+    {...manualStm,rowNo:7952,amount:200,sec:2*3600},
+    {...manualStm,rowNo:7953,amount:999,sec:2*3600+30},
+  ];
+  const boFirstBo=[
+    {...manualBo,rowNo:7961,amount:100,sec:1*3600+10},
+    {...manualBo,rowNo:7962,amount:200,sec:3*3600},
+  ];
+  r=await run(boFirstStm,boFirstBo,{...settings,exactUniqueTolerance:60});
+  eq('123 KTB BO-first: BO amount multiset subset closes completely',r.matched,2);
+  eq('123 KTB BO-first: surplus STM does not create a false case',r.exceptions.length,0);
+  eq('123 KTB BO-first: surplus source row is counted for Audit',r.sys123KtbBoFirstSuppressed,1);
+  eq('123 KTB BO-first: source count follows the BO-filtered statement scope',r.stmCount,2);
+
+  const smsLabelBo=boFirstBo.map((row) => ({
+    ...row,
+    bank:'SMS',
+    channel:'3473031801 : sms',
+  }));
+  r=await run(boFirstStm,smsLabelBo,{...settings,exactUniqueTolerance:60});
+  eq('123 KTB BO-first: BO sms account label links through KTB STM account',r.matched,2);
+  eq('123 KTB BO-first: BO sms label keeps surplus STM out of exceptions',r.exceptions.length,0);
+  eq('123 KTB BO-first: BO sms label records suppressed source evidence',r.sys123KtbBoFirstSuppressed,1);
+  eq('123 KTB BO-first: suppressed evidence retains exact source row',r.sys123KtbBoFirstSuppressedRows[0].row,boFirstStm[2].rowNo);
+  eq('123 KTB BO-first: suppressed evidence retains account',r.sys123KtbBoFirstSuppressedRows[0].account,'3473031801');
+  eq('123 KTB BO-first: BO sms label keeps multiset audit method',r.matchEvidence.filter(e=>e.ktbAmountSetMatched).length,2);
 })();
 
 await (async () => {
@@ -956,6 +1060,13 @@ await (async () => {
   eq('123 SK8 CYBERPLUS: group matching leaves no false missing cases',r.exceptions.length,0);
   ok('123 SK8 CYBERPLUS: group match remains auditable',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-group-min-cost'));
   ok('123 SK8 CYBERPLUS: evidence marks group matcher',r.matchEvidence.every(e=>e.sys123ProviderGroupMatched===true));
+
+  const sk8CorepayStm=sk8CyberStm.map((row,index)=>rec({...row,account:'COREPAY',rowNo:3601+index}));
+  const sk8CorepayBo=sk8CyberBo.map((row,index)=>rec({...row,account:'COREPAY',isPmChannel:false,rowNo:3701+index}));
+  r=await run(sk8CorepayStm,sk8CorepayBo);
+  eq('123 SK8 COREPAY deposit: repeated amount uses member + account before time',r.matched,2);
+  eq('123 SK8 COREPAY deposit: repeated real rows do not create duplicate cases',r.exceptions.length,0);
+  ok('123 SK8 COREPAY deposit: matching remains auditable',r.matchEvidence.every(e=>e.method==='sys123-member-account-amount-group-min-cost'));
 
   const globallyTiedStm=[
     rec({...stm,sec:100,rowNo:2801}),

@@ -560,7 +560,7 @@ const ktbNextDay = await P.parseText("AT4_STM_KTB_เบญจพร_D_2026-09-2
 eq("KTB next-day: เก็บรายการวันที่ถัดไปเป็น candidate", ktbNextDay.records[0]?.ktbNextDayCandidateOnly, true);
 eq("KTB next-day: คงวันที่ธนาคารจริงไว้", ktbNextDay.records[0]?.date, "2026-09-29");
 
-/* ---- KTB แบบไม่แสดงเวลา (บางบัญชีตามหมายเหตุในทะเบียน) -> โหมด noTime ---- */
+/* ---- KTB ไม่มีเวลา: เก็บเป็นหลักฐาน แต่ quality ต้องหยุดอัตโนมัติ ---- */
 const KTB_NT = `
 บริษัท ธนาคารกรุงไทย จำกัด มหาชน
 เลขที่บัญชี 6640748576 รหัสสาขา 664
@@ -575,6 +575,34 @@ eq("KTB(noTime): ตั้ง noTime = true", ktbNt[0] && ktbNt[0].noTime, true)
 eq("KTB(noTime): sec = 0", ktbNt[0] && ktbNt[0].sec, 0);
 eq("KTB(noTime): รายการแรก = deposit ยอด 30", ktbNt[0] && ktbNt[0].direction + ":" + ktbNt[0].amount, "deposit:30");
 eq("KTB(noTime): รายการสอง = withdraw ยอด 127", ktbNt[1] && ktbNt[1].direction + ":" + ktbNt[1].amount, "withdraw:127");
+const ktbNtParsed = await P.parseText("AT4_STM_KTB_เบญจพร_DW_2026-06-30.pdf", KTB_NT, "2026-06-30");
+eq("KTB(noTime): ห้ามผ่าน quality gate", ktbNtParsed.quality.complete, false);
+eq("KTB(noTime): ระบุสาเหตุว่าขาดเวลาธนาคาร", ktbNtParsed.quality.invalidRows[0]?.reason, "KTB ไม่มีเวลาธนาคารที่ยืนยันได้ — ห้ามจับคู่หรือสร้างเคสอัตโนมัติ");
+
+/* เวลาในข้อความรายละเอียดบรรทัดถัดไปไม่ใช่เวลาของรายการ KTB */
+const KTB_UNRELATED_NEXT_LINE_TIME = `
+บริษัท ธนาคารกรุงไทย จำกัด มหาชน
+เลขที่บัญชี 6060748201 รหัสสาขา 606
+30/06/69 เงินโอนเข้า (IORSDT) 014-6444474223 30.00 16,492.01 606
+ผู้พิมพ์รายงาน 08:44 น.
+`;
+const ktbUnrelatedTime = await P.parseText("FR8_STM_KTB_รวิวรรณ์_D_2026-06-30.pdf", KTB_UNRELATED_NEXT_LINE_TIME, "2026-06-30");
+eq("KTB: ไม่ยืมเวลาจากข้อความรายละเอียดบรรทัดถัดไป", ktbUnrelatedTime.records[0]?.noTime, true);
+eq("KTB: เวลาที่พิสูจน์ไม่ได้ต้องหยุด quality", ktbUnrelatedTime.quality.complete, false);
+
+/* ยอด/เวลาเท่ากันสองรายการคือสองธุรกรรมจริง ต้องเก็บครบตาม source row */
+const KTB_REPEATED_REAL_ROWS = `
+บริษัท ธนาคารกรุงไทย จำกัด มหาชน
+เลขที่บัญชี 6060748201 รหัสสาขา 606
+30/06/69 เงินโอนเข้า (IORSDT) 014-6444474223 4,000.00 20,492.01 606
+08:44
+30/06/69 เงินโอนเข้า (IORSDT) 014-6444474224 4,000.00 24,492.01 606
+08:44
+`;
+const ktbRepeated = await P.parseText("FR8_STM_KTB_รวิวรรณ์_D_2026-06-30.pdf", KTB_REPEATED_REAL_ROWS, "2026-06-30");
+eq("KTB: ยอดและเวลาซ้ำคนละ source row ต้องอยู่ครบ", ktbRepeated.records.length, 2);
+eq("KTB: เก็บ source line แยกกัน", new Set(ktbRepeated.records.map((row) => row.sourceLine)).size, 2);
+eq("KTB: รายการซ้ำจริงที่อ่านครบผ่าน quality", ktbRepeated.quality.complete, true);
 
 /* ---- BBL (กรุงเทพ): ไม่มีคอลัมน์เวลา -> noTime, ปี ค.ศ. ย่อ ---- */
 const BBL2 = `
