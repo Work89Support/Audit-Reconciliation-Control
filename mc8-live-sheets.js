@@ -184,7 +184,7 @@
       e.status==='closed' && e.auto_closed===true
       && e.closure_rule==='scb-overlap-duplicate-source-verified'
       && e.resolved_by==='system:scb-overlap-repair'
-    ));
+    )).map(e=>({...e,code:displayedCaseCode(e,fallbackCompany,data?.run?.business_date)}));
     // Verified duplicate alerts are retained in case history/Audit Log, not
     // rendered as additional financial transactions in sheets and exports.
     const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo,'',data.boOperators?.[`${p.bo?.fileId}|${p.bo?.row}`]);return {key:`pair-${index}`,isPair:true,kind:'matched',company:p.company||fallbackCompany,account:p.account||'ไม่ระบุ PM',direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
