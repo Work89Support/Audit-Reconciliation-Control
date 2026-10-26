@@ -230,10 +230,11 @@ const CaseClosure=(()=>{
       if(processResponsibility&&(missingResponsibility(processResponsibility.employee)||!DamageSummary.shiftKey({shift:processResponsibility.shift})||!$('#closureProcessChecked').checked))return toast('ข้อสังเกตการทำงานต้องยืนยันชื่อ เลือกกะ และติ๊กตรวจหลักฐานก่อนปิดเคส','warn');
       event.target.disabled=true;
       try{
-        const body={p_id:id,p_case:e.dbId,p_outcome:outcome,p_amount:amount,p_reason:reason,p_category:category};
+        const body=outcome==='process_error'
+          ?{p_id:id,p_case:e.dbId,p_reason:reason,p_employee:processResponsibility.employee,p_shift:processResponsibility.shift}
+          :{p_id:id,p_case:e.dbId,p_outcome:outcome,p_amount:amount,p_reason:reason,p_category:category};
         const save=outcome==='process_error'?(direct?Sb.closeProcessErrorCase:Sb.submitProcessErrorCase):direct&&responsibility?Sb.closeDocumentCaseWithResponsibility:direct?Sb.closeDocumentCase:Sb.submitCaseClosure;
         if(direct&&responsibility)Object.assign(body,{p_employee:responsibility.employee,p_shift:responsibility.shift});
-        if(processResponsibility)Object.assign(body,{p_employee:processResponsibility.employee,p_shift:processResponsibility.shift});
         const saved=await save(body);
         if(saved?.id!==id||saved.status!==(direct?'approved':'pending'))throw Error('ยังยืนยันคำขอในฐานข้อมูลไม่ได้');
         if(direct){sent=true;await loadPending(true);if(await finishApprovalReview()!==false)toast(`ปิดเคสแล้ว — ${outcomeLabel(saved)}`);return;}
