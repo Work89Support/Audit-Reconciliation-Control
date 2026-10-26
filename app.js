@@ -1543,12 +1543,12 @@ function safeExceptionDetail(e) {
 function caseLabel(e) {
   const company = String(e?.company || "ไม่ระบุ").trim();
   const date = String(e?.date || e?.business_date || "").slice(0, 10);
-  const legacyOrdinal = String(e?.code || "").match(/^EX-(\\d+)(?:$|-C)/i);
+  const legacyOrdinal = String(e?.code || "").match(/^EX-(\d+)(?:$|-C)/i);
   if (date === "2026-10-25" && legacyOrdinal) {
     const ordinal = Number(legacyOrdinal[1]) - 3000;
     if (ordinal > 0 && ordinal <= 999) {
       const companyCode = company === "UFABET7M" ? "7M" : company;
-      return \`${companyCode}-25.10.2026-${String(ordinal).padStart(3, "0")}\`;
+      return `${companyCode}-25.10.2026-${String(ordinal).padStart(3, "0")}`;
     }
   }
   const shortDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
