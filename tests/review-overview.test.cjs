@@ -24,6 +24,8 @@ assert.equal(filter(m.rows,{status:'matched',direction:'withdraw',account:'',que
 assert.equal(caseState({status:'answered'}),'clarification');
 assert.equal(model({run:null,cases:[]}).rows.length,0);
 assert.equal(model({run:{matched:239,summary:{}},cases:[]}).counts.matched,0);
+const scoped=model({run:{matched:0,business_date:'2026-10-25',summary:{}},cases:[{id:'scoped',code:'EX-3001',company:'3XB',status:'open',direction:'ฝาก'}]},'3XB','2026-10-25');
+assert.equal(scoped.rows[0].case.code,'3XB-25.10.2026-001');
 const exact={company:'UR9',account:'AUTOPEER',direction:'deposit',boAmount:50,stmAmount:50,bo:{date:'2026-09-18',sec:32400},stm:{date:'2026-09-18',sec:32400},customer:{bo:{reference:'REF-50'},stm:{bank:'SCB',name:'TEST'}}};
 const deduped=model({run:{matched:1,summary:{match_evidence:[exact]}},cases:[
   {id:'stale-bo',company:'UR9',account:'AUTOPEER',direction:'ฝาก',ex_type:'missing_stm',system_amount:50,bo_date:'2026-09-18',bo_time:'09:00:00',customer_details:{bo:{reference:'REF-50'}}},
