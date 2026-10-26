@@ -13,5 +13,7 @@ assert.match(sql,/left join counts c using\(company,business_date\)/);
 assert.match(sb,/audit_current_case_counts_scoped/);
 assert.match(app,/liveOverviewState\.caseCounts/);
 assert.match(app,/dailyCompanyState\.caseCounts/);
+assert.match(app,/const currentOpen=lifecycle\?\.open_count!=null\?Number\(lifecycle\.open_count \|\| 0\):Number\(row\.open_count \|\| 0\)/);
+assert.match(app,/ค้าง \$\{num\(currentOpen\)\}/);
 assert.doesNotMatch(app,/const exceptionTotal = hasLifecycleCounts[\s\S]+checklistInRange\.reduce/);
 console.log('PASS every summary surface uses exact current-case membership, including zero-case scopes');
