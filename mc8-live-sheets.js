@@ -101,6 +101,10 @@
   function providerDisplayName(provider){
     return {AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider]||'';
   }
+  function isCanonicalProviderLabel(value,provider){
+    const canonical=providerDisplayName(provider).replace(/[^A-Z0-9]/g,'');
+    return !!canonical&&String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===canonical;
+  }
   function isSevenM(value){return ['7M','UFABET7M'].includes(String(value||'').toUpperCase());}
   function isSys123(value){return ['AT4','FR8','SK8'].includes(String(value||'').toUpperCase());}
   function sheetOf(row){const source=sourceSheetOf(row);if(source&&['deposit','withdraw'].includes(directionOf(row?.direction)))return source;let p=providerOfRow(row),d=directionOf(row?.direction);if(p==='LP'&&isSevenM(row?.company))p='LO';return p==='OTHER'||!['deposit','withdraw'].includes(d)?'OTHER':`${p} ${d==='deposit'?'ฝ':'ถ'}`;}
@@ -187,8 +191,8 @@
     )).map(e=>({...e,code:displayedCaseCode(e,fallbackCompany,data?.run?.business_date)}));
     // Verified duplicate alerts are retained in case history/Audit Log, not
     // rendered as additional financial transactions in sheets and exports.
-    const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo,'',data.boOperators?.[`${p.bo?.fileId}|${p.bo?.row}`]),company=p.company||fallbackCompany,account=p.account||'ไม่ระบุ PM',boAccountLabel=INFORMATION_COMPANIES.includes(company)&&providerOf(account)!=='OTHER'?String(bo.bank||'').trim():'';return {key:`pair-${index}`,isPair:true,kind:'matched',company,account,...(boAccountLabel?{boAccountLabel}:{}),direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
-    const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw,data.boOperators?.[`${e.customer_details?.source_rows?.bo?.fileId}|${e.customer_details?.source_rows?.bo?.row}`]),company=e.company||fallbackCompany,account=e.account||'ไม่ระบุ PM',boAccountLabel=INFORMATION_COMPANIES.includes(company)&&providerOf(account)!=='OTHER'?String(bo.bank||'').trim():'';return {key:e.id||e.primaryRowKey,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company,account,...(boAccountLabel?{boAccountLabel}:{}),direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:displayedCaseCode(e,fallbackCompany,data?.run?.business_date),exType:e.ex_type||'',case:e};});
+    const pairRows=pairs.map((p,index)=>{const bo=normalizedBo(p.customer?.bo,'',data.boOperators?.[`${p.bo?.fileId}|${p.bo?.row}`]),company=p.company||fallbackCompany,account=p.account||'ไม่ระบุ PM',boAccountLabel=COMPANIES.includes(company)?String(bo.bank||'').trim():'';return {key:`pair-${index}`,isPair:true,kind:'matched',company,account,...(boAccountLabel?{boAccountLabel}:{}),direction:directionOf(p.direction),bo,pm:normalizedPm(p.customer?.stm,p.stm?.raw,bo.providerReference),boAmount:p.boAmount??p.amount,pmAmount:p.stmAmount??p.amount,boTime:stamp(p.bo),pmTime:stamp(p.stm),boDate:p.bo?.date||'',pmDate:p.stm?.date||'',crossDay:!!p.crossDay||!!(p.bo?.date&&p.stm?.date&&p.bo.date!==p.stm.date),reason:p.method||'ผลจับคู่ที่บันทึกไว้',boSource:p.bo,pmSource:p.stm,code:`คู่ ${index+1}`,exType:''};});
+    const caseRows=cases.map(e=>{const bo=normalizedBo(e.customer_details?.bo,e.bo_raw,data.boOperators?.[`${e.customer_details?.source_rows?.bo?.fileId}|${e.customer_details?.source_rows?.bo?.row}`]),company=e.company||fallbackCompany,account=e.account||'ไม่ระบุ PM',boAccountLabel=COMPANIES.includes(company)?String(bo.bank||'').trim():'';return {key:e.id||e.primaryRowKey,isPair:false,kind:e.status==='closed'?'closed':e.status==='pending_next_day'?'pending_next_day':'review',company,account,...(boAccountLabel?{boAccountLabel}:{}),direction:directionOf(e.direction),bo,pm:normalizedPm(e.customer_details?.stm,e.stm_raw,bo.providerReference),boAmount:e.system_amount,pmAmount:e.bank_amount,boTime:[e.bo_date,e.bo_time].filter(Boolean).join(' '),pmTime:[e.stm_date,e.stm_time].filter(Boolean).join(' '),boDate:e.bo_date||'',pmDate:e.stm_date||'',crossDay:e.ex_type==='cross_day'||!!(e.bo_date&&e.stm_date&&e.bo_date!==e.stm_date),reason:e.resolution_note||e.detail||e.type_name||e.ex_type||'',boRaw:e.bo_raw||'',pmRaw:e.stm_raw||'',code:displayedCaseCode(e,fallbackCompany,data?.run?.business_date),exType:e.ex_type||'',case:e};});
     // A closed BBL carry-over is history of an existing matched transaction,
     // not another BO row. Link only a unique, fully identified saved pair.
     const linkedPairs=new Set(),remainingCases=[];
@@ -405,7 +409,10 @@
     // FR8 retains its agreed Manual account label. Normal AT4/SK8 banks
     // use their own account number, not an inferred Manual channel.
     const manual=number&&(row.company==='FR8'||MANUAL_ACCOUNTS[row.company]?.includes(number));
-    const base=providerName|| (number?`${number}${manual?' : Manual':''}`:original);
+    // Headings must follow the exact BO label. Canonical provider-only values
+    // remain the fallback for old rows that did not preserve the BO heading.
+    const exactProviderLabel=providerName&&!isCanonicalProviderLabel(original,provider)?original:'';
+    const base=exactProviderLabel||providerName|| (number?`${number}${manual?' : Manual':''}`:original);
     const direction=directionOf(row.direction);
     return {key:`bo-account:${base}${direction?':'+direction:''}`,account:base,label:direction?`${base} ${thaiDirection({...row,direction})}`:base,direction,rows:[]};
   }
@@ -479,13 +486,12 @@
     // source rows and the saved reconciliation totals intact for traceability.
     rows=rows.filter(row=>!isExcludedAccountSheetRow(row));
     let groups=boAccountGroups(rows);
-    // XB account pages are owned by the exact BO account label. Older saved
+    // Account pages are owned by the exact BO account label. Older saved
     // cases may carry only the canonical provider (AUTOPEER/COREPAY/MYPAY),
     // even though another BO row in the same result has the real BO label.
     // Merge that legacy provider-only BO group only when provider + direction
     // resolves to one exact BO page; keep ambiguous accounts separate.
-    if(rows.length&&XB_COMPANIES.includes(rows[0].company)){
-      const canonical=(value,provider)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===providerDisplayName(provider).replace(/[^A-Z0-9]/g,'');
+    if(rows.length&&COMPANIES.includes(rows[0].company)){
       const groupProvider=group=>{
         const row=group.rows.find(item=>providerOfRow(item)!=='OTHER');
         return row?providerOfRow(row):'OTHER';
@@ -494,13 +500,13 @@
         const provider=groupProvider(group);
         return provider!=='OTHER'&&group.rows.some(row=>{
           const label=String(row.boAccountLabel||'').trim();
-          return label&&providerOf(label)===provider&&!canonical(label,provider);
+          return label&&providerOf(label)===provider&&!isCanonicalProviderLabel(label,provider);
         });
       });
       const removed=new Set();
       for(const group of groups){
         const provider=groupProvider(group),direction=directionOf(group.direction||group.rows[0]?.direction);
-        if(provider==='OTHER'||!canonical(group.account,provider))continue;
+        if(provider==='OTHER'||!isCanonicalProviderLabel(group.account,provider))continue;
         const targets=anchors.filter(anchor=>groupProvider(anchor)===provider&&directionOf(anchor.direction||anchor.rows[0]?.direction)===direction);
         if(targets.length!==1||targets[0]===group)continue;
         targets[0].rows.push(...group.rows);
@@ -511,11 +517,14 @@
     const assigned=new Set(groups.flatMap(group=>group.rows));
     for(const row of rows){
       if(assigned.has(row))continue;
-      const systemGroup=sys123AccountGroup(row)||sevenMTmnGroup(row,rows);
-      if(systemGroup){let group=groups.find(g=>g.key===systemGroup.key);if(!group){group=systemGroup;groups.push(group);}group.rows.push(row);assigned.add(row);continue;}
       let candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&bo.account===row.account));
       if(!candidates.length&&!isStatement(row)&&providerOfRow(row)!=='OTHER')candidates=groups.filter(group=>group.rows.some(bo=>bo.direction===row.direction&&!isStatement(bo)&&providerOfRow(bo)===providerOfRow(row)));
-      if(candidates.length===1){candidates[0].rows.push(row);assigned.add(row);}
+      if(candidates.length===1){candidates[0].rows.push(row);assigned.add(row);continue;}
+      // Only create a fallback account group after trying the exact BO pages.
+      // Otherwise a PM-only 123/7M row recreates the canonical provider page
+      // that was just folded into its sole BO heading above.
+      const systemGroup=sys123AccountGroup(row)||sevenMTmnGroup(row,rows);
+      if(systemGroup){let group=groups.find(g=>g.key===systemGroup.key);if(!group){group=systemGroup;groups.push(group);}group.rows.push(row);assigned.add(row);}
     }
     const remaining=new Map();
     for(const row of rows){
