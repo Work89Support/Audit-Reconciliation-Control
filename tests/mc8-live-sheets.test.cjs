@@ -11,6 +11,7 @@ assert.equal(canOpenRealCase({...actionRow('open'),pmAmount:null,pmRaw:''},true)
 {
   const legacyCase={id:'case-1',code:'EX-3001',company:'3XB',business_date:'2026-10-25',status:'open',direction:'ฝาก',system_amount:100,bank_amount:null};
   assert.equal(rowsOf({run:{summary:{}},cases:[legacyCase]},'3XB')[0].code,'3XB-25.10.2026-001');
+  assert.equal(rowsOf({run:{business_date:'2026-10-25',summary:{}},cases:[{...legacyCase,business_date:undefined}]},'3XB')[0].code,'3XB-25.10.2026-001');
   assert.equal(rowsOf({run:{summary:{}},cases:[{...legacyCase,company:'UFABET7M'}]},'UFABET7M')[0].code,'7M-25.10.2026-001');
   assert.equal(rowsOf({run:{summary:{}},cases:[{...legacyCase,business_date:'2026-10-26'}]},'3XB')[0].code,'EX-3001');
 }
