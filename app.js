@@ -881,23 +881,13 @@ function scopedWorkflowMetrics() {
       && (state.filters.company === "ALL" || normalizeLiveCompanyCode(row.company) === normalizeLiveCompanyCode(state.filters.company));
   };
   const qualityRows = (liveOverviewState.quality || []).filter(inScope).filter((row) => row.run_id && !row.is_archived);
-  const hiddenRows = (liveOverviewState.informationalExceptions || []).filter(inScope).filter((row) => !["closed", "approved"].includes(row.status));
-  const checklistRows = (liveOverviewState.checklist || []).filter(inScope);
-  const checklistByKey = new Map(checklistRows.map((row) => [`${row.business_date}|${normalizeLiveCompanyCode(row.company)}`, row]));
-  const aggregateOpenBeforePolicy = qualityRows.reduce((sum, run) => {
-    const total = Number(run.exception_count || 0);
-    const checklist = checklistByKey.get(`${run.business_date}|${normalizeLiveCompanyCode(run.company)}`);
-    const resolved = Number(checklist?.resolved_count || 0);
-    const reportedOpen = Number(checklist?.open_count || 0);
-    const checklistCoversRun = checklist?.open_count != null && reportedOpen + resolved >= total;
-    return sum + (checklistCoversRun ? reportedOpen : Math.max(0, total - resolved));
-  }, 0);
-  const aggregateOpen = Math.max(0, aggregateOpenBeforePolicy - hiddenRows.length);
+  const currentCounts = (liveOverviewState.caseCounts || []).filter(inScope);
+  const aggregateOpen = currentCounts.reduce((sum, row) => sum + Number(row.open_count || 0), 0);
   const loadedOpen = DB.exceptions.filter((row) => inScope(row) && !["closed", "approved"].includes(row.status)).length;
-  const qualityReady = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
+  const countsReady = Array.isArray(liveOverviewState.caseCounts) && !hasLiveCoreError("ยอดเคสชุดปัจจุบัน");
   return {
-    openAvailable: qualityReady || liveOverviewState.exceptionsReady,
-    open: qualityReady && qualityRows.length ? aggregateOpen : loadedOpen,
+    openAvailable: countsReady || liveOverviewState.exceptionsReady,
+    open: countsReady ? aggregateOpen : loadedOpen,
     approvalsAvailable: liveOverviewState.exceptionsReady && (state.dataset !== 'production' || (ManualPairing.queueState.rows !== null && CaseClosure.queueState.rows !== null && CrossDayWorkbench.queueState.rows !== null)),
     approvals: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && row.status === 'damage').length + (state.dataset === 'production' ? (ManualPairing.queueState.rows?.length || 0) + (CaseClosure.queueState.rows?.length || 0) + (CrossDayWorkbench.queueState.rows?.length || 0) : new Set(DB.exceptions.filter(row=>row.status==='pair_pending').map(row=>row.manualPairId||row.id)).size),
     followUps: DB.exceptions.filter((row) => inScope(row) && !row.closureRequestId && !["closed", "approved"].includes(row.status) && ["clarifying", "answered", "damage"].includes(row.status)).length,
@@ -1418,7 +1408,7 @@ function render() {
 /* =============================================================
    VIEW: Dashboard
    ============================================================= */
-const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
+const liveOverviewState = { daily: null, operations: null, quality: null, checklist: null, caseCounts: null, boFirst: null, settings: null, damages: null, logs: null, notifications: null, clarifications: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, exceptionsReady: false, damagesReady: false, logsReady: false, loading: false, auxiliaryLoading: false, auxiliaryError: null, coreErrors: [], requestId: 0, error: null, key: "", updatedAt: null };
 const liveExceptionSearch = { key: "", rows: [], loading: false, error: null };
 const exceptionSupportCache = new Map();
 const moreCaseState = { offset: 0, hasMore: true, loading: false, error: "" };
@@ -1937,6 +1927,7 @@ async function loadLiveOverview(force = false) {
     liveOverviewState.operations = null;
     liveOverviewState.quality = null;
     liveOverviewState.checklist = null;
+    liveOverviewState.caseCounts = null;
     liveOverviewState.boFirst = null;
     liveOverviewState.damages = null;
     liveOverviewState.logs = null;
@@ -1956,13 +1947,14 @@ async function loadLiveOverview(force = false) {
       Sb.operations({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.quality({ from: state.filters.from, to: state.filters.to, company: state.filters.company, limit: 1000 }),
       Sb.dailyChecklist({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
+      Sb.currentCaseCounts({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.boFirstCoverage({ from: state.filters.from, to: state.filters.to, company: state.filters.company }),
       Sb.runtimeSettings(),
       Sb.reviewHoldScopes(),
     ]);
     if (requestId !== liveOverviewState.requestId) return;
-    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ผล BO-first", "การตั้งค่าระบบ", "ทะเบียนพักตรวจ"];
-    AccountReviewHolds.set(core[6].status==='fulfilled'?core[6].value:[]);
+    const coreNames = ["ยอดเมลและไฟล์", "คิวกระทบยอด", "ผลกระทบยอด", "เช็กลิสต์", "ยอดเคสชุดปัจจุบัน", "ผล BO-first", "การตั้งค่าระบบ", "ทะเบียนพักตรวจ"];
+    AccountReviewHolds.set(core[7].status==='fulfilled'?core[7].value:[]);
     if (key !== `${state.filters.from}|${state.filters.to}|${state.filters.company}`) {
       liveOverviewState.loading = false;
       return loadLiveOverview(true);
@@ -1972,8 +1964,9 @@ async function loadLiveOverview(force = false) {
     let operations = coreValue(1, liveOverviewState.operations);
     let quality = coreValue(2, liveOverviewState.quality);
     let checklistRows = coreValue(3, liveOverviewState.checklist);
-    let boFirstRows = coreValue(4, liveOverviewState.boFirst);
-    const settings = coreValue(5, liveOverviewState.settings ? [liveOverviewState.settings] : null);
+    let caseCountRows = coreValue(4, liveOverviewState.caseCounts);
+    let boFirstRows = coreValue(5, liveOverviewState.boFirst);
+    const settings = coreValue(6, liveOverviewState.settings ? [liveOverviewState.settings] : null);
     liveOverviewState.coreErrors = core.flatMap((item, index) => item.status === "rejected" ? [coreNames[index] + ": " + String(item.reason?.message || "คำขอไม่สำเร็จ").slice(0, 240)] : []);
     // Keep the requested day even when empty; never silently widen or change Day-1.
     if (requestId !== liveOverviewState.requestId) return;
@@ -1981,6 +1974,7 @@ async function loadLiveOverview(force = false) {
     if (operations !== null) liveOverviewState.operations = (operations || []).filter(isLiveCompanyRow);
     if (quality !== null) liveOverviewState.quality = (quality || []).filter(isLiveCompanyRow);
     if (checklistRows !== null) liveOverviewState.checklist = (checklistRows || []).filter(isLiveCompanyRow);
+    if (caseCountRows !== null) liveOverviewState.caseCounts = (caseCountRows || []).filter(isLiveCompanyRow);
     if (boFirstRows !== null) liveOverviewState.boFirst = (boFirstRows || []).filter(isLiveCompanyRow);
     if (settings !== null) liveOverviewState.settings = Array.isArray(settings) ? (settings[0] || null) : settings;
     liveOverviewState.error = liveOverviewState.coreErrors.length
@@ -2090,20 +2084,21 @@ function renderLiveDashboard(root) {
   const failed = quality.filter((x) => !x.primaryResult && (x.status === "error" || Number(x.error_count || 0) > 0)).length;
   const checklistInRange = (liveOverviewState.checklist || []).filter(inLiveRange);
   const checklistByCompanyDate = new Map(checklistInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
+  const currentCountsInRange = (liveOverviewState.caseCounts || []).filter(inLiveRange);
+  const currentCountsByCompanyDate = new Map(currentCountsInRange.map((row) => [`${row.business_date}|${String(row.company || "").toUpperCase()}`, row]));
   const manualFollowups=manualFollowupItems(checklistInRange);
   const manualFollowupErrors=[...new Set(checklistInRange.map(r=>r.workflowStatusError).filter(Boolean))];
   const manualFollowupReady=Array.isArray(liveOverviewState.checklist)&&!hasLiveCoreError('เช็กลิสต์');
   const currentExceptionCount = (row) => {
-    const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
-    return lifecycle?.open_count != null && lifecycle?.resolved_count != null
-      ? Number(lifecycle.open_count || 0) + Number(lifecycle.resolved_count || 0)
+    const lifecycle = currentCountsByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+    return lifecycle?.total_count != null
+      ? Number(lifecycle.total_count || 0)
       : Number(row.exception_count || 0);
   };
-  const hiddenExceptionTotal = (liveOverviewState.informationalExceptions || []).filter(inLiveRange).length;
-  const hasLifecycleCounts = checklistInRange.some((row) => row.open_count != null && row.resolved_count != null);
-  const exceptionTotal = hasLifecycleCounts
-    ? checklistInRange.reduce((sum, row) => sum + Number(row.open_count || 0) + Number(row.resolved_count || 0), 0)
-    : Math.max(0, quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0) - hiddenExceptionTotal - Number(liveOverviewState.matchedStaleExceptions || 0));
+  const currentCountsReady = Array.isArray(liveOverviewState.caseCounts) && !hasLiveCoreError("ยอดเคสชุดปัจจุบัน");
+  const exceptionTotal = currentCountsReady
+    ? currentCountsInRange.reduce((sum, row) => sum + Number(row.total_count || 0), 0)
+    : quality.reduce((sum, x) => sum + Number(x.exception_count || 0), 0);
   const risk = exceptions.reduce((sum, x) => sum + Number(x.riskAmount || 0), 0);
   const dailyAvailable = Array.isArray(liveOverviewState.daily) && !hasLiveCoreError("ยอดเมลและไฟล์");
   const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
@@ -2271,11 +2266,12 @@ return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data
       <div class="table-wrap"><table class="live-table">
         <thead><tr><th>วันที่</th><th>บริษัท / ระบบ</th><th>สถานะ</th><th class="right">ไฟล์</th><th>ไฟล์ที่ยังขาด</th><th>ผลกระทบยอด</th></tr></thead>
         <tbody>${recent.map((row) => {
-          const lifecycle = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+          const checklistRow = checklistByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
+          const lifecycle = currentCountsByCompanyDate.get(`${row.business_date}|${String(row.company || "").toUpperCase()}`);
           const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
-          const resultStatus = dailyResultStatus(lifecycle||{},row);
+          const resultStatus = dailyResultStatus(checklistRow||{},row);
           const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
-return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${lifecycle?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(lifecycle.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
+return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${checklistRow?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(checklistRow.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
         }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
       </table></div>
     </section>`;
@@ -2531,7 +2527,7 @@ VIEWS.dashboard = (root) => {
 /* =============================================================
    VIEW: Daily company summary - 1 บริษัท / 1 วัน
    ============================================================= */
-const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
+const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, caseCounts: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
 dailyCompanyState.confirmedRechecks=[];
 dailyCompanyState.recheckReportError='';
 
@@ -2547,6 +2543,7 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.quality = null;
     dailyCompanyState.operations = null;
     dailyCompanyState.checklist = null;
+    dailyCompanyState.caseCounts = null;
     dailyCompanyState.boFirst = null;
     dailyCompanyState.exceptions = null;
     dailyCompanyState.informationalExceptions = [];
@@ -2570,6 +2567,7 @@ async function loadDailyCompanySummary(force = false) {
       Sb.quality({ from: date, to: date, limit: 500 }),
       Sb.operations({ from: date, to: date, limit: 500 }),
       Sb.dailyChecklist({ from: date, to: date, limit: 100 }),
+      Sb.currentCaseCounts({ from: date, to: date, company: "ALL" }),
       Sb.boFirstCoverage({ from: date, to: date, company, limit: 20 }),
     ]);
     if (requestId !== dailyCompanyState.requestId) return;
@@ -2597,8 +2595,9 @@ async function loadDailyCompanySummary(force = false) {
     dailyCompanyState.quality = selectedQuality;
     dailyCompanyState.operations = valueAt(2).filter((row) => row.business_date === date);
     dailyCompanyState.checklist = valueAt(3);
-    dailyCompanyState.boFirst = valueAt(4).filter((row) => row.business_date === date);
-    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist", "บัญชีที่พบจาก BO"].filter((_, index) => core[index].status === "rejected");
+    dailyCompanyState.caseCounts = valueAt(4).filter((row) => row.business_date === date);
+    dailyCompanyState.boFirst = valueAt(5).filter((row) => row.business_date === date);
+    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist", "ยอดเคสชุดปัจจุบัน", "บัญชีที่พบจาก BO"].filter((_, index) => core[index].status === "rejected");
     dailyCompanyState.coreError = failedCore.length ? `${failedCore.join(" / ")} ตอบกลับช้า จึงแสดงส่วนที่โหลดสำเร็จก่อน` : null;
     dailyCompanyState.exceptions = [];
     dailyCompanyState.damages = [];
@@ -2652,23 +2651,26 @@ function dailyCompanyData(company) {
   const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
   const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
   const checklist = (dailyCompanyState.checklist || []).find((row) => row.company === company) || null;
+  const caseCountsAvailable = Array.isArray(dailyCompanyState.caseCounts);
+  const currentCounts = (dailyCompanyState.caseCounts || []).find((row) => row.company === company)
+    || (!caseCountsAvailable && checklist?.open_count != null && checklist?.resolved_count != null
+      ? {total_count:Number(checklist.open_count || 0)+Number(checklist.resolved_count || 0),open_count:checklist.open_count,resolved_count:checklist.resolved_count}
+      : null);
   const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
   const reportedExceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
   const informationalCount = (dailyCompanyState.informationalExceptions || []).filter((row) => normalizeLiveCompanyCode(row.company) === company).length;
   const computedCurrentTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
   const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
   const confirmedDamage = exceptions.filter((row) => row.status === "damage");
-  /* audit_daily_checklist already counts the current actionable lifecycle and
-     intentionally excludes informational/stale rows. Do not compare it with
-     recon_runs.exception_count (the number originally generated), otherwise a
-     valid filtered total looks "incomplete" and the UI resurrects old cases. */
-  const hasCurrentCounts = checklist?.open_count != null && checklist?.resolved_count != null;
-  const resolvedTotal = hasCurrentCounts ? Number(checklist.resolved_count || 0) : fixed.length;
-  const stillOpen = hasCurrentCounts ? Number(checklist.open_count || 0) : Math.max(0, computedCurrentTotal - resolvedTotal);
-  const exceptionTotal = hasCurrentCounts ? stillOpen + resolvedTotal : computedCurrentTotal;
+  /* All screens use the same current-primary resolver as the case queue.
+     Checklist lifecycle is accumulated history and must never override it. */
+  const hasCurrentCounts = currentCounts?.total_count != null;
+  const resolvedTotal = hasCurrentCounts ? Number(currentCounts.resolved_count || 0) : fixed.length;
+  const stillOpen = hasCurrentCounts ? Number(currentCounts.open_count || 0) : Math.max(0, computedCurrentTotal - resolvedTotal);
+  const exceptionTotal = hasCurrentCounts ? Number(currentCounts.total_count || 0) : computedCurrentTotal;
   const reconciliationFiles = files.filter((file) => file.kind !== "doc_clarify");
   const evidenceFiles = files.filter((file) => file.kind === "doc_clarify");
-  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
+  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, currentCounts, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
 }
 
 function dailyCompanyOptions() {
@@ -2722,8 +2724,11 @@ function dailyResultStatus(row,run={}) {
 
 function dailyAuditSheetRows(date) {
   const checklist = (dailyCompanyState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const currentCounts = (dailyCompanyState.caseCounts || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const caseCountsAvailable = Array.isArray(dailyCompanyState.caseCounts);
   const quality = (dailyCompanyState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
   const checklistByCompany = new Map(checklist.map((row) => [row.company, row]));
+  const currentCountsByCompany = new Map(currentCounts.map((row) => [row.company, row]));
   const qualityByCompany = new Map(quality.map((row) => [row.company, row]));
   const companies = [...new Set([...checklistByCompany.keys(), ...qualityByCompany.keys()])];
   return companies.map((company) => {
@@ -2731,11 +2736,15 @@ function dailyAuditSheetRows(date) {
     const run = qualityByCompany.get(company) || {};
     const resultStatus = dailyResultStatus(row,run);
     const primary=resultStatus.primary;
+    const legacyCurrentCounts = (!primary || !!primary.case_set) && row.open_count != null && row.resolved_count != null;
+    const lifecycle = currentCountsByCompany.get(company) || (!caseCountsAvailable && legacyCurrentCounts
+      ? {total_count:Number(row.open_count || 0)+Number(row.resolved_count || 0),open_count:row.open_count,resolved_count:row.resolved_count}
+      : null);
     const generatedExceptionCount = primary ? (primary.report?.exceptions?.length || 0) + (primary.report?.summary?.waiting_bo?.length || 0) : Number(run.exception_count ?? row.exception_count ?? 0);
-    const hasCurrentCounts = (!primary || !!primary.case_set) && row.open_count != null && row.resolved_count != null;
-    const resolvedCount = hasCurrentCounts ? Number(row.resolved_count || 0) : 0;
-    const openCount = hasCurrentCounts ? Number(row.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
-    const exceptionCount = generatedExceptionCount;
+    const hasCurrentCounts = (!primary || !!primary.case_set) && lifecycle?.total_count != null;
+    const resolvedCount = hasCurrentCounts ? Number(lifecycle.resolved_count || 0) : 0;
+    const openCount = hasCurrentCounts ? Number(lifecycle.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
+    const exceptionCount = hasCurrentCounts ? Number(lifecycle.total_count || 0) : generatedExceptionCount;
     const runStatus = row.job_status || run.status || "waiting_files";
     return {
       ...row,
@@ -2754,7 +2763,7 @@ function dailyAuditSheetRows(date) {
       matched: Number(run.matched ?? row.matched_count ?? 0),
       exceptionCount,
       generatedExceptionCount,
-      currentCountsReady: hasCurrentCounts && [row.open_count,row.resolved_count].every(v=>Number.isFinite(Number(v))&&Number(v)>=0),
+      currentCountsReady: hasCurrentCounts && [lifecycle.open_count,lifecycle.resolved_count,lifecycle.total_count].every(v=>Number.isFinite(Number(v))&&Number(v)>=0),
       caseSetPending: !!primary && !primary.case_set,
       historicalOpenCount: primary && !primary.case_set ? row.open_count ?? null : null,
       openCount,
@@ -3084,6 +3093,7 @@ function renderDailyCompanySummary(root) {
           dailyCompanyState.quality = null;
           dailyCompanyState.operations = null;
           dailyCompanyState.checklist = null;
+          dailyCompanyState.caseCounts = null;
           dailyCompanyState.boFirst = null;
           await loadDailyCompanySummary(true);
           render();
@@ -9311,6 +9321,7 @@ async function performProductionEntry() {
   liveOverviewState.operations = null;
   liveOverviewState.quality = null;
   liveOverviewState.checklist = null;
+  liveOverviewState.caseCounts = null;
   liveOverviewState.settings = null;
   liveOverviewState.damages = null;
   liveOverviewState.logs = null;
@@ -9330,6 +9341,7 @@ async function performProductionEntry() {
   dailyCompanyState.quality = null;
   dailyCompanyState.operations = null;
   dailyCompanyState.checklist = null;
+  dailyCompanyState.caseCounts = null;
   dailyCompanyState.boFirst = null;
   dailyCompanyState.exceptions = null;
   dailyCompanyState.damages = null;

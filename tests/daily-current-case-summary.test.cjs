@@ -13,6 +13,11 @@ for(const company of companies)for(const manual of [false,true]){
  input.checklist[0].open_count=null;const unavailable=Summary.markup(ctx.dailyAuditSheetRows('2026-10-16')[0]);assert.match(unavailable,/กำลังตรวจจำนวน/);assert.doesNotMatch(unavailable,/ค้างปัจจุบัน [0-9]/);
  if(primary){delete primary.case_set;assert.match(Summary.markup(ctx.dailyAuditSheetRows('2026-10-16')[0]),/รอสร้างชุดเคสปัจจุบัน/);}
 }
+{
+ const input={checklist:[{company:'MR9',business_date:'2026-10-16',open_count:124,resolved_count:952}],caseCounts:[{company:'MR9',business_date:'2026-10-16',total_count:17,open_count:17,resolved_count:0}],quality:[{company:'MR9',business_date:'2026-10-16',exception_count:17}]};
+ const ctx={dailyCompanyState:input,isLiveCompanyRow:()=>true,dailyResultStatus:()=>({primary:null})};vm.createContext(ctx);vm.runInContext(fn,ctx);
+ const [row]=ctx.dailyAuditSheetRows('2026-10-16');assert.equal(row.exceptionCount,17);assert.equal(row.openCount,17);assert.equal(row.resolvedCount,0);
+}
 assert.ok(app.indexOf('id="dailySummaryHolds"')<app.indexOf('if (dailyCompanyState.loading && !dailyCompanyState.batches)'));
 assert.match(app,/AccountReviewHolds.mountReadOnly/);assert.equal(typeof Holds.mountReadOnly,'function');
 assert.doesNotMatch(Holds.mountReadOnly.toString(),/\.patch\(|\.post\(|\.rpc\(|requestClarification|closeException|saveHold/);
