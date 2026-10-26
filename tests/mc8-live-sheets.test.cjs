@@ -49,8 +49,8 @@ const sevenMAutopeerGroups=accountReviewGroups([
   {key:'bo-atp-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'ATP PAYMENT ถอน 00000ATP',direction:'withdraw',boAmount:300,boRaw:'ATP PAYMENT ถอน 00000ATP | 300',bo:{}},
   {key:'bo-autopeer-w',company:'UFABET7M',account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'withdraw',boAmount:400,boRaw:'AUTOPEER | 400',bo:{}},
 ]);
-assert.deepEqual(sevenMAutopeerGroups.map(group=>group.label).sort(),['ATP PAYMENT ถอน 00000ATP','ATP PAYMENT ฝาก 00000ATP','AUTOPEER · ถอน','AUTOPEER · ฝาก'],'7M account headings must preserve exact directional BO labels and clarify legacy labels without a direction');
-assert.deepEqual(sevenMAutopeerGroups.map(group=>group.rows.length).sort(),[1,1,1,1],'7M deposit and withdrawal groups must remain separate without changing totals');
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.label).sort(),['ATP PAYMENT ถอน 00000ATP','ATP PAYMENT ฝาก 00000ATP'],'7M account headings must use the exact directional BO labels instead of opening canonical provider pages');
+assert.deepEqual(sevenMAutopeerGroups.map(group=>group.rows.length).sort(),[2,2],'7M canonical BO rows must fold into the exact BO heading without changing totals');
 const mr9BoFirstRows=rowsOf({run:{summary:{match_evidence:[
   {company:'MR9',account:'AUTOPEER',direction:'deposit',boAmount:100,stmAmount:100,bo:{date:'2026-10-25',sec:60},stm:{date:'2026-10-25',sec:60},customer:{bo:{bank:'พร้อมเพย์-ATP(autopeer)(P2P)'},stm:{}}},
   {company:'MR9',account:'COREPAY',direction:'deposit',boAmount:200,stmAmount:200,bo:{date:'2026-10-25',sec:120},stm:{date:'2026-10-25',sec:120},customer:{bo:{bank:'พร้อมเพย์-CP(corepay)(QR)'},stm:{}}},
@@ -81,6 +81,17 @@ assert.deepEqual(mr9LegacyProviderRows.map(group=>group.label).sort(),[
   'พร้อมเพย์-ATP(autopeer)(P2P) · ฝาก','พร้อมเพย์-CP(corepay)(QR) · ฝาก','พร้อมเพย์-M24(mypays24)(P2P) · ฝาก',
 ].sort(),'legacy canonical BO and PM-only rows must fold into the sole exact BO page');
 assert.deepEqual(mr9LegacyProviderRows.map(group=>group.rows.length).sort(),[3,3,3],'legacy canonical rows remain visible once without opening duplicate pages');
+for(const company of COMPANIES){
+  const exact=`${company} พร้อมเพย์-ATP(autopeer)(P2P)`;
+  const groups=accountReviewGroups([
+    {key:`${company}-exact`,company,account:'AUTOPEER',boAccountLabel:exact,direction:'deposit',boAmount:100,bo:{date:'2026-10-25'}},
+    {key:`${company}-legacy`,company,account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'deposit',boAmount:200,bo:{date:'2026-10-25'}},
+    {key:`${company}-pm`,company,account:'AUTOPEER',direction:'deposit',pmAmount:300,pm:{date:'2026-10-25'}},
+  ]);
+  assert.equal(groups.length,1,`${company}: every account page must be anchored to the sole exact BO heading`);
+  assert.ok(groups[0].label.includes(exact),`${company}: the account heading must preserve the exact BO label`);
+  assert.equal(groups[0].rows.length,3,`${company}: BO and STM/PM rows must remain visible exactly once under that heading`);
+}
 assert.equal(sheetOf(rows[0]),'AT ถ');assert.deepEqual(COMPANIES,['3XB','MC8','MR9','PS8','UR9','AT4','FR8','SK8','UFABET7M']);assert.ok(SHEETS.includes('CY ฝ'));assert.ok(SHEETS.includes('LO ถ'));
 const totals=summarize(rows);assert.equal(totals.pmCount,1);assert.equal(totals.pmCents,35500);assert.equal(totals.boCount,2);assert.equal(totals.boCents,50500);assert.equal(totals.crossDayCount,1);assert.equal(totals.crossDayBoCents,15000);assert.equal(totals.diffBeforeCents,0);assert.equal(totals.diffAfterCents,-15000);
 assert.equal(summaries(rows)['CP ฝ'].boCount,1,'warning cases sharing one BO transaction must be deduplicated');
