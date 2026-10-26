@@ -478,7 +478,37 @@
     // Placeholder deposits are excluded from account sheets only. Keep
     // source rows and the saved reconciliation totals intact for traceability.
     rows=rows.filter(row=>!isExcludedAccountSheetRow(row));
-    const groups=boAccountGroups(rows),assigned=new Set(groups.flatMap(group=>group.rows));
+    let groups=boAccountGroups(rows);
+    // XB account pages are owned by the exact BO account label. Older saved
+    // cases may carry only the canonical provider (AUTOPEER/COREPAY/MYPAY),
+    // even though another BO row in the same result has the real BO label.
+    // Merge that legacy provider-only BO group only when provider + direction
+    // resolves to one exact BO page; keep ambiguous accounts separate.
+    if(rows.length&&XB_COMPANIES.includes(rows[0].company)){
+      const canonical=(value,provider)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'')===providerDisplayName(provider).replace(/[^A-Z0-9]/g,'');
+      const groupProvider=group=>{
+        const row=group.rows.find(item=>providerOfRow(item)!=='OTHER');
+        return row?providerOfRow(row):'OTHER';
+      };
+      const anchors=groups.filter(group=>{
+        const provider=groupProvider(group);
+        return provider!=='OTHER'&&group.rows.some(row=>{
+          const label=String(row.boAccountLabel||'').trim();
+          return label&&providerOf(label)===provider&&!canonical(label,provider);
+        });
+      });
+      const removed=new Set();
+      for(const group of groups){
+        const provider=groupProvider(group),direction=directionOf(group.direction||group.rows[0]?.direction);
+        if(provider==='OTHER'||!canonical(group.account,provider))continue;
+        const targets=anchors.filter(anchor=>groupProvider(anchor)===provider&&directionOf(anchor.direction||anchor.rows[0]?.direction)===direction);
+        if(targets.length!==1||targets[0]===group)continue;
+        targets[0].rows.push(...group.rows);
+        removed.add(group);
+      }
+      groups=groups.filter(group=>!removed.has(group));
+    }
+    const assigned=new Set(groups.flatMap(group=>group.rows));
     for(const row of rows){
       if(assigned.has(row))continue;
       const systemGroup=sys123AccountGroup(row)||sevenMTmnGroup(row,rows);
@@ -704,6 +734,8 @@
     const persistedStatus=String(row.case.status||'').toLowerCase();
     if(['closed','approved','damage','cancelled','pair_pending'].includes(persistedStatus))return false;
     const result=auditStatus(row,complete);
+    // ปุ่มนี้ใช้เฉพาะรายการที่หลักฐานรอบกระทบยอดยังปิดไม่ได้จริง
+    // แถวที่จับคู่/ปิดได้ และประวัติเคสที่ปิดแล้ว ยังดูได้แต่ห้ามเสนอให้เปิดซ้ำ
     return result==='ปิดไม่ได้/ต้องตรวจ'
       ||result.startsWith('ต้องตรวจเพิ่ม')
       ||result.startsWith('ค้างรอข้อมูลข้ามวัน')
