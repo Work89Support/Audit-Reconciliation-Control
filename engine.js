@@ -408,6 +408,12 @@ const Engine = (() => {
     return references.some((ref) => referenceInBo(ref, bo));
   };
   const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  const nextIsoDate = (v) => {
+    if (!isIsoDate(v)) return null;
+    const date = new Date(`${v}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + 1);
+    return date.toISOString().slice(0, 10);
+  };
   const canonicalDirection = (v) => (/ถอน|withdraw/i.test(String(v || "")) ? "withdraw" : /ฝาก|deposit/i.test(String(v || "")) ? "deposit" : String(v || ""));
   const recordKey = (r) =>
     [r.account || "-", Number(r.amount || 0).toFixed(2), r.date || "", Number.isFinite(Number(r.sec)) ? Number(r.sec) : "", canonicalDirection(r.direction)].join("|");
@@ -1867,11 +1873,11 @@ const Engine = (() => {
       });
     });
 
-    /* KTB may book a late-night System 123 transaction on the next calendar
-       date. These candidate rows are never normal STM rows. Promote only a
-       strict reciprocal 1:1 pair whose BO explicitly uses the bank timestamp,
-       crosses from the previous BO date and has the same account/direction/
-       amount/time. An unmatched candidate remains evidence only. */
+    /* KTB may book a System 123 BO transaction at 23:00-23:59 on statement
+       date D+1 at any time (for example 01:42). These candidates never enter
+       ordinary matching. Promote only an exact reciprocal 1:1 pair where BO
+       explicitly uses its bank date/time and company/account/direction/amount
+       agree. Do not compare the two clocks across the posting boundary. */
     const ktbCandidatePairs = new Map();
     const ktbCandidatePeers = new Map();
     ktbNextDayCandidates.forEach((s) => {
@@ -1881,11 +1887,11 @@ const Engine = (() => {
         const b = boRecords[ci];
         return sameCompany(s, b)
           && s.account === b.account && s.direction === b.direction
-          && s.date === b.date && b.crossDay === true
-          && b.bankDate === s.date && b.boDate && b.boDate !== b.bankDate
+          && nextIsoDate(b.date) === s.date
+          && b.bankDate === b.date
           && b.matchTimeColumn === 'วันที่ธนาคาร'
-          && Number.isFinite(s.sec) && Number.isFinite(b.sec)
-          && timeDistance(s, b) <= tolOf(s.direction, s, b);
+          && Number.isFinite(b.sec) && b.sec >= 23 * 3600 && b.sec < 24 * 3600
+          && Number.isFinite(s.sec);
       });
       ktbCandidatePairs.set(s, rows);
       rows.forEach((ci) => {
@@ -1902,7 +1908,7 @@ const Engine = (() => {
       const b = boRecords[ci];
       boUsed[ci] = 1;
       ktbNextDayCandidateMatched.add(s);
-      matched.push({ s, b, dt: timeDistance(s, b), ktbNextDayBankTimeMatch: true });
+      matched.push({ s, b, dt: null, ktbNextDayBankTimeMatch: true });
     });
     tmnDateCandidates.forEach((s) => {
       const rows = tmnDateCandidatePairs.get(s) || [];
@@ -2141,7 +2147,7 @@ const Engine = (() => {
         settlementSec: m.s.settlementSec ?? null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
-        method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-bank-time-reciprocal" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,

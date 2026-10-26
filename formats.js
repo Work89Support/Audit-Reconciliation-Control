@@ -760,11 +760,13 @@ const Formats = (() => {
          รายงานฝาก/ถอน ไม่ใช่เวลาที่รายการถูกสร้างใน BO. BBL/GSB ไม่มีเวลา
          ที่เชื่อถือได้ใน STM จึงคงวันเวลารายการไว้และให้ noTime ฝั่ง STM
          เป็นตัวผ่อนกรอบเวลา. เก็บทั้งสอง timestamp เพื่อสอบทานย้อนหลัง. */
-      const useBankTime = SYS123_COMPANIES.has(normalizeCompany(company))
-        && ch.isBankAccount && !["BBL", "GSB"].includes(ch.channel) && !!bankT;
+      const timedSys123Bank = SYS123_COMPANIES.has(normalizeCompany(company))
+        && ch.isBankAccount && !["BBL", "GSB"].includes(ch.channel);
+      const useBankTime = timedSys123Bank && !!recordedBankT;
       const corepayDeposit = SYS123_COMPANIES.has(normalizeCompany(company))
         && canonicalPm(ch.channel) === "COREPAY" && !!dep;
       if (corepayDeposit && !recordedBankT) return drop("COREPAY ฝากไม่มีวันที่ธนาคาร"), null;
+      if (timedSys123Bank && !recordedBankT) return drop("ระบบ 123 ธนาคารมีเวลาแต่ไม่มีวันที่ธนาคาร"), null;
       const matchT = corepayDeposit || useBankTime ? bankT : boT;
       return {
         rowNo: i + 1,
