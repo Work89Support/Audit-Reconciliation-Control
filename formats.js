@@ -641,6 +641,15 @@ const Formats = (() => {
       const requestSource = firstValue(f, r, ["requestTime", "วันที่ทำรายการ", "วันเวลาทำรายการ", "เวลาทำรายการ", "createdAt", "createTime"]);
       const request = stamp(requestSource.value);
       const sevenMCpWithdraw = ["7M", "UFABET7M"].includes(subco) && provider === "COREPAY" && dir === "withdraw";
+      // XB provider rows created late on D can settle shortly after midnight
+      // on D+1. The reviewed MC8 files contain this pattern on provider
+      // deposits as well as withdrawals. They still belong to the source
+      // file/day D and must not disappear at the parser date filter. Keep the
+      // provider settlement clock for matching, retain both clocks, and mark
+      // the physical row as cross-day evidence.
+      const xbNextDaySettlement = !!(xbPolicy && request && settlement
+        && request.sec >= 23 * 3600
+        && Date.parse(settlement.date + "T00:00:00Z") - Date.parse(request.date + "T00:00:00Z") === 86400000);
       // Scope this correction to 7M CP withdrawals. Request day owns the
       // transaction; a later success timestamp remains separate evidence.
       if (sevenMCpWithdraw && request) timeSource = requestSource;
@@ -694,10 +703,10 @@ const Formats = (() => {
         rowNo: i + 1,
         source: "bo",
         formatCode: "pm_provider",
-        requestDate: sevenMCpWithdraw && request ? request.date : null,
-        requestSec: sevenMCpWithdraw && request ? request.sec : null,
-        settlementDate: sevenMCpWithdraw && settlement ? settlement.date : null,
-        settlementSec: sevenMCpWithdraw && settlement ? settlement.sec : null,
+        requestDate: request ? request.date : null,
+        requestSec: request ? request.sec : null,
+        settlementDate: settlement ? settlement.date : null,
+        settlementSec: settlement ? settlement.sec : null,
         identityOnly: !!(sevenMCpWithdraw && request && settlement && request.date !== settlement.date),
         date: t.date,
         sec: t.sec,
@@ -728,8 +737,8 @@ const Formats = (() => {
         status,
         partial,
         submitStatus,
-        crossDay: false,
-        lateNight: t.sec >= 82800,
+        crossDay: xbNextDaySettlement,
+        lateNight: (xbNextDaySettlement ? request.sec : t.sec) >= 82800,
         minutePrecision: !t.secPrecision,
         raw: r.join(" | "),
       };
