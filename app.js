@@ -1188,6 +1188,31 @@ function openAccountRecheck({company,date,accounts,fileIds=null,initialJobId=nul
   $('#modal')._contentCleanup=dispose;
   $('#accountRecheckDismiss').onclick=()=>{dispose();closeModal();};
 }
+async function reparseStoredAuditSource(file){
+  const actor=Sb.authUser()?.id;
+  if(!actor||!file?.id||!file.storage_path||!file.revision)throw Error('ข้อมูลไฟล์หรือสิทธิ์ไม่ครบ กรุณาโหลดสถานะล่าสุด');
+  if(!/\.(?:xlsx?|xlsm|csv|pdf)$/i.test(String(file.file_name||'')))throw Error('ไฟล์ชนิดนี้ต้องอ่านผ่าน Worker ยังอ่านใหม่จากหน้านี้ไม่ได้');
+  const savedFiles=ImportState.files.slice();
+  let norm;
+  try{
+    const bytes=await Sb.download(file.storage_path);
+    if(Sb.authUser()?.id!==actor)throw Error('ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่');
+    norm=await ingestRaw(file.file_name,bytes,bytes.byteLength,{fileId:file.physical_source_file_id||file.id,storagePath:file.storage_path,businessDate:file.business_date});
+    const rowCount=(norm.records||[]).length+(norm.aux||[]).length;
+    if(!rowCount&&file.kind!=='pm_statement')throw Error('อ่านไฟล์แล้วไม่พบรายการที่ใช้ตรวจได้');
+    const receipt=await Sb.recordAuditSourceReparse({fileId:file.id,expectedRevision:file.revision,expectedChecksum:file.checksum,
+      parserVersion:'ui-source-reparse-20261026',rowCount,parseError:null,
+      quality:{complete:true,records:(norm.records||[]).length,aux:(norm.aux||[]).length,warnings:norm.warnings||[],dropped:norm.dropped||{}}});
+    if(!receipt?.parsed||receipt.file_id!==file.id||Number(receipt.row_count)!==rowCount)throw Error('เซิร์ฟเวอร์ยังไม่ยืนยันผลอ่านไฟล์ กรุณาโหลดสถานะก่อนลองใหม่');
+    return receipt;
+  }catch(error){
+    if(norm===undefined&&Sb.authUser()?.id===actor){
+      await Sb.recordAuditSourceReparse({fileId:file.id,expectedRevision:file.revision,expectedChecksum:file.checksum,
+        parserVersion:'ui-source-reparse-20261026',rowCount:0,parseError:String(error?.message||'อ่านไฟล์ไม่สำเร็จ').slice(0,2000),quality:{complete:false}}).catch(()=>{});
+    }
+    throw error;
+  }finally{ImportState.files=savedFiles;}
+}
 async function openFileExclusion(fileId) {
   if(state.dataset!=='production'||!Sb.signedIn()||!FileExclusion.canManage(state.role))return deny('ยกเว้นไฟล์จากการรัน');
   return FileExclusion.open({fileId,role:()=>state.role,actor:()=>Sb.authUser()?.id,
@@ -1199,7 +1224,7 @@ function openFileRunManagement({company,date,accounts,fileId=null,onUpdated=null
   const dispose=FileRunManagement.mount($('#fileRunManagementPanel'),{
     company,date,initialFileId:fileId,onUpdated,role:()=>state.role,load:Sb.fileRunManagement,history:Sb.sourceRevisionHistory,
     companies:MC8LiveSheets.COMPANIES.filter(canAccessCompany),actor:()=>Sb.authUser()?.id,
-    setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,
+    setHold:Sb.setAuditRunHold,correct:Sb.correctAuditSource,reparse:reparseStoredAuditSource,
     onExclude:openFileExclusion,
     searchSources:Sb.effectiveAuditFiles,addSource:Sb.addAuditManualSource,
     confirmAddition:b=>FileRunManagement.confirmAction({title:'ทบทวนเพิ่มไฟล์ในรอบตรวจ',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเพิ่มไฟล์โดยเก็บต้นฉบับและตรวจไฟล์ซ้ำ พักบอทรอบนี้ ยังไม่รัน ไม่ใช้ผลหลักหรือเปลี่ยนเคส`,confirmLabel:'ยืนยันเพิ่มไฟล์ · ไม่รัน',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
@@ -1207,6 +1232,7 @@ function openFileRunManagement({company,date,accounts,fileId=null,onUpdated=null
     uploadCorrection:Sb.uploadAuditSourceCorrection,
     onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
     confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับ เพิ่มเวอร์ชันใหม่ และพักบอทรอบที่เกี่ยวข้อง ไม่รันหรือยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
+    confirmReparse:file=>FileRunManagement.confirmAction({title:'อ่านไฟล์เดิมใหม่จากหน้าระบบ',message:`${file.file_name}\nบริษัท ${file.company} · วันอ้างอิง ${file.business_date}\nอ่านด้วยกฎปัจจุบันและบันทึกเฉพาะผล Parse ไม่กระทบยอด ไม่สร้างหรือปิดเคส และไม่เปลี่ยนผลหลัก`,confirmLabel:'ยืนยันอ่านไฟล์ใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmRunWarnings:b=>FileRunManagement.confirmAction({title:`ทบทวนคำเตือน · ${b.company} · ${b.date}`,message:`พบคำเตือน ${b.warnings.length} รายการ\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nไปทบทวนขอบเขตรันตรวจมือเท่านั้น ยังไม่รันจนกดยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`,confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน',allowed:()=>Sb.signedIn()&&canAccessCompany(company)}),
     onRun:async fileIds=>{
       try{let choices=accounts||[];

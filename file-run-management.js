@@ -4,6 +4,8 @@
  const canManage=role=>['lead','admin'].includes(role);
  const kinds=['bo_main','stm_pdf','pm_statement','doc_clarify','unknown'];
  const kindLabel={bo_main:'BO หลังบ้าน',stm_pdf:'STM ธนาคาร',pm_statement:'Statement PM',doc_clarify:'หลักฐานประกอบ',unknown:'ยังไม่ระบุประเภท'};
+ const canReparse=file=>!!file&&!file.excluded&&['bo_main','stm_pdf','pm_statement'].includes(file.kind)
+  &&/\.(?:xlsx?|xlsm|csv|pdf)$/i.test(String(file.file_name||''));
  // An HTML dialog keeps review explicit without a blocking browser confirm.
  // This helper only returns a decision; it never saves or starts a worker.
  function confirmAction({title,message,confirmLabel='ยืนยัน',allowed=()=>true}){
@@ -79,7 +81,7 @@
     ${picker?pickerHtml():''}${addition?additionHtml():''}
     <p class="manual-scope" data-selection-summary role="status">${esc(selectionSummary(files,selected))}</p>
     <div class="file-run-table-scroll"><table class="file-run-table"><colgroup><col class="use-col"><col class="name-col"><col class="kind-col"><col class="version-col"><col class="actions-col"></colgroup><thead><tr><th>ใช้ตรวจ</th><th>ชื่อไฟล์ / สถานะ</th><th>ประเภท</th><th>เวอร์ชัน</th><th>จัดการ</th></tr></thead><tbody>
-     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||f.company!==opts.company||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}${f.business_date!==opts.date?`<p class="manual-note">วันอ้างอิง ${esc(f.business_date)} · ไฟล์ข้างวัน ไม่เลือกให้อัตโนมัติ ตรวจบริบทก่อนเลือกใช้</p>`:''}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td><button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
+     ${files.map(f=>`<tr><td><input type="checkbox" data-select="${esc(f.id)}" aria-label="ใช้ไฟล์ ${esc(f.file_name)}" ${selected.has(f.id)?'checked':''} ${busy||f.excluded||f.company!==opts.company||!['bo_main','stm_pdf','pm_statement'].includes(f.kind)?'disabled':''}></td><td>${esc(f.file_name)}<br>${f.excluded?'กักไฟล์ ไม่นำไปกระทบยอด':f.kind==='doc_clarify'?'หลักฐานประกอบ · ไม่เข้ากระทบยอด':f.kind==='unknown'?'รอจัดประเภท · ยังไม่ใช้ตรวจ':f.parsed?'อ่านแล้ว':'ต้องอ่านใหม่'}${f.business_date!==opts.date?`<p class="manual-note">วันอ้างอิง ${esc(f.business_date)} · ไฟล์ข้างวัน ไม่เลือกให้อัตโนมัติ ตรวจบริบทก่อนเลือกใช้</p>`:''}</td><td>${esc(kindLabel[f.kind]||f.kind)}</td><td>${esc(f.revision)}</td><td>${!f.parsed&&canReparse(f)?`<button data-reparse="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>อ่านไฟล์ใหม่</button>`:''}<button data-edit="${esc(f.id)}" ${busy||!canManage(opts.role())?'disabled':''}>แก้ข้อมูล / เลือกฉบับแทน</button><button data-history="${esc(f.id)}" ${busy?'disabled':''}>ดูประวัติ</button></td></tr>`).join('')}
     </tbody></table></div>
     <button data-run ${busy||!selected.size||runNotice(runState).blocked?'disabled':''}>ถัดไป: ทบทวนรันมือ (${selected.size} ไฟล์) — ยังไม่รัน</button>
     <p>ผลต้องผ่านการทบทวนและยืนยันจากหัวหน้า/ผู้ดูแลก่อนใช้ ไม่เปิดเคสจากการตรวจเปรียบเทียบ</p>
@@ -93,6 +95,14 @@
     el.checked?selected.add(el.dataset.select):selected.delete(el.dataset.select);
     const run=host.querySelector('[data-run]');run.disabled=busy||!selected.size||runNotice(runState).blocked;run.textContent=`ถัดไป: ทบทวนรันมือ (${selected.size} ไฟล์) — ยังไม่รัน`;
     host.querySelector('[data-selection-summary]').textContent=selectionSummary(files,selected);
+   });
+   host.querySelectorAll('[data-reparse]').forEach(button=>button.onclick=async()=>{
+    if(!sameActor()||busy||!canManage(opts.role()))return;
+    const file=files.find(item=>item.id===button.dataset.reparse);
+    if(!canReparse(file)){error='ไฟล์ชนิดนี้ยังอ่านซ้ำจากหน้าระบบไม่ได้';draw();return;}
+    if(!await opts.confirmReparse?.(file))return;
+    if(!sameActor()||!canManage(opts.role()))return;
+    await action(async()=>{const receipt=await opts.reparse(file);reviewing=`<p role="status">อ่านไฟล์ใหม่แล้ว ${esc(receipt.row_count)} รายการ · ยังไม่กระทบยอดหรือเปลี่ยนเคส</p>`;});
    });
    host.querySelector('[data-run]').onclick=async()=>{
     if(!sameActor()||busy||runNotice(runState).blocked)return;
@@ -175,5 +185,5 @@
   async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=initialSelection(files,opts.company,opts.date,selectionLoaded?selected:null);selectionLoaded=true;error='';if(opts.initialFileId&&!initialOpened){initialOpened=true;const file=files.find(f=>f.id===opts.initialFileId);if(file)edit(file);}}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary,initialSelection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,canReparse,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary,initialSelection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);
