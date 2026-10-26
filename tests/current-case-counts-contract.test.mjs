@@ -4,6 +4,10 @@ const sql=fs.readFileSync('supabase/20261026_current_case_counts_scoped.sql','ut
 const sb=fs.readFileSync('supabase.js','utf8');
 const app=fs.readFileSync('app.js','utf8');
 assert.match(sql,/audit_current_case_rows_scoped\(p_from,p_to,p_company\)/);
+assert.match(sql,/row_number\(\) over\(partition by e\.company,e\.business_date order by e\.created_at desc,e\.id desc\)/);
+assert.match(sql,/ranked\.current_ordinal<=ranked\.expected_count/);
+assert.match(sql,/s\.manual_primary_id is not null/);
+assert.match(sql,/join selected_ids selected on selected\.id=e\.id/);
 assert.match(sql,/count\(\*\) filter\(where coalesce\(e\.status,'open'\) not in\('closed','approved'\)\)/);
 assert.match(sql,/left join counts c using\(company,business_date\)/);
 assert.match(sb,/audit_current_case_counts_scoped/);
