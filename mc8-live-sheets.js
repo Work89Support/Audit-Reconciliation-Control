@@ -499,7 +499,9 @@
       const anchors=groups.filter(group=>{
         const provider=groupProvider(group);
         return provider!=='OTHER'&&group.rows.some(row=>{
-          const label=String(row.boAccountLabel||'').trim();
+          // Hydrated BO source rows keep the exact heading in `account` even
+          // when an older saved result has no `boAccountLabel` field.
+          const label=String(row.boAccountLabel||row.account||'').trim();
           return label&&providerOf(label)===provider&&!isCanonicalProviderLabel(label,provider);
         });
       });

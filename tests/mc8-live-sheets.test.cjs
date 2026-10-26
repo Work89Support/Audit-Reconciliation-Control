@@ -84,7 +84,7 @@ assert.deepEqual(mr9LegacyProviderRows.map(group=>group.rows.length).sort(),[3,3
 for(const company of COMPANIES){
   const exact=`${company} พร้อมเพย์-ATP(autopeer)(P2P)`;
   const groups=accountReviewGroups([
-    {key:`${company}-exact`,company,account:'AUTOPEER',boAccountLabel:exact,direction:'deposit',boAmount:100,bo:{date:'2026-10-25'}},
+    {key:`${company}-exact`,company,account:exact,direction:'deposit',boAmount:100,bo:{date:'2026-10-25'}},
     {key:`${company}-legacy`,company,account:'AUTOPEER',boAccountLabel:'AUTOPEER',direction:'deposit',boAmount:200,bo:{date:'2026-10-25'}},
     {key:`${company}-pm`,company,account:'AUTOPEER',direction:'deposit',pmAmount:300,pm:{date:'2026-10-25'}},
   ]);
