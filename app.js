@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 200068)
-Total output lines: 9515
-
 /* =============================================================
    Audit AI Reconciliation - Application shell
    - hash router แยกหน้าจอจริงเมื่อกดเมนู (#/dashboard, #/exceptions ...)
@@ -4289,7 +4286,8 @@ async function openClosedEvidenceCorrection(e) {
   openModal('แก้ไขหลักฐาน · '+h(e.code),
     `<p>เคสปิดแล้ว · เก็บไฟล์เดิมและประวัติ · ไม่เปิดเคสใหม่ ไม่เปลี่ยนยอดหรือผลอนุมัติ</p>
     <div class="evidence-correction-fields"><label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
-    ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้าง…68 tokens truncated…ด"></textarea></label>
+    ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้างหลักฐานทดแทนอัตโนมัติ</p>'}
+    <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
     <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
     <label class="evidence-correction-confirm"><input type="checkbox" id="correctionConfirm"><span>ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</span></label></div>
     <p id="correctionProgress" role="status"></p>`,
