@@ -364,8 +364,15 @@ const verifyExceptionCoverage=(input,output)=>{
   if(missing.length) throw new Error('Exception completeness: lost '+missing.length+' unmatched transactions during deduplication');
 };
 verifyExceptionCoverage(eligibleExceptions,[...best.values()]);
+const caseCode=(e,index)=>{
+  const businessDate=e.date||job.business_date;
+  if(businessDate!=='2026-10-25')return 'EX-'+String(3001+index);
+  const rawCompany=String(e.company||job.company||'UNKNOWN').trim().toUpperCase();
+  const company=rawCompany==='UFABET7M'?'7M':rawCompany==='3X'?'3XB':rawCompany;
+  return company+'-25.10.2026-'+String(index+1).padStart(3,'0');
+};
 const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).map((e,i)=>({
-  code:'EX-'+String(3001+i),business_date:e.date||job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
+  code:caseCode(e,i),business_date:e.date||job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
   bo_date:e.boDate||null,bo_time:e.boTime&&e.boTime!=='-'?e.boTime:null,
   stm_date:e.stmDate||null,stm_time:e.stmTime&&e.stmTime!=='-'?e.stmTime:null,
   bank:e.bank||null,account:e.account||null,direction:e.direction||null,member_code:e.member||null,ex_type:e.type,type_name:e.typeName||e.type,
