@@ -1,1 +1,217 @@
-m�눧��bu��g��)�{m�U,j�jǺ�7an{��)ߊW���_�W�n�����jG�r�^v����n�)��X�z�����7]y�yל�ע������ج�V�����,j��zn�)����^}����+��b��.�����i����^}����+��h�
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audit AI Reconciliation</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <meta name="description" content="ศูนย์ควบคุมงานออดิทตรวจบัญชีฝาก-ถอน จับคู่ STM กับ BO อัตโนมัติ" />
+    <link rel="stylesheet" href="fonts/kanit.css" />
+    <link rel="stylesheet" href="styles.css?v=file-workflow-wide-20261019" />
+    <link rel="stylesheet" href="evidence-recommendations.css?v=proposal-clarity-20260926" />
+    <link rel="stylesheet" href="mc8-sheets.css?v=audit-row-identity-20260930" />
+    <link rel="stylesheet" href="manual-pairing.css?v=document-closure-20261005" />
+    <link rel="stylesheet" href="case-closure.css?v=bulk-reviewed-20261011" />
+    <link rel="stylesheet" href="audit-company-overview.css?v=all-companies-20261004" />
+  </head>
+  <body>
+    <a class="skip-link" href="#viewRoot">ข้ามไปเนื้อหาหลัก</a>
+
+    <section class="login-gate" id="connectionGate" aria-labelledby="connectionTitle" aria-live="polite">
+      <div class="login-card">
+        <p class="eyebrow">Audit AI · เชื่อมต่ออย่างปลอดภัย</p>
+        <h1 id="connectionTitle">กำลังเชื่อมต่อระบบ</h1>
+        <p id="connectionMessage">กำลังคืนสถานะเข้าสู่ระบบและตรวจสิทธิ์ กรุณารอสักครู่ ไม่ต้องเข้าสู่ระบบซ้ำ</p>
+        <button class="primary-button" id="accessCheckRetry" type="button" hidden>ลองเชื่อมต่ออีกครั้ง</button>
+        <small>ยังไม่เปิดข้อมูลจนกว่าจะตรวจสิทธิ์สำเร็จ</small>
+      </div>
+    </section>
+    <section class="login-gate" id="loginGate" aria-labelledby="loginTitle" hidden>
+      <div class="login-brand">
+        <div class="brand-mark">A</div>
+        <div>
+          <p>Audit AI</p>
+          <span>Reconciliation Control</span>
+        </div>
+      </div>
+      <form class="login-card" id="loginForm">
+        <p class="eyebrow">ระบบตรวจสอบและกระทบยอด</p>
+        <h1 id="loginTitle">เข้าสู่ระบบ</h1>
+        <p class="login-lead">สำหรับทีม Audit ตรวจยอด BO เทียบ STM/PM และติดตามเคสจนอนุมัติปิด</p>
+        <div class="login-context-note">
+          <b>หน้านี้ใช้ข้อมูลจริงจาก Supabase</b>
+          <span>กรุณาเข้าสู่ระบบก่อน จึงจะดูคลังไฟล์ ผลกระทบยอด และหลักฐานของบริษัทได้</span>
+        </div>
+        <label>ชื่อผู้ใช้ / อีเมล
+          <input type="text" id="loginEmail" autocomplete="username" required placeholder="ชื่อผู้ใช้ หรือ name@company.com" />
+        </label>
+        <label>รหัสผ่าน
+          <input type="password" id="loginPassword" autocomplete="current-password" required placeholder="กรอกรหัสผ่าน" />
+        </label>
+        <p class="login-error" id="loginError" role="alert" hidden></p>
+        <button class="primary-button login-submit" id="loginSubmit" type="submit">เข้าสู่ระบบด้วยรหัสผ่าน</button>
+        <button class="login-link" id="forgotPassword" type="button">ลืมรหัสผ่าน</button>
+        <div class="login-divider"><span>หรือ</span></div>
+        <button class="google-login" id="googleLogin" type="button" aria-label="ดำเนินการต่อด้วย Google">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.91h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.4Z"/><path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.37l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.39 13.92A6.02 6.02 0 0 1 6.08 12c0-.67.12-1.32.31-1.92V7.46H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.54l3.35-2.62Z"/><path fill="#EA4335" d="M12 5.95c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.96 5.46l3.35 2.62C7.18 7.71 9.39 5.95 12 5.95Z"/></svg>
+          <span>ดำเนินการต่อด้วย Google</span>
+        </button>
+        <small>ข้อมูลถูกควบคุมสิทธิ์ด้วย Supabase Auth และ Row Level Security</small>
+      </form>
+      <form class="login-card" id="resetForm" hidden>
+        <p class="eyebrow">ยืนยันบัญชีเรียบร้อยแล้ว</p>
+        <h1>ตั้งรหัสผ่านใหม่</h1>
+        <p class="login-lead">ตั้งรหัสอย่างน้อย 8 ตัวอักษร แล้วใช้รหัสใหม่นี้เข้าสู่ระบบ</p>
+        <label>รหัสผ่านใหม่
+          <input type="password" id="newPassword" autocomplete="new-password" minlength="8" required placeholder="อย่างน้อย 8 ตัวอักษร" />
+        </label>
+        <label>ยืนยันรหัสผ่านใหม่
+          <input type="password" id="confirmPassword" autocomplete="new-password" minlength="8" required placeholder="พิมพ์รหัสเดิมอีกครั้ง" />
+        </label>
+        <p class="login-error" id="resetError" role="alert" hidden></p>
+        <button class="primary-button login-submit" id="resetSubmit" type="submit">บันทึกรหัสผ่านใหม่</button>
+      </form>
+    </section>
+
+    <div class="app-shell" id="appShell" hidden>
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div>
+            <p>Audit AI</p>
+            <span>Reconciliation Control</span>
+          </div>
+          <button class="nav-toggle" id="navToggle" aria-label="แสดงแถบเมนู" aria-controls="navList" aria-expanded="false" title="แสดงแถบเมนู">‹</button>
+        </div>
+
+        <nav class="nav-list" id="navList" aria-label="เมนูหลัก"></nav>
+
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="topbar-title">
+            <p class="eyebrow" id="crumb">งานประจำวัน</p>
+            <h1 id="pageTitle">แดชบอร์ด</h1>
+            <p class="top-summary" id="pageDesc"></p>
+          </div>
+          <div class="top-actions">
+            <button class="bell" id="btnBell" aria-label="การแจ้งเตือน">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-5.3V11a7 7 0 0 0-5.2-6.77V3.5a1.8 1.8 0 1 0-3.6 0v.73A7 7 0 0 0 5 11v5.7L3.2 18.5v.9h17.6v-.9L19 16.7Z"/></svg>
+              <b id="bellCount" hidden>0</b>
+            </button>
+            <div class="signed-user"><span>ผู้ใช้งาน</span><b id="signedUser">-</b></div>
+            <button class="ghost-button" id="btnExport">Export</button>
+            <button class="ghost-button" id="btnLogout">ออกจากระบบ</button>
+            <div class="auto-status" id="autoStatus" title="ระบบกระทบยอดให้อัตโนมัติเมื่อไฟล์เข้าครบ">
+              <i></i><span>อัตโนมัติ</span><b id="autoStatusText">รอไฟล์</b>
+            </div>
+          </div>
+        </header>
+
+        <nav class="audit-flow" id="auditFlow" aria-label="ขั้นตอนงานออดิท"></nav>
+
+        <section class="quick-controls" id="globalFilters" aria-label="ตัวกรองหลัก"></section>
+
+        <div id="viewRoot" class="view-root" tabindex="-1"></div>
+      </main>
+    </div>
+
+    <div class="drawer-overlay" id="drawerOverlay" hidden></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden></aside>
+    <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+
+    <div class="modal-overlay" id="modalOverlay" hidden></div>
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden></div>
+
+    <div class="progress-overlay" id="progressOverlay" hidden>
+      <div class="progress-card">
+        <h2 id="progTitle">กำลังประมวลผล</h2>
+        <p id="progLabel">เตรียมข้อมูล...</p>
+        <div class="progress-bar"><i id="progFill"></i></div>
+        <span id="progPct">0%</span>
+      </div>
+    </div>
+
+    <!--
+      หมายเหตุความปลอดภัย/ออฟไลน์:
+      เดิมโหลด SheetJS (xlsx) และ html2canvas จาก cdnjs — ตัดออกแล้ว เพราะ
+        • อ่าน/เขียน Excel ใช้ XlsxReader/XlsxWriter ที่เขียนเอง(ด้านล่าง) ทำงานออฟไลน์ได้เต็มรูปแบบ
+        • จับภาพรายงานใช้ตัวจับภาพในตัว (SVG foreignObject) ใน export.js เป็น fallback อยู่แล้ว
+      ผลลัพธ์: ไม่มี dependency ภายนอกตอนรัน = ไม่เสี่ยง supply-chain และใช้งานได้แม้ไม่มีเน็ต
+      ถ้าต้องการ SheetJS/html2canvas เต็มรูปแบบในอนาคต ให้ดาวน์โหลดมาไว้ใน vendor/ พร้อมใส่ integrity (SRI)
+      แล้วค่อยเพิ่ม <script src="vendor/..."> — อย่าอ้างอิง CDN ตรงๆ โดยไม่มี SRI
+    -->
+    <script src="audit-display.js?v=thai-readable-20261013"></script>
+    <script src="config.js?v=live-dashboard-20260822-1"></script>
+    <script src="xlsx-reader.js?v=mc8-metadata-20260918"></script>
+    <script src="docx-reader.js?v=docx-preview-20260825-1"></script>
+    <script src="formats.js?v=xb-partial-cent-precision-20261011"></script>
+    <script src="pdf-stm.js?v=bbl-bank-charge-20261010"></script>
+    <script src="statement-preview.js?v=statement-canvas-20261008"></script>
+    <script src="pdf-review.js?v=20260910"></script>
+    <script src="reviewed-pdf-recovery.js?v=tmn-screenshot-recovery-20261025"></script>
+    <script src="pdf-source-approval.js?v=20260910"></script>
+    <script src="tmn-pdf-review-editor.js?v=tmn-reviewed-pages-20261027"></script>
+    <script src="rules.js"></script>
+    <script src="data.js?v=monthly-scoped-users-20261013"></script>
+    <script src="registry.js?v=xb-ant-channel-20261003"></script>
+    <script src="sample.js"></script>
+    <script src="engine.js?v=fr8-mypay-account-20261025"></script>
+    <script src="store.js"></script>
+    <script src="supabase.js?v=current-case-counts-20261026"></script>
+    <link rel="stylesheet" href="mail-intake-control.css?v=mail-intake-control-20261021">
+    <script src="mail-intake-control.js?v=mail-intake-control-20261021"></script>
+    <link rel="stylesheet" href="password-accounts.css?v=email-password-accounts-20261014-v2">
+    <script src="password-accounts.js?v=email-password-accounts-20261014-v2"></script>
+    <script src="case-evidence-library.js?v=thai-readable-20261013"></script>
+    <script src="charts.js"></script>
+    <script src="xlsx-writer.js?v=source-zip-release-20261012"></script>
+    <script src="export.js"></script>
+    <script src="docs.js"></script>
+    <script src="preliminary-review.js?v=manual-close-20260917"></script>
+    <script src="bulk-case-review.js?v=manual-close-20260917"></script>
+    <script src="audit-visible-policy.js?v=xb-partial-cent-precision-20261011"></script>
+    <script src="review-overview.js?v=scoped-case-code-20261026"></script>
+    <script src="damage-summary.js?v=damage-team-shifts-20261022-process-error-zero-loss-20261024"></script>
+    <link rel="stylesheet" href="damage-table.css?v=damage-readable-table-20261022">
+    <script src="evidence-recommendations.js?v=proposal-clarity-20260926"></script>
+    <script src="mc8-sheet-schema.js?v=20260918"></script>
+    <script src="mc8-sheet-data.js?v=20260918"></script>
+  <script src="mc8-live-sheets.js?v=bo-source-anchor-v4-20261026"></script>
+    <script src="mc8-sheets.js?v=totals-20260918"></script>
+  <script src="manual-pairing.js?v=internal-clarifying-close-20261025"></script>
+    <link rel="stylesheet" href="cross-day-workbench.css?v=bo-expanded-stable-selection-20261014">
+    <script src="cross-day-workbench.js?v=scoped-crossday-20261022"></script>
+    <script src="case-closure.js?v=damage-team-shifts-20261022-process-error-zero-loss-20261024-rpc-compat-20261026"></script>
+    <script src="audit-company-overview.js?v=all-companies-20261004"></script>
+    <link rel="stylesheet" href="audit-review.css?v=company-inplace-20261015">
+    <script src="audit-review.js?v=company-inplace-20261015-fast-20261016-return-20261017"></script>
+    <script src="ui-accessibility.js?v=qa-20261008"></script>
+    <script src="account-recheck.js?v=staged-report-repair-review-20261016"></script>
+    <link rel="stylesheet" href="manual-primary.css?v=thai-readable-20261013">
+    <script src="manual-primary.js?v=verified-statement-coverage-20261019"></script>
+    <script src="primary-case-sets.js?v=primary-cases-20261013"></script>
+  <script src="file-exclusion.js?v=source-exclusion-20261019"></script>
+  <script src="file-run-management.js?v=source-workspace-20261019"></script>
+  <link rel="stylesheet" href="source-workspace.css?v=source-workspace-20261019">
+  <script src="source-workspace.js?v=source-workspace-20261019"></script>
+    <link rel="stylesheet" href="audit-source-archive.css?v=easy-download-20261012">
+    <script src="audit-source-archive.js?v=easy-download-compact-20261012"></script>
+    <link rel="stylesheet" href="monthly-audit.css?v=monthly-case-review-20261013">
+    <script src="monthly-audit.js?v=monthly-case-review-20261013"></script>
+    <script src="scoped-user-management.js?v=monthly-scoped-users-20261013"></script>
+    <script src="clarification-flow.js?v=clarification-submit-20261013"></script>
+    <link rel="stylesheet" href="finance-executive.css?v=finance-bo-analytics-20261015">
+    <script src="finance-report.js?v=finance-bo-analytics-20261015"></script>
+    <script src="finance-bo-analysis.js?v=finance-bo-source-20261016"></script>
+    <script src="finance-actions.js?v=finance-actions-20261015"></script>
+    <script src="finance-bo-source.js?v=finance-bo-source-20261016-v3"></script>
+    <script src="finance-executive.js?v=hold-empty-state-20261017"></script>
+    <script src="account-review-holds.js?v=continuous-hold-empty-state-20261017-account-hold-select-20261022"></script>
+    <script src="daily-case-summary.js?v=current-cases-20261017"></script>
+    <script src="clarification-return.js?v=clarification-return-20261017"></script>
+  <script src="app.js?v=current-case-counts-checklist-hotfix-20261026"></script>
+  </body>
+</html>
+
