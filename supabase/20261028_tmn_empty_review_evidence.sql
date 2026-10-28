@@ -9,7 +9,7 @@ returns uuid language plpgsql security definer set search_path=public,pg_temp as
 declare f public.source_files%rowtype;b public.mail_batches%rowtype;prior public.reviewed_pdf_recoveries%rowtype;result_id uuid;row_count integer;review_json jsonb;
 begin
  if auth.uid() is null or not coalesce(public.current_user_active(),false)
-  or coalesce(public.current_app_role(),'') not in ('monitor','audit_assistant','lead','admin') then raise exception 'Authenticated Audit reviewer required';end if;
+  or not (coalesce(public.current_app_role()::text,'') = any (array['monitor','audit_assistant','lead','admin']::text[])) then raise exception 'Authenticated Audit reviewer required';end if;
  if p_payload is null or jsonb_typeof(p_payload)<>'object' or length(trim(coalesce(p_note,'')))<10 then raise exception 'Source review payload and approval note required';end if;
  select * into strict f from public.source_files where id=(p_payload->>'sourceId')::uuid for update;
  select * into strict b from public.mail_batches where id=f.batch_id;
