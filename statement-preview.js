@@ -10,6 +10,13 @@ const StatementPreview = (() => {
     }).catch(error=>{libraryLoading=null;throw error;});
     return libraryLoading;
   }
+  async function pageCountOf(bytes){
+    const lib=await loadLib();
+    const source=bytes instanceof Blob?await bytes.arrayBuffer():bytes;
+    const task=lib.getDocument({data:new Uint8Array(source.slice(0)),isEvalSupported:false});
+    try {const doc=await task.promise;return doc.numPages;}
+    finally {await task.destroy()?.catch(()=>{});}
+  }
   async function mount(host, file) {
     const actor=Sb.authUser()?.id;
     host.dataset.file=file.id;
@@ -59,5 +66,5 @@ const StatementPreview = (() => {
     }catch(error){if(valid())host.textContent='เปิดภาพสเตทเมนต์ไม่ได้: '+error.message+' — คู่ที่เตรียมไว้ยังอยู่';dispose();}
     return dispose;
   }
-  return {mount};
+  return {mount,pageCountOf};
 })();

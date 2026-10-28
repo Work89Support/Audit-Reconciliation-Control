@@ -142,6 +142,8 @@ assert.ok(worker.nodes.some((node) => node.name === "อ่าน PDF โดย�
 assert.equal(worker.connections["เป็น PDF?"].main[0][0].node, "TMN ตรวจภาพครบแล้ว?", "PDFs must check narrowly scoped visual-review evidence");
 assert.equal(worker.connections["TMN ตรวจภาพครบแล้ว?"].main[1][0].node, "อ่าน PDF โดยตรง", "ordinary PDFs must enter the native parser first");
 assert.equal(worker.connections["TMN ตรวจภาพครบแล้ว?"].main[0][0].node, "ใช้รายการ TMN ที่ตรวจภาพ", "only verified TMN PDFs may skip OCR");
+assert.match(worker.nodes.find(node => node.name === "TMN ตรวจภาพครบแล้ว?").parameters.conditions.conditions[0].leftValue, /reviewed_recovery/, "approved TMN page review must be recognized without replacing raw OCR");
+assert.match(worker.nodes.find(node => node.name === "แปลงรายการเป็นมาตรฐาน").parameters.jsCode, /ReviewedPdfRecovery\.normalize\(reviewedTmnRecovery/, "worker must consume the approved page-linked transcription");
 assert.equal(worker.connections["ใช้รายการ TMN ที่ตรวจภาพ"].main[0][0].node, "แปลงรายการเป็นมาตรฐาน");
 assert.match(worker.nodes.find(node => node.name === "เป็น PDF?").parameters.conditions.conditions[0].leftValue, /docx/, "Word statements must enter document OCR");
 assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /'docx'/, "worker must select classified Word statements");
@@ -154,7 +156,12 @@ assert.match(worker.nodes.find(node => node.name === "เลือกไฟล�
 const managedSql=await readFile(new URL('../supabase/20261012_file_run_management.sql',import.meta.url),'utf8');
 assert.match(managedSql,/between p_date and p_date\+1/,"managed sources retain the exact job/adjacent-day boundary");
 assert.match(managedSql,/where not coalesce\(\(value->>'excluded'\)\:\:boolean,false\)/,"quarantined sources must not enter automatic processing");
-assert.match(worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode, /adjacent&&!\(sys123\.has\(jobCompany\)&&ktbStatement\)/, "worker must limit adjacent-day evidence to System 123 KTB statements");
+const sourceSelector=worker.nodes.find(node => node.name === "เลือกไฟล์ของบริษัท").parameters.jsCode;
+assert.match(sourceSelector, /batchDate===nextDate&&\(f\.kind==='stm_pdf'\|\|f\.kind==='pm_statement'\)/, "worker must accept only next-day STM/PM evidence for every company");
+assert.doesNotMatch(sourceSelector, /adjacent_day_ktb/, "worker must not restrict next-day evidence to KTB only");
+const normalizeWorker=worker.nodes.find(node => node.name === "แปลงรายการเป็นมาตรฐาน").parameters.jsCode;
+assert.match(normalizeWorker, /parseBusinessDate=file\.adjacent_day_statement\?file\.batch_business_date:job\.business_date/, "adjacent files must be parsed against their own business date");
+assert.match(normalizeWorker, /adjacentDayCandidateOnly:true/, "adjacent rows must stay outside ordinary same-day matching");
 assert.equal(worker.connections["PDF มีข้อความ?"].main[1][0].node, "เตรียม PDF สำหรับ OCR", "scanned PDFs must fall back to OCR");
 assert.equal(worker.connections["อ่าน PDF โดยตรง"].main[0][0].node, "ตรวจรายการ PDF ก่อน OCR");
 const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
@@ -236,7 +243,7 @@ assert.match(workerText, /ไฟล์ PM ไม่มีรายการ \(0 
 assert.match(workerText, /size_bytes/, "the worker must use source size to distinguish empty exports from broken handoff");
 assert.match(workerText, /โหนดอ่าน CSV ไม่คืนข้อมูล/, "large CSV handoff failures must remain visible errors");
 assert.match(workerText, /const attemptedRows=usableRows\+candidateRows/, "DOCX completeness must compare parsed evidence rows, not raw sheet rows");
-assert.match(workerText, /parser_version:'1\.9\.93-3xb-ps8-manual-baseline'/, "every normalized file must identify the parser build that produced it");
+assert.match(workerText, /parser_version:'1\.9\.94-all-account-next-day'/, "every normalized file must identify the parser build that produced it");
 assert.match(workerText, /candidate_row_count:candidateRows/, "TMN off-date OCR candidates must be reported separately from usable rows");
 assert.match(workerText, /ocr_input_count:items\.length/, "DOCX OCR must report how many embedded images entered OCR");
 assert.match(workerText, /OCR Word อ่านภาพไม่ครบ/, "partial DOCX image OCR must fail the quality gate");
@@ -249,7 +256,7 @@ assert.match(workerText, /records:f\.format\.source==='bo'\?\(f\.records\|\|\[\]
 assert.match(workerText, /aux:\(f\.aux\|\|\[\]\)\.map\(r=>stampSource\(r,f\)\)/,
   "business rules must receive auxiliary rows with source-file lineage");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.93-3xb-ps8-manual-baseline'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.94-all-account-next-day'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -281,7 +288,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.93-3xb-ps8-manual-baseline'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.94-all-account-next-day'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /mr9_effective_source_scope:true/, "MR9 release must record effective source revision scope");
 assert.match(workerText, /mc8_effective_source_scope:true/, "MC8 release must record effective source revision scope");
 assert.match(workerText, /mc8_azpay_rows_preserved:true/, "MC8 release must preserve every AZPAY physical source row");

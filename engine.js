@@ -594,7 +594,8 @@ const Engine = (() => {
     // STM rows have had first claim on BO and a strict reciprocal pair remains.
     const tmnDateCandidates = stmRecords.filter((row) => !!row.ocrDateCandidateOnly);
     const ktbNextDayCandidates = stmRecords.filter((row) => !!row.ktbNextDayCandidateOnly);
-    stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly && !row.ktbNextDayCandidateOnly);
+    const adjacentDayCandidates = stmRecords.filter((row) => !!row.adjacentDayCandidateOnly);
+    stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly && !row.ktbNextDayCandidateOnly && !row.adjacentDayCandidateOnly);
     const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -624,7 +625,7 @@ const Engine = (() => {
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
 
     /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
-    const statementCoverageRecords = stmRecords.concat(bankCharges, tmnDateCandidates, ktbNextDayCandidates);
+    const statementCoverageRecords = stmRecords.concat(bankCharges, tmnDateCandidates, ktbNextDayCandidates, adjacentDayCandidates);
     const stmAccounts = new Set(statementCoverageRecords.map((r) => r.account));
     const stmChannels = new Set(statementCoverageRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
     const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
@@ -656,6 +657,7 @@ const Engine = (() => {
     const stmLeft = [];
     const tmnDateCandidateMatched = new Set();
     const ktbNextDayCandidateMatched = new Set();
+    const adjacentDayCandidateMatched = new Set();
     let timeDiffCount = 0;
     const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
@@ -2153,6 +2155,40 @@ const Engine = (() => {
       ktbNextDayCandidateMatched.add(s);
       matched.push({ s, b, dt: null, ktbNextDayBankTimeMatch: true });
     });
+
+    /* Every supported STM/PM account may post a late BO row from D at any
+       time on D+1.  Adjacent-day rows never enter ordinary same-day passes.
+       Promote only a strict reciprocal 1:1 pair with exact company, account,
+       direction and amount.  We deliberately do not compare clocks across
+       the posting boundary, and repeated amounts remain for Audit review. */
+    const adjacentCandidatePairs = new Map();
+    const adjacentCandidatePeers = new Map();
+    adjacentDayCandidates.forEach((s) => {
+      const rows = (exactIdx.get(key2(s.account, s.amount)) || []).filter((ci) => {
+        if (boUsed[ci]) return false;
+        const b = boRecords[ci];
+        return sameCompany(s, b)
+          && s.account === b.account && s.direction === b.direction
+          && nextIsoDate(b.date) === s.date
+          && Number.isFinite(b.sec) && b.sec >= 23 * 3600 && b.sec < 24 * 3600;
+      });
+      adjacentCandidatePairs.set(s, rows);
+      rows.forEach((ci) => {
+        let peers = adjacentCandidatePeers.get(ci);
+        if (!peers) adjacentCandidatePeers.set(ci, (peers = []));
+        peers.push(s);
+      });
+    });
+    adjacentDayCandidates.forEach((s) => {
+      const rows = adjacentCandidatePairs.get(s) || [];
+      if (rows.length !== 1) return;
+      const ci = rows[0];
+      if (boUsed[ci] || (adjacentCandidatePeers.get(ci) || []).length !== 1) return;
+      const b = boRecords[ci];
+      boUsed[ci] = 1;
+      adjacentDayCandidateMatched.add(s);
+      matched.push({ s, b, dt: null, adjacentDayUniqueMatch: true });
+    });
     tmnDateCandidates.forEach((s) => {
       const rows = tmnDateCandidatePairs.get(s) || [];
       if (rows.length !== 1) return;
@@ -2330,7 +2366,7 @@ const Engine = (() => {
     const hourlyStm = new Array(24).fill(0);
     const hourlyMatched = new Array(24).fill(0);
     let crossDayWindow = 0;
-    stmRecords.concat(bankCharges, [...tmnDateCandidateMatched], [...ktbNextDayCandidateMatched]).forEach((r) => {
+    stmRecords.concat(bankCharges, [...tmnDateCandidateMatched], [...ktbNextDayCandidateMatched], [...adjacentDayCandidateMatched]).forEach((r) => {
       hourlyStm[Math.floor(r.sec / 3600)]++;
       if (r.crossDay) crossDayWindow++;
     });
@@ -2341,7 +2377,7 @@ const Engine = (() => {
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
     const elapsed = Math.round(Date.now() - t0);
-    const reconciledStmCount = stmRecords.length + bankCharges.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size;
+    const reconciledStmCount = stmRecords.length + bankCharges.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size + adjacentDayCandidateMatched.size;
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,
@@ -2395,7 +2431,7 @@ const Engine = (() => {
         settlementSec: m.s.settlementSec ?? null,
         crossDay: m.s.date !== m.b.date,
         timeDifferenceSeconds: m.s.noTime || m.b.noTime ? null : m.dt,
-        method: m.ktbAmountSetMatch ? "sys123-ktb-account-day-amount-multiset" : m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbBankTimeMatch ? "sys123-ktb-bank-time-amount-reciprocal" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.threeXbBankResidualMatch ? "3xb-bank-residual-exact-amount" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
+        method: m.ktbAmountSetMatch ? "sys123-ktb-account-day-amount-multiset" : m.sys123ManualBankTimeMatched ? "sys123-manual-bank-time-amount" : m.ktbBankTimeMatch ? "sys123-ktb-bank-time-amount-reciprocal" : m.ktbNextDayBankTimeMatch ? "sys123-ktb-next-day-unique-amount" : m.adjacentDayUniqueMatch ? "all-account-next-day-unique-amount" : m.tmnOcrDateRecovery ? (m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-offdate-amount-reciprocal" : "seven-m-tmn-ocr-offdate-reciprocal") : m.tmnOcrAmountCorrection ? "seven-m-tmn-ocr-amount-reciprocal" : m.tmnOcrTimeCorrection ? "seven-m-tmn-ocr-time-reciprocal" : m.internalTransferMatch ? "seven-m-internal-transfer-reciprocal" : m.xbProviderRefMatch ? "xb-provider-_id-note-amount" : m.providerIdentityMatch ? "provider-ref-user-amount" : m.providerNearTimeMatch ? "provider-amount-reciprocal-near-time" : m.sys123ProviderMatch ? m.sys123MatchMethod : m.customerIdentityMatch ? (m.sys123BankIdentityMatch ? "sys123-bank-time-amount-customer-identity" : "customer-account-amount-same-day-60m") : m.rescueMatch ? "reciprocal-nearest-rescue" : m.threeXbBankResidualMatch ? "3xb-bank-residual-exact-amount" : m.fr8BankNameMatch ? "fr8-bank-name-amount-reciprocal-near-time" : m.timeVarianceAccepted ? "account-amount-direction-time-under-60m" : "legacy-rule",
         tmnOcrDateRecovered: !!m.tmnOcrDateRecovery,
         ocrSourceDate: m.tmnOcrDateRecovery ? m.s.sourceDate || null : null,
         tmnOcrAmountCorrected: !!m.tmnOcrAmountCorrection,
@@ -2417,6 +2453,7 @@ const Engine = (() => {
         fr8BankNameMatched: !!m.fr8BankNameMatch,
         timeVarianceAccepted: !!m.timeVarianceAccepted,
         ktbNextDayBankTimeMatched: !!m.ktbNextDayBankTimeMatch,
+        adjacentDayUniqueMatched: !!m.adjacentDayUniqueMatch,
         ktbBankTimeMatched: !!m.ktbBankTimeMatch,
         ktbAmountSetMatched: !!m.ktbAmountSetMatch,
         sys123ManualBankTimeMatched: !!m.sys123ManualBankTimeMatched,

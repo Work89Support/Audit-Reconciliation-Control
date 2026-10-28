@@ -63,13 +63,14 @@ const matched=await context.E.reconcile([...first,...continuation],bo,
   {toleranceDeposit:90,toleranceWithdraw:180,diffAlert:1,rules:{crossDay:true}},[],null);
 assert.equal(matched.matched,5); assert.equal(matched.exceptions.length,0);
 await assert.rejects(()=>context.E.reconcile([...first,...file('gap',[row(10,999)])],bo,{},[],null),/BBL/);
-// Source selection reads only adjacent BBL PDFs (plus the existing KTB policy).
+// Source selection keeps every adjacent-day STM/PM candidate; the engine then
+// promotes only an exact unique reciprocal late-night pair.
 const workflow=JSON.parse(fs.readFileSync(new URL('../n8n/audit-headless-worker.json',import.meta.url),'utf8'));
 const select=new Function('$','$input',workflow.nodes.find(n=>n.name==='เลือกไฟล์ของบริษัท').parameters.jsCode);
 const choose=(company,batches)=>select(()=>({first:()=>({json:{company,business_date:'2026-10-01'}})}),{all:()=>batches.map(json=>({json}))});
 const attachment=(id,bank)=>({id,file_name:`3XB_STM_${bank}.pdf`,kind:'stm_pdf',company:'3XB',parsed:true,created_at:'2026-10-03T00:00:00Z'});
 const selected=choose('3XB',[{company:'3XB',business_date:'2026-10-01',source_files:[attachment('old','BBL')]},
   {company:'3XB',business_date:'2026-10-02',source_files:[attachment('new','BBL'),attachment('scb','SCB'),attachment('bo','BO')]}]);
-assert.deepEqual(selected.map(x=>x.json.file.id),['old','new']);
+assert.deepEqual(selected.map(x=>x.json.file.id),['old','new','scb','bo']);
 assert.ok(workflow.nodes.find(n=>n.name==='กระทบยอดและสร้าง Exception').parameters.jsCode.includes('bbl_overlap_evidence:bblControl.removed'));
 console.log('BBL no-time balance continuity, conservative overlaps, engine/Worker and scope regression: OK');

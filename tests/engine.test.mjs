@@ -547,6 +547,22 @@ await (async () => {
 })();
 
 await (async () => {
+  const s=rec({company:'MR9',subco:'MR9',account:'AUTOPEER',bank:'PM',channel:'AUTOPEER',direction:'withdraw',date:'2026-10-26',sec:5*3600+36*60+15,amount:50,adjacentDayCandidateOnly:true});
+  const b=rec({company:'MR9',subco:'MR9',account:'AUTOPEER',bank:'PM',channel:'AUTOPEER',direction:'withdraw',date:'2026-10-25',sec:23*3600+10*60,amount:50,lateNight:true});
+  let r=await run([s],[b]);
+  eq('all-account next-day: PM D+1 closes exact unique late BO',r.matched,1);
+  eq('all-account next-day: method is auditable',r.matchEvidence[0]?.method,'all-account-next-day-unique-amount');
+  eq('all-account next-day: counted as cross-day',r.crossDayMatched,1);
+
+  r=await run([{...s,rowNo:8801},{...s,rowNo:8802,sec:8*3600}],[b]);
+  eq('all-account next-day: repeated candidate remains open',r.matched,0);
+  eq('all-account next-day: ambiguous late BO remains cross-day case',r.exceptions.filter(e=>e.type==='cross_day').length,1);
+
+  r=await run([{...s,rowNo:8803}],[{...b,rowNo:8804,sec:22*3600+59*60}]);
+  eq('all-account next-day: BO before 23:00 is not eligible',r.matched,0);
+})();
+
+await (async () => {
   const s=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200,timeColumn:'paymentTime',amountColumn:'realAmount'});
   const b=rec({account:'AUTOPEER',custAccount:'0012345678',amount:123,sec:7200,via:'เติมมือ',performedBy:'Meta X8',note:'รอเอกสาร'});
   const r=await run([s],[b]);

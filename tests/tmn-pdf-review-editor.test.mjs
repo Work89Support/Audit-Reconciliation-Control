@@ -7,3 +7,5 @@ const evidence={page_count:2,rows:[{page:1,date:'2026-10-26',sec:31440,direction
 const candidate=Editor.build(evidence,source,'f'.repeat(64),'UFABET7M_STM_TMN_รุ้งฟ้า_DW_2026-10-26.pdf','auditor');
 assert.equal(candidate.account,'0812792075');assert.equal(candidate.rows.length,2);assert.notEqual(candidate.rows[0].id,candidate.rows[1].id);assert.deepEqual(JSON.parse(JSON.stringify(candidate.controls.deposit)),{count:2,cents:800000,amount:8000});
 candidate.rows.push({page:2,date:'2026-10-26',time:'09:00',direction:'withdraw',amount:50,description:'ถอน 50'});Editor.reindex(candidate.rows);assert.equal(candidate.rows[2].id,'P2-R1');assert.equal(Editor.accountOf('TMN สรวิศา'),'0639274201');console.log('tmn pdf review editor tests passed');
+const empty=Editor.build({page_count:7,rows:[]},source,'f'.repeat(64),'UFABET7M_STM_TMN_สรวิศา_W_2026-10-26.pdf','auditor');
+assert.equal(empty.account,'0639274201');assert.equal(empty.pageCount,7);assert.equal(empty.rows.length,0);

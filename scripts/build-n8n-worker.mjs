@@ -5,20 +5,21 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.93-3xb-ps8-manual-baseline";
-const PARSER_VERSION = "1.9.93-3xb-ps8-manual-baseline";
-const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview] = await Promise.all([
+const WORKER_VERSION = "1.9.94-all-account-next-day";
+const PARSER_VERSION = "1.9.94-all-account-next-day";
+const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview, reviewedPdfRecovery] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
   read("registry.js"),
   read("engine.js"),
   read("pdf-stm.js"),
   read("tmn-visual-review.js"),
+  read("reviewed-pdf-recovery.js"),
 ]);
 
 const pdf = pdfOriginal;
 
-const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview].join("\n\n");
+const runtime = [formats, rules, registry, engine, pdf, tmnVisualReview, reviewedPdfRecovery].join("\n\n");
 const settings = `({toleranceDeposit:90,toleranceWithdraw:180,exactUniqueTolerance:600,providerNearTimeTolerance:600,sys123DuplicateTimeTolerance:3600,sys123FallbackTimeTolerance:3600,diffAlert:1,rules:{crossDay:true,pmSuccessOnly:true,filterCarryForward:true}})`;
 
 /* Automatic runs must consume the same reviewed source scope shown in the
@@ -30,11 +31,12 @@ const job=$('Supabase: จองหนึ่งงาน').first().json;
 const candidates=[];
 const reconKinds=new Set(['stm_pdf','pm_statement','bo_main','manual_credit','manual_payment','manual_bonus','comm_req','credit_out']);
 const keyOf=n=>String(n||'').trim().replace(/\\s+/g,' ').toLowerCase();
-const sys123=new Set(['AT4','FR8','SK8']);
 const jobCompany=String(job.company||'').toUpperCase();
+const jobDate=String(job.business_date||'').slice(0,10);
+const nextDate=(()=>{const d=new Date(jobDate+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10)})();
 for(const b of $input.all().map(x=>x.json)){
   const batchDate=String(b.business_date||'').slice(0,10);
-  const adjacent=batchDate&&batchDate!==String(job.business_date||'').slice(0,10);
+  const adjacent=batchDate&&batchDate!==jobDate;
   for(const raw of (b.source_files||[])){
     if(raw.excluded===true) continue;
     const physicalId=raw.physical_source_file_id||raw.id;
@@ -42,11 +44,10 @@ for(const b of $input.all().map(x=>x.json)){
     const f={...raw,logical_source_file_id:raw.id,id:physicalId};
     const company=String(f.company||b.company||'').toUpperCase();
     const ext=String(f.file_name||'').split('.').pop().toLowerCase();
-    const ktbStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])KTB(?:[^A-Z]|$)|กรุงไทย/i.test(String(f.file_name||''));
-    const bblStatement=f.kind==='stm_pdf'&&/(?:^|[^A-Z])BBL(?:[^A-Z]|$)|ธนาคารกรุงเทพ/i.test(String(f.file_name||''));
-    if(adjacent&&!(sys123.has(jobCompany)&&ktbStatement)&&!bblStatement) continue;
+    const adjacentStatement=adjacent&&batchDate===nextDate&&(f.kind==='stm_pdf'||f.kind==='pm_statement');
+    if(adjacent&&!adjacentStatement) continue;
     if(company===jobCompany&&['xlsx','xlsm','xls','csv','pdf','docx'].includes(ext)&&reconKinds.has(f.kind))
-      candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_ktb:adjacent&&ktbStatement});
+      candidates.push({...f,ext,batch_business_date:batchDate,adjacent_day_statement:adjacentStatement});
   }
 }
 candidates.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
@@ -77,20 +78,25 @@ let norm, rawRows=[], extractedText='';
 let parseError=null;
 let acceptedEmptyPm=false;
 const storedOcr=Array.isArray(file.source_file_ocr)?file.source_file_ocr[0]:file.source_file_ocr;
-const usedManualTmnReview=ext==='pdf'&&storedOcr?.provider==='tmn_visual_review_v1';
+const reviewedTmnRecovery=storedOcr?.reviewed_recovery?.payload?.sourceType==='tmn-screenshot-list-v1'?storedOcr.reviewed_recovery:null;
+const directTmnReview=storedOcr?.provider==='tmn_visual_review_v1';
+const usedManualTmnReview=ext==='pdf'&&(!!reviewedTmnRecovery||directTmnReview);
+const parseBusinessDate=file.adjacent_day_statement?file.batch_business_date:job.business_date;
 const upstreamError=input.map(x=>x&&x.json&&x.json.error).find(Boolean);
 if(upstreamError&&!usedManualTmnReview){
   parseError='อ่านไฟล์ไม่สำเร็จ ('+file.file_name+'): '+String(upstreamError.message||upstreamError.description||upstreamError).slice(0,500);
 }
 try{
   if(usedManualTmnReview){
-    norm=TmnVisualReview.normalize(storedOcr,file,job);
+    norm=reviewedTmnRecovery
+      ? ReviewedPdfRecovery.normalize(reviewedTmnRecovery,file,{...job,business_date:parseBusinessDate})
+      : TmnVisualReview.normalize(storedOcr,file,{...job,business_date:parseBusinessDate});
   }else if(parseError){
     norm={format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
   }else if(ext==='pdf'||ext==='docx'){
     extractedText=input.map(x=>String((x&&x.json&&x.json.text)||'').trim()).filter(Boolean).join('\\n---OCR_IMAGE---\\n');
-    norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,job.business_date)
-      || await PdfStm.parseText(file.file_name,extractedText,job.business_date);
+    norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,parseBusinessDate)
+      || await PdfStm.parseText(file.file_name,extractedText,parseBusinessDate);
   }else if(ext==='csv'){
     const text=String((input[0]&&input[0].json&&(input[0].json.data??input[0].json.text))||'');
     rawRows=Engine.parseCSV(text);
@@ -98,10 +104,10 @@ try{
     acceptedEmptyPm=file.kind==='pm_statement'&&Number(file.size_bytes||0)<=16&&!meaningfulText;
     norm=acceptedEmptyPm
       ? {format:{source:'stm',realCode:'pm_empty'},records:[],aux:[],warnings:['ไฟล์ PM ไม่มีรายการ (0 รายการ)'],dropped:{}}
-      : Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+      : Engine.normalize(file.file_name,rawRows,${settings},parseBusinessDate);
   }else{
     rawRows=input.map(x=>Array.isArray(x.json.row)?x.json.row:Object.values(x.json));
-    norm=Engine.normalize(file.file_name,rawRows,${settings},job.business_date);
+    norm=Engine.normalize(file.file_name,rawRows,${settings},parseBusinessDate);
   }
 }catch(error){
   parseError='อ่านไฟล์ไม่สำเร็จ: '+String(error&&error.message||error).slice(0,500);
@@ -109,8 +115,11 @@ try{
 }
 norm=norm||{format:{source:'unknown',realCode:null},records:[],aux:[],warnings:[],dropped:{}};
 norm.format=norm.format||{source:'unknown',realCode:null};
+if(file.adjacent_day_statement){
+  norm.records=(norm.records||[]).map(row=>({...row,adjacentDayCandidateOnly:true,sourceBusinessDate:file.batch_business_date}));
+}
 const detectedSource=norm.format.source||'unknown';
-const isCandidateRow=r=>!!(r&&(r.ocrDateCandidateOnly||r.ktbNextDayCandidateOnly));
+const isCandidateRow=r=>!!(r&&(r.ocrDateCandidateOnly||r.ktbNextDayCandidateOnly||r.adjacentDayCandidateOnly));
 const usableRows=(norm.records||[]).filter(r=>!isCandidateRow(r)).length+(norm.aux||[]).length;
 const candidateRows=(norm.records||[]).filter(isCandidateRow).length;
 const attemptedRows=usableRows+candidateRows;
@@ -438,7 +447,7 @@ const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).m
 }));
 boFirstCoverage.sys123_ktb_bo_first_suppressed_rows=result.sys123KtbBoFirstSuppressedRows||[];
 const fileIds=files.map(f=>f.file.id).filter(Boolean);
-return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'1.9.29-seven-m-source-parity',source_parser_completion:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_ktb_bank_time_required:true,sys123_ktb_account_day_amount_multiset:true,sys123_ktb_bo_first_suppressed:result.sys123KtbBoFirstSuppressed||0,sys123_manual_bank_safe_close:true,sys123_manual_bank_time_amount:true,sys123_bbl_gsb_notime_amount_only:true,sys123_customer_identity_tags:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
+return [{json:{job,result:{run_by:'n8n-cloud-worker',elapsed_ms:result.elapsedMs||Date.now()-started,stm_count:result.stmCount||0,bo_count:result.boCount||0,matched:result.matched||0,match_rate:Number((result.matchRate||0).toFixed(3)),no_stm_count:result.noStmCount||0,file_ids:fileIds,summary:{match_evidence:result.matchEvidence||[],match_evidence_version:1,rules_only:!!result.rulesOnly,rule_exceptions:resolvedRuleExceptions.length,worker:'n8n-cloud',job_id:job.id,worker_version:'${WORKER_VERSION}',source_parser_completion:true,all_account_next_day_unique:true,non_success_pm_zero_eligible:true,xb_provider_column_policy:true,xb_provider_scope_at_az_cp_m:true,xb_provider_id_note_rule:true,xb_provider_id_note_unique:true,xb_provider_id_raw_recovery:true,xb_provider_signed_amount_close:true,xb_localpay_3xb_enabled:true,xb_qpay_inactive:true,sys123_provider_identity_rule:true,sys123_provider_amount_policy:true,sys123_received_amount_deposit:true,sys123_pending_evidence:true,sys123_pending_partial_identity_fallback:true,sys123_generic_provider_inference:true,sys123_short_provider_tokens:true,sys123_account_tail_fallback:true,sys123_partial_identity_reciprocal_near_time:true,sys123_fallback_time_tolerance_sec:3600,sys123_cross_day_reciprocal_nearest:true,sys123_cyber_withdraw_two_point:true,sys123_duplicate_reciprocal_nearest:true,sys123_duplicate_time_tolerance_sec:3600,sys123_statement_split_tabs:true,sys123_normal_bank_time_column:true,sys123_ktb_next_day_candidate:true,sys123_ktb_bank_time_required:true,sys123_ktb_account_day_amount_multiset:true,sys123_ktb_bo_first_suppressed:result.sys123KtbBoFirstSuppressed||0,sys123_manual_bank_safe_close:true,sys123_manual_bank_time_amount:true,sys123_bbl_gsb_notime_amount_only:true,sys123_customer_identity_tags:true,fr8_bank_name_reciprocal_near_time:true,seven_m_provider_identity_rule:true,seven_m_pm_near_time_safe_close:true,seven_m_internal_transfer_reciprocal:true,seven_m_provider_scope_at_cp_cy_az_m_local:true,seven_m_tmn_split_tabs:true,seven_m_tmn_screenshot_completeness:true,seven_m_tmn_ocr_reciprocal_repair:true,seven_m_tmn_offdate_reciprocal:true,seven_m_docx_ocr_regression_gate:true,seven_m_unconfirmed_pending_suppressed:sevenMUnconfirmedPendingRowsSuppressed,cp2_provider_alias:true,seven_m_cp2_pending_deposit:true,bank_signed_amount_normalized:true,statement_fee_rows_filtered:true,tmn_non_customer_rows_filtered:true,tmn_fundout_preserved:true,bo_split_rows_preserved:true,audit_visible_case_policy:true,time_variance_auto_pass:true,statement_source_account_trusted:true,structured_ocr_current_text_verified:true,duplicate_source_files:[...duplicateSourceFileIds],duplicate_source_rows_removed:duplicateSourceRowsRemoved,duplicate_statement_files:[...duplicateSourceFileIds],duplicate_statement_rows_removed:duplicateSourceRowsRemoved,reciprocal_nearest_rescue:true,reciprocal_nearest_any_time:true,bo_transaction_time_primary:true,exact_unique_tolerance_sec:600,provider_near_time_tolerance_sec:600,internal_transfer_tolerance_sec:300,pm_master_account_guard:true,bo_first:boFirstCoverage}},exceptions,files:parseResults,quality_errors:[]},pairedItem:{item:0}}];`;
 
 const cred = { supabaseApi: { id: "dGndiinLb7AKnjIu", name: "Supabase account" } };
 const deployedReconcileCode = reconcileCode
@@ -550,7 +559,7 @@ const nodes = [
   }),
   { parameters: { jsCode: "const item=$input.first(); const meta=$('วนทีละไฟล์').item.json; const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบข้อมูลไฟล์ '+meta.file.file_name); binary.data={...binary.data,fileName:meta.file.file_name,fileExtension:meta.file.ext}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, id: "restore-original-file-name", name: "คืนชื่อไฟล์ต้นฉบับ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1090, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-statement-document", leftValue: "={{ ['pdf','docx'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
-  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-reviewed-tmn-pdf", leftValue: "={{ (()=>{const f=$('วนทีละไฟล์').item.json.file;const o=Array.isArray(f.source_file_ocr)?f.source_file_ocr[0]:f.source_file_ocr;return f.ext==='pdf'&&o?.provider==='tmn_visual_review_v1';})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-reviewed-tmn", name: "TMN ตรวจภาพครบแล้ว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1310, 220] },
+  { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-reviewed-tmn-pdf", leftValue: "={{ (()=>{const f=$('วนทีละไฟล์').item.json.file;const o=Array.isArray(f.source_file_ocr)?f.source_file_ocr[0]:f.source_file_ocr;return f.ext==='pdf'&&(o?.provider==='tmn_visual_review_v1'||o?.reviewed_recovery?.payload?.sourceType==='tmn-screenshot-list-v1');})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-reviewed-tmn", name: "TMN ตรวจภาพครบแล้ว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1310, 220] },
   { parameters: { jsCode: "return [{json:{text:'',manual_visual_review:true},pairedItem:{item:0}}];" }, id: "use-reviewed-tmn", name: "ใช้รายการ TMN ที่ตรวจภาพ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 120] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-excel", leftValue: "={{ ['xlsx','xlsm','xls'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-excel", name: "เป็น Excel?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1420, 440] },
   { parameters: { operation: "pdf", binaryPropertyName: "data", options: {} }, id: "extract-pdf", name: "อ่าน PDF โดยตรง", type: "n8n-nodes-base.extractFromFile", typeVersion: 1.1, position: [1420, 220], onError: "continueRegularOutput" },
