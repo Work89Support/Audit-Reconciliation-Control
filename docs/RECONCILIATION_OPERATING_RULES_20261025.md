@@ -48,7 +48,7 @@
 
 ### ต้อง STOP / ห้ามเลือกด้วยชื่ออย่างเดียว
 
-- Worker ที่อนุมัติให้ Dispatcher เรียกมีเพียง ID `dmQDrxLA7q2yAqCn`; ห้ามกดรันโดยตรง
+- Worker ที่อนุมัติให้ Dispatcher เรียกมีเพียง ID `hggaOLqKPXB5roGM`; ห้ามกดรันโดยตรง
 - Worker รุ่นเก่าหรือสำเนาที่ต้อง STOP/Archive ได้แก่ `iw5jjFvMmEQIgMrK`, `dLkbNHgk3xMy9p82`, `AoS8dtkWFzCpDqmj`, `wgZ9nmnVGr65aBgG`, `UBwpCshsZRHUU9bc`, `9lH0fP4AqI0bEMyA`
 - Trigger ภายใน Worker ต้องปิดและเปลี่ยนชื่อเป็น `STOP - ไม่ใช้งาน (เรียกผ่าน Dispatcher)`
 - Historical rerun, backfill และ workflow ทดสอบ ห้ามเปิดอัตโนมัติ ห้ามใช้กับวันปัจจุบันโดยไม่มีขอบเขตบริษัท/วันที่ชัดเจน
@@ -57,7 +57,7 @@
 ### สถานะ Production และจุดเสี่ยงของ artifact
 
 - ตรวจ Production แล้ว: Dispatcher รันจริง `08:00` และ `19:00`; Late BBL resolver รันจริง `11:00`
-- ตรวจ Production วันที่ 26 ต.ค. 2026: Worker จริงคือ `dmQDrxLA7q2yAqCn`; Trigger `ทุก 10 นาที` และ `ทดสอบด้วยมือ` ภายใน Worker ถูก Deactivate เหลือ `รับงานจากรอบตรวจ` เป็นทางเข้าใช้งาน
+- ตรวจ Production วันที่ 28 ต.ค. 2026: Worker จริงคือ `hggaOLqKPXB5roGM`; Dispatcher `UBddGOySmAWzCgTu` Published และชี้ Worker นี้เพียงจุดเดียว ส่วน Worker เดิม `dmQDrxLA7q2yAqCn` ไม่อยู่ในเส้นทาง Dispatcher แล้ว
 - Worker เก่า `iw5jjFvMmEQIgMrK` ถูก Unpublish หลังพบว่า execution รอบ 08:00 เคยเรียกตัวนี้; สำเนาอื่นต้องคง Archive/ไม่ Publish
 - สำเนา Late BBL ID `1UTgKARTJDNnAhzV` ยังไม่ Publish จึงไม่รันซ้ำ ให้คงสถานะไม่ Publish
 - Artifact และชื่อโหนด Production ต้องตรงกันที่ `08:00 · 19:00`; ถ้าพบ `11:00` ใน Dispatcher ให้ถือว่าเป็น artifact เก่าและห้ามนำขึ้นระบบ
