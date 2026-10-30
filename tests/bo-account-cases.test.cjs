@@ -16,6 +16,6 @@ assert.ok(!/security definer|alter table.*row level security|create policy/i.tes
  assert.equal(exportSheet.rows[0][exportSheet.headers.indexOf('BO ถอน')],5);
  assert.equal(exportSheet.rows[0][exportSheet.headers.indexOf('BO ฝาก')],'');
  data.cases=[{id:'test-case',company:'MC8',account:'CUSTOM',direction:'ถอน',system_amount:5,bank_amount:null,status:'open',bo_raw:source.raw,bo_date:source.date,bo_time:'01:00:00',customer_details:{bo:{reference:source.ref},source_rows:{bo:{fileId:'test-file',row:2}},waiting_source:true,bo_account_label:source.boIdentityRaw}}];
- rows=sheets.rowsOf(data,'MC8');assert.equal(rows.length,1);assert.equal(rows[0].case.id,'test-case');assert.equal(rows[0].waiting,true);assert.equal(sheets.summarize(rows).diffAfterCents,0);
+ rows=sheets.rowsOf(data,'MC8');assert.equal(rows.length,1);assert.equal(rows[0].case.id,'test-case');assert.equal(rows[0].waiting,true);assert.equal(sheets.canOpenRealCase(rows[0],true),true);assert.equal(sheets.summarize(rows).diffAfterCents,0);
  console.log('BO account sheets and review-case safety tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
