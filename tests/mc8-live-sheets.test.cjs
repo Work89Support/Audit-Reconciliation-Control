@@ -8,6 +8,9 @@ assert.equal(canOpenRealCase(actionRow('closed','closed'),true),false);
 assert.equal(canOpenRealCase(actionRow('approved','closed'),true),false);
 assert.equal(canOpenRealCase(actionRow('open','matched'),true),false);
 assert.equal(canOpenRealCase({...actionRow('open'),pmAmount:null,pmRaw:''},true),true);
+assert.equal(canOpenRealCase({...actionRow('open','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),true,'real open BO waiting case must expose open-real-case action');
+assert.equal(canOpenRealCase({...actionRow('closed','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),false,'closed waiting case must not be reopened');
+assert.equal(canOpenRealCase({kind:'waiting_source',waiting:true,case:undefined,pmAmount:null,pmRaw:''},true),false,'snapshot-only waiting row must not expose a fake action');
 {
   const legacyCase={id:'case-1',code:'EX-3001',company:'3XB',business_date:'2026-10-25',status:'open',direction:'ฝาก',system_amount:100,bank_amount:null};
   assert.equal(rowsOf({run:{summary:{}},cases:[legacyCase]},'3XB')[0].code,'3XB-25.10.2026-001');

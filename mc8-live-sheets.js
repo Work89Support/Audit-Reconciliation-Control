@@ -744,6 +744,12 @@
     if(!row?.case?.id)return false;
     const persistedStatus=String(row.case.status||'').toLowerCase();
     if(['closed','approved','damage','cancelled','pair_pending'].includes(persistedStatus))return false;
+    // BO-only rows (including PM accounts borrowed from another company) are
+    // intentionally not reconcilable until their STM/PM evidence arrives.
+    // Once the database has materialized a real open exception UUID, Audit
+    // must still be able to open that case to attach evidence or investigate.
+    // Do not hide the action merely because its display status says "waiting".
+    if(row.waiting&&persistedStatus==='open')return true;
     const result=auditStatus(row,complete);
     // ปุ่มนี้ใช้เฉพาะรายการที่หลักฐานรอบกระทบยอดยังปิดไม่ได้จริง
     // แถวที่จับคู่/ปิดได้ และประวัติเคสที่ปิดแล้ว ยังดูได้แต่ห้ามเสนอให้เปิดซ้ำ
