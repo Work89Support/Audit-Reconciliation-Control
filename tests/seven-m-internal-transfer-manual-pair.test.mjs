@@ -31,7 +31,7 @@ assert.match(clarifyingSql,/pair_row\.mode='internal'/);
 assert.match(clarifyingSql,/No case rows are changed by this migration/);
 const finalPolicySql=fs.readFileSync('supabase/20261026_7m_internal_transfer_same_account_only.sql','utf8');
 assert.match(finalPolicySql,/a\.account is distinct from b\.account/);
-assert.match(finalPolicySql,/a\.direction is distinct from b\.direction/);
+assert.match(finalPolicySql,/a\.direction is distinct from b\.direction/,'legacy policy documents the replaced heading-direction guard');
 assert.match(finalPolicySql,/Cross-account A-to-B remains evidence only/);
 assert.doesNotMatch(finalPolicySql,/manual-seven-m-internal-transfer-cross-account/);
 
@@ -41,11 +41,11 @@ assert.match(client,/rpc\/close_internal_transfer_pair/);
 assert.match(code,/sameAccountAdjustmentMatches/);
 assert.doesNotMatch(code,/internalTransferDirectionMatches/,'cross-account relation must not close cases');
 
-async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open'}){
+async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open',boDirection=direction}){
   const nodes={},calls=[];
   const node=id=>nodes[id]??={value:'',checked:false,files:[],disabled:false,textContent:'',innerHTML:'',closest:s=>node(s),querySelector:s=>node(s),addEventListener:(event,handler)=>{if(event==='change')node(id).onchange=handler;}};
   const stm={id:`stm-${direction}`,code:`7M-STM-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:02:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_bo',bank_amount:7000,stm_raw:stmRaw,status:'open'};
-  const bo={id:`bo-${direction}`,code:`7M-BO-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:00:00',direction,account:'TMN-1',currency:'THB',ex_type:'missing_stm',system_amount:7000,bo_raw:boRaw,status:boStatus,response_text:'เก็บคำชี้แจงเดิม',clarification_file_id:'original-file'};
+  const bo={id:`bo-${direction}`,code:`7M-BO-${direction}`,company:'UFABET7M',business_date:'2026-10-25',occurred_at:'10:00:00',direction:boDirection,account:'TMN-1',currency:'THB',ex_type:'missing_stm',system_amount:7000,bo_raw:boRaw,status:boStatus,response_text:'เก็บคำชี้แจงเดิม',clarification_file_id:'original-file'};
   const wrongBo={...bo,id:`wrong-bo-${direction}`,code:`7M-WRONG-${direction}`,bo_raw:wrongRaw};
   const crossBo={...bo,id:`cross-bo-${direction}`,code:`7M-CROSS-${direction}`,account:'TMN-2'};
   let html='',candidateArgs=null;
@@ -80,5 +80,11 @@ async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open'}){
 await runScenario({direction:'ถอน',stmRaw:'โอนเงินออก 7,000',boRaw:'ปรับยอดออก โอนเงินออก 7,000',wrongRaw:'ปรับยอดเข้า 7,000'});
 await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'ปรับยอดเข้า รับเงินเข้า 7,000',wrongRaw:'ปรับยอดออก 7,000'});
 await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'โยกเงินเข้า 7,000',wrongRaw:'โยกเงินออก 7,000',boStatus:'clarifying'});
+await runScenario({direction:'ฝาก',boDirection:'ถอน',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'โยกเงินเข้า 7,000',wrongRaw:'โยกเงินออก 7,000'});
+
+const movementSql=fs.readFileSync('supabase/20261102_7m_internal_pair_bo_raw_movement.sql','utf8');
+assert.doesNotMatch(movementSql,/a\.direction is distinct from b\.direction/,'BO heading direction must not hide a valid movement pair');
+assert.match(movementSql,/b\.direction='ฝาก'[\s\S]*โยก\(เงิน\)\?เข้า/);
+assert.match(movementSql,/manual-seven-m-internal-transfer-bo-raw-movement/);
 
 console.log('7M same-account pairing: STM out to BO adjust out and STM in to BO adjust in passed');
