@@ -280,8 +280,18 @@ const Sb = (() => {
         }
         res = await fetch(base() + path, { ...fetchOpts, headers: headers(opts.headers) });
       }
-      if (res.status === 401 || res.status === 403) {
-        throw new Error("ไม่มีสิทธิ์อ่านข้อมูล — ล็อกอิน Supabase ก่อน (RLS เปิดอยู่)");
+      if (res.status === 401) {
+        throw new Error("เซสชันหมดอายุหรือยังไม่ได้เข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่");
+      }
+      if (res.status === 403) {
+        let msg = "บัญชีนี้ไม่มีสิทธิ์ดำเนินการกับข้อมูลรายการนี้";
+        try {
+          const j = await readResponseBody(res, 'json');
+          msg = j.message || j.error_description || j.error || msg;
+        } catch (e) {}
+        const failure = new Error(msg);
+        failure.code = 'APP_FORBIDDEN';
+        throw failure;
       }
       if (!res.ok) {
         let msg = `Supabase ตอบกลับ ${res.status}`;

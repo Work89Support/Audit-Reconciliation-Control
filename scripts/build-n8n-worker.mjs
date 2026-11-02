@@ -429,14 +429,20 @@ const verifyExceptionCoverage=(input,output)=>{
 };
 verifyExceptionCoverage(eligibleExceptions,[...best.values()]);
 const caseCode=(e,index)=>{
-  const businessDate=e.date||job.business_date;
+  // The case belongs to the reconciliation round, not to an adjacent-day
+  // transaction. Source dates remain available in bo_date/stm_date and raw evidence.
+  const businessDate=job.business_date;
   if(businessDate!=='2026-10-25')return 'EX-'+String(3001+index);
   const rawCompany=String(e.company||job.company||'UNKNOWN').trim().toUpperCase();
   const company=rawCompany==='UFABET7M'?'7M':rawCompany==='3X'?'3XB':rawCompany;
   return company+'-25.10.2026-'+String(index+1).padStart(3,'0');
 };
-const exceptions=[...best.values()].sort((a,b)=>(a.sortSec||0)-(b.sortSec||0)).map((e,i)=>({
-  code:caseCode(e,i),business_date:e.date||job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
+const exceptions=[...best.values()].sort((a,b)=>{
+  const sameNoTimeStatement=Number(a.statementPage)===Number(b.statementPage)
+    &&Number.isFinite(Number(a.statementOrder))&&Number.isFinite(Number(b.statementOrder));
+  return sameNoTimeStatement?Number(a.statementOrder)-Number(b.statementOrder):(a.sortSec||0)-(b.sortSec||0);
+}).map((e,i)=>({
+  code:caseCode(e,i),business_date:job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
   bo_date:e.boDate||null,bo_time:e.boTime&&e.boTime!=='-'?e.boTime:null,
   stm_date:e.stmDate||null,stm_time:e.stmTime&&e.stmTime!=='-'?e.stmTime:null,
   bank:e.bank||null,account:e.account||null,direction:e.direction||null,member_code:e.member||null,ex_type:e.type,type_name:e.typeName||e.type,

@@ -1,0 +1,1 @@
+const fs=require('node:fs'),assert=require('node:assert/strict');const sql=fs.readFileSync(new URL('../supabase/20261102_finish_job_preserve_closed_requests.sql',`file://${__filename}`),'utf8');assert.match(sql,/e\.status in \(''open'',''clarifying'',''answered''\)/);assert.doesNotMatch(sql,/delete from public\.exceptions/i);console.log('finish-job preserve closed requests: ok');
