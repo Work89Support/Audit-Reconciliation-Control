@@ -10,10 +10,10 @@ assert.equal(rows[0].pmAmount,null,'a Rules amount is not evidence of an STM tra
 assert.equal(rows[0].boAmount,1220);assert.equal(rows[0].relatedCrossDayWarnings[0].id,warning.id);
 assert.equal(live.summarize(rows).pmCents,0);assert.equal(live.summarize(rows).boCents,122000);
 assert.equal(live.summarize(rows).diffAfterCents,-122000);
-assert.match(rows[0].reason,/EX-3002/);assert.match(live.auditStatus(rows[0],true),/ค้างรอ/);
+assert.match(rows[0].reason,/FR8-15\.10\.2026-002/);assert.match(live.auditStatus(rows[0],true),/ค้างรอ/);
 const exported=live.buildAuditExportSheets(rows,'FR8','2026-10-15',true,schema);
 assert.equal(exported[0].rows.length,1);assert.equal(exported[0].rows[0][exported[0].headers.indexOf('BO · ยอด')],1220);
-assert.match(exported[0].rows[0].join(' | '),/คำเตือนข้ามวันประกอบรายการเดิม EX-3002/);
+assert.match(exported[0].rows[0].join(' | '),/คำเตือนข้ามวันประกอบรายการเดิม FR8-15\.10\.2026-002/);
 assert.equal(JSON.stringify(data),before,'no source, case, status, or report may be rewritten');
 assert.equal(live.rowsOf({...data,cases:[warning,actual]}).length,1,'ordering does not affect folding');
 for(const change of [{company:'MR9'},{account:'AUTOPEER'},{direction:'ฝาก'},{business_date:'2026-10-14'},
