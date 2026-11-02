@@ -16,7 +16,7 @@ assert.equal(canOpenRealCase({kind:'waiting_source',waiting:true,case:undefined,
   assert.equal(rowsOf({run:{summary:{}},cases:[legacyCase]},'3XB')[0].code,'3XB-25.10.2026-001');
   assert.equal(rowsOf({run:{business_date:'2026-10-25',summary:{}},cases:[{...legacyCase,business_date:undefined}]},'3XB')[0].code,'3XB-25.10.2026-001');
   assert.equal(rowsOf({run:{summary:{}},cases:[{...legacyCase,company:'UFABET7M'}]},'UFABET7M')[0].code,'7M-25.10.2026-001');
-  assert.equal(rowsOf({run:{summary:{}},cases:[{...legacyCase,business_date:'2026-10-26'}]},'3XB')[0].code,'EX-3001');
+  assert.equal(rowsOf({run:{summary:{}},cases:[{...legacyCase,business_date:'2026-10-26'}]},'3XB')[0].code,'3XB-26.10.2026-001');
 }
 assert.equal(ALL_HEADERS[0],'STM/PM · วัน / เวลา');
 assert.ok(ALL_HEADERS.indexOf('STM/PM · รายละเอียดต้นฉบับ')<ALL_HEADERS.indexOf('BO · วัน / เวลา'));
