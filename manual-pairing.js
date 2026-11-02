@@ -18,7 +18,11 @@ const ManualPairing=(()=>{
     return match?Number(match[1])*3600+Number(match[2])*60+Number(match[3]||0):NaN;
   };
   const sameAccountAdjustmentMatches=(bo,stm)=>{
-    if(!bo||!stm||bo.account!==stm.account||bo.direction!==stm.direction||!['ฝาก','ถอน'].includes(stm.direction))return false;
+    // Internal BO rows inherit the deposit/withdraw label of the BO account
+    // column.  That label is not the real movement direction of an internal
+    // adjustment (for example, a "ถอน ..." account can contain "โยกเงินเข้า").
+    // Use the explicit BO movement text to pair the same-account STM row.
+    if(!bo||!stm||bo.account!==stm.account||!['ฝาก','ถอน'].includes(stm.direction))return false;
     const raw=String(bo.bo_raw||'');
     const outgoing=/(?:ปรับ(?:ยอด|เงิน)?ออก|โยก(?:เงิน)?ออก|โอน(?:เงิน)?ออก|ถอนภายใน)/i.test(raw);
     const incoming=/(?:ปรับ(?:ยอด|เงิน)?เข้า|โยก(?:เงิน)?เข้า|โอน(?:เงิน)?เข้า|(?:^|[\s:=-])รับยอด(?:$|[\s:=-]))/i.test(raw);
