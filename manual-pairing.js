@@ -17,16 +17,30 @@ const ManualPairing=(()=>{
     const match=String(value||'').match(/(?:T|\s|^)(\d{2}):(\d{2})(?::(\d{2}))?/);
     return match?Number(match[1])*3600+Number(match[2])*60+Number(match[3]||0):NaN;
   };
+  const internalMovementDirection=raw=>{
+    const text=String(raw||'');
+    // BO export layout: timestamp | action | ... | account | amount | ... | note.
+    // The note may describe the opposite leg (for example "โยกเข้า KB") even
+    // though the actual action of this account is "โยกเงินออก".  Prefer the
+    // explicit action column; fall back to the first movement phrase only when
+    // a non-pipe source does not expose that column.
+    const action=String(text.split('|')[1]||'').trim();
+    const scan=value=>{
+      const candidates=[
+        {direction:'ถอน',match:String(value||'').match(/ปรับ(?:ยอด|เงิน)?ออก|โยก(?:เงิน)?ออก|โอน(?:เงิน)?ออก|ถอนภายใน/i)},
+        {direction:'ฝาก',match:String(value||'').match(/ปรับ(?:ยอด|เงิน)?เข้า|โยก(?:เงิน)?เข้า|โอน(?:เงิน)?เข้า|(?:^|[\s:=-])รับยอด(?:$|[\s:=-])/i)},
+      ].filter(x=>x.match).sort((a,b)=>a.match.index-b.match.index);
+      return candidates[0]?.direction||'';
+    };
+    return scan(action)||scan(text);
+  };
   const sameAccountAdjustmentMatches=(bo,stm)=>{
     // Internal BO rows inherit the deposit/withdraw label of the BO account
     // column.  That label is not the real movement direction of an internal
     // adjustment (for example, a "ถอน ..." account can contain "โยกเงินเข้า").
     // Use the explicit BO movement text to pair the same-account STM row.
     if(!bo||!stm||bo.account!==stm.account||!['ฝาก','ถอน'].includes(stm.direction))return false;
-    const raw=String(bo.bo_raw||'');
-    const outgoing=/(?:ปรับ(?:ยอด|เงิน)?ออก|โยก(?:เงิน)?ออก|โอน(?:เงิน)?ออก|ถอนภายใน)/i.test(raw);
-    const incoming=/(?:ปรับ(?:ยอด|เงิน)?เข้า|โยก(?:เงิน)?เข้า|โอน(?:เงิน)?เข้า|(?:^|[\s:=-])รับยอด(?:$|[\s:=-]))/i.test(raw);
-    return stm.direction==='ถอน'?outgoing&&!incoming:incoming&&!outgoing;
+    return internalMovementDirection(bo.bo_raw)===stm.direction;
   };
   const internalTransferCandidate=p=>{
     const bo=p.snapshot?.bo,stm=p.snapshot?.stm;
@@ -77,7 +91,7 @@ const ManualPairing=(()=>{
   const sourceCard=(row,label,raw)=>{
     const side=row.ex_type==='missing_stm'?'BO':'STM/PM';
     const amount=side==='BO'?row.system_amount:row.bank_amount;
-    return `<div class="pair-card"><div class="pair-card-top"><div><span class="pair-eyebrow">${h(label)}</span><strong>${h(row.code||row.id)}</strong></div><div class="pair-amount"><span>${side}</span><strong>${money(amount)} <small>บาท</small></strong></div></div><dl class="pair-facts"><div><dt>บริษัท / รายการ</dt><dd>${h(row.company)} · ${h(row.direction)}</dd></div><div><dt>วันที่ / เวลา</dt><dd>${h(row.business_date)} · ${h(row.occurred_at||'ไม่ระบุเวลา')}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(row.account||'ไม่ระบุ')}</dd></div><div><dt>รหัสสมาชิก</dt><dd>${h(row.member_code||'ไม่ระบุ')}</dd></div></dl><details class="pair-raw"><summary>ดูข้อมูลต้นฉบับ</summary><pre>${h(raw||'ไม่มีข้อความต้นฉบับ')}</pre></details></div>`;
+    return `<div class="pair-card"><div class="pair-card-top"><div><span class="pair-eyebrow">${h(label)}</span><strong>${h(caseLabel(row))}</strong></div><div class="pair-amount"><span>${side}</span><strong>${money(amount)} <small>บาท</small></strong></div></div><dl class="pair-facts"><div><dt>บริษัท / รายการ</dt><dd>${h(row.company)} · ${h(row.direction)}</dd></div><div><dt>วันที่ / เวลา</dt><dd>${h(row.business_date)} · ${h(row.occurred_at||'ไม่ระบุเวลา')}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(row.account||'ไม่ระบุ')}</dd></div><div><dt>รหัสสมาชิก</dt><dd>${h(row.member_code||'ไม่ระบุ')}</dd></div></dl><details class="pair-raw"><summary>ดูข้อมูลต้นฉบับ</summary><pre>${h(raw||'ไม่มีข้อความต้นฉบับ')}</pre></details></div>`;
   };
   async function refresh(ids) {
     for(const id of ids){const row=await Sb.exceptionDetail(id);const index=DB.exceptions.findIndex(e=>e.dbId===id);if(row&&index>=0)Object.assign(DB.exceptions[index],mapLiveException(row));}
@@ -274,7 +288,7 @@ const ManualPairing=(()=>{
         candidates=account?candidatePool.filter(candidate=>String(internalSides(candidate).bo.account||'')===account):[];
       }else candidates=candidatePool.slice();
       selected=null;$('#pairChecked').checked=false;$('#pairCompare').textContent='';
-      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(c.code||c.id)} · ${h(c.direction||'-')} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?(mode==='internal'?'ชี้แจงแล้ว — ปิดได้เมื่อคู่ผ่านกฎ 7M':'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น'):c.status==='clarifying'?(mode==='internal'?'รอผู้ชี้แจง — ปิดได้เมื่อคู่ผ่านกฎ 7M':'รอผู้ชี้แจง — เตรียมคู่เท่านั้น'):'เปิด'}</option>`).join('');
+      $('#pairCandidate').innerHTML='<option value="">'+(mode==='internal'&&!$('#pairBoAccount').value?'เลือกบัญชี BO ก่อน':'เลือกเคส')+'</option>'+candidates.map(c=>`<option value="${h(c.id)}">${h(c.business_date)} · ${h(caseLabel(c))} · ${h(c.direction||'-')} · ${money(c.ex_type==='missing_stm'||c.ex_type==='cross_day'?c.system_amount:c.bank_amount)} บาท · ${h(c.occurred_at||'ไม่ระบุเวลา')} · ${h(c.account||'-')} · ${c.status==='pending_next_day'?'รอข้ามวัน':c.status==='answered'?(mode==='internal'?'ชี้แจงแล้ว — ปิดได้เมื่อคู่ผ่านกฎ 7M':'ชี้แจงแล้ว/รอตรวจคำตอบ — เตรียมคู่เท่านั้น'):c.status==='clarifying'?(mode==='internal'?'รอผู้ชี้แจง — ปิดได้เมื่อคู่ผ่านกฎ 7M':'รอผู้ชี้แจง — เตรียมคู่เท่านั้น'):'เปิด'}</option>`).join('');
       if(candidates.length===1){selected=candidates[0];$('#pairCandidate').value=selected.id;renderComparison();}
       updateSubmitLabel();
     };
