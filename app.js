@@ -9314,6 +9314,14 @@ async function readProductionEntryChecks() {
   return { passwordRequired: password.value, access };
 }
 
+function isTerminalSessionError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('invalid refresh token') ||
+    message.includes('refresh token not found') ||
+    message.includes('refresh_token_not_found') ||
+    message.includes('already used');
+}
+
 async function performProductionEntry() {
   const user = Sb.authUser() || {};
   const email = String(user.email || "").trim().toLowerCase();
@@ -9345,6 +9353,9 @@ async function performProductionEntry() {
     if (error.code === 'APP_ACCESS_DENIED') {
       Sb.signOut();
       showLoginGate(error.message);
+    } else if (isTerminalSessionError(error)) {
+      Sb.signOut();
+      showLoginGate('สถานะเข้าสู่ระบบหมดอายุหรือถูกใช้งานจากแท็บอื่นแล้ว กรุณาเข้าสู่ระบบใหม่');
     } else {
       showConnectingGate('เชื่อมต่อเพื่อตรวจสิทธิ์ยังไม่สำเร็จ — ไม่ได้ออกจากระบบ และยังไม่ได้ยืนยันว่าบันทึกงานสำเร็จ: ' + (error.message || 'การเชื่อมต่อขัดข้อง'), () => enterProductionApp(), preserveWork);
     }

@@ -15,7 +15,22 @@ for(const denied of [false,true]){
   if(!denied){assert.equal(gate,undefined);assert.match(connecting,/ไม่ได้ออกจากระบบ/);assert.equal(typeof retry,'function');await retry();assert.equal(signouts,0);}
 }
 assert.match(source,/error\.code = 'APP_ACCESS_DENIED'/);
+assert.match(source,/function isTerminalSessionError\(error\)/);
 assert.match(source,/await applyAuthenticatedRole\(entryChecks.access\);[\s\S]*\$\("#appShell"\)\.hidden = false/);
+
+{
+  let signouts=0,gate,connecting;
+  const error=Error('Invalid Refresh Token: Already Used');
+  const context={Sb:{authUser:()=>({email:'test@example.invalid'}),passwordChangeRequired:async()=>false,signOut(){signouts++;}},prepareProductionData(){},applyAuthenticatedRole:async()=>{throw error;},showLoginGate:text=>gate=text,
+    showConnectingGate(text){connecting=text;},$:()=>({})};
+  context.Sb.myAccess=async()=>({});
+  Object.assign(context,{setTimeout,clearTimeout});
+  vm.runInNewContext(helper,context);
+  assert.equal(await context.enterProductionApp(),false);
+  assert.equal(signouts,1,'A terminal refresh token cannot recover and must clear the stale session');
+  assert.match(gate,/กรุณาเข้าสู่ระบบใหม่/);
+  assert.match(connecting,/กำลังตรวจสิทธิ์/,'Initial closed gate is expected before the terminal failure is known');
+}
 {
  let calls=0,release;
  const context={setTimeout,clearTimeout,Sb:{authUser:()=>({email:'test@example.invalid'}),passwordChangeRequired:async()=>false},prepareProductionData(){},
