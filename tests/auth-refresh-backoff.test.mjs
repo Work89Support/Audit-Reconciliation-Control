@@ -93,7 +93,10 @@ const permitted=storage();
 permitted.setItem('audit-sb-session',JSON.stringify({...fresh,expires_at:clock/1000+3600}));
 const denied=app(async url=>{if(url.includes('/auth/v1/token'))refreshes++;return response(403);},permitted);
 await denied.restore();
-await assert.rejects(()=>denied.post('test',[]),/RLS/);
+await assert.rejects(
+  ()=>denied.post('test',[]),
+  error=>error?.code==='APP_FORBIDDEN'&&/ไม่มีสิทธิ์/.test(error.message)
+);
 assert.equal(refreshes,0);
 
 // Signing out during rotation must not resurrect the user's session.
