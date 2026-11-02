@@ -61,7 +61,7 @@ Prototype เว็บสำหรับระบบ Audit ที่สรุป
 4. ผู้ใช้เปิดลิงก์ในอีเมลเพื่อตั้งรหัสผ่าน แล้วจะเห็นเฉพาะเมนูและบริษัทตามตำแหน่งที่กำหนด
 
 ก่อนใช้ปุ่มเพิ่มผู้ใช้ครั้งแรก ให้ Deploy Edge Function `admin-invite-user` และตั้ง secret
-`AUDIT_APP_URL=https://work89support.github.io/Audit-Reconciliation-Control/` ส่วน `SUPABASE_SERVICE_ROLE_KEY`
+`AUDIT_APP_URL=https://audit.future-x.me/` ส่วน `SUPABASE_SERVICE_ROLE_KEY`
 อยู่เฉพาะใน Supabase Edge Function ห้ามนำมาใส่ในหน้าเว็บ
 
 ก่อน Deploy frontend ครั้งแรก ให้รัน `supabase/20260830_user_roles_company_access.sql` และ
