@@ -1594,15 +1594,15 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
           throw new Error('ยังไม่ได้ส่งไฟล์: ไม่มีสิทธิ์ หรือเคสรอข้ามวันไม่ใช่ผลหลักล่าสุด/มีคำขออยู่แล้ว');
         progress('กำลังส่งไฟล์เข้าคลัง (สูงสุด 120 วินาที)');
         pending.attempted=true;
-        for(let storageAttempt=0;storageAttempt<2;storageAttempt++)try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;break;}
+        for(let storageAttempt=0;storageAttempt<3;storageAttempt++)try {await req(`/storage/v1/object/${cfg().bucket}/${metadata.storage_path}`,{method:'POST',headers:{'Content-Type':metadata.mime_type,'x-upsert':'false'},body:pending.buffer,timeoutMs:120000});pending.uploaded=true;break;}
         catch(error){
           // POST may have committed before the response was lost; the same path
           // is retried without upsert. Verify the uploader's existing object.
           checkActor();
           try{await signedUrl(metadata.storage_path,60);pending.uploaded=true;break;}catch{
-            if(storageAttempt===0&&/connection.*timed out|database timed out/i.test(error.message||'')){
-              progress('คลังไฟล์เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังลองด้วยรหัสและเส้นทางเดิม (2/2)');
-              await new Promise(resolve=>setTimeout(resolve,1000));checkActor();continue;
+            if(storageAttempt<2&&/connection.*timed out|database timed out|failed to fetch|networkerror|network request failed/i.test(error.message||'')){
+              progress(`คลังไฟล์เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังลองด้วยรหัสและเส้นทางเดิม (${storageAttempt+2}/3)`);
+              await new Promise(resolve=>setTimeout(resolve,1000*(storageAttempt+1)));checkActor();continue;
             }
             throw new Error(`ยังยืนยันไฟล์ในคลังไม่ได้ (รหัส ${id}) เก็บคำขอเดิมไว้ กดตรวจ/ลองต่อได้โดยไม่เลือกไฟล์ใหม่: ${error.message}`);
           }

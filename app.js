@@ -4316,9 +4316,31 @@ async function openClosedEvidenceCorrection(e) {
     <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
     <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
     <label class="evidence-correction-confirm"><input type="checkbox" id="correctionConfirm"><span>ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</span></label></div>
-    <p id="correctionProgress" role="status"></p>`,
+    <p id="correctionProgress" role="status"></p>
+    <div id="correctionRecovery" class="alert warn" hidden><p>คำขอเดิมและไฟล์ยังอยู่ในหน้าต่างนี้ กรุณาอย่ารีเฟรชหรือเลือกไฟล์ซ้ำ</p><button class="ghost-button" id="correctionRetry">ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button></div>`,
     '<button class="ghost-button" id="correctionCancel">ยกเลิก</button><button class="primary-button" id="correctionSave">ยืนยันบันทึกหลักฐานใหม่</button>');
   $('#correctionCancel').onclick=closeModal;
+  const completeCorrection=async()=>{
+    e._caseEvidenceLoaded=false;e._detailLoaded=false;
+    closeModal();toast('แก้หลักฐานแล้ว เก็บต้นฉบับและประวัติครบ — เคสยังปิดเดิม ยอดไม่เปลี่ยน');
+    await openException(e.id);
+  };
+  const showCorrectionRecovery=()=>{
+    const pending=(Sb.pendingCaseEvidence(e.dbId)||[]).at(-1),recovery=$('#correctionRecovery'),retry=$('#correctionRetry');
+    if(!pending||!recovery||!retry)return null;
+    recovery.hidden=false;retry.dataset.evidenceId=pending.id;retry.disabled=!!pending.busy;
+    return pending;
+  };
+  $('#correctionRetry').onclick=async()=>{
+    const retry=$('#correctionRetry'),button=$('#correctionSave'),progress=$('#correctionProgress');
+    const pending=showCorrectionRecovery();
+    if(!pending){progress.textContent='ไม่พบคำขอเดิมในหน้าต่างนี้ กรุณาเลือกไฟล์ใหม่อีกครั้ง';return;}
+    try{
+      retry.disabled=true;button.disabled=true;$('#correctionCancel').disabled=true;
+      await Sb.resumeCaseEvidence(pending.id);
+      await completeCorrection();
+    }catch(error){progress.textContent=error.message;retry.disabled=false;button.disabled=false;$('#correctionCancel').disabled=false;showCorrectionRecovery();}
+  };
   $('#correctionSave').onclick=async()=>{
     const button=$('#correctionSave'),progress=$('#correctionProgress');
     try{
@@ -4328,10 +4350,8 @@ async function openClosedEvidenceCorrection(e) {
       button.disabled=true;$('#correctionCancel').disabled=true;
       const [kind,id]=original.split(':');
       await Sb.uploadCaseEvidence(e.dbId,file,stage=>{progress.textContent=stage;},{reason,evidenceId:kind==='evidence'?id:null,sourceFileId:kind==='source'?id:null});
-      e._caseEvidenceLoaded=false;e._detailLoaded=false;
-      closeModal();toast('แก้หลักฐานแล้ว เก็บต้นฉบับและประวัติครบ — เคสยังปิดเดิม ยอดไม่เปลี่ยน');
-      await openException(e.id);
-    }catch(error){progress.textContent=error.message;button.disabled=false;$('#correctionCancel').disabled=false;}
+      await completeCorrection();
+    }catch(error){progress.textContent=error.message;button.disabled=false;$('#correctionCancel').disabled=false;showCorrectionRecovery();}
   };
 }
 

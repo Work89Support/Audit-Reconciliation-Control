@@ -25,10 +25,10 @@ assert.match(sql,/for update/);assert.match(sql,/has_company_access/);assert.mat
 assert.doesNotMatch(sql,/update public\.exceptions|delete from|update public\.case_evidence/i);
 assert.match(app,/id="correctionReason"/);assert.match(app,/id="correctionConfirm"/);assert.match(app,/id="btnCorrectClosedEvidence"/);
 console.log('PASS closed evidence corrections: reason + confirmation, closed-only uploads, idempotent receipt, no fallback, role/company/latest-state guards, append-only history and no amount/case updates');
-const elements=Object.fromEntries(['correctionOriginal','correctionReason','correctionFile','correctionConfirm','correctionProgress','correctionSave','correctionCancel'].map(id=>['#'+id,{value:'',checked:false,files:[],disabled:false,textContent:''}]));
-let modal='',saves=0,companyAllowed=true;
+const elements=Object.fromEntries(['correctionOriginal','correctionReason','correctionFile','correctionConfirm','correctionProgress','correctionSave','correctionCancel','correctionRecovery','correctionRetry'].map(id=>['#'+id,{value:'',checked:false,files:[],disabled:false,hidden:true,textContent:'',dataset:{}}]));
+let modal='',saves=0,resumes=0,companyAllowed=true,failUpload=false,pending=[];
 const state={dataset:'production',role:'admin'},record={id:'dummy-case',dbId:'dummy-case',company:'3XB',code:'TEST',status:'closed',systemAmount:110};
-const ui={state,canAccessCompany:()=>companyAllowed,Sb:{exceptionDetail:async()=>({status:'closed'}),caseEvidence:async()=>[{id:'original-proof',file_name:'dummy-original.txt'}],uploadCaseEvidence:async(_id,_file,_progress,c)=>{assert.equal(c.reason,'แนบผิด');assert.equal(c.evidenceId,'original-proof');saves++;}},openModal:(_title,body)=>{modal=body;},closeModal:()=>{},openException:async()=>{},toast:()=>{},h:String,$:id=>elements[id]};
+const ui={state,canAccessCompany:()=>companyAllowed,Sb:{exceptionDetail:async()=>({status:'closed'}),caseEvidence:async()=>[{id:'original-proof',file_name:'dummy-original.txt'}],uploadCaseEvidence:async(_id,_file,_progress,c)=>{assert.equal(c.reason,'แนบผิด');assert.equal(c.evidenceId,'original-proof');saves++;if(failUpload){pending=[{id:'same-request',name:'dummy-proof.txt',busy:false}];throw Error('The connection to the database timed out');}},pendingCaseEvidence:()=>pending,resumeCaseEvidence:async id=>{assert.equal(id,'same-request');resumes++;pending=[];}},openModal:(_title,body)=>{modal=body;},closeModal:()=>{},openException:async()=>{},toast:()=>{},h:String,$:id=>elements[id]};
 vm.createContext(ui);vm.runInContext(app.slice(app.indexOf('async function openClosedEvidenceCorrection('),app.indexOf('async function openException(')),ui);
 state.role='audit_assistant';await assert.rejects(ui.openClosedEvidenceCorrection(record));assert.equal(saves,0);
 state.role='lead';companyAllowed=false;await assert.rejects(ui.openClosedEvidenceCorrection(record));companyAllowed=true;
@@ -38,4 +38,8 @@ elements['#correctionOriginal'].value='evidence:original-proof';elements['#corre
 await elements['#correctionSave'].onclick();assert.equal(saves,0,'confirmation is mandatory');
 elements['#correctionConfirm'].checked=true;
 await elements['#correctionSave'].onclick();assert.equal(saves,1);assert.equal(record.status,'closed');assert.equal(record.systemAmount,110);
-console.log('PASS modal behavior: helper/company denial, missing fields + confirmation rejected, only valid confirmed correction saves, case remains closed and amount unchanged (dummy fixture)');
+failUpload=true;await ui.openClosedEvidenceCorrection(record);
+elements['#correctionOriginal'].value='evidence:original-proof';elements['#correctionReason'].value='แนบผิด';elements['#correctionFile'].files=[file];elements['#correctionConfirm'].checked=true;
+await elements['#correctionSave'].onclick();assert.equal(saves,2);assert.equal(elements['#correctionRecovery'].hidden,false);assert.equal(elements['#correctionRetry'].dataset.evidenceId,'same-request');
+await elements['#correctionRetry'].onclick();assert.equal(resumes,1);assert.equal(record.status,'closed');assert.equal(record.systemAmount,110);
+console.log('PASS modal behavior: helper/company denial, confirmation, same-request retry without file reselect, case remains closed and amount unchanged (dummy fixture)');
