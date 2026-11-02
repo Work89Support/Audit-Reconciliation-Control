@@ -12,7 +12,7 @@ const baseline=JSON.stringify(state);
 const ctx={e,id:e.id,DB:{exceptions:rows},state,window:{scrollX:30,scrollY:650,scrollTo:p=>scrolls.push(p)},requestAnimationFrame:f=>f(),
  $:selector=>{if(selector==='#viewRoot')return {querySelectorAll:()=>[],querySelector:()=>null};return buttons[selector]??={value:'',disabled:false,addEventListener:(_,fn)=>listener=fn};},
  filteredExceptions:()=>rows,caseUiKey:r=>r.dbId||r.id,canAccessCompany:company=>company==='FR8',can:()=>allowed,deny:()=>warnings.push('denied'),
- h:s=>String(s??''),openModal:(title,body,footer)=>modal={title,body,footer},closeModal:()=>{},closeDrawer:()=>{},render:()=>renders++,openException:async id=>opened.push(id),toast:t=>warnings.push(t),recordCaseUiResult:()=>{},saveOverride:()=>{},logAction:()=>{},CaseClosure:{openSubmit:()=>{throw Error('must not close');}},
+ h:s=>String(s??''),caseLabel:r=>r.code||r.id,openModal:(title,body,footer)=>modal={title,body,footer},closeModal:()=>{},closeDrawer:()=>{},render:()=>renders++,openException:async id=>opened.push(id),toast:t=>warnings.push(t),recordCaseUiResult:()=>{},saveOverride:()=>{},logAction:()=>{},CaseClosure:{openSubmit:()=>{throw Error('must not close');}},
  Sb:{authUser:()=>({id:'actor'}),signedIn:()=>true,requestClarification:()=>{sendCount++;return new Promise(resolve=>resolveSend=resolve);}}
 };
 vm.createContext(ctx);vm.runInContext(helpers+handler,ctx);
