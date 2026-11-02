@@ -1,0 +1,53 @@
+name: deploy-coolify
+
+# Deploy to Coolify only after the "tests" workflow passes on a push to main.
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coolify-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      # Coolify always builds the newest commit on main. If main has moved on
+      # since this test run started, skip: the newer commit's own test run
+      # will deploy it once it passes, so untested code is never shipped.
+      - name: Check tested commit is still the head of main
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          current=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          echo "tested=$TESTED_SHA current=$current"
+          if [ "$current" = "$TESTED_SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main moved to $current; skipping, its own test run will deploy."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Coolify deployment
+        if: steps.head.outputs.deploy == 'true'
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+        run: |
+          if [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_WEBHOOK" ]; then
+            echo "::error::Set COOLIFY_TOKEN and COOLIFY_WEBHOOK in the production environment secrets."
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            --request GET "$COOLIFY_WEBHOOK" \
+            --header "Authorization: Bearer $COOLIFY_TOKEN"

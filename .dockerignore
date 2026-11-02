@@ -1,0 +1,11 @@
+# Allow-list: send only the web app and its nginx config to the image build.
+*
+!index.html
+!company-hub.html
+!favicon.svg
+!*.js
+!*.css
+!fonts
+!vendor
+!manual
+!deploy/nginx
