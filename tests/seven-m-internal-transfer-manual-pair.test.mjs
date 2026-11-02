@@ -81,10 +81,16 @@ await runScenario({direction:'ถอน',stmRaw:'โอนเงินออก 
 await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'ปรับยอดเข้า รับเงินเข้า 7,000',wrongRaw:'ปรับยอดออก 7,000'});
 await runScenario({direction:'ฝาก',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'โยกเงินเข้า 7,000',wrongRaw:'โยกเงินออก 7,000',boStatus:'clarifying'});
 await runScenario({direction:'ฝาก',boDirection:'ถอน',stmRaw:'รับโอนเงินเข้า 7,000',boRaw:'โยกเงินเข้า 7,000',wrongRaw:'โยกเงินออก 7,000'});
+await runScenario({direction:'ถอน',boDirection:'ฝาก',stmRaw:'โอนเงินออก 7,000',boRaw:'2026-11-01 06:10 | โยกเงินออก | | | ฝาก SCB สมภพ 5034633891 | -7000 | 0 | โยกเข้า KB กิตติ 7000 | ออย | แก้ไข',wrongRaw:'2026-11-01 06:10 | โยกเงินเข้า | | | ถอน KB กิตติ 1953583301 | 7000 | 0 | รับยอด SCB สมภพ 7000'});
 
 const movementSql=fs.readFileSync('supabase/20261102_7m_internal_pair_bo_raw_movement.sql','utf8');
 assert.doesNotMatch(movementSql,/a\.direction is distinct from b\.direction/,'BO heading direction must not hide a valid movement pair');
 assert.match(movementSql,/b\.direction='ฝาก'[\s\S]*โยก\(เงิน\)\?เข้า/);
 assert.match(movementSql,/manual-seven-m-internal-transfer-bo-raw-movement/);
+
+const primaryActionSql=fs.readFileSync('supabase/20261102_7m_internal_pair_primary_action.sql','utf8');
+assert.match(primaryActionSql,/split_part\(coalesce\(a\.bo_raw,''\),'\|',2\)/,'DB must read the BO action column before its note');
+assert.match(primaryActionSql,/movement_direction is distinct from b\.direction/);
+assert.match(primaryActionSql,/manual-seven-m-internal-transfer-primary-bo-action/);
 
 console.log('7M same-account pairing: STM out to BO adjust out and STM in to BO adjust in passed');
