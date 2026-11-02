@@ -7,7 +7,7 @@ function fixture(company){
  const buttons={};let actor='audit',access=true,modal,renders=0,closes=0,captures=0,raw=[];const opened=[],reads=[];
  const map=r=>({...r,dbId:r.id,date:r.business_date,requestedAt:r.requested_at,respondedAt:r.responded_at,closureRequestId:r.case_closure_request_id,clarificationFileId:r.clarification_file_id});
  const ctx={state,DB:{exceptions:[e]},$:s=>s==='#viewRoot'?{querySelectorAll:()=>[],querySelector:()=>null}:buttons[s]??={value:'',disabled:false},window:{scrollX:17,scrollY:650,scrollTo:()=>{}},requestAnimationFrame:f=>f(),
-  filteredExceptions:()=>{throw Error('must not use another view filters');},caseUiKey:r=>r.dbId||r.id,can:()=>access,canAccessCompany:c=>access&&c===company,deny:()=>{},h:v=>String(v??''),num:String,mapLiveException:map,
+  filteredExceptions:()=>{throw Error('must not use another view filters');},caseUiKey:r=>r.dbId||r.id,caseLabel:r=>r.code||r.id,can:()=>access,canAccessCompany:c=>access&&c===company,deny:()=>{},h:v=>String(v??''),num:String,mapLiveException:map,
   captureCaseOpenDraft:()=>{captures++;},openModal:(title,body,footer)=>{modal={title,body,footer};},closeModal:()=>{},closeDrawer:()=>{closes++;},render:()=>{renders++;},openException:async id=>opened.push(id),toast:()=>{},
   AccountReviewHolds:{set:()=>{},match:r=>r.held},Sb:{signedIn:()=>true,authUser:()=>({id:actor}),currentExceptions:async scope=>{reads.push(scope);return raw;},reviewHoldScopes:async()=>[],caseEvidenceFlags:async ids=>{reads.push(ids);return {attached:true};},requestClarification:()=>{throw Error('must never submit');},post:()=>{throw Error('must never write');}}};
  vm.createContext(ctx);vm.runInContext(helpers,ctx);

@@ -9,7 +9,7 @@ function fixture(){
  const nodes={'#drawer':drawer,'#drawerOverlay':{},'#drawerClose':{},'#caseOpenRetry':{}};
  const pending=[],calls=[];let actor='actor-A';
  const read=name=>{calls.push(name);return new Promise((resolve,reject)=>pending.push({name,resolve,reject}));};
- const ctx={state:{dataset:'production',role:'admin',route:'mc8-sheets'},DB:{exceptions:[e]},caseUiKey:r=>r.dbId||r.id,
+ const ctx={state:{dataset:'production',role:'admin',route:'mc8-sheets'},DB:{exceptions:[e]},caseUiKey:r=>r.dbId||r.id,caseLabel:r=>r.code||r.id,
   Sb:{authUser:()=>({id:actor}),exceptionDetail:()=>read('detail'),reviewHoldForCase:()=>read('hold'),caseNotes:()=>read('notes'),clarificationInstructions:()=>read('instructions'),clarificationHistory:()=>read('history'),caseEvidence:()=>read('evidence')},
   $:id=>fields[id]?(form?fields[id]:null):nodes[id],h:s=>String(s??'').replaceAll('<','&lt;'),clearTimeout(){},AuditUi:{open(){}},closeDrawer(){},canAccessCompany:()=>true,toast(){},mapLiveException:x=>x,refreshQuickCloseEvidence:async()=>{}};
  vm.createContext(ctx);vm.runInContext(prefix+'if(caseOpenTicket===ticket)caseOpenTicket=null;return e;})();return ticket.promise;}\nthis.drafts=caseOpenDrafts;this.cancel=()=>caseOpenTicket=null;',ctx);
