@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 201359)
-Total output lines: 9565
-
 /* =============================================================
    Audit AI Reconciliation - Application shell
    - hash router แยกหน้าจอจริงเมื่อกดเมนู (#/dashboard, #/exceptions ...)
@@ -2306,7 +2303,4025 @@ return `<tr class="checklist-row" data-check-date="${h(row.business_date)}" data
           const rowStatus = row.status === "completed" && Number(lifecycle?.open_count || 0) > 0 ? "completed_review" : row.status;
           const resultStatus = dailyResultStatus(checklistRow||{},row);
           const status = resultStatus.primary ? {label:resultStatus.label,tone:'green'} : resultStatus.manual ? {label:resultStatus.manual,tone:'blue'} : LIVE_STATUS[rowStatus] || { label: rowStatus || "ไม่ทราบ", tone: "grey" };
-return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${checklistRow?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(checklistRow.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="succe…101359 tokens truncated…actor:()=>Sb.authUser()?.id,role:()=>state.role,today:PROD_TODAY,
+return `<tr class="action-row" data-summary-company="${h(row.company)}" data-summary-date="${h(row.business_date)}" role="link" tabindex="0"><td><b>${h(row.business_date)}</b></td><td><b>${h(row.company)}</b><small class="sub">${h(row.business_system || "ไม่ระบุระบบ")}</small></td><td><span class="badge ${status.tone}">${h(status.label)}</span><small class="sub">${h(resultStatus.automatic)}</small>${resultStatus.review?`<small class="sub danger">${h(resultStatus.review)}</small>`:''}${resultStatus.error?`<small class="sub danger">${h(resultStatus.error)}</small>`:''}${resultStatus.primary&&resultStatus.manual?`<small class="sub">${h(resultStatus.manual)}</small>`:''}</td><td class="right tnum">รับเข้า ${num(row.file_count)}${resultStatus.primary?`<small class="sub">ผลหลัก ${checklistRow?.primaryFileCount==null?'รอข้อมูลจำนวนไฟล์':num(checklistRow.primaryFileCount)+' ไฟล์'}</small>`:''}</td><td class="${missingText(row) === "ครบ" ? "muted" : "danger"}">${resultStatus.primary?'<b class="success">ชุดผลหลักครบ · ยืนยันแล้ว</b><small class="sub">รอบอัตโนมัติ: '+h(missingText(row))+'</small>':h(missingText(row))}</td><td>${row.match_rate == null ? "-" : `${Number(row.match_rate).toFixed(2)}% · ${num(currentExceptionCount(row))} เคสรวมชุดปัจจุบัน`}${lifecycle?.open_count!=null&&lifecycle?.resolved_count!=null?`<small class="sub">ค้าง ${num(lifecycle.open_count)} · ปิดแล้ว ${num(lifecycle.resolved_count)}</small>`:'<small class="sub">สถานะเคสรายรายการยังไม่พร้อม</small>'}</td></tr>`;
+        }).join("") || `<tr><td colspan="6" class="empty">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`}</tbody>
+      </table></div>
+    </section>`;
+
+  root.querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => go(button.dataset.goto)));
+  $("#expandDateRange")?.addEventListener("click", () => {
+    state.filters.from = shiftDays(state.filters.to || DEFAULT_WORK_DATE, -90);
+    state.filters.preset = "custom";
+    liveOverviewState.key = "";
+    render();
+  });
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-summary-company]").forEach((item) => {
+    const open = () => {
+      state.dailySummary.date = item.dataset.summaryDate;
+      state.dailySummary.company = item.dataset.summaryCompany;
+      go("daily-summary");
+    };
+    item.addEventListener("click", open);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+  });
+  root.querySelectorAll("[data-check-company]").forEach((row) => row.addEventListener("click", () => {
+    state.dailySummary.date = row.dataset.checkDate;
+    state.dailySummary.company = row.dataset.checkCompany;
+    go("daily-summary");
+  }));
+  $("#openHistory")?.addEventListener("click", () => {
+    state.filters = { ...state.filters, date: "2026-08-23", from: "2026-08-01", to: "2026-08-23", preset: "custom" };
+    liveOverviewState.key = "";
+    go("cloud");
+  });
+  $("#liveRefresh")?.addEventListener("click", () => loadLiveOverview(true));
+  root.querySelectorAll('[data-manual-followup]').forEach(button=>button.addEventListener('click',async()=>{
+    const q=manualFollowups.find(x=>x.id===button.dataset.manualFollowup),actor=Sb.authUser()?.id;
+    const allowed=()=>actor===Sb.authUser()?.id&&['lead','admin'].includes(state.role)&&q&&canAccessCompany(q.company);
+    if(!allowed())return deny('ทบทวนผลรันมือ');
+    button.disabled=true;
+    try{
+      const [items,primary]=await Promise.all([Sb.listAccountRechecks(q.company,q.business_date),Sb.readManualPrimary(q.company,q.business_date)]);
+      if(!allowed())throw Error('บัญชีผู้ใช้หรือสิทธิ์เปลี่ยน กรุณาเปิดใหม่');
+      if(primary?.stale)throw Error(primary.message);
+      const current=manualFollowupItems([{company:q.company,business_date:q.business_date,rechecks:items,primaryResult:primary}]).find(x=>x.id===q.id);
+      if(!current)throw Error('รายงานนี้มีสถานะหรือรอบใหม่แล้ว กรุณารีเฟรช Dashboard');
+      openAccountRecheck({company:q.company,date:q.business_date,accounts:[current.account],initialJobId:current.id});
+    }catch(error){toast(error.message,'warn');}finally{if(button.isConnected)button.disabled=false;}
+  }));
+  $("#liveRetry")?.addEventListener("click", () => loadLiveOverview(true));
+}
+
+VIEWS.dashboard = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveDashboard(root);
+    return;
+  }
+  const ex = scopedExceptions();
+  const run = DB.currentRun;
+  const totalTx = run ? run.stmCount + (run.noStmCount || 0) : DB.hourly.reduce((a, c) => a + c.total, 0);
+  const totalEx = DB.hourly.reduce((a, c) => a + c.exception, 0);
+  const matched = run ? run.matched : totalTx - totalEx;
+  const matchBase = run ? run.stmCount || 1 : totalTx || 1;
+  const filesOk = DB.files.filter((f) => f.status === "received").length;
+  const filesBad = DB.files.length - filesOk;
+  const damageSum = DB.damages.reduce((a, c) => a + c.amount, 0);
+  const overSla = ex.filter((e) => e.overSla).length;
+
+  const tiles = [
+    {
+      label: "Transactions วันนี้",
+      value: num(totalTx),
+      sub: run ? `ฝั่งธนาคาร ${num(run.stmCount)} · ฝั่ง BO ${num(run.boCount)}` : "นำเข้าแล้ว 98.7% ของไฟล์ที่รับ",
+      spark: DB.hourly.map((x) => x.total),
+      color: Charts.PALETTE.s1,
+    },
+    {
+      label: "Matched (3-point)",
+      value: num(matched),
+      sub: `อัตราจับคู่ ${((matched / matchBase) * 100).toFixed(2)}%${run && run.noStmCount ? ` · รอไฟล์ธนาคารอีก ${num(run.noStmCount)}` : ""}`,
+      spark: DB.hourly.map((x) => x.matched),
+      color: Charts.PALETTE.s3,
+    },
+    { label: "Diff / Missing", value: num(totalEx), sub: `เปิดค้าง ${num(ex.filter((e) => !["closed", "approved"].includes(e.status)).length)} เคสในคิว`, spark: DB.hourly.map((x) => x.exception), color: Charts.PALETTE.s2, tone: "warn" },
+    { label: "เกิน SLA", value: num(overSla), sub: "ต้องเร่งติดตามชี้แจงวันนี้", spark: DB.hourly.map((x) => Math.round(x.exception * 0.3)), color: "#d03b3b", tone: overSla ? "bad" : "" },
+    { label: "ไฟล์ที่ตรวจแล้ว", value: `${filesOk}/${DB.files.length}`, sub: filesBad ? `ยังมีปัญหา ${filesBad} ไฟล์` : "ครบทุกไฟล์", color: Charts.PALETTE.s4, tone: filesBad ? "warn" : "" },
+  ];
+
+  const byType = DB.exceptionTypes
+    .map((t) => ({ label: t.name, value: ex.filter((e) => e.type === t.code).length, code: t.code }))
+    .filter((x) => x.value)
+    .sort((a, b) => b.value - a.value);
+  const bySeverity = DB.severities.map((s) => ({ label: s.name, value: ex.filter((e) => e.severity === s.code).length, color: severityColor(s.code), code: s.code }));
+  const byShift = DB.shifts.map((s) => ({ label: `${s.name}\n${s.range}`, value: ex.filter((e) => e.shift === s.code).length, hint: "คลิกกราฟเพื่อดูตัวเลขเทียบกัน" }));
+  const byAccount = Object.entries(
+    ex.reduce((acc, e) => {
+      acc[e.account] = (acc[e.account] || 0) + 1;
+      return acc;
+    }, {}),
+  )
+    .map(([k, v]) => ({ label: k, value: v }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  root.innerHTML = `
+    <section class="status-strip">
+      ${tiles
+        .map(
+          (t) => `<article class="${t.tone || ""}">
+        <span>${h(t.label)}</span>
+        <strong>${t.value}</strong>
+        <div class="tile-foot"><small>${h(t.sub)}</small>${t.spark ? Charts.spark(t.spark, t.color) : ""}</div>
+      </article>`,
+        )
+        .join("")}
+    </section>
+
+    <section class="pipeline" aria-label="ขั้นตอนการทำงาน">
+      ${["รับไฟล์จาก Email", "ตรวจความครบถ้วน", "Normalize STM / BO", "3-Point Match", "ส่งชี้แจง / อนุมัติ", "สรุปความเสียหาย"]
+        .map((s, i) => `<div class="${i < 4 ? "done" : i === 4 ? "active" : ""}"><strong>${i + 1}</strong><span>${h(s)}</span></div>`)
+        .join("")}
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Volume vs Exception</p><h2>รายการต่อชั่วโมง</h2></div>
+          <span class="health ok">อัปเดตล่าสุด 1 ชม.ที่แล้ว</span>
+        </div>
+        <p class="small-mult-title" style="--dot:${Charts.PALETTE.s1}">ปริมาณรายการทั้งหมด</p>
+        <div class="chart" id="chHourly"></div>
+        <p class="small-mult-title" style="--dot:${Charts.PALETTE.s2}">รายการที่ไม่ match (คนละสเกล)</p>
+        <div class="chart" id="chHourlyEx"></div>
+        <p class="chart-note">แยกเป็นสองกราฟที่ใช้แกน y ของตัวเอง เพราะสองค่านี้ต่างสเกลกันมาก การใส่แกนคู่ในกราฟเดียวจะอ่านผิดได้ · ช่วง 22:00-06:00 มีสัดส่วน exception สูงกว่าช่วงอื่น</p>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Severity</p><h2>ระดับความรุนแรง</h2></div></div>
+        <div class="chart" id="chSeverity"></div>
+        <div class="sev-list">
+          ${bySeverity
+            .map(
+              (s) => `<button class="sev-row" data-sev="${s.code}">
+              <i style="background:${s.color}"></i>
+              <span>${h(s.label)}</span>
+              <small>${h(sevMeta(s.code).desc)}</small>
+              <b>${num(s.value)}</b></button>`,
+            )
+            .join("")}
+        </div>
+        <p class="chart-note">คลิกที่ระดับใดระดับหนึ่งเพื่อกรอง Exception Queue ตามระดับนั้นทันที · ระดับความรุนแรงกำหนดจากประเภท exception และยอด diff โดยระบบจะยกระดับอัตโนมัติเมื่อยอดเกิน 10,000 บาท</p>
+        <div class="sla-mini">
+          <div><span>SLA Critical</span><b>4 ชม.</b></div>
+          <div><span>High</span><b>8 ชม.</b></div>
+          <div><span>Medium</span><b>48 ชม.</b></div>
+          <div><span>Low</span><b>72 ชม.</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid-3">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Exception Type</p><h2>แยกตามประเภท</h2></div></div>
+        <div class="chart" id="chType"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Shift</p><h2>เทียบตามกะ</h2></div></div>
+        <div class="chart" id="chShift"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Account Risk</p><h2>บัญชีที่เกิด diff บ่อย</h2></div></div>
+        <div class="chart" id="chAccount"></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">SLA Watch</p><h2>เคสที่เลยกำหนดชี้แจง</h2></div>
+          <button class="ghost-button sm" data-goto="exceptions" data-sla="1">ดูทั้งหมด</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>เคส / ผู้เกี่ยวข้อง</th><th>ประเภท</th><th>ระดับ</th><th>อายุเคส</th></tr></thead>
+            <tbody>
+              ${ex
+                .filter((e) => e.overSla)
+                .sort((a, b) => b.ageHours / b.slaHours - a.ageHours / a.slaHours)
+                .slice(0, 6)
+                .map(
+                  (e) => `<tr class="clickable" data-ex="${e.id}">
+                  <td><b>${h(caseLabel(e))}</b><small class="sub">${h(e.employee)}</small></td>
+                  <td>${h(e.typeName)}</td>
+                  <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
+                  <td class="danger">${e.ageHours} ชม. / SLA ${e.slaHours} ชม.</td></tr>`,
+                )
+                .join("") || `<tr><td colspan="4" class="empty">ไม่มีเคสเลย SLA ในตัวกรองนี้</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Damage</p><h2>ความเสียหายรอบปัจจุบัน</h2></div>
+          <button class="ghost-button sm" data-goto="damage">ทะเบียนความเสียหาย</button>
+        </div>
+        <div class="big-stat"><span>ยอดที่อาจเป็นความเสียหาย</span><strong>${money0(damageSum)} บาท</strong><small>${DB.damages.length} เคส · รอบ 1 (1-15 ส.ค. 2026)</small></div>
+        <div class="chart" id="chDamageCause"></div>
+      </div>
+    </section>`;
+
+  Charts.draw("#chHourly", "line", {
+    label: "ปริมาณรายการต่อชั่วโมง",
+    xLabels: DB.hourly.map((x) => x.label),
+    short: true,
+    hideXLabels: true,
+    series: [{ name: "รายการทั้งหมด", color: Charts.PALETTE.s1, values: DB.hourly.map((x) => x.total), area: true }],
+    height: 150,
+  });
+  Charts.draw("#chHourlyEx", "line", {
+    label: "รายการที่ไม่ match ต่อชั่วโมง",
+    xLabels: DB.hourly.map((x) => x.label),
+    series: [{ name: "ไม่ match", color: Charts.PALETTE.s2, values: DB.hourly.map((x) => x.exception), area: true }],
+    height: 150,
+  });
+  Charts.draw("#chSeverity", "stack", { label: "สัดส่วนความรุนแรง", items: bySeverity });
+  Charts.draw("#chType", "hbars", { label: "exception แยกตามประเภท", items: byType.slice(0, 7), color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
+  Charts.draw("#chShift", "bars", { label: "exception แยกตามกะ", items: byShift, color: Charts.PALETTE.s4, metric: "จำนวนเคส", height: 232 });
+  Charts.draw("#chAccount", "hbars", { label: "บัญชีที่เกิด diff บ่อย", items: byAccount, color: Charts.PALETTE.s2, metric: "จำนวนเคส" });
+
+  const causeAgg = Object.entries(
+    DB.damages.reduce((a, d) => {
+      a[d.cause] = (a[d.cause] || 0) + d.amount;
+      return a;
+    }, {}),
+  )
+    .map(([k, v]) => ({ label: k, value: v }))
+    .filter((it) => it.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  Charts.draw("#chDamageCause", "hbars", { label: "สาเหตุความเสียหาย", items: causeAgg, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
+
+  root.querySelectorAll(".sev-row").forEach((b) =>
+    b.addEventListener("click", () => go("exceptions", { exFilter: { severity: b.dataset.sev, status: "ALL" } })),
+  );
+  root.querySelectorAll("[data-goto]").forEach((b) =>
+    b.addEventListener("click", () => go(b.dataset.goto, b.dataset.sla ? { exFilter: { sla: true } } : {})),
+  );
+  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", (event) => {
+    if (event.target.closest("details,button,a,input")) return;
+    openException(tr.dataset.ex);
+  }));
+};
+
+/* =============================================================
+   VIEW: Daily company summary - 1 บริษัท / 1 วัน
+   ============================================================= */
+const dailyCompanyState = { date: "", company: "", batches: null, quality: null, operations: null, checklist: null, caseCounts: null, boFirst: null, exceptions: null, informationalExceptions: [], matchEvidence: [], matchedStaleExceptions: 0, damages: null, loading: false, detailsLoading: false, coreError: null, detailsError: null, requestId: 0, error: null, updatedAt: null };
+dailyCompanyState.confirmedRechecks=[];
+dailyCompanyState.recheckReportError='';
+
+async function loadDailyCompanySummary(force = false) {
+  const date = state.dailySummary.date = visibleDate(state.dailySummary.date || PROD_TODAY);
+  const company = state.dailySummary.company || companyMaster()[0]?.code || "3XB";
+  const sameSelection = dailyCompanyState.date === date && dailyCompanyState.company === company;
+  if ((dailyCompanyState.loading && sameSelection) || (!force && sameSelection && dailyCompanyState.batches)) return;
+  const requestId = ++dailyCompanyState.requestId;
+  dailyCompanyState.confirmedRechecks=[];dailyCompanyState.recheckReportError='';
+  if (!sameSelection) {
+    dailyCompanyState.batches = null;
+    dailyCompanyState.quality = null;
+    dailyCompanyState.operations = null;
+    dailyCompanyState.checklist = null;
+    dailyCompanyState.caseCounts = null;
+    dailyCompanyState.boFirst = null;
+    dailyCompanyState.exceptions = null;
+    dailyCompanyState.informationalExceptions = [];
+    dailyCompanyState.matchEvidence = [];
+    dailyCompanyState.matchedStaleExceptions = 0;
+    dailyCompanyState.damages = null;
+  }
+  dailyCompanyState.loading = true;
+  dailyCompanyState.detailsLoading = false;
+  dailyCompanyState.coreError = null;
+  dailyCompanyState.detailsError = null;
+  dailyCompanyState.error = null;
+  dailyCompanyState.date = date;
+  dailyCompanyState.company = company;
+  if (state.route === "daily-summary") render();
+  try {
+    const core = await Promise.allSettled([
+      Sb.batches({ from: date, to: date }),
+      // ดึงทุกบริษัทของวันที่เดียวกัน เพื่อให้ Audit Sheet ภาพรวมและรายงาน
+      // บริษัทที่เลือกอ้างอิง snapshot เดียวกัน ไม่ขึ้น 0 บริษัททั้งที่มีผลจริง
+      Sb.quality({ from: date, to: date, limit: 500 }),
+      Sb.operations({ from: date, to: date, limit: 500 }),
+      Sb.dailyChecklist({ from: date, to: date, limit: 100 }),
+      Sb.currentCaseCounts({ from: date, to: date, company: "ALL" }),
+      Sb.boFirstCoverage({ from: date, to: date, company, limit: 20 }),
+    ]);
+    if (requestId !== dailyCompanyState.requestId) return;
+    const fulfilled = core.filter((item) => item.status === "fulfilled").length;
+    if (!fulfilled) throw new Error("Supabase ยังไม่ตอบกลับข้อมูลของวันที่และบริษัทที่เลือก");
+    const valueAt = (index) => core[index].status === "fulfilled" ? (core[index].value || []) : [];
+    const selectedQuality = valueAt(1).filter((row) => row.business_date === date);
+    /* หน้าเปิดครั้งแรกยึดวันที่วันนี้ แต่ผลรันอาจเพิ่งเสร็จถึงวันก่อนหน้า
+       ถ้าวันนี้ยังไม่มีผล ให้พาไปวันที่ล่าสุดที่บริษัทนี้มีผลจริงทันที */
+    if (date === PROD_TODAY && !selectedQuality.some((row) => row.company === company && row.run_id)) {
+      const latestRows = await Sb.quality({ from: VISIBLE_DATE_FROM, to: VISIBLE_DATE_TO, company, limit: 100 });
+      if (requestId !== dailyCompanyState.requestId) return;
+      const latestDate = (latestRows || [])
+        .filter((row) => row.run_id && row.business_date && !row.is_archived)
+        .map((row) => row.business_date)
+        .sort()
+        .pop();
+      if (latestDate && latestDate !== date) {
+        state.dailySummary.date = latestDate;
+        dailyCompanyState.loading = false;
+        return loadDailyCompanySummary(true);
+      }
+    }
+    dailyCompanyState.batches = valueAt(0);
+    dailyCompanyState.quality = selectedQuality;
+    dailyCompanyState.operations = valueAt(2).filter((row) => row.business_date === date);
+    dailyCompanyState.checklist = valueAt(3);
+    dailyCompanyState.caseCounts = valueAt(4).filter((row) => row.business_date === date);
+    dailyCompanyState.boFirst = valueAt(5).filter((row) => row.business_date === date);
+    const failedCore = ["รายการไฟล์", "ผลกระทบยอด", "สถานะงาน", "Checklist", "ยอดเคสชุดปัจจุบัน", "บัญชีที่พบจาก BO"].filter((_, index) => core[index].status === "rejected");
+    dailyCompanyState.coreError = failedCore.length ? `${failedCore.join(" / ")} ตอบกลับช้า จึงแสดงส่วนที่โหลดสำเร็จก่อน` : null;
+    dailyCompanyState.exceptions = [];
+    dailyCompanyState.damages = [];
+    dailyCompanyState.updatedAt = new Date();
+    dailyCompanyState.loading = false;
+    dailyCompanyState.detailsLoading = true;
+    if (state.route === "daily-summary") render();
+
+    const details = await Promise.allSettled([
+      Sb.currentExceptionsSummary({ from: date, to: date, company, limit: 250 }),
+      Sb.damages({ from: date, to: date, company, limit: 500 }),
+      Sb.matchedEvidence(company,date),
+      company==='ALL'||!['monitor','audit_assistant','lead','admin'].includes(state.role)?Promise.resolve([]):Sb.listAccountRechecks(company,date),
+    ]);
+    if (requestId !== dailyCompanyState.requestId) return;
+    const rawExceptions = details[0].status === "fulfilled" ? (details[0].value || []) : [];
+    const matchEvidence = details[2].status === "fulfilled" && Array.isArray(details[2].value?.summary?.match_evidence) ? details[2].value.summary.match_evidence : [];
+    dailyCompanyState.informationalExceptions = informationalAuditRows(rawExceptions);
+    dailyCompanyState.matchEvidence = matchEvidence;
+    dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rawExceptions,matchEvidence);
+    dailyCompanyState.exceptions = actionableAuditRows(rawExceptions,matchEvidence).map(mapLiveException);
+    dailyCompanyState.damages = details[1].status === "fulfilled" ? (details[1].value || []) : [];
+    dailyCompanyState.confirmedRechecks=details[3].status==='fulfilled'?(details[3].value||[]).filter(q=>q.status==='confirmed'):[];
+    dailyCompanyState.recheckReportError=details[3].status==='rejected'?'ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้':'';
+    dailyCompanyState.detailsError = details.slice(0,3).some((item) => item.status === "rejected") ? "รายละเอียด Exception หรือความเสียหายบางส่วนตอบกลับช้า" : null;
+    dailyCompanyState.detailsLoading = false;
+    dailyCompanyState.updatedAt = new Date();
+  } catch (error) {
+    if (requestId === dailyCompanyState.requestId) dailyCompanyState.error = error.message || "โหลดสรุปรายวันไม่สำเร็จ";
+  }
+  if (requestId === dailyCompanyState.requestId) {
+    dailyCompanyState.loading = false;
+    dailyCompanyState.detailsLoading = false;
+    if (state.route === "daily-summary") render();
+  }
+}
+
+function dailyCompanyData(company) {
+  const batches = dailyCompanyState.batches || [];
+  const files = batches.flatMap((batch) => (batch.source_files || []).map((file) => ({
+    ...file,
+    batch,
+    resolvedCompany: intakeCompanyOf(file, batch) || file.company || batch.company || "ไม่ระบุ",
+    receivedAt: file.received_at || batch.received_at || "",
+  }))).filter((file) => file.resolvedCompany === company);
+  const batchIds = new Set(files.map((file) => file.batch.id));
+  batches.filter((batch) => String(batch.company || "").toUpperCase() === company).forEach((batch) => batchIds.add(batch.id));
+  const ownBatches = batches.filter((batch) => batchIds.has(batch.id));
+  const quality = (dailyCompanyState.quality || []).filter((row) => row.company === company);
+  const operations = (dailyCompanyState.operations || []).filter((row) => row.company === company);
+  const exceptions = (dailyCompanyState.exceptions || []).filter((row) => row.company === company);
+  const damages = (dailyCompanyState.damages || []).filter((row) => row.company === company);
+  const checklist = (dailyCompanyState.checklist || []).find((row) => row.company === company) || null;
+  const caseCountsAvailable = Array.isArray(dailyCompanyState.caseCounts);
+  const currentCounts = (dailyCompanyState.caseCounts || []).find((row) => row.company === company)
+    || (!caseCountsAvailable && checklist?.open_count != null && checklist?.resolved_count != null
+      ? {total_count:Number(checklist.open_count || 0)+Number(checklist.resolved_count || 0),open_count:checklist.open_count,resolved_count:checklist.resolved_count}
+      : null);
+  const boFirst = (dailyCompanyState.boFirst || []).find((row) => row.company === company) || null;
+  const reportedExceptionTotal = quality.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+  const informationalCount = (dailyCompanyState.informationalExceptions || []).filter((row) => normalizeLiveCompanyCode(row.company) === company).length;
+  const computedCurrentTotal = Math.max(exceptions.length, reportedExceptionTotal - informationalCount - Number(dailyCompanyState.matchedStaleExceptions || 0));
+  const fixed = exceptions.filter((row) => ["closed", "approved"].includes(row.status));
+  const confirmedDamage = exceptions.filter((row) => row.status === "damage");
+  /* All screens use the same current-primary resolver as the case queue.
+     Checklist lifecycle is accumulated history and must never override it. */
+  const hasCurrentCounts = currentCounts?.total_count != null;
+  const resolvedTotal = hasCurrentCounts ? Number(currentCounts.resolved_count || 0) : fixed.length;
+  const stillOpen = hasCurrentCounts ? Number(currentCounts.open_count || 0) : Math.max(0, computedCurrentTotal - resolvedTotal);
+  const exceptionTotal = hasCurrentCounts ? Number(currentCounts.total_count || 0) : computedCurrentTotal;
+  const reconciliationFiles = files.filter((file) => file.kind !== "doc_clarify");
+  const evidenceFiles = files.filter((file) => file.kind === "doc_clarify");
+  return { company, files, reconciliationFiles, evidenceFiles, batches: ownBatches, quality, operations, checklist, currentCounts, boFirst, exceptions, damages, exceptionTotal, fixed, resolvedTotal, confirmedDamage, stillOpen };
+}
+
+function dailyCompanyOptions() {
+  const found = new Set(companyMaster().map((company) => normalizeLiveCompanyCode(company.code)).filter(Boolean));
+  const addCompany = (value) => {
+    const company = normalizeLiveCompanyCode(value);
+    if (company) found.add(company);
+  };
+  (dailyCompanyState.quality || []).forEach((row) => addCompany(row.company));
+  (dailyCompanyState.operations || []).forEach((row) => addCompany(row.company));
+  (dailyCompanyState.checklist || []).forEach((row) => addCompany(row.company));
+  (dailyCompanyState.batches || []).forEach((batch) => {
+    addCompany(batch.company);
+    (batch.source_files || []).forEach((file) => {
+      addCompany(intakeCompanyOf(file, batch));
+    });
+  });
+  return [...found].sort((a, b) => String(a).localeCompare(String(b), "th"));
+}
+
+function dailyMissingKinds(rows) {
+  const kinds = (rows || []).flatMap((row) => Array.isArray(row.missing_groups) ? row.missing_groups.flat(3) : []);
+  return [...new Set(kinds)].map((kind) => LIVE_KIND_LABEL[kind] || kind);
+}
+
+function manualFollowupItems(rows) {
+  const output=[],seen=new Set();
+  for(const row of rows){
+    const latest=new Map(),primary=row.primaryResult;
+    const jobs=[...(row.rechecks||[])].filter(q=>q.mode==='account'&&q.company===row.company&&q.business_date===row.business_date).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
+    for(const q of jobs){const scope=JSON.stringify([q.account,q.direction]);if(latest.has(scope))continue;latest.set(scope,q);
+      if(!['ready','confirmed'].includes(q.status)||q.id===primary?.recheck_id||seen.has(q.id))continue;
+      if(primary&&Date.parse(q.created_at)<=Date.parse(primary.accepted_at))continue;
+      seen.add(q.id);output.push({...q});
+    }
+  }
+  return output.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
+}
+
+function dailyResultStatus(row,run={}) {
+  const unavailable=run.primaryUnavailable||row.primaryUnavailable;
+  const primary=unavailable?null:run.primaryResult||row.primaryResult;
+  const manual=row.latestRecheck;
+  const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
+  return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
+    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
+    review:primary?.review_needed?(primary.review_reason||'มีไฟล์เพิ่มหลังยืนยัน · กรุณาทบทวน'):null,
+    automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
+    error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};
+}
+
+function dailyAuditSheetRows(date) {
+  const checklist = (dailyCompanyState.checklist || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const currentCounts = (dailyCompanyState.caseCounts || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const caseCountsAvailable = Array.isArray(dailyCompanyState.caseCounts);
+  const quality = (dailyCompanyState.quality || []).filter((row) => row.business_date === date && isLiveCompanyRow(row));
+  const checklistByCompany = new Map(checklist.map((row) => [row.company, row]));
+  const currentCountsByCompany = new Map(currentCounts.map((row) => [row.company, row]));
+  const qualityByCompany = new Map(quality.map((row) => [row.company, row]));
+  const companies = [...new Set([...checklistByCompany.keys(), ...qualityByCompany.keys()])];
+  return companies.map((company) => {
+    const row = checklistByCompany.get(company) || { company };
+    const run = qualityByCompany.get(company) || {};
+    const resultStatus = dailyResultStatus(row,run);
+    const primary=resultStatus.primary;
+    const legacyCurrentCounts = (!primary || !!primary.case_set) && row.open_count != null && row.resolved_count != null;
+    const lifecycle = currentCountsByCompany.get(company) || (!caseCountsAvailable && legacyCurrentCounts
+      ? {total_count:Number(row.open_count || 0)+Number(row.resolved_count || 0),open_count:row.open_count,resolved_count:row.resolved_count}
+      : null);
+    const generatedExceptionCount = primary ? (primary.report?.exceptions?.length || 0) + (primary.report?.summary?.waiting_bo?.length || 0) : Number(run.exception_count ?? row.exception_count ?? 0);
+    const hasCurrentCounts = (!primary || !!primary.case_set) && lifecycle?.total_count != null;
+    const resolvedCount = hasCurrentCounts ? Number(lifecycle.resolved_count || 0) : 0;
+    const openCount = hasCurrentCounts ? Number(lifecycle.open_count || 0) : Math.max(0, generatedExceptionCount - resolvedCount);
+    const exceptionCount = hasCurrentCounts ? Number(lifecycle.total_count || 0) : generatedExceptionCount;
+    const runStatus = row.job_status || run.status || "waiting_files";
+    return {
+      ...row,
+      resultStatus,
+      status: openCount > 0 && runStatus === "completed" ? "completed_review" : (row.checklist_status || runStatus),
+      fileCount: primary ? row.primaryFileCount??null : Number(run.file_count || row.file_count || 0),
+      parsedCount: primary ? row.primaryFileCount??null : Math.max(
+        Number(run.parsed_count || 0),
+        Number(row.parsed_count || 0),
+        run.run_id && runStatus === "completed" && !Number(run.error_count || row.error_count || 0)
+          ? Number(run.file_count || row.file_count || 0)
+          : 0,
+      ),
+      stmCount: Number(run.stm_count ?? row.stm_count ?? 0),
+      boCount: Number(run.bo_count ?? row.bo_count ?? 0),
+      matched: Number(run.matched ?? row.matched_count ?? 0),
+      exceptionCount,
+      generatedExceptionCount,
+      currentCountsReady: hasCurrentCounts && [lifecycle.open_count,lifecycle.resolved_count,lifecycle.total_count].every(v=>Number.isFinite(Number(v))&&Number(v)>=0),
+      caseSetPending: !!primary && !primary.case_set,
+      historicalOpenCount: primary && !primary.case_set ? row.open_count ?? null : null,
+      openCount,
+      resolvedCount,
+      missing: Array.isArray(row.missing_items) ? row.missing_items : [],
+    };
+  }).sort((a, b) => String(a.company).localeCompare(String(b.company), "th"));
+}
+
+function exportDailyCompanySummary(data) {
+  if (!can("export")) return deny("export ข้อมูล");
+  const date = state.dailySummary.date;
+  const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
+  const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error && !statementNeedsBoReview(file)).length;
+  const fileBoReview = data.reconciliationFiles.filter(statementNeedsBoReview).length;
+  const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+  const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+  const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+  const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
+  const sheets = [
+    {
+      name: "สรุป",
+      title: `สรุป Audit ${data.company} วันที่ ${date}`,
+      headers: ["หัวข้อ", "ผลรวม", "คำอธิบาย"],
+      widths: [34, 18, 55],
+      rows: [
+        ["อีเมลที่ได้รับ", data.batches.length, "นับชุดอีเมลที่มีไฟล์ของบริษัทนี้"],
+        ["ไฟล์ที่ได้รับ", data.files.length, "ไฟล์จริงใน Supabase Storage"],
+        ["ไฟล์สำหรับกระทบยอด", data.reconciliationFiles.length, "ไม่นับไฟล์ชี้แจงหรือหลักฐานประกอบ"],
+        ["ไฟล์ที่ระบบอ่านสำเร็จ", parsed, "ไฟล์สำหรับกระทบยอดที่พร้อมใช้งาน"],
+        ["ไฟล์ไม่พบรายการวันตรวจ รอเทียบ BO", fileBoReview, "ได้รับไฟล์แล้ว ยังไม่ยืนยันว่า BO ไม่มีรายการหรือไฟล์ครอบคลุมวันตรวจ"],
+        ["ไฟล์ชี้แจง/หลักฐาน", data.evidenceFiles.length, "เก็บไว้เปิดตรวจและใช้ประกอบการปิดเคส ไม่ต้องอ่านเป็นรายการ"],
+        ["ไฟล์อ่านไม่สำเร็จ", fileErrors, "ต้องเปิดต้นฉบับหรือตรวจรูปแบบไฟล์"],
+        ["รายการฝั่ง STM", stm, "รายการฝาก-ถอน/PM ที่ระบบอ่านได้"],
+        ["รายการฝั่ง BO", bo, "รายการระบบหลังบ้านที่ระบบอ่านได้"],
+        ["จับคู่สำเร็จ", matched, "ผ่านเงื่อนไข account + time + amount"],
+        ["Exception ทั้งหมด", data.exceptionTotal, "รายการที่ต้องตรวจต่อ"],
+        ["แก้ไขและปิดแล้ว", data.resolvedTotal, "สถานะ approved หรือ closed"],
+        ["ยังแก้ไม่สำเร็จ", data.stillOpen, "รวมกำลังติดตามและรายการที่ยังปิดไม่ได้"],
+        ["ยืนยันเป็นความเสียหาย", data.confirmedDamage.length, "ส่วนหนึ่งของรายการที่ยังแก้ไม่สำเร็จ"],
+        ["มูลค่าความเสียหายที่บันทึก", damageTotal, "บาท"],
+      ],
+    },
+    {
+      name: "ไฟล์ที่ได้รับ",
+      title: `ไฟล์ที่ได้รับ ${data.company} วันที่ ${date}`,
+      headers: ["รับเมื่อ", "หัวข้อเมล", "ผู้ส่ง", "ชื่อไฟล์", "ประเภท", "ขนาด (KB)", "แถว", "สถานะอ่าน", "ข้อผิดพลาด", "Storage path"],
+      widths: [22, 42, 28, 38, 24, 14, 12, 18, 42, 50],
+      rows: data.files.map((file) => [file.receivedAt, file.batch.subject || "", file.batch.sender || "", file.file_name || "", LIVE_KIND_LABEL[file.kind] || file.kind || "", Math.round(Number(file.size_bytes || 0) / 1024), Number(file.row_count || 0), file.kind === "doc_clarify" ? "หลักฐานพร้อมตรวจ" : statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่สำเร็จ" : file.parsed ? parsedFileLabel(file) : "รออ่าน", file.parse_error || "", file.storage_path || ""]),
+    },
+    {
+      name: "ผลกระทบยอด",
+      title: `ผลกระทบยอด ${data.company} วันที่ ${date}`,
+      headers: ["ระบบ", "สถานะ", "STM", "BO", "จับคู่สำเร็จ", "อัตราจับคู่ (%)", "Exception", "ไฟล์", "ไฟล์อ่านผิดพลาด", "ไฟล์ที่ยังขาด", "เวลารัน"],
+      widths: [18, 20, 12, 12, 16, 18, 14, 12, 18, 44, 22],
+      rows: data.quality.map((row) => [row.business_system || "", LIVE_STATUS[row.status]?.label || row.status || "", Number(row.stm_count || 0), Number(row.bo_count || 0), Number(row.matched || 0), Number(row.match_rate || 0), Number(row.exception_count || 0), Number(row.file_count || 0), Number(row.error_count || 0), dailyMissingKinds([row]).join(", "), row.run_at || ""]),
+    },
+    {
+      name: "Exception",
+      title: `Exception ${data.company} วันที่ ${date}`,
+      headers: ["เคส", "เวลา", "ธนาคาร", "บัญชี", "ฝาก/ถอน", "ประเภท", "ยอด BO", "ยอด STM", "ผลต่าง", "ระดับ", "สถานะ", "ผู้เกี่ยวข้อง", "สาเหตุ", "รายละเอียด"],
+      widths: [16, 12, 14, 18, 12, 28, 16, 16, 16, 12, 18, 22, 35, 60],
+      rows: data.exceptions.map((row) => [row.id, row.time, row.bank, row.account, row.direction, row.typeName, row.systemAmount ?? "", row.bankAmount ?? "", row.amountDiff, row.severity, statusMeta(row.status).name, row.employee, row.cause, row.detail]),
+    },
+    {
+      name: "ความเสียหาย",
+      title: `ความเสียหาย ${data.company} วันที่ ${date}`,
+      headers: ["รหัส", "เคส", "ยอด (บาท)", "สาเหตุ", "ผู้เกี่ยวข้อง", "หลักฐาน", "สถานะการเงิน"],
+      widths: [16, 16, 18, 42, 22, 14, 20],
+      rows: data.damages.map((row) => [row.code || row.id, row.exception_id || "", Number(row.amount_thb ?? row.amount ?? 0), row.cause || "", row.employee || "", row.has_evidence ? "ครบ" : "รอ", row.finance_status || ""]),
+    },
+  ];
+  const filename = `daily-audit_${date}_${data.company}.xlsx`;
+  sheets.push(...AccountRecheck.confirmedSheets((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===data.company&&q.business_date===date)));
+  for(const row of data.quality.filter(r=>r.primaryResult))sheets.push(...ManualPrimary.sheets(row.primaryResult));
+  const meta = `บริษัท ${data.company} · วันที่ ${date} · ออกโดย ${currentUser().username} เมื่อ ${nowStamp()}`;
+  const result = Exporter.workbook(sheets, filename, meta);
+  if (result.ok) {
+    logAction("export", "daily_company_summary", `${date}|${data.company}`, `Excel ${sheets.length} ชีต · ${data.files.length} ไฟล์ · ${data.exceptionTotal} exception`);
+    toast(`ดาวน์โหลด ${filename} แล้ว`);
+  } else {
+    Exporter.csv(sheets[0].headers, sheets[0].rows, filename.replace(".xlsx", ".csv"));
+    toast("ดาวน์โหลดสรุปเป็น CSV ให้แทน เนื่องจากตัวเขียน Excel ยังไม่พร้อม", "warn");
+  }
+}
+
+function renderDailyCompanySummary(root) {
+  let openBoFollowUp = () => {};
+  if (!Sb.signedIn()) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>ยังไม่ได้เข้าสู่ระบบ</strong><span>เข้าสู่ระบบก่อนเพื่ออ่านไฟล์และผลกระทบยอดจริงจาก Supabase</span></div></section>`;
+    return;
+  }
+  if ((!dailyCompanyState.batches || dailyCompanyState.date !== state.dailySummary.date || dailyCompanyState.company !== state.dailySummary.company) && !dailyCompanyState.loading) loadDailyCompanySummary();
+  const companies = dailyCompanyOptions();
+  const company = companies.includes(state.dailySummary.company) ? state.dailySummary.company : (companies[0] || "3XB");
+  state.dailySummary.company = company;
+  const controls = `<section class="panel daily-summary-controls no-capture"><div><p class="eyebrow">Daily Audit Pack</p><h2>เลือก 1 บริษัท และ 1 วัน</h2><small>ทุกตัวเลขและไฟล์ด้านล่างจะยึดตัวเลือกสองช่องนี้เท่านั้น</small></div><label>วันที่<input type="date" id="dailySummaryDate" min="${VISIBLE_DATE_FROM}" max="${VISIBLE_DATE_TO}" value="${h(state.dailySummary.date)}" /></label><label>เครือ / บริษัท<select id="dailySummaryCompany">${groupedCompanyOptions(companies, company)}</select></label><button class="ghost-button" id="dailySummaryRefresh">รีเฟรช</button><button class="ghost-button" id="dailySummaryHolds">พักบัญชี / ทะเบียนพักตรวจ (อ่านอย่างเดียว)</button><button class="primary-button" id="dailySummaryExport" ${dailyCompanyState.loading || dailyCompanyState.error ? "disabled" : ""}>Export รายวัน</button></section>`;
+  const rulesPanel = auditRuleBookMarkup(company);
+  if (dailyCompanyState.loading && !dailyCompanyState.batches) {
+    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert"><strong>กำลังโหลดข้อมูลหลักของรายงาน</strong><span>หน้านี้ยังใช้งานเมนูอื่นได้ตามปกติ และจะเปิดรายงานให้ทันทีเมื่อข้อมูลหลักมาถึง</span></div></section>`;
+  } else if (dailyCompanyState.error) {
+    root.innerHTML = controls + rulesPanel + `<section class="panel"><div class="alert bad"><strong>โหลดสรุปรายวันไม่สำเร็จ</strong><span>${h(dailyCompanyState.error)}</span></div></section>`;
+  } else {
+    const data = dailyCompanyData(company);
+    const parsed = data.reconciliationFiles.filter((file) => file.parsed).length;
+    const fileErrors = data.reconciliationFiles.filter((file) => file.parse_error).length;
+    const waitingFiles = data.reconciliationFiles.length - parsed - fileErrors;
+    const stm = data.quality.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+    const bo = data.quality.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+    const matched = data.quality.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+    const matchRate = stm ? (matched / stm) * 100 : 0;
+    const risk = data.exceptions.reduce((sum, row) => sum + Number(row.riskAmount || 0), 0);
+    const riskIsPartial = data.exceptionTotal > data.exceptions.length;
+    const damageTotal = data.damages.reduce((sum, row) => sum + Number(row.amount_thb ?? row.amount ?? 0), 0);
+    const scheduled = data.checklist?.checklist_status === "scheduled";
+    const missing = scheduled ? [] : data.checklist?.missing_items?.length
+      ? data.checklist.missing_items
+      : dailyMissingKinds(data.quality.length ? data.quality : data.operations);
+    const latestStatus = data.quality[0]?.status || data.operations[0]?.status || (data.files.length ? "ready" : "waiting_files");
+    const selectedResultStatus=dailyResultStatus(data.checklist||{},data.quality[0]||{});
+    const status = selectedResultStatus.primary ? {label:selectedResultStatus.label,tone:'green'} : selectedResultStatus.manual ? {label:selectedResultStatus.manual,tone:'blue'} : latestStatus === "completed" && data.stillOpen > 0
+      ? { label: "ระบบประมวลผลเสร็จ · รอ Audit ตรวจเคส", tone: "amber" }
+      : LIVE_STATUS[latestStatus] || { label: latestStatus || "ยังไม่มีงาน", tone: "grey" };
+    const kindCounts = Object.entries(data.files.reduce((acc, file) => {
+      const label = LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้";
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {})).sort((a, b) => b[1] - a[1]);
+    const stmFiles = data.files.filter((file) => file.kind === "stm_pdf").length;
+    const boFiles = data.files.filter((file) => file.kind === "bo_main").length;
+    const pmFiles = data.files.filter((file) => file.kind === "pm_statement").length;
+    const boSourceFiles = data.files.filter((file) => file.kind === "bo_main");
+    const evidenceFiles = data.evidenceFiles.length;
+    const boExpected = expectedBoCount(data.checklist || { company });
+    const stmRegistered = registeredStmCount(data.checklist);
+    const pmRegistered = registeredPmCount(data.checklist);
+    const checklistReady = Boolean(data.checklist);
+    const checklistBoCount = data.checklist?.bo_count == null ? boFiles : Number(data.checklist.bo_count || 0);
+    const checklistStmCount = data.checklist?.stm_count == null ? stmFiles : Number(data.checklist.stm_count || 0);
+    const checklistPmCount = data.checklist == null
+      ? pmFiles
+      : Number(data.checklist.pm_deposit_count || 0) + Number(data.checklist.pm_withdraw_count || 0);
+    const reconciliationReady = data.reconciliationFiles.length > 0 && parsed === data.reconciliationFiles.length && fileErrors === 0;
+    const boRequired = Array.isArray(data.boFirst?.required) ? data.boFirst.required : [];
+    const boReceived = Array.isArray(data.boFirst?.received) ? data.boFirst.received : [];
+    const boMissing = Array.isArray(data.boFirst?.missing) ? data.boFirst.missing : [];
+    const completionBlockers = dailyCompletionBlockers(data);
+    const dayComplete = completionBlockers.length === 0;
+    const coverageComplete = reconciliationReady && checklistReady && Boolean(data.boFirst?.complete) && boMissing.length === 0 && missing.length === 0 && boFiles >= boExpected;
+    const boRequiredByKind = (kind) => boRequired.filter((item) => item.kind === kind);
+    const boMissingByKind = (kind) => boMissing.filter((item) => item.kind === kind);
+    const stmRequiredByBo = boRequiredByKind("STM");
+    const pmRequiredByBo = boRequiredByKind("PM");
+    const stmMissingByBo = boMissingByKind("STM");
+    const pmMissingByBo = boMissingByKind("PM");
+    const businessSystem = data.checklist?.business_system || data.quality[0]?.business_system || data.operations[0]?.business_system || businessSystemOfCompany(company);
+    const damageDisplay = damageTotal
+      ? `${money0(damageTotal)} บาท`
+      : evidenceFiles
+        ? "รอตรวจหลักฐาน"
+        : "ยังไม่พบความเสียหาย";
+    const directionLabel = (value) => value === "deposit" ? "ฝาก" : value === "withdraw" ? "ถอน" : "ไม่ระบุทิศทาง";
+    const sourceFilesFor = (kind) => data.files.filter((file) => kind === "PM" ? file.kind === "pm_statement" : file.kind === "stm_pdf");
+    const pairInfo = (item, received, missingItem) => {
+      if (!missingItem) return {
+        code: "matched", tone: "green", title: "จับคู่แหล่งข้อมูลแล้ว",
+        detail: `${num(received?.rows || 0)} รายการ`,
+        sourceNames: Array.isArray(received?.source_files) ? received.source_files.filter(Boolean) : [],
+      };
+      const files = sourceFilesFor(item.kind);
+      const errors = files.filter((file) => file.parse_error && !statementNeedsBoReview(file));
+      const needsBoReview = files.filter(statementNeedsBoReview);
+      const parsedFiles = files.filter((file) => file.parsed);
+      const sameIdentity = boReceived.find((candidate) => candidate.kind === item.kind && candidate.identity === item.identity);
+      const sameNames = Array.isArray(sameIdentity?.source_files) ? sameIdentity.source_files.filter(Boolean) : [];
+      const allNames = files.map((file) => file.file_name).filter(Boolean);
+      if (!files.length) return { code: "missing_file", tone: "red", title: `ยังไม่ได้รับไฟล์ ${item.kind || "STM"}`, detail: "ไม่พบไฟล์ต้นทางของบริษัท/วันที่นี้", sourceNames: [] };
+      if (errors.length) return { code: "read_error", tone: "red", title: "ได้รับไฟล์แล้ว แต่อ่านไม่ได้", detail: `${num(files.length)} ไฟล์ · ผิดพลาด ${num(errors.length)}`, sourceNames: allNames };
+      if (needsBoReview.length) return { code: "needs_bo_review", tone: "amber", title: "ได้รับไฟล์แล้ว · มีไฟล์ไม่พบรายการในวันตรวจ", detail: `${num(needsBoReview.length)} ไฟล์รอเทียบ BO และตรวจช่วงวันที่ — ยังไม่ยืนยันว่าเป็นบัญชีคู่กันหรือไม่มีรายการทั้งสองฝั่ง`, sourceNames: allNames };
+      if (parsedFiles.length < files.length) return { code: "waiting", tone: "amber", title: "ได้รับไฟล์แล้ว · รออ่าน", detail: `อ่านแล้ว ${num(parsedFiles.length)}/${num(files.length)} ไฟล์`, sourceNames: allNames };
+      if (sameIdentity) return { code: "wrong_direction", tone: "red", title: "พบบัญชีแล้ว แต่ทิศทางไม่ตรง", detail: `BO ${directionLabel(item.direction)} · ไฟล์ ${directionLabel(sameIdentity.direction)}`, sourceNames: sameNames.length ? sameNames : allNames };
+      return { code: "identity_not_found", tone: "red", title: "มีไฟล์แล้ว · ไม่พบเลขบัญชีคู่", detail: `ได้รับและอ่านแล้ว ${num(files.length)} ไฟล์`, sourceNames: allNames };
+    };
+    const pairStatus = (info, followIndex) => `<span class="badge ${h(info.tone)}">${h(info.title)}</span><small class="sub">${h(info.detail)}${info.sourceNames.length && info.code === "matched" ? ` · ${h(info.sourceNames.join(" · "))}` : ""}</small><button type="button" class="bo-follow-button" data-bo-follow="${followIndex}">ดูรายละเอียด / ดำเนินการ</button>`;
+    const fullBoIdentity = (item) => {
+      const labels = Array.isArray(item?.source_labels) ? item.source_labels.filter(Boolean) : [];
+      if (!labels.length) return `<span class="muted">–</span><small class="sub">รันใหม่เพื่อเก็บชื่อเต็ม</small>`;
+      return `<div class="bo-full-identities">${labels.map((label) => `<span title="${h(label)}">${h(label)}</span>`).join("")}</div>`;
+    };
+    const boFollowUps = [];
+    const boRequirementRows = boRequired.map((item) => {
+      const received = boReceived.find((candidate) => candidate.key === item.key);
+      const missingItem = boMissing.some((candidate) => candidate.key === item.key);
+      const info = pairInfo(item, received, missingItem);
+      const sourceNameSet = new Set(info.sourceNames.map((name) => String(name).trim().toLowerCase()));
+      const sourceFiles = data.files.filter((file) => sourceNameSet.has(String(file.file_name || "").trim().toLowerCase()));
+      const followIndex = boFollowUps.push({ item, received, info, sourceFiles }) - 1;
+      return `<tr class="${missingItem ? "bo-requirement-attention" : ""}"><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${fullBoIdentity(item)}</td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td class="right tnum">${money0(item.amount || 0)}</td><td>${pairStatus(info, followIndex)}</td></tr>`;
+    }).join("");
+    const requiredKeys = new Set(boRequired.map((item) => item.key));
+    const unmatchedReceived = boReceived.filter((item) => !requiredKeys.has(item.key));
+    const unmatchedReceivedRows = unmatchedReceived.map((item) => `<tr><td><b>${h(item.system || businessSystem)}</b></td><td><b>${h(normalizeLiveCompanyCode(item.company) || company)}</b></td><td><b>${h(item.label || item.identity || "-")}</b><small class="sub">${h(item.kind || "STM")}</small></td><td>${h(directionLabel(item.direction))}</td><td class="right tnum">${num(item.rows || 0)}</td><td>${Array.isArray(item.source_files) && item.source_files.length ? h(item.source_files.join(" · ")) : "ไฟล์ถูกอ่านแล้ว แต่ผลรันเดิมยังไม่ได้เก็บชื่อไฟล์"}</td></tr>`).join("");
+    const boFileCards = boSourceFiles.map((file) => {
+      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
+      const statusLabel = statementNeedsBoReview(file) ? statementReviewLabel(file) : file.parse_error ? "อ่านไม่ได้" : file.parsed ? parsedFileLabel(file) : "รออ่าน";
+      const tone = statementNeedsBoReview(file) ? "amber" : file.parse_error ? "red" : file.parsed ? "green" : "amber";
+      return `<button type="button" class="bo-file-card" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><b>${h(file.file_name || "ไฟล์ BO")}</b><small>${h(displayTime(file.receivedAt))} · ${num(file.row_count || 0)} แถว</small></span><em class="badge ${tone}">${h(statusLabel)}</em></button>`;
+    }).join("");
+    const boPreviewButton = (file, sourceLabel) => {
+      if (!file) return "";
+      const fileStatus = file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
+      return `<button type="button" class="bo-follow-file" data-bo-preview data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span><small>${h(sourceLabel)}</small><b>${h(file.file_name || "ไฟล์ต้นทาง")}</b></span><em>Preview →</em></button>`;
+    };
+    openBoFollowUp = (followIndex) => {
+      const follow = boFollowUps[Number(followIndex)];
+      if (!follow) return;
+      const { item, info, sourceFiles } = follow;
+      const labels = Array.isArray(item.source_labels) ? item.source_labels.filter(Boolean) : [];
+      const identity = item.label || item.identity || "-";
+      const uniqueNames = (names) => [...new Set((names || []).map((name) => String(name || "").trim()).filter(Boolean))];
+      const boFileNames = uniqueNames(boSourceFiles.map((file) => file.file_name));
+      const stmFileNames = uniqueNames(info.sourceNames);
+      const totalRelatedFiles = boFileNames.length + stmFileNames.length;
+      const numberedFileText = (title, names, emptyText) => [
+        `${title} (${num(names.length)} ไฟล์)`,
+        ...(names.length ? names.map((name, index) => `${index + 1}. ${name}`) : [`- ${emptyText}`]),
+      ];
+      const numberedFileHtml = (names, emptyText) => names.length
+        ? `<ol class="bo-follow-file-list">${names.map((name) => `<li>${h(name)}</li>`).join("")}</ol>`
+        : `<p class="bo-follow-file-empty">${h(emptyText)}</p>`;
+      const previewStatus = !stmFileNames.length
+        ? "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้"
+        : sourceFiles.length
+          ? `เปิด Preview ได้ ${num(sourceFiles.length)} จาก ${num(stmFileNames.length)} ไฟล์`
+          : `ได้รับชื่อไฟล์ ${num(stmFileNames.length)} ไฟล์แล้ว แต่ผลโหลดชุดนี้ยังไม่มีข้อมูลเชื่อมสำหรับเปิด Preview`;
+      const requiredFile = `${item.kind || "STM"} ของ ${identity} ฝั่ง${directionLabel(item.direction)}`;
+      const missingSummary = info.code === "matched"
+        ? `ไม่ขาดไฟล์ · จับคู่ ${requiredFile} แล้ว`
+        : info.code === "missing_file"
+          ? `ขาดไฟล์ ${requiredFile}`
+          : info.code === "read_error"
+            ? `ต้องส่งใหม่หรือแก้ไฟล์ ${requiredFile} เพราะระบบอ่านไม่ได้`
+            : info.code === "waiting"
+              ? `ยังสรุปว่าขาดไม่ได้ · รอระบบอ่าน ${requiredFile}`
+              : info.code === "wrong_direction"
+                ? `มีไฟล์แล้ว แต่เป็นคนละทิศทางกับ ${requiredFile}`
+                : `มีไฟล์ครบแล้ว แต่ระบบจับคู่ ${requiredFile} ไม่สำเร็จ`;
+      const summaryLabel = ["identity_not_found", "wrong_direction"].includes(info.code) ? "สรุปผลตรวจ" : "สรุปสิ่งที่ขาด";
+      const nextStepSummary = info.code === "identity_not_found"
+        ? "ไม่ต้องตามไฟล์ใหม่ · กด “ประมวลผลจับคู่ใหม่” ก่อน หากยังไม่สำเร็จให้ตรวจทะเบียนชื่อและเลขบัญชี"
+        : info.code === "wrong_direction"
+          ? "กดประมวลผลจับคู่ใหม่ก่อน · หากผลเดิมให้ตรวจว่าไฟล์ฝาก/ถอนถูกตั้งประเภทถูกต้องหรือไม่"
+          : info.code === "matched"
+            ? "ไม่ต้องดำเนินการเพิ่ม"
+            : `ติดตามหรือแก้ไข ${requiredFile} แล้วกด “ประมวลผลจับคู่ใหม่”`;
+      const receivedSummary = `ระบบได้รับ BO ${num(boFileNames.length)} ไฟล์ และ STM/PM ${num(stmFileNames.length)} ไฟล์ · ${info.detail}`;
+      const copyText = [
+        "[ติดตามเอกสารกระทบยอด BO-first]",
+        `${summaryLabel}: ${missingSummary}`,
+        `ต้องทำต่อ: ${nextStepSummary}`,
+        `ไฟล์ที่ได้รับ: ${receivedSummary}`,
+        "",
+        "=== 1) ข้อมูลรายการที่อ่านจาก BO ===",
+        `อ้างอิงจากไฟล์ BO ต้นฉบับ: ${num(boFileNames.length)} ไฟล์`,
+        `วันที่: ${state.dailySummary.date}`,
+        `ระบบ: ${item.system || businessSystem}`,
+        `บริษัท: ${normalizeLiveCompanyCode(item.company) || company}`,
+        `บัญชี/Provider: ${identity}`,
+        `ชื่อเต็มจาก BO: ${labels.join(" | ") || "-"}`,
+        `ประเภท: ${item.kind || "STM"} ${directionLabel(item.direction)}`,
+        "",
+        "=== 2) ผลตรวจจาก BO ===",
+        `รายการใน BO: ${num(item.rows || 0)} รายการ`,
+        `ยอดรวม BO: ${money0(item.amount || 0)} บาท`,
+        `สถานะ: ${info.title}`,
+        `รายละเอียด: ${info.detail}`,
+        "",
+        `=== 3) ไฟล์ที่ระบบได้รับและใช้ตรวจ: รวม ${num(totalRelatedFiles)} ไฟล์ ===`,
+        ...numberedFileText("ไฟล์ BO ต้นฉบับ", boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ"),
+        "",
+        ...numberedFileText("ไฟล์ STM/PM ที่ได้รับ", stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้"),
+        `สถานะ Preview: ${previewStatus}`,
+        "",
+        "=== 4) สิ่งที่ขอให้ทีมตรวจ ===",
+        "1. ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่",
+        "2. ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา",
+        "3. หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง",
+      ].join("\n");
+      const sourceFileHtml = sourceFiles.length
+        ? sourceFiles.map((file) => boPreviewButton(file, "ไฟล์ STM/PM ที่ระบบพบ")).join("")
+        : info.sourceNames.length
+          ? `<div class="bo-follow-file-names"><b>ชื่อไฟล์ที่ผลรันระบุ</b><span>${info.sourceNames.map(h).join("<br>")}</span><small>ไม่พบ metadata สำหรับเปิด Preview ในผลโหลดชุดนี้ ให้เปิดคลังไฟล์เพื่อตรวจต่อ</small></div>`
+          : `<div class="empty-box">ยังไม่มีไฟล์ STM/PM สำหรับรายการนี้</div>`;
+      openModal(
+        `ติดตาม ${h(identity)} · ${h(directionLabel(item.direction))}`,
+        `<div class="bo-follow-detail"><div class="bo-follow-missing-summary ${h(info.tone)}"><span>${h(summaryLabel)}</span><strong>${h(missingSummary)}</strong><small>${h(receivedSummary)}</small><em>${h(nextStepSummary)}</em></div><div class="bo-follow-grid"><div><span>ระบบ / บริษัท</span><b>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</b></div><div><span>บัญชี / Provider</span><b>${h(identity)}</b></div><div class="wide"><span>ชื่อเต็มจาก BO</span><b>${labels.length ? labels.map(h).join("<br>") : "-"}</b></div><div><span>ประเภท</span><b>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</b></div><div><span>ข้อมูล BO</span><b>${num(item.rows || 0)} รายการ · ${money0(item.amount || 0)} บาท</b></div></div><div class="bo-follow-files"><h3>เปิดข้อมูลจริงเพื่อรีเช็ก</h3>${boSourceFiles.map((file) => boPreviewButton(file, "ไฟล์ BO ต้นฉบับ")).join("")}${sourceFileHtml}</div><div class="bo-follow-copy"><div class="bo-follow-copy-head"><div><span>ข้อความพร้อมส่งให้ทีม</span><small>อ่านผลตรวจและสิ่งที่ต้องทำต่อก่อน แล้วค่อยดูรายละเอียดไฟล์ประกอบ</small></div></div><div class="bo-follow-message"><section><div class="bo-follow-section-head"><div><h3>1. ข้อมูลรายการที่อ่านจาก BO</h3><small>ข้อมูลส่วนนี้มาจากไฟล์ BO ต้นฉบับ ${num(boFileNames.length)} ไฟล์ ไม่ใช่รายการไฟล์ที่ขาด</small></div></div><dl><div><dt>วันที่</dt><dd>${h(state.dailySummary.date)}</dd></div><div><dt>ระบบ / บริษัท</dt><dd>${h(item.system || businessSystem)} · ${h(normalizeLiveCompanyCode(item.company) || company)}</dd></div><div><dt>บัญชี / Provider</dt><dd>${h(identity)}</dd></div><div><dt>ชื่อเต็มจาก BO</dt><dd>${labels.length ? labels.map(h).join("<br>") : "-"}</dd></div><div><dt>ประเภท</dt><dd>${h(item.kind || "STM")} · ${h(directionLabel(item.direction))}</dd></div></dl></section><section><h3>2. ผลตรวจจาก BO</h3><dl><div><dt>${h(summaryLabel)}</dt><dd class="danger">${h(missingSummary)}</dd></div><div><dt>ต้องทำต่อ</dt><dd>${h(nextStepSummary)}</dd></div><div><dt>ไฟล์ที่ได้รับ</dt><dd>${h(receivedSummary)}</dd></div><div><dt>สถานะเดิม</dt><dd>${h(info.title)}</dd></div></dl></section><section><div class="bo-follow-section-head"><h3>3. ไฟล์ที่ระบบได้รับและใช้ตรวจ</h3><b class="bo-follow-count">รวม ${num(totalRelatedFiles)} ไฟล์</b></div><div class="bo-follow-file-group"><h4>ไฟล์ BO ต้นฉบับ <span>${num(boFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(boFileNames, "ยังไม่พบไฟล์ BO ต้นฉบับ")}</div><div class="bo-follow-file-group"><h4>ไฟล์ STM/PM ที่ได้รับ <span>${num(stmFileNames.length)} ไฟล์</span></h4>${numberedFileHtml(stmFileNames, "ยังไม่ได้รับไฟล์ STM/PM สำหรับรายการนี้")}</div><p class="bo-follow-file-state"><b>สถานะ Preview:</b> ${h(previewStatus)}</p></section><section class="action"><h3>4. สิ่งที่ขอให้ทีมตรวจ</h3><ol><li>ยืนยันเลขบัญชีหรือ Provider ว่าตรงกับ BO หรือไม่</li><li>ยืนยันทิศทางฝาก/ถอนของไฟล์ที่ส่งมา</li><li>หากข้อมูลไม่ตรง กรุณาชี้แจงสาเหตุและแนบหลักฐานที่เกี่ยวข้อง</li></ol></section></div><details class="bo-follow-raw"><summary>ดูข้อความแบบข้อความล้วน</summary><textarea id="boFollowCopyText" readonly>${h(copyText)}</textarea></details></div></div>`,
+        `<button class="ghost-button" id="boFollowClose">ปิด</button><button class="ghost-button" id="boFollowCloud">เปิดคลังไฟล์</button><button class="ghost-button" id="boFollowCases">เปิดหน้าติดตามเคส</button>${info.code !== "matched" ? `<button class="primary-button" id="boFollowRetry">ประมวลผลจับคู่ใหม่</button>` : ""}<button class="primary-button" id="boFollowCopy">คัดลอกข้อความ</button>`,
+      );
+      $("#boFollowClose").addEventListener("click", closeModal);
+      const retryButton = $("#boFollowRetry");
+      if (retryButton) retryButton.addEventListener("click", async () => {
+        // The checklist view can legitimately omit job_id even though the
+        // selected daily job is present in v_recon_operations. Resolve the
+        // exact company/date job from that authoritative row before retrying.
+        const selectedOperation = data.operations.find((row) =>
+          row.business_date === state.dailySummary.date &&
+          normalizeLiveCompanyCode(row.company) === company &&
+          !row.is_archived
+        );
+        const resolvedJob = data.checklist?.job_id || selectedOperation?.id
+          ? null
+          : await Sb.dailyJob(company, state.dailySummary.date);
+        const jobId = data.checklist?.job_id || selectedOperation?.id || resolvedJob?.id;
+        if (!jobId) {
+          toast("ยังไม่พบรหัสงานรายวัน กรุณาเปิดคลังไฟล์และกดรีเฟรชก่อน", "warn");
+          return;
+        }
+        retryButton.disabled = true;
+        retryButton.textContent = "กำลังประมวลผลใหม่…";
+        try {
+          await Sb.retryJob(jobId);
+          toast(`เข้าคิวจับคู่ใหม่แล้ว · ${state.dailySummary.date} · ${company}`);
+          closeModal();
+          await cloudWorkerTick();
+          liveOverviewState.key = "";
+          dailyCompanyState.batches = null;
+          dailyCompanyState.quality = null;
+          dailyCompanyState.operations = null;
+          dailyCompanyState.checklist = null;
+          dailyCompanyState.caseCounts = null;
+          dailyCompanyState.boFirst = null;
+          await loadDailyCompanySummary(true);
+          render();
+        } catch (error) {
+          retryButton.disabled = false;
+          retryButton.textContent = "ประมวลผลจับคู่ใหม่";
+          toast(`ประมวลผลใหม่ไม่สำเร็จ: ${error.message}`, "warn");
+        }
+      });
+      $("#boFollowCopy").addEventListener("click", async (event) => {
+        await copyPlainText(copyText);
+        event.currentTarget.textContent = "คัดลอกแล้ว ✓";
+        toast("คัดลอกข้อความติดตามแล้ว", "ok");
+      });
+      $("#boFollowCloud").addEventListener("click", () => {
+        closeModal();
+        go("cloud", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
+      });
+      $("#boFollowCases").addEventListener("click", () => {
+        closeModal();
+        go("clarify", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company } });
+      });
+      bindStoredFileLinks($("#modal"), "[data-bo-preview]");
+    };
+    const nextWork = !data.files.length
+      ? { route: "cloud", tone: "warn", title: "ยังไม่ได้รับไฟล์ของวันนี้", detail: `รออีเมล/ไฟล์ของ ${company} ก่อน จึงจะตรวจความครบถ้วนและกระทบยอดได้`, button: "ตรวจไฟล์เข้า" }
+      : !boFiles
+        ? { route: "cloud", tone: "bad", title: "ยังขาดรายงาน BO", detail: "BO เป็นไฟล์หลักสำหรับระบุบัญชีและ Provider ที่ใช้งานจริงของวันนี้", button: "ตรวจไฟล์ BO" }
+        : fileErrors
+          ? { route: "cloud", tone: "bad", title: `แก้ไฟล์อ่านไม่ได้ ${num(fileErrors)} ไฟล์`, detail: "เปิดตัวอย่าง เลือกบริษัท/ประเภท แล้วบันทึกและรันต่อ", button: "ตรวจไฟล์" }
+      : waitingFiles
+        ? { route: "cloud", tone: "warn", title: `รอระบบอ่าน ${num(waitingFiles)} ไฟล์`, detail: "ตรวจสถานะไฟล์ก่อนเริ่มกระทบยอด", button: "ดูไฟล์" }
+        : missing.length
+          ? { route: "cloud", tone: "warn", title: `ตามไฟล์ที่ยังขาด ${num(missing.length)} ประเภท`, detail: missing.join(" · "), button: "ดูสิ่งที่ขาด" }
+          : data.stillOpen
+            ? { route: "exceptions", tone: "warn", title: `ตรวจรายการค้าง ${num(data.stillOpen)} เคส`, detail: "เปิดหลักฐานและติดตามผลการชี้แจง", button: "ตรวจเคส" }
+            : !dayComplete
+              ? { route: "cloud", tone: "warn", title: "ยังยืนยันปิดงานไม่ได้", detail: completionBlockers.join(" · "), button: "ตรวจสิ่งที่ค้าง" }
+            : { route: "reports", tone: "ok", title: "ตรวจครบแล้ว พร้อมออกรายงาน", detail: "ตรวจยอดสรุปอีกครั้งแล้ว Export เก็บเป็นหลักฐาน", button: "ดูรายงาน" };
+    const sheetRows = dailyAuditSheetRows(state.dailySummary.date);
+    const selectedCaseSummary=sheetRows.find(row=>row.company===company);
+    const currentCaseCountsReady=selectedCaseSummary?.currentCountsReady&&!selectedCaseSummary.caseSetPending;
+    const currentCaseCount=currentCaseCountsReady?num(selectedCaseSummary.openCount):'รอข้อมูล';
+    const closedCaseCount=currentCaseCountsReady?num(selectedCaseSummary.resolvedCount):'รอข้อมูล';
+    const auditSheetHtml = `
+      <section class="panel audit-sheet-panel">
+        <div class="panel-heading"><div><p class="eyebrow">Audit Sheet · ภาพรวมทุกบริษัท</p><h2>สถานะงานวันที่ ${h(state.dailySummary.date)}</h2><small class="head-sub">สรุปขึ้นก่อนทันที ส่วนรายละเอียดแต่ละรายงานจะโหลดเมื่อกดเปิด</small></div><span class="badge blue">${num(sheetRows.length)} บริษัท</span></div>
+        <p class="hint">จำนวนเด่นคือเคสค้างปัจจุบัน · ปิดแล้วนับจากชุดเคสปัจจุบัน · ผลตรวจตอนรันเป็นประวัติคนละจำนวน ไม่ใช่เคสค้างหรือยอดความเสียหาย</p>
+        <div class="table-wrap audit-sheet-wrap"><table class="audit-sheet"><thead><tr><th>บริษัท</th><th>ไฟล์</th><th class="right">STM/PM</th><th class="right">BO</th><th class="right">จับคู่</th><th>เคสค้างปัจจุบัน / ประวัติผลตรวจ</th><th>สถานะ</th><th>สิ่งที่ต้องทำ</th></tr></thead><tbody>
+          ${sheetRows.map((row) => {
+            const meta = row.resultStatus.primary ? {label:row.resultStatus.label,tone:'green'} : row.resultStatus.manual ? {label:row.resultStatus.manual,tone:'blue'} : row.status === "completed_review"
+              ? { label: "กระทบยอดแล้ว · รอตรวจเคส", tone: "amber" }
+              : CHECKLIST_STATUS[row.status] || LIVE_STATUS[row.status] || { label: row.status || "รอตรวจ", tone: "grey" };
+            const fileOk = row.fileCount > 0 && row.parsedCount >= row.fileCount;
+            const action = row.resultStatus.primary ? 'ดูผลหลัก' : row.missing.length || !fileOk ? "แก้ไฟล์" : row.openCount ? "ตรวจ/แจ้งแก้" : row.exceptionCount ? "เปิดอนุมัติ" : "ดูรายงาน";
+return `<tr data-sheet-company="${h(row.company)}"><td><b>${h(row.company)}</b></td><td>${row.resultStatus.primary?'<small class="sub">ชุดไฟล์ผลหลัก</small>':'<small class="sub">รอบอัตโนมัติ</small>'}<span class="sheet-progress ${fileOk ? "ok" : "warn"}">${row.fileCount==null?'รอข้อมูลชุดไฟล์':`${num(row.parsedCount)}/${num(row.fileCount)}`}</span></td><td class="right tnum">${num(row.stmCount)}</td><td class="right tnum">${num(row.boCount)}</td><td class="right"><b class="${row.matched ? "success" : "muted"}">${num(row.matched)}</b></td><td>${DailyCaseSummary.markup(row)}</td><td><span class="badge ${h(meta.tone)}">${h(meta.label)}</span>${row.resultStatus.review?`<small role="alert">${h(row.resultStatus.review)}</small>`:''}${row.resultStatus.manual?`<small class="sub">${h(row.resultStatus.manual)}</small>`:''}<small class="sub">${h(row.resultStatus.automatic)}</small>${row.resultStatus.error?`<small role="alert">${h(row.resultStatus.error)}</small>`:''}</td><td class="nowrap"><button class="ghost-button xs" data-sheet-open="${h(row.company)}">ดูรายงาน</button><button class="${row.openCount || row.missing.length ? "primary-button" : "ghost-button"} xs" data-sheet-action="${h(row.company)}" data-sheet-mode="${row.resultStatus.primary ? "report" : row.missing.length || !fileOk ? "files" : row.openCount ? "issues" : row.exceptionCount ? "approve" : "report"}">${h(action)}</button></td></tr>`;
+          }).join("") || `<tr><td colspan="8" class="empty">ยังไม่มีสถานะบริษัทในวันนี้ — ระบบจะแสดงเมื่อได้รับอีเมลหรือมีผลกระทบยอด</td></tr>`}
+        </tbody></table></div>
+      </section>`;
+    root.innerHTML = controls + rulesPanel + `
+      ${auditSheetHtml}
+      <section class="daily-summary-head"><div><p class="eyebrow">สรุปประจำวัน</p><h2>${h(company)} · ${h(state.dailySummary.date)}</h2><p>อัปเดตจาก Supabase ${dailyCompanyState.updatedAt ? displayTime(dailyCompanyState.updatedAt) : "-"}${dailyCompanyState.detailsLoading ? " · กำลังเติมรายละเอียดเคส" : ""}</p></div><span class="badge ${status.tone}">${h(status.label)}</span></section>
+      ${dailyCompanyState.coreError ? `<section class="alert warn"><strong>แสดงข้อมูลที่โหลดสำเร็จก่อน</strong><span>${h(dailyCompanyState.coreError)} กดรีเฟรชเพื่อลองเฉพาะส่วนที่ยังขาดได้</span></section>` : ""}
+      ${dailyCompanyState.detailsError ? `<section class="alert warn"><strong>ข้อมูลหลักพร้อมแล้ว</strong><span>${h(dailyCompanyState.detailsError)} — ตัวเลขไฟล์และผลกระทบยอดหลักยังเปิดดูได้</span></section>` : ""}
+      <section class="primary-result-note"><strong>แยกสถานะรอบงาน</strong><p>ผลหลัก: ${selectedResultStatus.primary?'ใช้ผลรันมือที่หัวหน้า/ผู้ดูแลยืนยันแล้ว':'ยังใช้ผลรอบอัตโนมัติเดิม ไม่ได้นำผลรันมือมาแทน'}</p>${selectedResultStatus.review?`<p role="alert" class="mc8-warning">${h(selectedResultStatus.review)}</p>`:''}${selectedResultStatus.manual?`<p>${h(selectedResultStatus.manual)}</p>`:''}<p>${h(selectedResultStatus.automatic)} · สถานะนี้ไม่ใช่สถานะของผลรันมือ</p>${selectedResultStatus.error?`<p role="alert">${h(selectedResultStatus.error)}</p>`:''}</section>
+      ${AccountRecheck.reportPanel((dailyCompanyState.confirmedRechecks||[]).filter(q=>q.company===company&&q.business_date===state.dailySummary.date))}
+${data.quality.filter(r=>r.primaryResult).map(r=>`<section class="primary-result-note"><strong>ผลกระทบยอดหลักใช้ผลตรวจมือแล้ว</strong>${window.ManualPrimary.noticeInfo(r.primaryResult)}<p>${r.primaryResult.case_set?'รายการงานปัจจุบันใช้เคสชุดใหม่ · เคสเดิมดูได้ในหน้าชีต Audit':'รายการเคสด้านล่างเป็นประวัติเคสเดิม'}</p></section>`).join('')}
+      ${dailyCompanyState.recheckReportError?`<p role="alert">${h(dailyCompanyState.recheckReportError)} · ไม่ใช่ยอดศูนย์</p>`:''}
+      <section class="panel daily-focus-board">
+        <div class="daily-focus-title"><div><p class="eyebrow">ภาพรวมการกระทบยอด 3 จุด</p><h2>STM / PM ↔ เวลาและบัญชี ↔ BO</h2><small>ตัวเลขทั้งหมดมาจากผลอ่านไฟล์และผลรันจริงของ ${h(company)} เท่านั้น</small></div><span class="badge ${status.tone}">${h(status.label)}</span></div>
+        <div class="daily-reconcile-tiles action-tiles">
+          <article data-action-route="cloud"><span>รายการ STM / PM</span><strong>${num(stm)}</strong><small>${num(stmFiles + pmFiles)} ไฟล์ต้นทาง</small></article>
+          <article data-action-route="cloud"><span>รายการ BO</span><strong>${num(bo)}</strong><small>${num(boFiles)} ไฟล์ต้นทาง</small></article>
+          <article data-scroll-daily="dailyReconcileResult" class="ok"><span>จับคู่ผ่าน 3 จุด</span><strong>${num(matched)}</strong><small>${matchRate.toFixed(2)}% ของ STM / PM</small></article>
+          <article data-action-route="exceptions" class="${data.stillOpen ? "warn" : "ok"}"><span>เคสค้างปัจจุบัน</span><strong>${h(currentCaseCount)}</strong><small>ไม่รวมเคสปิดแล้ว · ไม่ใช่จำนวนผลตรวจตอนรัน</small></article>
+          <article data-action-route="clarify" class="ok"><span>เคสปิดแล้ว</span><strong>${h(closedCaseCount)}</strong><small>เฉพาะชุดเคสปัจจุบัน · ไม่รวมเคสรุ่นเก่าที่ถูกแทน</small></article>
+        </div>
+        ${riskIsPartial?`<p class="hint">ยอดที่ตรวจพบใน ${num(data.exceptions.length)} เคสแรก อย่างน้อย ${money0(risk)} บาท · เป็นรายละเอียดบางส่วนรวมเคสปิดแล้ว ไม่ใช่ยอดเคสค้างหรือความเสียหายยืนยัน</p>`:''}
+        <div class="daily-difference-strip"><div class="${stm === bo ? "ok" : "warn"}"><span>จำนวนรายการ STM/PM เทียบ BO</span><b>${num(stm - bo)}</b></div><div class="${data.stillOpen ? "bad" : "ok"}"><span>เคสค้างที่ต้องติดตาม</span><b>${h(currentCaseCount)}</b></div><div class="${damageTotal ? "bad" : evidenceFiles ? "warn" : "ok"}"><span>ความเสียหายที่ยืนยันแล้ว</span><b>${h(damageDisplay)}</b></div></div>
+        <button type="button" class="daily-next-work ${nextWork.tone}" data-action-route="${nextWork.route}"><span><small>ขั้นถัดไปที่แนะนำ</small><b>${h(nextWork.title)}</b><em>${h(nextWork.detail)}</em></span><strong>${h(nextWork.button)} →</strong></button>
+      </section>
+      <section class="daily-source-summary" aria-label="ไฟล์ที่ได้รับ"><article><span>อีเมลที่ได้รับ</span><b>${num(data.batches.length)} ฉบับ</b><small>เอกสารแนบทั้งหมด ${num(data.files.length)} ไฟล์</small></article><article><span>STM ธนาคาร</span><b>${num(stmFiles)} ไฟล์</b></article><article><span>BO หลังบ้าน</span><b>${num(boFiles)} ไฟล์</b></article><article><span>PM ฝาก/ถอน</span><b>${num(pmFiles)} ไฟล์</b></article><article><span>หลักฐานชี้แจง</span><b>${num(evidenceFiles)} ไฟล์</b><small>${evidenceFiles ? "รอผู้ตรวจยืนยันก่อนบันทึกความเสียหาย" : "ยังไม่มีหลักฐานชี้แจง"}</small></article><article class="${fileErrors ? "bad" : reconciliationReady ? "ok" : "warn"}"><span>ไฟล์กระทบยอดที่อ่านสำเร็จ</span><b>${num(parsed)}/${num(data.reconciliationFiles.length)}</b></article>
+      </section>
+      <section class="daily-audit-flow" aria-label="สถานะงานรายวัน"><button type="button" data-daily-route="cloud" class="${data.files.length ? "done" : "bad"}"><b>1</b><span>รับไฟล์<small>${num(data.files.length)} ไฟล์ · กดตรวจ</small></span></button><button type="button" data-daily-route="cloud" class="${reconciliationReady ? "done" : "warn"}"><b>2</b><span>อ่านไฟล์กระทบยอด<small>${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์</small></span></button><button type="button" data-scroll-daily="dailyReconcileResult" class="${data.quality.length ? "done" : "warn"}"><b>3</b><span>กระทบยอด<small>${h(status.label)} · กดดูผล</small></span></button><button type="button" data-daily-route="exceptions" class="${data.exceptionTotal ? "warn" : "done"}"><b>4</b><span>ตรวจ Exception<small>${num(data.exceptionTotal)} เคส · กดตรวจ</small></span></button><button type="button" data-daily-route="clarify" class="${data.stillOpen ? "warn" : "done"}"><b>5</b><span>ปิดงาน<small>ปิดแล้ว ${num(data.resolvedTotal)} · กดติดตาม</small></span></button></section>
+
+      <section class="panel bo-document-summary">
+        <div class="panel-heading"><div><p class="eyebrow">BO-first document check</p><h2>สรุปเอกสาร BO ที่ตรวจ</h2><small class="head-sub">ระบบ ${h(businessSystem)} · บริษัท ${h(company)} · BO เป็นหลักในการระบุบัญชีและ Provider ที่ใช้งานจริง แล้วจึงตามหา STM/PM ของบริษัทเดียวกัน</small></div><span class="health ${boSourceFiles.length >= boExpected && !boMissing.length ? "ok" : "attention"}">${num(boSourceFiles.length)}/${num(boExpected)} ไฟล์ BO</span></div>
+        <div class="bo-document-metrics"><article><span>รายการที่อ่านจาก BO</span><b>${num(bo)}</b></article><article><span>บัญชี/Provider ที่พบ</span><b>${num(boRequired.length)}</b></article><article class="${boMissing.length ? "bad" : "ok"}"><span>ยังจับคู่ STM/PM ไม่ได้</span><b>${num(boMissing.length)}</b></article><article class="${data.boFirst?.complete ? "ok" : "warn"}"><span>ผลตรวจ BO-first</span><b>${data.boFirst ? (data.boFirst.complete ? "ครบ" : "ยังไม่ครบ") : "รอผลรัน"}</b></article></div>
+        <div class="bo-document-layout"><div><h3>ไฟล์ BO ต้นฉบับ</h3><div class="bo-file-list">${boFileCards || `<div class="empty-box">ยังไม่พบไฟล์ BO ของ ${h(company)} วันที่ ${h(state.dailySummary.date)}</div>`}</div></div><div><h3>บัญชี/Provider ที่ BO ระบุ</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider</th><th>ชื่อเต็มจาก BO</th><th>ประเภท</th><th class="right">รายการ BO</th><th class="right">ยอดรวม</th><th>STM/PM คู่กัน</th></tr></thead><tbody>${boRequirementRows || `<tr><td colspan="8" class="empty">ยังไม่มีผลอ่าน BO-first — เมื่ออ่าน BO สำเร็จ ระบบจะแสดงรายการที่ต้องตรวจตรงนี้</td></tr>`}</tbody></table></div></div></div>
+        ${unmatchedReceived.length ? `<div class="bo-unmatched-received"><h3>ไฟล์ STM/PM ที่ได้รับและอ่านแล้ว แต่ยังจับกับ BO ไม่ได้</h3><div class="table-wrap compact-table"><table><thead><tr><th>ระบบ</th><th>บริษัท</th><th>บัญชี / Provider ที่อ่านได้</th><th>ประเภท</th><th class="right">รายการ</th><th>ไฟล์ต้นทาง</th></tr></thead><tbody>${unmatchedReceivedRows}</tbody></table></div></div>` : ""}
+        <div class="alert ${data.boFirst?.complete ? "ok" : "warn"} bo-follow-summary"><div><strong>${data.boFirst?.complete ? "พบไฟล์คู่ครบตาม BO" : boMissing.length ? `ต้องตาม STM/PM อีก ${num(boMissing.length)} กลุ่ม` : "รออ่าน BO หรือรอผลกระทบยอด"}</strong><span>${data.boFirst?.complete ? "ระบบตรวจบัญชี/Provider และทิศทางฝาก-ถอนจาก BO แล้วพบฝั่ง STM/PM ครบ" : boMissing.length ? boMissing.map((item) => `${item.label || item.identity} ${directionLabel(item.direction)}`).join(" · ") : "ระบบจะไม่สรุปว่าขาดจากทะเบียนทั้งหมด แต่จะยึดเฉพาะสิ่งที่พบว่าใช้งานจริงใน BO ของวันนี้"}</span></div>${boMissing.length ? `<button type="button" class="primary-button sm" id="boOpenFirstFollow">เปิดรายละเอียดกลุ่มแรก</button>` : ""}</div>
+      </section>
+
+      <section class="panel company-day-checklist">
+        <div class="panel-heading"><div><p class="eyebrow">สิ่งที่ต้องครบในวันนี้</p><h2>Checklist ${h(company)}</h2></div><span class="health ${dayComplete ? "ok" : "attention"}">${!checklistReady ? "Checklist กำลังอัปเดต" : missing.length ? `ต้องตาม ${num(missing.length)} เรื่อง` : data.stillOpen ? `รอตรวจ ${num(data.stillOpen)} เคส` : dayComplete ? "Checklist ครบ · ตรวจการยืนยัน Audit ต่อ" : "ยังตรวจไม่ครบ"}</span></div>
+        <div class="checklist-cards">
+          ${[
+            ["เมลและไฟล์", data.files.length > 0, `${num(data.batches.length)} เมล · ${num(data.files.length)} ไฟล์`, false],
+            ["STM ของบัญชีที่พบใน BO", Boolean(data.boFirst) && stmRequiredByBo.length > 0 && stmMissingByBo.length === 0, data.boFirst ? `${num(stmRequiredByBo.length - stmMissingByBo.length)}/${num(stmRequiredByBo.length)} กลุ่มตาม BO · รับ ${num(checklistStmCount)} ไฟล์` : `${num(checklistStmCount)} ไฟล์ · รออ่าน BO`, !data.boFirst || !stmRequiredByBo.length],
+            ["รายงาน BO บังคับ", checklistBoCount >= boExpected, `${num(checklistBoCount)}/${num(boExpected)} ไฟล์`, false],
+            ["PM D/W ของ Provider ที่พบใน BO", Boolean(data.boFirst) && pmRequiredByBo.length > 0 && pmMissingByBo.length === 0, data.boFirst ? `${num(pmRequiredByBo.length - pmMissingByBo.length)}/${num(pmRequiredByBo.length)} กลุ่มตาม BO · รับ ${num(checklistPmCount)} ไฟล์` : `${num(checklistPmCount)} ไฟล์ · รออ่าน BO`, !data.boFirst || !pmRequiredByBo.length],
+            ["อ่านไฟล์สำหรับกระทบยอด", reconciliationReady, fileErrors ? `อ่านไม่ได้ ${num(fileErrors)}` : `${num(parsed)}/${num(data.reconciliationFiles.length)} สำเร็จ · หลักฐาน ${num(evidenceFiles)} ไฟล์ไม่ต้องแปลงรายการ`, false],
+            ["กระทบยอดและปิดเคส", dayComplete, latestStatus === "completed" ? `จับคู่ ${num(matched)} · ค้าง ${num(data.stillOpen)}` : h(status.label), false],
+          ].map(([label, ok, detail, optional]) => scheduled
+            ? `<article class="optional"><i>–</i><div><b>${h(label)}</b><small>รอวันทำการ</small></div></article>`
+            : `<article class="${ok ? "ok" : optional ? "optional" : "missing"}"><i>${ok ? "✓" : optional ? "–" : "!"}</i><div><b>${h(label)}</b><small>${h(detail)}${optional && !ok ? " · ข้อมูลประกอบ" : ""}</small></div></article>`).join("")}
+        </div>
+        ${scheduled ? `<div class="alert"><strong>เตรียม Checklist แล้ว</strong><span>ระบบจะเริ่มบันทึกสถานะอัตโนมัติเมื่อเข้าสู่วันที่ ${h(state.dailySummary.date)}</span></div>` : !checklistReady ? `<div class="alert warn"><strong>Checklist รายบัญชียังโหลดไม่ครบ</strong><span>ผลอ่านไฟล์และผลกระทบยอดด้านบนเป็นข้อมูลจริงและใช้งานได้ ระบบกำลังอัปเดตรายการบัญชีที่ต้องครบแยกต่างหาก</span></div>` : missing.length ? `<div class="alert warn"><strong>สิ่งที่ต้องตาม</strong><span>${h(missing.join(" · "))}</span></div>` : data.stillOpen ? `<div class="alert warn"><strong>ไฟล์และการกระทบยอดพร้อมแล้ว</strong><span>ยังมี ${num(data.stillOpen)} เคสที่ต้องตรวจ ชี้แจง หรืออนุมัติก่อนปิดงาน</span></div>` : !dayComplete ? `<div class="alert warn"><strong>ยังยืนยันปิดงานไม่ได้</strong><span>${h(completionBlockers.join(" · "))}</span></div>` : `<div class="alert ok"><strong>Checklist บังคับครบ · ไม่ใช่การยืนยันจาก Audit</strong><span>BO ครบตามระบบ ไฟล์กระทบยอดอ่านสำเร็จ และไม่มีเคสค้าง · STM/PM ตรวจเทียบกับบัญชีที่ใช้จริงของวันนี้</span></div>`}
+        ${data.checklist?.registry_warning ? `<div class="alert warn registry-alert"><strong>ข้อมูลทะเบียนที่ควรยืนยัน</strong><span>${h(data.checklist.registry_warning)}</span></div>` : ""}
+      </section>
+
+      <section class="grid-2 daily-summary-grid">
+        <div class="panel"><div class="panel-heading"><div><p class="eyebrow">File coverage</p><h2>ได้รับไฟล์ประเภทใดบ้าง</h2></div><span class="health ${coverageComplete ? "ok" : "attention"}">${coverageComplete ? "ครบตาม BO และกฎ" : boMissing.length ? `ยังจับคู่ไม่ได้ ${num(boMissing.length)} กลุ่ม` : missing.length ? `ยังขาด ${num(missing.length)} ประเภท` : "ยังยืนยันความครบถ้วนไม่ได้"}</span></div><div class="daily-kind-list">${kindCounts.map(([label, count]) => `<div><span>${h(label)}</span><b>${num(count)} ไฟล์</b></div>`).join("") || `<p class="empty-box">ยังไม่พบไฟล์ของ ${h(company)} ในวันนี้</p>`}</div>${missing.length ? `<div class="alert warn"><strong>ไฟล์ที่ระบบยังไม่พบ</strong><span>${h(missing.join(", "))}</span><small>อาจยังไม่เข้า หรือระบบยังจำแนกบริษัท/ประเภทไม่ถูก ต้องตรวจจากรายชื่อไฟล์ด้านล่างอีกครั้ง</small></div>` : ""}</div>
+        <div class="panel" id="dailyReconcileResult"><div class="panel-heading"><div><p class="eyebrow">Reconciliation result</p><h2>ผลกระทบยอด</h2></div><span class="badge ${status.tone}">${h(status.label)}</span></div><ul class="report-list compact"><li><span>รายการฝั่งฝาก-ถอน/PM (STM)</span><b>${num(stm)}</b></li><li><span>รายการฝั่ง BO</span><b>${num(bo)}</b></li><li><span>จับคู่ผ่าน 3 จุด</span><b>${num(matched)}</b></li><li><span>อัตราจับคู่</span><b>${matchRate.toFixed(2)}%</b></li><li><span>Exception รวมจากทั้งสองฝั่ง</span><b>${num(data.exceptionTotal)}</b><small class="sub">รวมรายการไม่พบคู่ ยอดต่าง เวลาต่าง และรายการซ้ำ จึงไม่เท่ากับ STM ลบรายการจับคู่เสมอ</small></li><li><span>ความเสียหายที่ผู้ตรวจยืนยันแล้ว</span><b>${h(damageDisplay)}</b></li></ul></div>
+      </section>
+
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Source files</p><h2>ไฟล์ที่ได้รับทั้งหมด</h2><small class="head-sub">กดชื่อไฟล์เพื่อดูตัวอย่างก่อนดาวน์โหลด · ไฟล์ชี้แจงใช้เป็นหลักฐานและไม่ต้องแปลงเป็นรายการ</small></div><span class="health ok">${num(data.files.length)} ไฟล์</span></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>รับเมื่อ</th><th>หัวข้อเมล / ผู้ส่ง</th><th>ชื่อไฟล์</th><th>ประเภท</th><th class="right">แถว</th><th>สถานะ</th></tr></thead><tbody>${data.files.map((file) => {
+        const evidence = file.kind === "doc_clarify";
+        const fileStatus = evidence ? "evidence" : file.parse_error ? "error" : file.parsed ? "parsed" : "waiting";
+        const statusHtml = evidence
+          ? `<span class="badge blue">หลักฐานพร้อมตรวจ</span><small class="sub">ไม่ต้องอ่านเป็นรายการ</small>`
+          : statementNeedsBoReview(file)
+            ? `<span class="badge amber">${h(statementReviewLabel(file))}</span><small class="sub">${h(file.parse_error)} · ต้องยืนยันว่าต้นฉบับครอบคลุมวันตรวจ และเทียบ BO บัญชีเดียวกัน แยกฝาก–ถอนก่อนสรุปว่าไม่มีรายการทั้งสองฝั่ง</small>`
+          : file.parse_error
+            ? `<span class="badge red">อ่านไม่ได้</span><small class="sub danger">${h(file.parse_error)}</small>`
+            : file.parsed
+              ? `<span class="badge green">${h(parsedFileLabel(file))}</span>`
+              : `<span class="badge amber">รออ่าน</span>`;
+        return `<tr><td>${h(displayTime(file.receivedAt))}</td><td><b>${h(file.batch.subject || "-")}</b><small class="sub">${h(file.batch.sender || "-")}</small></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(company)}" data-file-date="${h(state.dailySummary.date)}" data-file-status="${fileStatus}" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่าง</small></button></td><td>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังจำแนกไม่ได้")}</td><td class="right tnum">${evidence || file.row_count == null ? "-" : num(file.row_count)}</td><td>${statusHtml}</td></tr>`;
+      }).join("") || `<tr><td colspan="6" class="empty">ยังไม่มีไฟล์ของบริษัทนี้ในวันที่เลือก</td></tr>`}</tbody></table></div></section>
+
+      <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Exception resolution</p><h2>ผลการตรวจและแก้ไขทั้งหมด</h2><small class="head-sub">แก้ไขแล้ว ${num(data.resolvedTotal)} · ยังไม่ปิด ${num(data.stillOpen)} · แสดงรายละเอียดชุดแรก ${num(data.exceptions.length)}/${num(data.exceptionTotal)}</small></div><button class="ghost-button sm" id="dailyGoExceptions">เปิดหน้าติดตามเคส</button></div><div class="table-wrap daily-detail-table"><table><thead><tr><th>เคส / เวลา</th><th>ประเภท</th><th>บัญชี</th><th class="right">ยอด BO</th><th class="right">ยอด STM</th><th class="right">ผลต่าง</th><th>ระดับ</th><th>สถานะการแก้ไข</th><th>ผู้เกี่ยวข้อง / สาเหตุ</th></tr></thead><tbody>${data.exceptions.map((row) => `<tr class="clickable" data-daily-ex="${h(row.id)}"><td><b>${h(row.id)}</b><small class="sub">${h(row.time || "-")}</small></td><td>${h(row.typeName)}</td><td>${h(row.account)}<small class="sub">${h(row.bank)} · ${h(row.direction)}</small></td><td class="right tnum">${row.systemAmount == null ? "-" : money(row.systemAmount)}</td><td class="right tnum">${row.bankAmount == null ? "-" : money(row.bankAmount)}</td><td class="right tnum danger">${money(row.amountDiff || row.riskAmount)}</td><td><span class="badge ${h(row.severity)}">${h(sevMeta(row.severity).name)}</span></td><td><span class="badge ${h(statusMeta(row.status).tone)}">${h(statusMeta(row.status).name)}</span></td><td>${h(row.employee)}<small class="sub">${h(row.cause)}</small></td></tr>`).join("") || `<tr><td colspan="9" class="empty">${data.exceptionTotal ? `ผลรันระบุ ${num(data.exceptionTotal)} Exception แต่ยังไม่มีรายละเอียดเคสที่เปิดดูได้` : "ไม่พบ Exception ของบริษัทนี้ในวันที่เลือก"}</td></tr>`}</tbody></table></div></section>`;
+
+    // แถบสถานะส่วนหัวต้องยึดข้อมูล live ของบริษัท/วันที่ที่ผู้ใช้กำลังดู
+    // ไม่ใช่ ImportState ในเครื่อง ซึ่งอาจเป็นผลจากวันก่อนและทำให้วันว่างขึ้นว่าเสร็จแล้ว
+    const liveHeader = !data.files.length
+      ? { text: "รอไฟล์", tone: "idle", why: `ยังไม่ได้รับไฟล์ของ ${company} วันที่ ${state.dailySummary.date}` }
+      : !boFiles
+        ? { text: "รอ BO", tone: "wait", why: "ยังไม่มีรายงาน BO สำหรับระบุบัญชีและ Provider ที่ใช้งานจริง" }
+        : !data.quality.length
+          ? { text: "รอผลกระทบยอด", tone: "wait", why: "ได้รับไฟล์แล้ว แต่ยังไม่มีผลกระทบยอดของวันและบริษัทนี้" }
+          : { text: status.label, tone: status.tone === "green" ? "ok" : status.tone === "red" ? "wait" : status.tone, why: `สถานะจริงจาก Supabase: ${status.label}` };
+    const liveAutoStatus = $("#autoStatus");
+    if (liveAutoStatus) {
+      liveAutoStatus.className = `auto-status ${liveHeader.tone}`;
+      liveAutoStatus.title = liveHeader.why;
+      $("#autoStatusText").textContent = liveHeader.text;
+    }
+  }
+
+  $("#dailySummaryDate")?.addEventListener("change", (event) => {
+    state.dailySummary.date = event.target.value || DEFAULT_WORK_DATE;
+    loadDailyCompanySummary(true);
+  });
+  $("#dailySummaryCompany")?.addEventListener("change", (event) => {
+    state.dailySummary.company = event.target.value;
+    loadDailyCompanySummary(true);
+  });
+  $("#dailySummaryRefresh")?.addEventListener("click", () => loadDailyCompanySummary(true));
+  $('#dailySummaryHolds')?.addEventListener('click',()=>{
+    openModal('พักบัญชี / ทะเบียนพักตรวจ — อ่านอย่างเดียว','<div id="dailyHoldRegistry"></div>','<button id="dailyHoldRegistryClose">ปิด</button>');
+    $('#dailyHoldRegistryClose').onclick=closeModal;
+    AccountReviewHolds.mountReadOnly($('#dailyHoldRegistry'),{
+      actor:()=>Sb.authUser()?.id,role:()=>state.role,companies:Sb.reviewHoldRegistryCompanies,
+      scopes:Sb.reviewHoldScopes,report:Sb.reviewHoldRegistryReport,view:AccountReviewHolds.view,
+      csv:AccountReviewHolds.csv,saveBlob:Exporter.saveBlob,from:state.dailySummary.date,to:state.dailySummary.date,
+    });
+  });
+  const matchedButton = document.createElement("button");
+  matchedButton.className = "primary-button";
+  matchedButton.textContent = "ดูรายการจับคู่สำเร็จ";
+  $("#dailySummaryRefresh")?.after(matchedButton);
+  matchedButton.addEventListener("click", async () => {
+    matchedButton.disabled = true;
+    const company = state.dailySummary.company, date = state.dailySummary.date;
+    try {
+      const run = await Sb.matchedEvidence(company, date);
+      const evidence = run?.summary?.match_evidence;
+      if (!Array.isArray(evidence) || !evidence.length) {
+        openModal("รายการจับคู่สำเร็จ", `<p>${h(company)} · ${h(date)}</p><p>ผลรอบนี้มีคู่สำเร็จ ${num(run?.matched || 0)} รายการ แต่${run ? "ยังไม่ได้เก็บหลักฐานรายคู่สำหรับมุมมองนี้" : "ยังไม่มีผลประมวลผล"} จึงยังแสดงรายละเอียดไม่ได้ ไม่ใช่ยืนยันว่าไม่มีคู่สำเร็จ</p><p>ต้องประมวลผลด้วย Worker ที่เก็บหลักฐานรายคู่ก่อน ไม่สร้างรายการทดแทนจากยอดรวม</p>`);
+        return;
+      }
+      const time = side => side?.date ? `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec * 1000).toISOString().slice(11,19) : "ไม่ระบุเวลา"}` : "ไม่ระบุ";
+      const person = p => p ? `บัญชี: ${h(p.account || "ไม่ระบุ")}<br>ชื่อ: ${h(p.name || "ไม่ระบุ")}<br>User: ${h(p.user || "ไม่ระบุ")}<br>อ้างอิง: ${h(p.reference || "ไม่ระบุ")}` : "ผลเก่าไม่ได้เก็บข้อมูลลูกค้า";
+      let direction = "deposit", page = 0;
+      const draw = () => {
+        const rows = evidence.filter(e => e.direction === direction);
+        openModal(`คู่สำเร็จ · ${h(company)} · ${h(date)}`, `<p>หลักฐานการจับคู่ของระบบ ไม่ใช่การรับรอง 100% หรืออนุมัติปิดเคส รายการเติมมือทั่วไปต้องตรวจเอกสาร ยกเว้นบัญชีระบบ 123 ที่ผ่านกฎปิดอัตโนมัติซึ่ง Audit อนุมัติไว้</p><button id="matchedDeposit">ฝาก</button> <button id="matchedWithdraw">ถอน</button><p>${direction === "deposit" ? "ฝาก" : "ถอน"} ${num(rows.length)} คู่ · หน้า ${page + 1}/${Math.max(1, Math.ceil(rows.length / 50))}</p><div style="overflow:auto"><table><thead><tr><th>บัญชี/Provider</th><th>BO</th><th>STM/PM</th><th>ต่างเวลา</th><th>เกณฑ์</th></tr></thead><tbody>${rows.slice(page * 50, page * 50 + 50).map(e => `<tr><td>${h(e.account)}</td><td>${h(time(e.bo))}<br>${money(e.boAmount ?? e.amount)}<br>${person(e.customer?.bo)}<br>แถว ${h(e.bo?.row ?? "ไม่ระบุ")}</td><td>${h(time(e.stm))}<br>${e.stmAmount == null ? "ไม่ได้เก็บยอดฝั่ง STM" : money(e.stmAmount)}<br>${person(e.customer?.stm)}<br>แถว ${h(e.stm?.row ?? "ไม่ระบุ")}</td><td>${h(evidenceTimeDiffLabel(e))}</td><td>${h(e.method === "customer-account-amount-same-day-60m" ? "บัญชีลูกค้า + ยอด + วันเดียวกัน ภายใน 60 นาที" : "กฎจับคู่เดิม — ต้องตรวจเกณฑ์ประกอบ")}${e.manualReview ? "<br>เติมมือ: รอหลักฐาน" : e.sys123ManualAutoClosed ? "<br>เติมมือ 123: ผ่านกฎปิดอัตโนมัติ" : ""}</td></tr>`).join("") || '<tr><td colspan="5">ไม่มีคู่ในประเภทนี้</td></tr>'}</tbody></table></div>`, `<button id="matchedPrev" ${page === 0 ? "disabled" : ""}>ก่อนหน้า</button><button id="matchedNext" ${(page + 1) * 50 >= rows.length ? "disabled" : ""}>ถัดไป</button>`);
+        $("#matchedDeposit").onclick = () => { direction = "deposit"; page = 0; draw(); };
+        $("#matchedWithdraw").onclick = () => { direction = "withdraw"; page = 0; draw(); };
+        $("#matchedPrev").onclick = () => { page--; draw(); };
+        $("#matchedNext").onclick = () => { page++; draw(); };
+      };
+      draw();
+    } catch (error) { toast(`โหลดคู่สำเร็จไม่ได้: ${error.message}`); }
+    finally { matchedButton.disabled = false; }
+  });
+  $("#dailySummaryExport")?.addEventListener("click", async () => {
+    let data = dailyCompanyData(state.dailySummary.company);
+    if (data.exceptionTotal > data.exceptions.length) {
+      toast("กำลังดึงรายละเอียดทั้งหมดสำหรับ Export — หน้าจอยังใช้งานต่อได้");
+      try {
+        const rows = await Sb.currentExceptionsSummary({ from: state.dailySummary.date, to: state.dailySummary.date, company: state.dailySummary.company, limit: 5000 });
+        dailyCompanyState.informationalExceptions = informationalAuditRows(rows);
+        dailyCompanyState.matchedStaleExceptions = matchedStaleAuditCount(rows,dailyCompanyState.matchEvidence);
+        dailyCompanyState.exceptions = actionableAuditRows(rows,dailyCompanyState.matchEvidence).map(mapLiveException);
+        data = dailyCompanyData(state.dailySummary.company);
+      } catch (error) {
+        toast("ดึงรายละเอียดทั้งหมดไม่สำเร็จ จึง Export เฉพาะข้อมูลที่โหลดแล้ว: " + error.message, "warn");
+      }
+    }
+    exportDailyCompanySummary(data);
+  });
+  root.querySelectorAll("[data-sheet-open]").forEach((button) => button.addEventListener("click", () => {
+    state.dailySummary.company = button.dataset.sheetOpen;
+    loadDailyCompanySummary(true);
+  }));
+  root.querySelectorAll("[data-sheet-action]").forEach((button) => button.addEventListener("click", () => {
+    const company = button.dataset.sheetAction;
+    const mode = button.dataset.sheetMode;
+    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company };
+    if (mode === "files") return go("cloud", { filters });
+    if (mode === "issues") return go("exceptions", { filters, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false } });
+    if (mode === "approve") return go("approvals", { filters });
+    state.dailySummary.company = company;
+    loadDailyCompanySummary(true);
+  }));
+  $("#dailyGoExceptions")?.addEventListener("click", () => go("exceptions", { filters: { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company }, exFilter: { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } }));
+  root.querySelectorAll("[data-daily-route]").forEach((button) => button.addEventListener("click", () => {
+    const route = button.dataset.dailyRoute;
+    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
+    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
+  }));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => {
+    const route = item.dataset.actionRoute;
+    const filters = { date: state.dailySummary.date, from: state.dailySummary.date, to: state.dailySummary.date, preset: "day", company: state.dailySummary.company };
+    go(route, { filters, exFilter: route === "exceptions" ? { q: "", type: "ALL", severity: "ALL", status: "ALL", sla: false } : undefined });
+  }));
+  root.querySelectorAll("[data-scroll-daily]").forEach((item) => item.addEventListener("click", () => {
+    document.getElementById(item.dataset.scrollDaily)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  root.querySelectorAll("[data-bo-follow]").forEach((button) => button.addEventListener("click", () => openBoFollowUp(button.dataset.boFollow)));
+  $("#boOpenFirstFollow")?.addEventListener("click", () => {
+    const first = root.querySelector(".bo-requirement-attention [data-bo-follow]");
+    if (first) openBoFollowUp(first.dataset.boFollow);
+  });
+  bindStoredFileLinks(root);
+  root.querySelectorAll("[data-daily-ex]").forEach((row) => row.addEventListener("click", () => {
+    const item = (dailyCompanyState.exceptions || []).find((exception) => exception.id === row.dataset.dailyEx);
+    if (item && !DB.exceptions.some((exception) => exception.id === item.id)) DB.exceptions.push(item);
+    openException(row.dataset.dailyEx);
+  }));
+}
+
+VIEWS["daily-summary"] = renderDailyCompanySummary;
+
+/* =============================================================
+   VIEW: Intake Control
+   ============================================================= */
+const liveIntakeState = { batches: null, loading: false, error: null, key: "", updatedAt: null };
+
+async function loadLiveIntake(force = false) {
+  const key = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  if (liveIntakeState.loading || (!force && liveIntakeState.key === key && liveIntakeState.batches)) return;
+  liveIntakeState.loading = true;
+  liveIntakeState.error = null;
+  liveIntakeState.key = key;
+  render();
+  try {
+    liveIntakeState.batches = await Sb.batches({ from: state.filters.from, to: state.filters.to, company: state.filters.company, force });
+    liveIntakeState.updatedAt = new Date();
+  } catch (e) {
+    liveIntakeState.error = e.message || "โหลดทะเบียนไฟล์จริงไม่สำเร็จ";
+  }
+  liveIntakeState.loading = false;
+  render();
+}
+
+function intakeCompanyOf(file, batch) {
+  const master = companyMaster().map((c) => c.code);
+  const raw = `${file.company || ""} ${batch.company || ""} ${file.file_name || ""} ${batch.subject || ""}`.toUpperCase();
+  if (/UFABET\s*7M|UFA\s*7M|(^|[^A-Z0-9])7M([^A-Z0-9]|$)/.test(raw)) return state.dataset === "production" ? "UFABET7M" : "7M";
+  return master.find((code) => new RegExp(`(^|[^A-Z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z0-9]|$)`, "i").test(raw)) || null;
+}
+
+function intakeTypesOf(file) {
+  const text = `${file.kind || ""} ${file.file_name || ""}`.toLowerCase();
+  if (file.kind === "pm_statement" || /\bpm\b|autopeer|azpay|cyberplus|mypay|12pay|payment/.test(text)) return ["PM"];
+  const out = [];
+  const both = /ฝาก\s*[-–—/]?\s*ถอน|ถอน\s*[-–—/]?\s*ฝาก|ฝากถอน|ถอนฝาก|statement|\bstm\b/.test(text);
+  if (both || /ฝาก|deposit/.test(text)) out.push("ฝาก");
+  if (both || /ถอน|withdraw|\bwd\b/.test(text)) out.push("ถอน");
+  if (!out.length && ["stm_pdf", "bo_main"].includes(file.kind)) out.push("ฝาก", "ถอน");
+  return [...new Set(out)];
+}
+
+function renderLiveIntake(root) {
+  if (!liveIntakeState.batches && !liveIntakeState.loading) loadLiveIntake();
+  if (liveIntakeState.loading && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังตรวจไฟล์จริง</h2><p class="hint">จัดกลุ่ม PM ฝาก และถอนตามบริษัท...</p></div></section>`;
+    return;
+  }
+  if (liveIntakeState.error && !liveIntakeState.batches) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดไฟล์จริงไม่สำเร็จ</strong><span>${h(liveIntakeState.error)}</span><button class="ghost-button sm" id="intakeRetry">ลองใหม่</button></div></section>`;
+    $("#intakeRetry")?.addEventListener("click", () => loadLiveIntake(true));
+    return;
+  }
+
+  const batches = liveIntakeState.batches || [];
+  const files = batches.flatMap((batch) =>
+    (batch.source_files || []).map((file) => ({
+      ...file,
+      intakeCompany: intakeCompanyOf(file, batch),
+      intakeTypes: intakeTypesOf(file),
+      receivedAt: file.received_at || batch.received_at,
+    })),
+  );
+  const typedFiles = files.filter((file) => file.intakeCompany && file.intakeTypes.length);
+  const visibleTypes = state.filters.direction === "ALL" ? ["PM", "ฝาก", "ถอน"] : [state.filters.direction];
+  const selectedFiles = typedFiles.filter((file) => file.intakeTypes.some((type) => visibleTypes.includes(type)));
+  const companies = companyMaster().filter((company) => state.filters.company === "ALL" || company.code === state.filters.company);
+  const rows = companies.map((company) => {
+    const own = selectedFiles.filter((file) => file.intakeCompany === company.code);
+    const counts = Object.fromEntries(["PM", "ฝาก", "ถอน"].map((type) => [type, own.filter((file) => file.intakeTypes.includes(type)).length]));
+    const errors = own.filter((file) => file.parse_error).length;
+    const parsed = own.filter((file) => file.parsed).length;
+    const latest = own.map((file) => String(file.receivedAt || "")).sort().pop() || "";
+    return { company: company.code, own, counts, errors, parsed, latest };
+  });
+  const foundCompanies = rows.filter((row) => row.own.length).length;
+  const errors = selectedFiles.filter((file) => file.parse_error).length;
+  const waitingRead = selectedFiles.filter((file) => !file.parsed && !file.parse_error).length;
+  const missingCompanies = rows.length - foundCompanies;
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>บริษัทที่ต้องตรวจ</span><strong>${num(rows.length)}</strong><small>${h(state.filters.company === "ALL" ? "ทะเบียนบริษัททั้งหมด" : state.filters.company)}</small></article>
+      <article class="ok"><span>บริษัทที่พบไฟล์</span><strong>${num(foundCompanies)}</strong><small>จากไฟล์จริงใน Supabase</small></article>
+      <article class="${waitingRead ? "warn" : "ok"}"><span>ไฟล์ PM / ฝาก / ถอน</span><strong>${num(selectedFiles.length)}</strong><small>รออ่าน ${num(waitingRead)} ไฟล์</small></article>
+      <article class="${errors || missingCompanies ? "bad" : "ok"}"><span>ต้องตรวจเพิ่ม</span><strong>${num(errors + missingCompanies)}</strong><small>ไม่พบบริษัท ${num(missingCompanies)} · อ่านไม่ได้ ${num(errors)}</small></article>
+    </section>
+
+    ${
+      !selectedFiles.length
+        ? `<div class="alert bad"><strong>ยังไม่พบไฟล์ PM ฝาก หรือถอน</strong><span>ช่วง ${h(rangeLabel())} ยังไม่มีไฟล์ที่จำแนกเข้าบริษัทได้ กรุณาตรวจช่วงวันที่หรือเปิดคลังไฟล์จากเมล</span></div>`
+        : errors || waitingRead || missingCompanies
+          ? `<div class="alert bad"><strong>ยังสรุปว่าไฟล์ครบไม่ได้</strong><span>พบข้อมูลจริงแล้ว แต่ยังมีบริษัทไม่พบไฟล์ ไฟล์รออ่าน หรือไฟล์อ่านไม่สำเร็จ ต้องตรวจต่อก่อนกระทบยอด</span></div>`
+          : `<div class="alert ok"><strong>ไฟล์ที่พบพร้อมตรวจ</strong><span>ไฟล์ในช่วงนี้อ่านสำเร็จแล้ว แต่ความครบถ้วนสุดท้ายให้ยืนยันจากผลกระทบยอดของแต่ละบริษัท</span></div>`
+    }
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">ข้อมูลจริงตามบริษัท</p><h2>สถานะ PM ฝาก และถอน</h2><small class="head-sub">อัปเดต ${liveIntakeState.updatedAt ? displayTime(liveIntakeState.updatedAt) : "-"}</small></div>
+        <div class="inline-actions"><button class="ghost-button sm" id="intakeRefresh">รีเฟรช</button><button class="primary-button sm" id="intakeCloud">เปิดคลังไฟล์</button></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>บริษัท</th>${visibleTypes.map((type) => `<th class="right">${h(type)}</th>`).join("")}<th class="right">รวมไฟล์</th><th class="right">อ่านแล้ว</th><th>รับล่าสุด</th><th>สถานะ</th></tr></thead>
+        <tbody>${rows.map((row) => {
+          const tone = !row.own.length ? "grey" : row.errors ? "red" : row.parsed < row.own.length ? "amber" : "green";
+          const label = !row.own.length ? "ยังไม่พบไฟล์" : row.errors ? "มีไฟล์อ่านไม่ได้" : row.parsed < row.own.length ? "รออ่าน" : "พร้อมตรวจ";
+          return `<tr><td><b>${h(row.company)}</b></td>${visibleTypes.map((type) => `<td class="right tnum">${num(row.counts[type])}</td>`).join("")}<td class="right tnum">${num(row.own.length)}</td><td class="right tnum">${num(row.parsed)}</td><td>${row.latest ? h(displayTime(row.latest)) : "-"}</td><td><span class="badge ${tone}">${label}</span></td></tr>`;
+        }).join("")}</tbody>
+      </table></div>
+      <p class="hint">จำนวนในคอลัมน์คือจำนวนไฟล์ที่ระบบจำแนกได้ ไม่ใช่จำนวนธุรกรรม; ไฟล์ชื่อ “ฝาก-ถอน” จะนับได้ทั้งฝากและถอน ส่วน PM แยกเป็นประเภทของตัวเอง</p>
+    </section>`;
+
+  $("#intakeRefresh")?.addEventListener("click", () => loadLiveIntake(true));
+  $("#intakeCloud")?.addEventListener("click", () => go("cloud"));
+}
+
+VIEWS.intake = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveIntake(root);
+    return;
+  }
+  const f = state.filters;
+  const files = DB.files.filter((x) => f.company === "ALL" || x.company === f.company);
+  const stat = (s) => files.filter((x) => x.status === s).length;
+  const statusText = { received: "รับแล้ว", missing: "ไม่ได้ส่ง", wrong_company: "ผิดบริษัท", late: "ส่งช้า" };
+  const statusTone = { received: "green", missing: "red", wrong_company: "red", late: "amber" };
+  const blocked = stat("missing") + stat("wrong_company");
+
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>ไฟล์ที่ต้องได้รับ</span><strong>${files.length}</strong><small>${DB.companies.length} บริษัท × ประเภทไฟล์</small></article>
+      <article class="ok"><span>รับครบถูกต้อง</span><strong>${stat("received")}</strong><small>ผ่าน quality gate</small></article>
+      <article class="warn"><span>ส่งช้ากว่ากำหนด</span><strong>${stat("late")}</strong><small>รับแล้วแต่เกินเวลา 09:00</small></article>
+      <article class="bad"><span>ขาด / ผิดบริษัท</span><strong>${blocked}</strong><small>ต้องแก้ก่อนเริ่ม reconcile</small></article>
+    </section>
+
+    ${
+      blocked
+        ? `<div class="alert bad">
+        <strong>ยังเริ่ม reconcile แบบเต็มรอบไม่ได้</strong>
+        <span>พบไฟล์ขาดหรือส่งผิดบริษัท ${blocked} รายการ ระบบจะไม่กระทบยอดเงียบ ๆ แต่รอจนกว่าไฟล์จะครบ แล้วจึงทำงานให้เองทันที</span>
+        <button class="ghost-button sm" id="btnRemind">ส่งแจ้งเตือนผู้ส่งไฟล์</button>
+      </div>`
+        : `<div class="alert ok"><strong>ไฟล์ครบตามเช็คลิสต์</strong><span>ระบบกระทบยอดให้อัตโนมัติแล้วเมื่อไฟล์เข้าครบทั้งสองฝั่ง ไม่ต้องสั่งเอง</span></div>`
+    }
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Daily Checklist</p><h2>สถานะไฟล์รายบริษัท</h2></div>
+        <div class="inline-actions">
+          <button class="ghost-button sm" id="btnRecheck">ตรวจไฟล์ใหม่</button>
+          <button class="primary-button sm" id="btnUpload">ไปหน้านำเข้าข้อมูลจริง</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>บริษัท</th><th>ประเภทไฟล์</th><th>เวลาที่รับ</th><th>จำนวนแถว</th><th>ผู้ส่ง</th><th>Checksum</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody>
+            ${files
+              .map(
+                (x) => `<tr>
+              <td>${h(x.companyName)}</td>
+              <td>${h(x.fileType)}</td>
+              <td>${h(displayTime(x.receivedAt))}</td>
+              <td class="tnum">${x.rows ? num(x.rows) : "-"}</td>
+              <td>${h(x.sender)}</td>
+              <td class="mono">${h(x.checksum)}</td>
+              <td><span class="badge ${statusTone[x.status]}">${statusText[x.status]}</span></td>
+              <td>${x.status === "received" ? "" : `<button class="link-btn" data-fix="${h(x.id)}">ทวงไฟล์</button>`}</td>
+            </tr>`,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Quality Gate</p><h2>สิ่งที่ระบบตรวจอัตโนมัติ</h2></div></div>
+        <ul class="tick-list">
+          <li>ไฟล์ถูกบริษัทหรือไม่ (เทียบเลขบัญชีใน master list)</li>
+          <li>ประเภทไฟล์ตรงกับที่ระบุใน subject email</li>
+          <li>ช่วงวันที่ในไฟล์ตรงกับวันที่ตรวจ (กันวันที่ปนจาก PM)</li>
+          <li>checksum ซ้ำกับไฟล์เดิมหรือไม่ (กันส่งไฟล์เก่าซ้ำ)</li>
+          <li>จำนวนแถวผิดปกติเทียบค่าเฉลี่ย 7 วัน</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Manual Review</p><h2>สิ่งที่ยังต้องใช้คนตรวจ</h2></div></div>
+        <ul class="tick-list warn">
+          <li>อ่านไฟล์ชี้แจงที่มีบริบทเฉพาะของหัวหน้ากะ</li>
+          <li>ตัดสินว่าเคสใดเป็นความเสียหายจริง</li>
+          <li>อนุมัติการแก้ไขรายการหรือการลงโทษ</li>
+          <li>เคสที่ธนาคารไม่ระบุเวลา หรือข้อมูลไม่เป็น pattern</li>
+        </ul>
+      </div>
+    </section>`;
+
+  $("#btnRecheck")?.addEventListener("click", () => {
+    logAction("recheck", "source_file", "ALL", "ตรวจความครบถ้วนไฟล์ใหม่");
+    toast("ตรวจไฟล์ใหม่เสร็จ: สถานะไม่เปลี่ยนแปลง");
+  });
+  $("#btnUpload")?.addEventListener("click", () => go("import"));
+  $("#btnRemind")?.addEventListener("click", () => {
+    logAction("notify", "source_file", "missing", "ส่งแจ้งเตือนผู้ส่งไฟล์ที่ยังขาด");
+    toast("ส่งแจ้งเตือนไปยังหัวหน้ากะที่เกี่ยวข้องแล้ว");
+  });
+  root.querySelectorAll("[data-fix]").forEach((b) =>
+    b.addEventListener("click", () => {
+      logAction("notify", "source_file", b.dataset.fix, "ทวงไฟล์รายรายการ");
+      toast("ทวงไฟล์ " + b.dataset.fix + " แล้ว");
+    }),
+  );
+};
+
+/* =============================================================
+   VIEW: Exceptions
+   ============================================================= */
+function exceptionSideTimestamp(e, side) {
+  const time = e[`${side}Time`];
+  const date = e[`${side}Date`];
+  return time && time !== "-" && date ? `${date} ${time}` : "ยังไม่มีเวลาต้นฉบับ — เปิดหลักฐานตรวจ";
+}
+
+function reviewCustomer(e, side) {
+  const value = e.customerDetails?.[side] || {};
+  const account = String(value.account || "").trim();
+  const digits = account.replace(/[\s-]/g, "");
+  return { user: String(value.user || ""), account, name: String(value.name || ""),
+    tail: /^\d{4,}$/.test(digits) ? digits.slice(-4) : "", reference: String(value.reference || "") };
+}
+function reviewAccountHtml(e) {
+  const account = String(e.account || "").trim();
+  const isPm = /^(AUTOPEER|ATP|AZPAY|COREPAY|CPXM|CYBERPLUS|MYPAY|12PAY|PM)$/i.test(account);
+  const bo = reviewCustomer(e, "bo");
+  const stm = reviewCustomer(e, "stm");
+  const isSys123 = ["AT4", "FR8", "SK8"].includes(String(e.company || "").toUpperCase());
+  const tails = [...new Set([bo.tail, stm.tail].filter(Boolean))];
+  const names = [...new Set([bo.name, stm.name].filter(Boolean))];
+  const searchTags = isSys123 && (tails.length || names.length)
+    ? `<small class="sub">${tails.map((tail) => `<span class="badge blue">ท้าย 4: ${h(tail)}</span>`).join(" ")} ${names.map((name) => `<span class="badge violet">ชื่อ: ${h(name)}</span>`).join(" ")}</small>`
+    : "";
+  const customerBlock = (label, c) => `<span><b>${label}</b><br>เลขบัญชี: ${h(c.account || "ไม่ระบุในข้อมูลเคส")}<br>ชื่อลูกค้า: ${h(c.name || "ไม่ระบุในข้อมูลเคส")}<br>ท้าย 4 ตัว: <b>${h(c.tail || "ยังยืนยันไม่ได้")}</b></span>`;
+  return `<div class="review-account-details"><b>${isPm ? "ผู้ให้บริการ PM" : "บัญชีที่กระทบยอด"}: ${h(account || "ไม่ระบุ")}</b>${searchTags}${isPm ? '<small>บัญชีรับ–จ่ายของบริษัท: ยังไม่มีข้อมูลยืนยันในเคส</small>' : ""}${customerBlock("บัญชีลูกค้าใน BO", bo)}${customerBlock("บัญชีลูกค้าใน STM/PM", stm)}</div>`;
+}
+function reviewCustomerHtml(e, side) {
+  const c = reviewCustomer(e, side);
+  const source = e.customerDetails?.[side] || {};
+  const manual = side === "bo" && /เติม\s*มือ|เติมเอง|manual/i.test(String(source.origin || ""));
+  const manualHtml = manual ? `<div class="review-account-details"><b>รายการเติมมือ</b><span>ทำรายการโดย (N): <b>${h(source.performedBy || "ไม่ระบุในต้นฉบับ")}</b></span><span style="white-space:pre-wrap">หมายเหตุ (O): ${h(source.note || "ไม่ระบุในต้นฉบับ")}</span><small>หมายเหตุจาก BO ไม่ใช่เอกสารชี้แจง</small></div>` : "";
+  if (!Object.values(c).some(Boolean)) return manualHtml + '<small>ยังไม่มีรายละเอียดลูกค้า — เปิดไฟล์ต้นฉบับตรวจ</small>';
+  return manualHtml + `<details><summary>ดู User / บัญชีลูกค้า</summary><dl><dt>User</dt><dd>${h(c.user || "ไม่ระบุ")}</dd><dt>เลขบัญชีลูกค้า</dt><dd>${h(c.account || "ไม่ระบุ")}</dd><dt>ชื่อลูกค้า</dt><dd>${h(c.name || "ไม่ระบุ")}</dd><dt>ท้าย 4 ตัว</dt><dd>${h(c.tail || "ยังยืนยันไม่ได้")}</dd><dt>รหัสอ้างอิงต้นฉบับ</dt><dd>${h(c.reference || "ไม่ระบุ")}</dd></dl></details>`;
+}
+
+function groupReviewCases(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    // Unknown accounts must not be combined as if they were the same account.
+    const account = row.account && row.account !== "-" ? row.account : row.id;
+    const key = JSON.stringify([row.company, row.date, account, row.direction, row.type, row.status]);
+    if (!groups.has(key)) groups.set(key, { first: row, ids: [], overdue: 0 });
+    const group = groups.get(key);
+    group.ids.push(row.id);
+    if (row.overSla) group.overdue++;
+  }
+  return [...groups.values()];
+}
+
+let reviewQueueIds = [];
+VIEWS.exceptions = (root) => {
+  // A work sheet always belongs to one authorized company; ALL is a picker, not a mixed queue.
+  if (state.filters.company === "ALL" || !canAccessCompany(state.filters.company)) {
+    reviewQueueIds = [];
+    const companies = companyMaster();
+    root.innerHTML = `<section class="panel"><div class="panel-heading"><div><p class="eyebrow">ขอบเขตการตรวจ</p><h2>3 เครือบริษัท · เลือกบริษัทย่อย</h2><p>เปิดงานทีละบริษัท → เลือกชีทฝากหรือถอน → ตรวจ BO เทียบ STM / PM</p></div><span class="health ok">${num(AUDIT_COMPANY_GROUPS.length)} เครือ</span></div><div class="review-company-groups">${reviewCompanyGroupsMarkup(companies) || "ยังไม่มีบริษัทที่คุณมีสิทธิ์ตรวจ"}</div></section>`;
+    root.querySelectorAll('[data-review-company]').forEach((button) => button.addEventListener('click', () => {
+      if (!canAccessCompany(button.dataset.reviewCompany)) return;
+      state.filters.company = button.dataset.reviewCompany;
+      state.filters.direction = "ฝาก";
+      state.reviewSheet = "normal";
+      state.auditDocumentView = MC8LiveSheets.COMPANIES.includes(button.dataset.reviewCompany) ? "excel" : "review";
+      state.exFilter.status = "ACTION";
+      state.page = 1;
+      render();
+    }));
+    return;
+  }
+  if (state.dataset === "production" && Sb.signedIn()) {
+    const company = state.filters.company;
+    const supportsExcelView = MC8LiveSheets.COMPANIES.includes(company);
+    const auditView = supportsExcelView ? state.auditDocumentView : 'review';
+    root.innerHTML = `<section class="audit-view-switcher" aria-label="รูปแบบหน้ากระทบยอด">
+      <div><b>${h(company)} · ${h(state.filters.to || DEFAULT_WORK_DATE)}</b><small>ข้อมูลชุดเดียวกันทั้งหน้าจอและไฟล์ Excel</small></div>
+      <div class="audit-view-switcher-actions">
+        <button type="button" class="ghost-button" data-audit-view="companies">กลับเลือกบริษัท</button>
+        <button type="button" class="${auditView === "excel" ? "primary-button" : "ghost-button"}" data-audit-view="excel" aria-pressed="${auditView === "excel"}" ${supportsExcelView?'':'disabled title="รอเงื่อนไขของเครือบริษัทนี้"'}>มุมมองเอกสาร Excel</button>
+        <button type="button" class="${auditView === "review" ? "primary-button" : "ghost-button"}" data-audit-view="review" aria-pressed="${auditView === "review"}">ตรวจ / อนุมัติเคส</button>
+      </div>
+    </section><div id="auditViewBody"></div>`;
+    root.querySelectorAll('[data-audit-view]').forEach(button => button.addEventListener('click', () => {
+      if (button.dataset.auditView === 'companies') state.filters.company = 'ALL';
+      else state.auditDocumentView = button.dataset.auditView;
+      render();
+    }));
+    const workspace = root.querySelector('#auditViewBody');
+    if (auditView === 'excel') {
+      MC8LiveSheets.mount(workspace, {
+        date: state.filters.to || DEFAULT_WORK_DATE,
+        company,
+        companies: [company],
+        signedIn: () => state.dataset === 'production' && Sb.signedIn(),
+        load: Sb.reconciliationOverview,
+        loadFiles: runId => Sb.exceptionFiles(runId),
+        readBoRecords: readAuditBoOperatorRecords,
+        onRecheck: openAccountRecheck,
+        onManageFiles: openFileRunManagement,
+        exportBoWaitingCases: downloadBoWaitingCaseRequest,
+        onNewCaseSet: ['lead','admin'].includes(state.role)?openManualPrimaryCaseSet:null,
+        isActive: () => state.route === 'exceptions' && state.filters.company === company && state.auditDocumentView === 'excel',
+        onDate: date => { state.filters.date = date; state.filters.from = date; state.filters.to = date; },
+        onCase: async row => {
+          if (!row?.id) throw new Error('ไม่พบ UUID ของเคสจริง');
+          await openEvidenceRelatedCase(row.id, {focusFiles: true});
+        },
+        onCaseError: error => toast('เปิดเคสจริงไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'warn'),
+        onFile: (file,dateValue,companyValue) => { if(file?.storage_path) openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company||companyValue,date:dateValue,size:file.size_bytes,status:file.parse_error?'error':file.parsed?'parsed':'waiting'}); },
+        exportWorkbook: (sheets, filename, meta) => Exporter.workbook(sheets, filename, meta),
+        onExported: ({filename,company:exportCompany,date,rows,sheets,complete}) => {
+          logAction('export', 'audit_reconciliation_workbook', `${exportCompany}|${date}`, `Excel ${sheets} ชีต · ${rows} แถว · ${complete?'ข้อมูลรอบครบ':'ข้อมูลรอบยังไม่ครบ'}`);
+          toast(`ดาวน์โหลด ${filename} แล้ว (${sheets} ชีต · ${num(rows)} แถว)`);
+        },
+      });
+      return;
+    }
+    ReviewOverview.mount(workspace, {
+      company,
+      date: state.filters.to || DEFAULT_WORK_DATE,
+      minDate: VISIBLE_DATE_FROM,
+      load: async (company,date) => {
+        const [data,scopes]=await Promise.all([Sb.reconciliationOverview(company,date),Sb.reviewHoldScopes()]);
+        AccountReviewHolds.set(scopes);return data;
+      },
+      loadRecommendations: Sb.evidenceCaseRecommendations,
+      onRecommendation: links => EvidenceRecommendations.showCaseLinks(links, Sb, openStoredFilePreview, openEvidenceRelatedCase),
+      onExport: exportSheets,
+      onConfirm: Sb.confirmAuditPairs,
+      onBulkClose: can('approve') ? confirmBulkCaseClose : undefined,
+      onBatchStatus: confirmAuditStatusBatch,
+      onCrossDay: row => row && CrossDayWorkbench.open(mapLiveException(row)),
+      canReviewClosed: ['lead','admin'].includes(state.role),
+      onDateChange: date => { state.filters.date=date; state.filters.from=date; state.filters.to=date; },
+      isActive: () => state.route === "exceptions" && state.filters.company === company && auditView === 'review',
+      onCompany: () => { state.filters.company = "ALL"; render(); },
+      onCase: (row, {action = 'files', onComplete = async () => {}} = {}) => {
+        if (!row) return;
+        if (action === 'close') {
+          if (!can('approve')) return deny('ปิดเคส');
+          return confirmBulkCaseClose([row], {company: row.company, date: row.business_date, onComplete});
+        }
+        if (action === 'clarify') {
+          if (!can('request_clarify')) return deny('ส่งชี้แจง');
+          if (!['open', 'answered', 'pending_next_day'].includes(row.status)) return toast('สถานะนี้ส่งชี้แจงไม่ได้ หรือส่งแล้ว กรุณารีเฟรช', 'warn');
+          openModal('ส่งขอชี้แจง', `<p>${h(row.code)} · ${h(row.company)} · ${h(row.business_date)}</p><p>ส่งเข้าเป็นงานในชีทของผู้ชี้แจงบริษัท ${h(row.company)} โดยใช้เคสเดิม ไม่ส่งข้อความภายนอก</p><p id="inlineClarifyResult" role="status"></p>`, '<button id="inlineClarifyCancel" class="ghost-button">ยกเลิก</button><button id="inlineClarifyConfirm" class="primary-button">ยืนยันส่งขอชี้แจง</button>');
+          $('#inlineClarifyCancel').onclick = closeModal;
+          $('#inlineClarifyConfirm').onclick = async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            $('#inlineClarifyResult').textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
+            try {
+              const requestedAt = new Date().toISOString();
+              await Sb.requestClarification(row.id, row.status, {requested_at: requestedAt, requested_by: Sb.authUser()?.id, updated_at: requestedAt});
+            } catch (error) {
+              $('#inlineClarifyResult').textContent = error.message;
+              return;
+            }
+            closeModal();
+            toast('ส่งเข้า ชีทรอชี้แจงแล้ว — ไม่ต้องกดส่งซ้ำ');
+            await onComplete();
+          };
+          return;
+        }
+        const item = mapLiveException(row);
+        // EX codes repeat between runs/companies; use the persisted UUID here.
+        item.id = row.id;
+        reviewQueueIds = [];
+        const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
+        if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
+        openException(item.id, {focusFiles: action === 'files'});
+        if (action !== 'files') {
+          const target = action === 'answer' ? '#btnRespond' : '#caseSummarySection';
+          $(target)?.scrollIntoView({block:'center',behavior:'smooth'});
+          toast('ตรวจรายละเอียดและกดยืนยันอีกครั้ง — ยังไม่ได้เปลี่ยนสถานะหรือส่งข้อความ');
+        }
+      },
+    });
+    return;
+  }
+  if (!ensureLiveOverview(root)) return;
+  const query = String(state.exFilter.q || "").trim();
+  const searchKey = `${query}|${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+  if (state.dataset === "production" && Sb.signedIn() && query) {
+    loadLiveExceptionSearch(query);
+    const intakeKey = `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+    if ((!liveIntakeState.batches || liveIntakeState.key !== intakeKey) && !liveIntakeState.loading) loadLiveIntake();
+  }
+  const serverRows = query && liveExceptionSearch.key === searchKey ? liveExceptionSearch.rows : [];
+  const source = [...new Map(DB.exceptions.concat(serverRows).map((row) => [row.dbId || row.id, row])).values()];
+  const list = filteredExceptions(source);
+  const sorted = [...list].sort((a, b) => {
+    const k = state.sort.key;
+    const dir = state.sort.dir === "asc" ? 1 : -1;
+    const av = k === "riskAmount" ? a.riskAmount : a[k];
+    const bv = k === "riskAmount" ? b.riskAmount : b[k];
+    return av > bv ? dir : av < bv ? -dir : 0;
+  });
+  const pages = Math.max(1, Math.ceil(sorted.length / state.perPage));
+  reviewQueueIds = sorted.map((row) => row.id);
+  const reviewGroups = groupReviewCases(sorted);
+  state.page = Math.min(state.page, pages);
+  const rows = sorted.slice((state.page - 1) * state.perPage, state.page * state.perPage);
+  const x = state.exFilter;
+  const clarificationRows = liveOverviewState.clarifications || [];
+  const autoClosedCount = clarificationRows.filter((row) => row.outcome === "auto_closed").length;
+  const answeredCount = clarificationRows.filter((row) => row.outcome === "answered").length;
+  const reviewCount = clarificationRows.filter((row) => ["ambiguous", "no_match", "error"].includes(row.outcome)).length;
+  const fileMatches = query
+    ? (liveIntakeState.batches || []).flatMap((batch) => (batch.source_files || []).map((file) => ({ ...file, business_date: batch.business_date, batchCompany: batch.company, subject: batch.subject }))).filter((file) => `${file.file_name} ${file.kind} ${file.company} ${file.batchCompany} ${file.subject}`.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
+    : [];
+  const qualityRows = (liveOverviewState.quality || []).filter((row) =>
+    (!state.filters.from || row.business_date >= state.filters.from)
+    && (!state.filters.to || row.business_date <= state.filters.to)
+    && (state.filters.company === "ALL" || row.company === state.filters.company),
+  );
+  const finishedRuns = qualityRows.filter((row) => !!row.run_id);
+  const completedJobs = qualityRows.filter((row) => row.status === "completed").length;
+  const waitingJobs = qualityRows.filter((row) => ["waiting_files", "ready", "queued", "running"].includes(row.status)).length;
+  const failedJobs = qualityRows.filter((row) => row.status === "error" || Number(row.error_count || 0) > 0).length;
+  const stmTotal = finishedRuns.reduce((sum, row) => sum + Number(row.stm_count || 0), 0);
+  const boTotal = finishedRuns.reduce((sum, row) => sum + Number(row.bo_count || 0), 0);
+  const matchedTotal = finishedRuns.reduce((sum, row) => sum + Number(row.matched || 0), 0);
+  const generatedExceptionTotal = finishedRuns.reduce((sum, row) => sum + Number(row.exception_count || 0), 0);
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
+  const exceptionsAvailable = liveOverviewState.exceptionsReady;
+  const resultMetric = (available, value) => available ? num(value) : "—";
+  const reconMessage = liveOverviewState.loading && !qualityRows.length
+    ? "กำลังตรวจสถานะงานกระทบยอดจาก Supabase"
+    : !qualityAvailable
+      ? "ผลกระทบยอดจริงยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"
+    : !qualityRows.length
+      ? "ยังไม่มีงานกระทบยอดในวันที่และบริษัทที่เลือก"
+      : !finishedRuns.length
+        ? `พบคิวงาน ${num(qualityRows.length)} งาน แต่ยังไม่มีผลรัน — เลข 0 ด้านล่างยังไม่ใช่ผลสำเร็จ`
+        : `มีผลรันแล้ว ${num(finishedRuns.length)} งาน · สำเร็จ ${num(completedJobs)} · ยังรอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}`;
+  const overviewLoading = liveOverviewState.loading || liveOverviewState.auxiliaryLoading;
+
+  const th = (key, label) =>
+    `<th class="sortable ${state.sort.key === key ? "sorted " + state.sort.dir : ""}" data-sort="${key}">${label}</th>`;
+
+  const auditSheetRows = rows.map((e) => {
+    const hasStm = e.bankAmount !== null;
+    const hasBo = e.systemAmount !== null;
+    const result = hasStm && hasBo
+      ? e.type === "time_diff" ? "ยอดตรง · เวลาต่าง" : e.type === "amount_diff" ? "เวลาใกล้ · ยอดต่าง" : e.typeName
+      : hasStm ? "ไม่พบฝั่ง BO" : "ไม่พบฝั่ง STM";
+    const explanation = e.responseText || e.resolutionNote || (e.notes || []).at(-1)?.text || "";
+    return `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${h(e.id)}">
+      <td class="sheet-state"><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span><small>${h(caseLabel(e))}</small></td>
+      <td>${h(e.date)}</td><td><b>${h(e.company)}</b><small class="sub">${h(e.direction)}</small></td><td>${reviewAccountHtml(e)}</td>
+      <td class="sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? `<b>${h(exceptionSideTimestamp(e, "bo"))}</b><small>${h(e.employee)}</small>${reviewCustomerHtml(e, "bo")}` : ""}</td>
+      <td class="right tnum sheet-side ${hasBo ? "has-value" : "is-blank"}">${hasBo ? money(e.systemAmount) : ""}</td>
+      <td class="sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? `<b>${h(exceptionSideTimestamp(e, "stm"))}</b><small>${h(e.bank)}</small>${reviewCustomerHtml(e, "stm")}` : ""}</td>
+      <td class="right tnum sheet-side ${hasStm ? "has-value" : "is-blank"}">${hasStm ? money(e.bankAmount) : ""}</td>
+      <td class="right tnum">${hasStm && hasBo ? h(exceptionTimeDiffLabel(e)) : ""}</td>
+      <td class="right tnum ${e.amountDiff ? "danger" : ""}">${hasStm && hasBo ? money(e.amountDiff) : ""}</td>
+      <td><b class="${hasStm && hasBo && !e.amountDiff && e.type !== "time_diff" ? "success" : "danger"}">${h(result)}</b><small class="sub">${h(e.typeName)}</small></td>
+      <td class="sheet-explanation ${explanation ? "answered" : "waiting"}">${explanation ? h(explanation) : "<span>เว้นไว้รอชี้แจง</span>"}</td>
+      <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจ</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ไฟล์</button>${isQuickCloseEligible(e) && can("approve") ? `<button class="primary-button xs quick-close" data-case-quick-close="${h(e.id)}">ปิดเคส</button>` : ""}</div></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="13" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
+
+  const caseQueueRows = rows.map((e) => `<tr class="clickable ${e.status==='pair_pending'?'pair-pending-row':''} ${e.overSla ? "over-sla" : ""}" data-ex="${e.id}">
+    <td><b>${h(caseLabel(e))}</b>${e.overSla ? '<span class="sla-flag" title="เกิน SLA">!</span>' : ""}</td><td class="tnum">${e.time}</td>
+    <td>${h(e.account)}<small class="sub">${h(e.direction)}</small></td><td>${h(e.typeName)}</td>
+    <td class="right tnum">${e.systemAmount === null ? '<span class="muted">—</span>' : money(e.systemAmount)}</td>
+    <td class="right tnum">${e.bankAmount === null ? '<span class="muted">—</span>' : money(e.bankAmount)}</td>
+    <td class="right tnum">${diffLabel(e)}${e.riskAmount ? `<small class="sub">ตรวจ ${money(e.riskAmount)}</small>` : ""}</td>
+    <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
+    <td>${h(e.employee)}<small class="sub">${h((DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift || "-")}</small></td>
+    <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
+    <td><div class="case-actions"><button class="primary-button xs" data-case-open="${h(e.id)}">ตรวจเคส</button><button class="ghost-button xs" data-case-files="${h(e.id)}">ดูไฟล์</button></div></td>
+  </tr>`).join("") || `<tr><td colspan="11" class="empty">ไม่พบรายการตามตัวกรอง</td></tr>`;
+
+  root.innerHTML = `
+    ${overviewLoading ? `<section class="recon-loading-banner" role="status" aria-live="polite"><span class="spinner"></span><div><b>กำลังโหลดข้อมูลจริง…</b><small>${liveOverviewState.loading ? "กำลังอ่านผลกระทบยอดและรายการผิดปกติจาก Supabase" : "ข้อมูลหลักมาแล้ว กำลังเติมรายละเอียดไฟล์และสถานะล่าสุด"}</small></div><span class="recon-loading-pulse" aria-hidden="true"></span></section>` : ""}
+    <section class="panel recon-result-summary">
+      <div class="panel-heading"><div><p class="eyebrow">ผลกระทบยอดในช่วงที่เลือก</p><h2>${h(reconMessage)}</h2><small class="head-sub">ช่วง ${h(state.filters.from)} ถึง ${h(state.filters.to)} · ${state.filters.company === "ALL" ? "ทุกบริษัท" : h(state.filters.company)}</small></div><button class="primary-button sm" id="openDailyResult">เปิดสรุป 1 บริษัท/วัน</button></div>
+      <div class="recon-kpi-grid">
+        <article class="recon-kpi run"><span>งานที่ประมวลผลแล้ว</span><strong>${resultMetric(qualityAvailable, finishedRuns.length)}<small> / ${qualityAvailable ? num(qualityRows.length) : "—"} งาน</small></strong><p>${qualityAvailable ? `สำเร็จ ${num(completedJobs)} · รอ ${num(waitingJobs)} · ล้มเหลว ${num(failedJobs)}` : "กำลังรอข้อมูลจริง"}</p></article>
+        <article class="recon-kpi"><span>รายการ STM / PM</span><strong>${resultMetric(qualityAvailable, stmTotal)}</strong><p>ข้อมูลฝากและถอนที่ระบบอ่านได้</p></article>
+        <article class="recon-kpi"><span>รายการ BO</span><strong>${resultMetric(qualityAvailable, boTotal)}</strong><p>ข้อมูลรายการจากระบบหลังบ้าน</p></article>
+        <article class="recon-kpi match"><span>จับคู่สำเร็จ</span><strong>${resultMetric(qualityAvailable, matchedTotal)}</strong><p>${qualityAvailable ? `${stmTotal ? ((matchedTotal / stmTotal) * 100).toFixed(2) : "0.00"}% ของรายการ STM / PM` : "กำลังรอข้อมูลจริง"}</p></article>
+      </div>
+      <div class="recon-work-grid">
+        <button type="button" class="warn" data-action-route="exceptions"><i>${resultMetric(exceptionsAvailable, sorted.length)}</i><span><b>รายการรอตรวจ</b><small>${qualityAvailable ? `สร้างจากผลรัน ${num(generatedExceptionTotal)} รายการ` : "กำลังรอข้อมูลจริง"}</small></span><em>ดูรายการด้านล่าง ↓</em></button>
+        <button type="button" class="amber" data-action-route="audit-review"><i>${num(answeredCount)}</i><span><b>Audit รอตรวจ</b><small>มีคำชี้แจงหรือหลักฐานแล้ว · ยังไม่ปิดเคส</small></span><em>เปิดตรวจ →</em></button>
+        <button type="button" class="red" data-action-route="clarify"><i>${num(reviewCount)}</i><span><b>ต้องให้คุณตรวจ</b><small>ข้อมูลกำกวมหรือไฟล์อ่านไม่ได้</small></span><em>ดำเนินการ →</em></button>
+        <button type="button" class="green" data-action-route="daily-summary"><i>${num(autoClosedCount)}</i><span><b>ปิดเคสอัตโนมัติ</b><small>ยืนยันจากไฟล์ชี้แจงสำเร็จ</small></span><em>ดูสรุป →</em></button>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="case-filter-heading"><strong>2. เลือกเคสที่ต้องการดู</strong><p>เคสเดิมยังอยู่ในภาพรวมเสมอ · เลือก “ทั้งหมด” และ “ทุกสถานะ” เพื่อย้อนดูรวมปิดแล้ว · รอหัวหน้าตรวจได้ที่ “อนุมัติ / ปิดเคส”</p></div>
+      <div class="case-filter-fields">
+        <label class="case-filter-search" for="exSearch">ค้นหาเคสหรือบัญชี
+        <input type="search" id="exSearch" placeholder="เลขเคส / เลขบัญชี / ท้าย 4 / ชื่อลูกค้า / สมาชิก / Provider" value="${h(x.q)}" /></label>
+        <label for="exStatus">สถานะงาน
+        <select id="exStatus">
+          <option value="ACTION" ${x.status === "ACTION" ? "selected" : ""}>ยังต้องดำเนินการ (ไม่รวมปิดแล้ว)</option>
+          <option value="ALL" ${x.status === "ALL" ? "selected" : ""}>ทุกสถานะ · รวมปิดแล้ว</option>
+          <option value="CLOSURE_PENDING" ${x.status === 'CLOSURE_PENDING' ? 'selected' : ''}>รอหัวหน้าปิดเคส</option>
+          ${DB.statuses.map((s) => `<option value="${s.code}" ${x.status === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
+        </select></label>
+        <label for="exType">ประเภทปัญหาที่พบ
+        <select id="exType">
+          <option value="ALL">ทุกปัญหา</option>
+          ${allExceptionTypes().map((t) => `<option value="${t.code}" ${x.type === t.code ? "selected" : ""}>${h(t.name)}</option>`).join("")}
+        </select></label>
+        <label for="exSeverity">ระดับความรุนแรง
+        <select id="exSeverity">
+          <option value="ALL">ทุกระดับ</option>
+          ${DB.severities.map((s) => `<option value="${s.code}" ${x.severity === s.code ? "selected" : ""}>${h(s.name)}</option>`).join("")}
+        </select></label>
+      </div>
+      <div class="case-filter-actions">
+        <label class="chk"><input type="checkbox" id="exSla" ${x.sla ? "checked" : ""} /> เฉพาะเคสเกินกำหนดตอบ (SLA)</label>
+        <button class="ghost-button sm" id="exReset">คืนค่าตัวกรองเคสเริ่มต้น</button>
+        <small>ไม่เปลี่ยนวันที่และบริษัท · กลับไปดูเคสที่ยังต้องดำเนินการ</small>
+      </div>
+      <div class="case-filter-current" role="status" aria-live="polite"><b>กำลังแสดง</b>
+        <span>${h(rangeLabel())} · ${h(state.filters.company === "ALL" ? "ทุกบริษัทตามสิทธิ์" : state.filters.company)}</span>
+        <span>${h(state.filters.direction === "ALL" ? "ทุกธุรกรรม" : state.filters.direction)}</span>
+        <span>${h(x.status === "ACTION" ? "ยังต้องดำเนินการ" : x.status === "ALL" ? "ทุกสถานะ รวมปิดแล้ว" : statusMeta(x.status).name)}</span>
+        <span>${h(x.type === "ALL" ? "ทุกปัญหา" : allExceptionTypes().find((t) => t.code === x.type)?.name || x.type)}</span>
+        <span>${h(x.severity === "ALL" ? "ทุกระดับ" : DB.severities.find((s) => s.code === x.severity)?.name || x.severity)}</span>
+        ${x.sla ? '<span>เกินกำหนดตอบเท่านั้น</span>' : ""}${query ? `<span>ค้นหา: ${h(query)}</span>` : ""}
+      </div>
+
+      <div class="review-workbench" aria-label="โต๊ะตรวจเคส">
+        <div><b>บริษัท ${h(state.filters.company)} · โต๊ะตรวจเคส</b><small>ทุกชีทในหน้านี้เป็นของบริษัทนี้เท่านั้น</small><button type="button" class="ghost-button sm" id="reviewChangeCompany">เปลี่ยนบริษัท</button></div>
+        <div class="audit-view-switch" role="group" aria-label="ชีทการทำงาน">
+          <button type="button" data-review-sheet="all" aria-pressed="${state.reviewSheet === 'all'}" class="${state.reviewSheet === 'all' ? 'active' : ''}">ทั้งหมด · รวมรอปิดและประวัติ</button>
+          <button type="button" data-review-sheet="normal" aria-pressed="${state.reviewSheet === "normal"}" class="${state.reviewSheet === "normal" ? "active" : ""}">1. ตรวจปกติ</button>
+          <button type="button" data-review-sheet="clarification" aria-pressed="${state.reviewSheet === "clarification"}" class="${state.reviewSheet === "clarification" ? "active" : ""}">2. ต้องชี้แจง</button>
+        </div>
+        <div class="audit-view-switch" role="group" aria-label="แยกตรวจฝากและถอน">
+          ${[["ฝาก", "ชีทฝาก (ฝ)"], ["ถอน", "ชีทถอน (ถ)"], ["ALL", "ชีทรวม"]].map(([value, label]) => `<button type="button" data-review-direction="${value}" aria-pressed="${state.filters.direction === value}" class="${state.filters.direction === value ? "active" : ""}">${label}</button>`).join("")}
+        </div>
+        <div class="review-workbench-actions">
+          ${state.reviewSheet === "clarification" ? `<button class="ghost-button sm" data-review-status="clarifying">รอตอบ</button><button class="ghost-button sm" data-review-status="answered">ตอบแล้ว</button><button class="ghost-button sm" data-review-status="closed">ปิดแล้ว</button>` : `<button class="ghost-button sm" data-review-status="open">รอ Audit ตรวจ</button>`}
+          <button class="primary-button sm" id="reviewStart" ${sorted.length ? "" : "disabled"}>เริ่มตรวจ ${num(sorted.length)} เคสตามตัวกรอง</button>
+        </div>
+      </div>
+      <p class="head-sub">${state.reviewSheet === "clarification" ? "เคสที่ส่งชี้แจงแล้ว · ดูคำตอบและเปิดหลักฐานจากเคสเดิม · ตอบแล้วไม่ได้แปลว่าปิดเคส" : "ตรวจ BO เทียบ STM/PM ก่อน หากต้องถามจึงเปิดเคสแล้วกด “ส่งไปชีทชี้แจง” · หน้านี้แสดงเคสที่ต้องตรวจ ไม่ใช่รายการที่จับคู่สำเร็จทั้งหมด"}</p>
+      <div class="result-line">
+        พบ <b>${num(sorted.length)}</b> รายการ · ยอดที่ต้องตรวจรวม <b>${money0(sumRisk(sorted))}</b> บาท
+        · เกิน SLA <b class="danger">${num(sorted.filter((e) => e.overSla).length)}</b>
+        ${query ? ` · ค้นจาก Supabase โดยตรง ${liveExceptionSearch.loading ? '<span class="badge blue">กำลังค้นหา...</span>' : liveExceptionSearch.error ? `<span class="badge red">${h(liveExceptionSearch.error)}</span>` : '<span class="badge green">ค้นแล้ว</span>'}` : ""}
+      </div>
+
+      <div class="audit-view-bar">
+        <div><b>รูปแบบการตรวจ</b><span>${state.exceptionView === "sheet" ? "ตารางรวมเหมือน Excel — ช่องว่างคือยังไม่พบคู่และต้องรอชี้แจง" : "คิวเคสสำหรับติดตาม SLA หลักฐาน และการอนุมัติ"}</span></div>
+        <div class="audit-view-switch" role="group" aria-label="เลือกรูปแบบการตรวจ">
+          <button type="button" class="${state.exceptionView === "sheet" ? "active" : ""}" data-ex-view="sheet">ตารางกระทบยอด</button>
+          <button type="button" class="${state.exceptionView === "cases" ? "active" : ""}" data-ex-view="cases">คิวเคส</button>
+        </div>
+      </div>
+
+      ${query && fileMatches.length ? `<div class="related-files"><div><b>พบไฟล์ต้นฉบับที่เกี่ยวข้อง ${num(fileMatches.length)} ไฟล์</b><small>${sorted.length ? "แสดงทั้ง Exception และไฟล์หลักฐาน" : "ไม่พบ Exception แต่พบไฟล์จริง — เปิดไฟล์เพื่อตรวจสอบได้"}</small></div><div class="related-file-list">${fileMatches.map((file) => `<button class="file-result" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.batchCompany || file.company || "")}" data-file-date="${h(file.business_date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"><span>${h(file.file_name)}</span><small>${h(file.batchCompany || file.company || "ไม่ระบุบริษัท")} · ${h(file.business_date || "-")} · ${file.parsed ? "พร้อมใช้งาน" : file.parse_error ? "อ่านไม่ได้" : "รอตรวจ"}</small></button>`).join("")}</div></div>` : ""}
+
+      ${query && !sorted.length && !fileMatches.length && !liveExceptionSearch.loading && !liveIntakeState.loading ? `<div class="search-empty-help"><b>ไม่พบ “${h(query)}” ในช่วงและบริษัทที่เลือก</b><span>ลองล้างตัวกรองบริษัท/ประเภท หรือขยายช่วงวันที่ หากต้องการดูไฟล์ทั้งหมดให้ไปที่ “ไฟล์และสถานะ”</span><button class="ghost-button sm" id="searchGoFiles">เปิดไฟล์และสถานะ</button></div>` : ""}
+
+      <details class="review-groups">
+        <summary>ตรวจเป็นกลุ่ม · ${num(reviewGroups.length)} กลุ่ม / ${num(sorted.length)} เคสที่โหลด</summary>
+        <p>แยกบริษัท วัน บัญชี ฝาก/ถอน ประเภทปัญหา และสถานะเดียวกัน ไม่ใช่การยืนยันว่าเป็นสาเหตุเดียวกัน และไม่ปิดเคสรวม</p>
+        <div class="review-group-list">${reviewGroups.map((group, index) => `<article class="review-group"><div><b>${h(group.first.company)} · ${h(group.first.date)}</b><p>${h(group.first.account)} · ${h(group.first.direction)}</p><p>${h(group.first.typeName)} · ${h(statusMeta(group.first.status).name)}</p><small>${num(group.ids.length)} เคส · เกิน SLA ${num(group.overdue)} เคส</small></div><button class="primary-button sm" data-review-group="${index}">ตรวจกลุ่มนี้ →</button></article>`).join("") || "ไม่พบเคสตามตัวกรอง"}</div>
+      </details>
+      <div class="table-wrap ${state.exceptionView === "sheet" ? "reconciliation-sheet-wrap" : ""}">
+        ${state.exceptionView === "sheet" ? `<table class="rows reconciliation-sheet">
+          <thead><tr><th rowspan="2">สถานะ</th><th rowspan="2">วันที่</th><th rowspan="2">บริษัท</th><th rowspan="2">บัญชี / Provider</th><th colspan="2" class="sheet-group bo">ฝั่ง BO / ระบบ (ตั้งต้น)</th><th colspan="2" class="sheet-group stm">ฝั่ง STM / ธนาคาร</th><th rowspan="2" class="right">ต่างเวลา</th><th rowspan="2" class="right">ต่างยอด</th><th rowspan="2">ผลการจับคู่</th><th rowspan="2">คำชี้แจง / หมายเหตุ</th><th rowspan="2">ทำรายการ</th></tr><tr><th>วันที่ / เวลา</th><th class="right">ยอด</th><th>วันที่ / เวลา</th><th class="right">ยอด</th></tr></thead><tbody>${auditSheetRows}</tbody>
+        </table>` : `<table class="rows"><thead><tr>${th("id", "เคส")}${th("time", "เวลา")}<th>บัญชี</th>${th("typeName", "ประเภท")}<th class="right">ยอด BO</th><th class="right">ยอด STM</th>${th("riskAmount", "ผลต่าง / ยอดที่ต้องตรวจ")}${th("severity", "ระดับ")}<th>ผู้เกี่ยวข้อง</th>${th("status", "สถานะ")}<th class="center">ดำเนินการ</th></tr></thead><tbody>${caseQueueRows}</tbody></table>`}
+      </div>
+
+      <div class="pager">
+        ${state.dataset === "production" ? `<button class="ghost-button sm" id="loadMoreCases" ${moreCaseState.loading || liveOverviewState.auxiliaryLoading || !liveOverviewState.exceptionsReady || !moreCaseState.hasMore ? "disabled" : ""}>${moreCaseState.loading ? "กำลังโหลด…" : moreCaseState.hasMore ? "โหลดเคสถัดไปอีก 250" : "โหลดครบในขอบเขตนี้แล้ว"}</button><span role="status">${h(moreCaseState.error)}</span>` : ""}
+        <button class="ghost-button sm" id="pgPrev" ${state.page === 1 ? "disabled" : ""}>ก่อนหน้า</button>
+        <span>หน้า ${state.page} / ${pages}</span>
+        <button class="ghost-button sm" id="pgNext" ${state.page === pages ? "disabled" : ""}>ถัดไป</button>
+        <span class="grow"></span>
+        <button class="ghost-button sm" id="exExport">Export รายการนี้</button>
+      </div>
+    </section>`;
+
+  const rerender = () => {
+    state.page = 1;
+    render();
+  };
+  $('#loadMoreCases')?.addEventListener('click', loadMoreCases);
+  if(state.dataset==='production'&&['monitor','audit_assistant','lead','admin'].includes(state.role)){
+    const historyHost=document.createElement('section');historyHost.className='panel';historyHost.id='overviewClosureHistory';root.prepend(historyHost);CaseClosure.mountQueue(historyHost);
+  }
+  root.querySelectorAll('[data-review-sheet]').forEach((button) => button.addEventListener('click', () => {
+    state.reviewSheet = button.dataset.reviewSheet;
+    state.exFilter.status = state.reviewSheet === "normal" ? "ACTION" : "ALL";
+    reviewQueueIds = [];
+    rerender();
+  }));
+  $('#reviewChangeCompany')?.addEventListener('click', () => {
+    state.filters.company = "ALL";
+    reviewQueueIds = [];
+    rerender();
+  });
+  root.querySelectorAll('[data-review-direction]').forEach((button) => button.addEventListener('click', () => {
+    state.filters.direction = button.dataset.reviewDirection;
+    reviewQueueIds = [];
+    rerender();
+  }));
+  root.querySelectorAll('[data-review-status]').forEach((button) => button.addEventListener('click', () => {
+    state.exFilter.status = button.dataset.reviewStatus;
+    rerender();
+  }));
+  $('#reviewStart')?.addEventListener('click', () => {
+    reviewQueueIds = sorted.map((row) => row.id);
+    openException(reviewQueueIds[0]);
+  });
+  root.querySelectorAll('[data-review-group]').forEach((button) => button.addEventListener('click', () => {
+    const group = reviewGroups[Number(button.dataset.reviewGroup)];
+    if (!group) return;
+    reviewQueueIds = [...group.ids];
+    openException(reviewQueueIds[0]);
+  }));
+  $("#openDailyResult")?.addEventListener("click", () => {
+    state.dailySummary.date = state.filters.date || state.filters.to || DEFAULT_WORK_DATE;
+    if (state.filters.company !== "ALL") state.dailySummary.company = state.filters.company;
+    go("daily-summary");
+  });
+  $("#exSearch").addEventListener("input", (e) => {
+    state.exFilter.q = e.target.value;
+    clearTimeout(window.__q);
+    window.__q = setTimeout(() => {
+      const pos = e.target.selectionStart;
+      rerender();
+      const el = $("#exSearch");
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    }, 260);
+  });
+  $("#exType").addEventListener("change", (e) => ((state.exFilter.type = e.target.value), rerender()));
+  $("#exSeverity").addEventListener("change", (e) => ((state.exFilter.severity = e.target.value), rerender()));
+  $("#exStatus").addEventListener("change", (e) => ((state.exFilter.status = e.target.value), rerender()));
+  $("#exSla").addEventListener("change", (e) => ((state.exFilter.sla = e.target.checked), rerender()));
+  $("#exReset").addEventListener("click", () => {
+    state.exFilter = { q: "", type: "ALL", severity: "ALL", status: "ACTION", sla: false };
+    rerender();
+  });
+  $("#pgPrev").addEventListener("click", () => ((state.page = Math.max(1, state.page - 1)), render()));
+  $("#pgNext").addEventListener("click", () => ((state.page = Math.min(pages, state.page + 1)), render()));
+  $("#exExport").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
+  root.querySelectorAll("[data-ex-view]").forEach((button) => button.addEventListener("click", () => {
+    state.exceptionView = button.dataset.exView;
+    render();
+  }));
+  $("#searchGoFiles")?.addEventListener("click", () => go("cloud"));
+  root.querySelectorAll("[data-action-route]").forEach((item) => item.addEventListener("click", () => go(item.dataset.actionRoute)));
+  bindStoredFileLinks(root);
+  root.querySelectorAll("th[data-sort]").forEach((thEl) =>
+    thEl.addEventListener("click", () => {
+      const k = thEl.dataset.sort;
+      state.sort = { key: k, dir: state.sort.key === k && state.sort.dir === "asc" ? "desc" : "asc" };
+      render();
+    }),
+  );
+  root.querySelectorAll("tr[data-ex]").forEach((tr) => tr.addEventListener("click", () => openException(tr.dataset.ex)));
+  root.querySelectorAll("[data-case-open]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openException(button.dataset.caseOpen);
+  }));
+  root.querySelectorAll("[data-case-files]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openException(button.dataset.caseFiles, { focusFiles: true });
+  }));
+  root.querySelectorAll("[data-case-quick-close]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const exception = DB.exceptions.find((item) => item.id === button.dataset.caseQuickClose);
+    if (exception) confirmQuickClose(exception);
+  }));
+};
+
+/* =============================================================
+   Drawer: Exception detail + evidence timeline + close checklist
+   ============================================================= */
+function exceptionFileAttrs(file, e) {
+  return `data-storage-open="${h(file.storage_path || "")}" data-file-id="${h(file.id || "")}" data-file-name="${h(file.file_name || "ไฟล์ต้นฉบับ")}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="${h(file.kind || "")}" data-file-company="${h(file.company || e.company || "")}" data-file-date="${h(e.date || "")}" data-file-status="${file.parse_error ? "error" : file.parsed ? "parsed" : "waiting"}"`;
+}
+
+function exceptionFilesMarkup(files, e) {
+  if (!files.length) return `<div class="case-files-empty"><b>ยังไม่พบไฟล์ที่ผูกกับผลรันนี้</b><span>ใช้ปุ่ม “ดูไฟล์และสถานะทั้งหมด” เพื่อตรวจไฟล์ของบริษัทและวันที่เดียวกัน</span><button class="ghost-button sm" id="caseGoAllFiles">ดูไฟล์และสถานะทั้งหมด</button></div>`;
+  return `<div class="case-file-list">${files.map((file) => {
+    const extension = String(file.file_name || "FILE").split(".").pop().toUpperCase().slice(0, 4);
+    const status = file.parsed ? "อ่านสำเร็จ" : file.parse_error ? statementReviewLabel(file) : "รอประมวลผล";
+    const tone = file.parsed ? "ok" : file.parse_error ? "bad" : "wait";
+    return `<button type="button" class="case-file-row" ${exceptionFileAttrs(file, e)} ${file.storage_path ? "" : "disabled"}><span class="case-file-icon">${h(extension)}</span><span class="case-file-main"><b title="${h(file.file_name)}">${h(file.file_name)}</b><small>${h(LIVE_KIND_LABEL[file.kind] || file.kind || "ยังไม่ทราบประเภท")}</small></span><span class="case-file-state ${tone}">${status}</span><span class="case-file-open">ดูไฟล์ →</span></button>`;
+  }).join("")}</div>`;
+}
+
+function exceptionSourceFileIds(e) {
+  const rows=e?.customerDetails?.source_rows;
+  if(!rows||typeof rows!=='object')return [];
+  return [...new Set(Object.values(rows).flatMap(row=>row&&typeof row==='object'?[row.fileId,row.sourceFileId]:[]).filter(Boolean))];
+}
+
+async function loadExceptionSupport(e, options = {}) {
+  const host = $("#caseSourceFiles");
+  if (!host || state.dataset !== "production" || !Sb.signedIn()) return;
+  const sourceFileIds=exceptionSourceFileIds(e);
+  const cacheKey = `${e.runId || ""}|${e.clarificationFileId || ""}|${sourceFileIds.sort().join(',')}`;
+  try {
+    const detailPromise = e._detailLoaded || !e.dbId ? Promise.resolve(null) : Sb.exceptionDetail(e.dbId);
+    const filesPromise = exceptionSupportCache.has(cacheKey)
+      ? Promise.resolve(exceptionSupportCache.get(cacheKey))
+      : (sourceFileIds.length
+        ? Sb.exceptionFiles(e.runId, e.clarificationFileId, sourceFileIds)
+        : Sb.exceptionFiles(e.runId, e.clarificationFileId))
+        .then((files) => (exceptionSupportCache.set(cacheKey, files || []), files || []));
+    const evidencePromise = e._caseEvidenceLoaded ? Promise.resolve(null) : Sb.caseEvidence(e.dbId);
+    const [detail, files, storedEvidence] = await Promise.all([detailPromise, filesPromise, evidencePromise]);
+    if (storedEvidence) {
+      e.evidence = storedEvidence.map(f => ({ id: f.id, name: f.file_name, size: f.size_bytes, at: f.created_at, storagePath: f.storage_path, correctionReason:f.correction_reason, replacesEvidenceId:f.replaces_evidence_id, replacesSourceFileId:f.replaces_source_file_id, uploadedBy:f.uploaded_by, replacedBy:storedEvidence.find(next=>next.replaces_evidence_id===f.id)?.id }));
+      e._caseEvidenceLoaded = true;
+    }
+    if (detail) {
+      const notes = e.notes || [];
+      const evidence = e.evidence || [];
+      // Preserve the drawer/queue key; dbId remains the database UUID.
+      Object.assign(e, mapLiveException(detail), { id: e.id, notes, evidence, _detailLoaded: true });
+      e.hasEvidence = e.hasEvidence || evidence.some(f => f.storagePath);
+      const stm = $("#caseRawStm");
+      const bo = $("#caseRawBo");
+      if (stm) stm.textContent = e.stmRaw || "— ไม่พบรายการฝั่ง STM —";
+      if (bo) bo.textContent = e.boRaw || "— ไม่พบรายการฝั่ง BO —";
+      // Recompute the closure checklist after loading actual transaction evidence.
+      if (state.selected === e.id && document.body.contains(host)) {
+        openException(e.id, options);
+        return;
+      }
+    }
+    if (!document.body.contains(host)) return;
+    if (storedEvidence && !detail && state.selected === e.id) {
+      e.hasEvidence = !!e.clarificationFileId || e.evidence.some(f => f.storagePath);
+      openException(e.id, options);
+      return;
+    }
+    host.className = 'case-files-ready';
+    host.innerHTML = exceptionFilesMarkup(files, e);
+    const selectedFile=files.find(f=>f.id===e.clarificationFileId);
+    e._clarificationFileName=selectedFile?.file_name||'';
+    if(selectedFile){
+      const summary=document.createElement('section');summary.className='case-selected-evidence';
+      summary.innerHTML=`<b>เอกสารที่ผูกกับเคสนี้</b><p>${h(selectedFile.file_name)}</p><p>${h(e.responseText || e.resolutionNote || 'ยังไม่มีข้อความชี้แจงที่บันทึกไว้')}</p><button class="ghost-button sm" ${exceptionFileAttrs(selectedFile,e)}>เปิดเอกสารที่เลือก</button><small>เอกสารเดิมยังอยู่ครบ · อ่านสาเหตุและข้อความเดิมในส่วนคำชี้แจงด้านล่าง · ไม่ใช่การอนุมัติปิดเคส</small>`;
+      host.prepend(summary);
+    }
+    const mailButton=document.createElement('button');
+    mailButton.id='caseMailEvidenceButton';mailButton.className='primary-button case-mail-open'; mailButton.textContent='เลือกเอกสารชี้แจงให้เคสนี้';
+    const evidenceRange=document.createElement('div');
+    evidenceRange.className='case-evidence-range';
+    const headFilePicker=['lead','admin'].includes(state.role);
+    const fileCompanies=headFilePicker?companyMaster():companyMaster().filter(c=>c.code===e.company);
+    evidenceRange.innerHTML=`<label>บริษัทเจ้าของไฟล์ <select aria-label="บริษัทเจ้าของไฟล์">${fileCompanies.map(c=>`<option value="${h(c.code)}" ${c.code===e.company?'selected':''}>${h(c.code)}</option>`).join('')}</select></label><label>เอกสารตั้งแต่ <input type="date" aria-label="เอกสารชี้แจงตั้งแต่" value="${h(e.date.slice(0,7)+'-01')}"></label><label>ถึง <input type="date" aria-label="เอกสารชี้แจงถึง" value="${h(e.date>bangkokDate()?e.date:bangkokDate())}"></label>`;
+    host.append(evidenceRange,mailButton);
+    mailButton.onclick=async()=>{
+      mailButton.disabled=true;
+      try {
+        const [from,to]=[...evidenceRange.querySelectorAll('input')].map(input=>input.value);
+        const fileCompany=evidenceRange.querySelector('select').value;
+        if(!canAccessCompany(fileCompany)||(!headFilePicker&&fileCompany!==e.company))throw new Error('ไม่มีสิทธิ์เลือกบริษัทเจ้าของไฟล์นี้');
+        if(!from||!to||from>to)throw new Error('กรุณาเลือกช่วงวันที่เอกสารให้ถูกต้อง');
+        const [candidateFiles,amountRecommendations]=await Promise.all([
+          Sb.evidenceFiles({from,to,company:fileCompany,includeSourceFiles:headFilePicker}),
+          Sb.evidenceRecommendations({from,to,company:fileCompany,limit:2000}),
+        ]);
+        const candidates=candidateFiles.filter(f=>(f.company||f.batch_company)===fileCompany);
+        const amountsByFile=new Map();
+        const rememberAmount=(fileId,value)=>{
+          const amount=Number(value);if(!fileId||!Number.isFinite(amount)||amount<=0)return;
+          const values=amountsByFile.get(fileId)||[];
+          if(!values.includes(amount))values.push(amount);
+          amountsByFile.set(fileId,values);
+        };
+        for(const recommendation of amountRecommendations||[])rememberAmount(recommendation.source_file_id,recommendation.amount);
+        // Only exact, current-case recommendation links; never browse every company's evidence.
+        const linked=await Sb.evidenceCaseRecommendations({caseId:e.dbId});
+        const recommended=new Map();
+        for(const link of linked){
+          const r=link.evidence_recommendations, c=link.exceptions;
+          if(link.exception_id!==e.dbId || c?.run_id!==e.runId || c?.company!==e.company || c?.business_date!==e.date
+            || r?.status!=='pending_audit' || r.business_date!==e.date
+            || ![r.company,r.payer_company].includes(e.company)
+            || !canAccessCompany(r.company) || !canAccessCompany(r.payer_company))continue;
+          const extra=await Sb.exceptionFiles(null,r.source_file_id);
+          for(const f of extra){
+            if(f.id!==r.source_file_id || f.kind!=='doc_clarify')continue;
+            if(!candidates.some(x=>x.id===f.id))candidates.push(f);
+            recommended.set(f.id,r.id);
+            rememberAmount(f.id,r.amount);
+          }
+        }
+        const list=document.createElement('section');list.className='case-mail-evidence';
+        list.innerHTML=`<h4>เอกสารชี้แจง · ${h(e.company)} · ${h(e.date)}</h4><p>เลือกไฟล์อ้างอิงเพื่อผูกกับเคสนี้ ระบบยังไม่ปิดเคสและไม่ส่งข้อความออก</p>${candidates.length?'':'<p>ไม่พบเอกสารในช่วงนี้ ลองขยายช่วงวันที่ หรือแนบหลักฐานเพิ่ม</p>'}${candidates.map(f=>{const amountLabels=(amountsByFile.get(f.id)||[]).map(evidenceAmountLabel).filter(Boolean);const searchKey=normalizeEvidenceSearch([f.file_name,f.subject||f.mail_batches?.subject,f.sender||f.mail_batches?.sender,...amountLabels].filter(Boolean).join(' '));return `<article data-evidence-search="${h(searchKey)}"><div class="case-mail-file"><b>${h(f.file_name)}</b><p>${h(f.subject||f.mail_batches?.subject||'ไม่ระบุหัวข้อ')}<br>${h(f.sender||f.mail_batches?.sender||'ไม่ระบุผู้ส่ง')} · ${h(displayTime(f.mail_batches?.received_at))}${amountLabels.length?`<br>${amountLabels.map(label=>`<span class="badge blue">${h(label)}</span>`).join(' ')}`:''}</p></div><div class="case-mail-actions"><button class="ghost-button sm" ${exceptionFileAttrs(f,e)}>ดูตัวอย่าง</button><button class="primary-button sm" data-link-mail="${h(f.id)}">เลือกเอกสารนี้</button></div></article>`;}).join('')}`;
+        host.querySelector('.case-mail-evidence')?.remove();
+        mailButton.after(list);bindStoredFileLinks(list);
+        list.querySelector('h4').textContent=`ไฟล์ของ ${fileCompany} · ${from} ถึง ${to} (${candidates.length} ไฟล์) → เคส ${caseLabel(e)}`;
+        list.querySelector('p').textContent=state.role==='shift_lead'?'เลือกไฟล์ไว้ก่อนได้โดยไม่ต้องกรอกเหตุผลตรงนี้ · จากนั้นกรอกสาเหตุและกดส่งคำชี้แจงพร้อมหลักฐานในขั้นตอนถัดไป':'แก้ช่วงวันที่ด้านบนแล้วกดค้นหาใหม่ได้ · ค้นหาชื่อไฟล์ หัวข้อเมล ผู้ส่ง หรือยอดเงินได้ เอกสารเดียวใช้ประกอบหลายเคสได้ แต่ต้องระบุเหตุผลต่อเคส';
+        if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
+        const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
+        search.oninput=()=>{const q=normalizeEvidenceSearch(search.value);list.querySelectorAll('article').forEach(article=>{article.hidden=!!q&&!String(article.dataset.evidenceSearch||normalizeEvidenceSearch(article.textContent)).includes(q);});};
+        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent=state.role==='shift_lead'?'เลือกไฟล์เดิมนี้ (ยังไม่ส่�۝�弭z�&��^w กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
+  if (!canAccessCompany(e.company)) return toast('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท ' + e.company, 'warn');
+  captureCaseOpenDraft();
+  const actor=caseOpenActor(),route=state.route;
+  if(caseOpenTicket?.key===caseOpenDraftKey(e))return caseOpenTicket.promise;
+  const ticket={key:caseOpenDraftKey(e),promise:null};caseOpenTicket=ticket;
+  const current=()=>caseOpenTicket===ticket && caseOpenActor()===actor && state.route===route
+    && state.selected===id && canAccessCompany(e.company);
+  state.selected = id;
+  ticket.promise=(async()=>{
+  if (state.dataset === "production" && e.dbId) {
+    showCaseOpenLoading(e);
+    try {
+      const results=await loadCaseOpenSnapshot(e);
+      if(!current())return;
+      applyCaseOpenSnapshot(e,results);
+      try { await refreshQuickCloseEvidence(e); }
+      catch(err){e._quickSourceEvidence=false;toast('ยังตรวจสิทธิ์ปิดด่วนไม่ครบ: '+err.message,'warn');}
+      if(!current())return;
+    }catch(err){if(current()){caseOpenTicket=null;showCaseOpenLoading(e,err.message);}return;}
+  }
+  if(!current())return;
+  const queue = reviewQueueIds.filter((key) => DB.exceptions.some((row) => row.id === key && canAccessCompany(row.company)));
+  const queueIndex = queue.indexOf(id);
+  state.selected = id;
+  const drawer = $("#drawer");
+  const overlay = $("#drawerOverlay");
+  const closed = ["closed", "approved"].includes(e.status);
+  const sourceEvidence = !!e._quickSourceEvidence;
+  const amountOutcomeRecorded = hasRecordedAmountOutcome(e);
+  const checklist = [
+    { key: "raw", label: "โหลดรายละเอียดเคสและข้อมูลต้นทางที่มีอยู่แล้ว", ok: !!e._detailLoaded || !!(e.stmRaw && e.stmRaw !== "—") || !!(e.boRaw && e.boRaw !== "—") },
+    { key: "cause", label: "ระบุสาเหตุแล้ว", ok: !!e.cause && e.cause !== "รอตรวจสอบสาเหตุ" },
+    { key: "owner", label: "ระบุผู้รับผิดชอบแล้ว", ok: !!e.employee && e.employee !== "ไม่ระบุ" },
+    { key: "evidence", label: sourceEvidence ? "ใช้หลักฐาน BO/PM ต้นทาง — คู่ตรง ไม่ซ้ำ ยอมรับเวลาต่างหรือข้ามวัน" : "แนบหลักฐาน / ไฟล์ชี้แจง", ok: e.hasEvidence || sourceEvidence },
+    { key: "note", label: sourceEvidence && !closed ? "บันทึกผู้ยืนยัน เวลา และเหตุผลเมื่อ Audit กดยืนยัน" : "มี note จาก Audit", ok: e.notes.length > 0 || !!e.resolutionNote || (sourceEvidence && !closed) },
+    { key: "amount", label: e.closureRequestId ? "ส่งผลตรวจแล้ว — รอหัวหน้ารับรองผลยอดและปิดเคส" : e.status==='pair_pending' ? "รอหัวหน้าตรวจคำขอจับคู่ / ยอมรับยอดต่าง" : amountOutcomeRecorded ? "ยืนยันผลตรวจยอดแล้ว" : "ยังไม่ได้ยืนยันผลตรวจยอด — เลือกผลและติ๊กยืนยันในขั้นตอนถัดไป", ok: amountOutcomeRecorded },
+  ];
+  const quickCloseEligible = isQuickCloseEligible(e) && can("approve");
+  const reviewPrerequisites = checklist.filter((item) => item.key !== "amount");
+  const closureReviewReady = !e.reviewHold && !closed && !e.closureRequestId && e.status!=='pair_pending'
+    && reviewPrerequisites.every((item) => item.ok) && (e.hasEvidence || sourceEvidence);
+  const closureActionReady = quickCloseEligible || closureReviewReady;
+  const missingChecks = closed || e.closureRequestId || e.status==='pair_pending' ? [] : reviewPrerequisites.filter((item) => !item.ok);
+  const lastUiResult = caseUiResults.get(caseUiKey(e));
+  const uiResult = lastUiResult?.status===e.status ? lastUiResult : null;
+
+  drawer.innerHTML = `
+    <header class="drawer-head">
+      <div>
+        <p class="eyebrow">${h(e.typeName)} · ${h(e.company)}</p>
+        <h2 id="drawerTitle">${h(caseLabel(e))} <span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span> <span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></h2>
+      </div>
+      <button class="icon-btn" id="drawerClose" aria-label="ปิด">✕</button>
+    </header>
+
+    <div class="drawer-body">
+      ${can('request_clarify')?'<p><button type="button" class="ghost-button" id="caseNextQueue">ดูคิวเคสถัดไป (อ่านอย่างเดียว)</button></p>':''}
+      ${AccountReviewHolds.banner(e.reviewHold)}
+      <section class="case-work-status" aria-label="สถานะและหน้าที่ของผู้ใช้งาน">
+        <div><span>ผลระบบ</span><b>${e.status==='damage' ? 'ยืนยันความเสียหายแล้ว — ดูทะเบียนและหลักฐาน' : closed ? 'ดูผลและหลักฐานต้นทาง' : 'มีข้อผิดปกติให้ตรวจ — ยังไม่ยืนยันความเสียหาย'}</b></div>
+        <div><span>คำชี้แจง</span><b>${e.status==='answered' ? 'ตอบแล้ว — รอ Audit ตรวจคำตอบ' : e.status==='clarifying' ? 'รอผู้มีสิทธิ์ตอบชี้แจง' : e.responseText ? 'มีคำชี้แจงให้ตรวจ' : e.clarificationFileId ? 'มีเอกสารผูกแล้ว — ต้องอ่านและตรวจ' : 'ยังไม่มีคำชี้แจง'}</b></div>
+        <div><span>การปิดเคส</span><b>${closed ? 'ยืนยันปิดแล้ว' : 'ยังไม่ปิดเคส'}</b></div>
+        <p class="case-permission-help">หน้าที่ของคุณ: ${can('note') ? 'บันทึกผลตรวจได้' : 'ดูข้อมูลได้'} · ${can('respond') ? 'ตอบชี้แจงได้เมื่อเคสรอชี้แจง' : 'ส่งผู้มีสิทธิ์ตอบคำชี้แจง'} · ${can('approve') ? 'ยืนยันปิดได้เมื่อผ่านเกณฑ์' : 'ต้องส่งผู้มีสิทธิ์อนุมัติปิดเคส'}</p>
+      </section>
+      ${uiResult ? `<section class="case-save-result" role="status"><b>${h(uiResult.message)}</b><small>ผลบันทึกในการใช้งานครั้งนี้ · ${h(uiResult.actor)} · ${h(displayTime(uiResult.at))}</small></section>` : ''}
+      ${closed ? `<p class="case-closed-history">ปิดโดย ${h(e.resolvedBy || 'ดูประวัติผู้ยืนยัน')} · ${h(e.resolvedAt ? displayTime(e.resolvedAt) : 'ดูประวัติเวลาบันทึก')} · ${h(e.resolutionNote || '')}</p>` : ''}
+      ${queueIndex >= 0 ? `<nav class="review-case-nav" aria-label="เลื่อนเคสในคิว"><button class="ghost-button sm" id="reviewPrevious" ${queueIndex === 0 ? "disabled" : ""}>← เคสก่อนหน้า</button><span>เคส ${queueIndex + 1} / ${queue.length}<small>การเลื่อนเคสไม่ใช่การอนุมัติหรือปิดเคส</small></span><button class="ghost-button sm" id="reviewNext" ${queueIndex === queue.length - 1 ? "disabled" : ""}>เคสถัดไป →</button></nav>` : ""}
+      <div class="case-review-flow" aria-label="ขั้นตอนตรวจเคส"><button type="button" data-case-step="summary"><i>1</i><span><b>เช็กยอดและเวลา</b><small>ดู BO เทียบ STM</small></span></button><button type="button" data-case-step="files"><i>2</i><span><b>เปิดไฟล์ประกอบ</b><small>Preview ไฟล์ที่ใช้รัน</small></span></button><button type="button" data-case-step="action"><i>3</i><span><b>เลือกผลดำเนินการ</b><small>ชี้แจง / ความเสียหาย / ปิดเคส</small></span></button></div>
+      <section class="clarification-instructions" aria-label="สิ่งที่ Audit ขอให้ชี้แจง">
+        <h3>สิ่งที่ Audit ขอให้ชี้แจง</h3>
+        ${e.clarificationInstructionsError?`<p role="alert">โหลดคำขอไม่สำเร็จ: ${h(e.clarificationInstructionsError)} กรุณาโหลดเคสใหม่ก่อนตอบ</p>`:(e.clarificationInstructions||[]).length?`<ol>${e.clarificationInstructions.map(n=>`<li><p class="clarification-request-text">${h(n.text)}</p><small>Audit ${h(n.by)} · ${h(displayTime(n.at))}</small></li>`).join('')}</ol>`:'<p>ยังไม่มีรายละเอียดคำขอชี้แจงที่บันทึกไว้ กรุณาสอบถาม Audit โดยอ้างอิงเลขเคสนี้</p>'}
+      </section>
+      <div class="case-summary-grid" id="caseSummarySection">
+        <div><span>วันที่ / เวลา</span><b>${e.date} ${e.time}</b></div>
+        <div><span>บริษัท</span><b>${h(e.company || "ไม่ระบุ")}</b></div>
+        <div><span>บัญชี / ทิศทาง</span><b>${h(e.account)} (${h(e.bank)}) · ${h(e.direction)}</b></div>
+        <div><span>ผลต่างเวลา</span><b>${h(exceptionTimeDiffLabel(e))}</b></div>
+        <div><span>ยอดระบบ (BO)</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
+        <div><span>ยอดธนาคาร (STM)</span><b>${e.bankAmount === null ? "ไม่พบรายการ" : money(e.bankAmount)}</b></div>
+        <div><span>ผลต่าง</span><b>${diffLabel(e)}</b></div>
+        <div class="case-summary-risk"><span>ยอดที่ต้องตรวจ</span><b class="danger">${e.riskAmount ? money(e.riskAmount) : "ไม่กระทบยอดเงิน"}</b></div>
+      </div>
+      <details class="case-meta-more"><summary>กำหนดส่งและผู้รับผิดชอบ</summary><div><span>พนักงาน <b>${h(e.employee || "ไม่ระบุ")}</b></span><span>SLA <b class="${e.overSla ? "danger" : ""}">${e.ageHours} ชม. / ${e.slaHours} ชม.</b></span><span>สายชี้แจง <b>${h(trackMeta(e.track).short)}${e.systemUnassigned ? " (ยังไม่กำหนดระบบ)" : ""}</b></span><span>กำหนดส่งคืน <b class="${e.overSla ? "danger" : ""}">${h(dueOf(e).short)}</b></span></div><p>${h(dueOf(e).detail)}</p></details>
+      ${e.detail ? `<div class="rule-detail"><b>สิ่งที่ระบบตรวจพบ</b><p>${h(e.detail)}</p>${e.member ? `<small>สมาชิก ${h(e.member)}${e.memberNick ? " (" + h(e.memberNick) + ")" : ""}</small>` : ""}</div>` : ""}
+      ${e.clarificationFileId ? `<div class="alert ${e.autoClosed ? "ok" : "warn"}"><strong>${e.autoClosed ? "ปิดเคสจากไฟล์ชี้แจงอัตโนมัติ" : "พบไฟล์ชี้แจงและจับคู่เคสแล้ว"}</strong><span>${h(e.resolutionNote || "มีหลักฐานจากอีเมล")} · ความมั่นใจ ${num(e.matchConfidence)}%${e.resolvedBy ? ` · โดย ${h(e.resolvedBy)}` : ""}<br>${e.status === "damage" ? "ผู้ตรวจยืนยันเป็นความเสียหายแล้ว" : "มีคำชี้แจงแล้ว — ยังไม่นับเป็นความเสียหาย จนกว่า Audit จะยืนยันและบันทึกเข้าทะเบียน"}</span></div>` : ""}
+
+      <section class="case-source-section" id="caseFilesSection">
+        <div class="case-section-head"><div><p class="eyebrow">ไฟล์ที่ใช้กระทบยอด</p><h3>ไฟล์ประกอบของเคสนี้</h3></div><button class="ghost-button sm" id="caseOpenAllFiles">ดูไฟล์ทั้งหมดของบริษัท/วัน</button></div>
+        <div id="caseSourceFiles" class="case-files-loading"><span class="spinner"></span><span>กำลังหาไฟล์ STM / BO / PM ที่ใช้สร้างเคส...</span></div>
+      </section>
+
+      <h3 class="drawer-h3">ข้อมูลที่ระบบใช้ตัดสิน</h3>
+      <ol class="timeline">
+        <li><span class="t-dot"></span><div><b>รายการฝั่ง STM / PM</b><code id="caseRawStm">${h(e.stmRaw)}</code></div></li>
+        <li><span class="t-dot"></span><div><b>รายการฝั่ง BO</b><code id="caseRawBo">${h(e.boRaw)}</code></div></li>
+        <li><span class="t-dot"></span><div><b>ผลการจับคู่</b><span>${
+          e.ruleBased
+            ? `ตรวจด้วยกฎธุรกิจจากรายงานหลังบ้าน (ไม่ต้องใช้ statement): ${h(e.typeName)}`
+            : `ไม่ผ่านเกณฑ์: ${h(e.typeName)} — tolerance ที่ใช้ ${e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit} วินาที`
+        }</span></div></li>
+        <li><span class="t-dot"></span><div><b>สาเหตุที่บันทึกไว้</b><span>${h(e.cause)}</span></div></li>
+        ${e.hasEvidence || sourceEvidence ? `<li><span class="t-dot ok"></span><div><b>หลักฐานแนบ</b><span>${sourceEvidence ? "BO/PM ต้นทาง — ตรวจอ้างอิง ยอด วัน เวลา และคู่ซ้ำแล้ว" : "มีหลักฐานบันทึกในระบบ"}</span></div></li>` : `<li><span class="t-dot bad"></span><div><b>หลักฐาน</b><span class="danger">ยังไม่มีหลักฐานแนบ</span></div></li>`}
+        ${e.notes.map((n) => `<li><span class="t-dot"></span><div><b>Note โดย ${h(n.by)} · ${h(displayTime(n.at))}</b><span>${h(n.text)}</span></div></li>`).join("")}
+      </ol>
+
+      <section ${state.role==='shift_lead'?'hidden':''}>
+      <h3 class="drawer-h3">สิ่งที่ต้องครบก่อนปิดเคส</h3>
+      ${sourceEvidence ? `<p class="quick-close-hint"><b>${closed ? "ผลการตรวจ:" : "พร้อมให้ Audit ยืนยัน:"}</b> ${closed ? "Audit ยืนยันปิดแล้ว — ใช้หลักฐานคู่ BO/PM ต้นทาง" : "คู่ BO/PM ตรงกัน ไม่พบคู่ซ้ำ — Audit ยืนยันปิดได้แม้เวลาต่างหรือข้ามวัน"}</p>` : ""}
+      <ul class="close-check" id="caseChecklistSection">
+        ${checklist.map((c) => `<li class="${c.ok ? "ok" : "no"}"><i>${c.ok ? "✓" : "✕"}</i>${h(c.label)}</li>`).join("")}
+      </ul>
+      ${closureReviewReady && !amountOutcomeRecorded ? `<p class="hint">มีข้อมูลและหลักฐานสำหรับตรวจต่อแล้ว · ต้องเลือกผลยอดและติ๊กยืนยันในหน้าต่างขั้นตอนถัดไปก่อนบันทึก</p>` : closureActionReady || closed ? "" : `<p class="hint">ยังเปิดขั้นตอนยืนยันผลไม่ได้จนกว่าข้อมูลและหลักฐานจะครบ</p>`}
+      </section>
+
+      <h3 class="drawer-h3">หลักฐานแนบ</h3>
+      ${state.dataset==='production'&&closed&&['lead','admin'].includes(state.role)?'<button class="ghost-button" id="btnCorrectClosedEvidence">แก้ไขหลักฐาน (เคสปิดแล้ว)</button><p class="hint">เก็บไฟล์เดิมและประวัติ · ต้องระบุเหตุผล · ไม่เปิดเคสใหม่หรือแก้ยอด</p>':''}
+      <p id="caseUploadProgress" role="status" aria-live="polite">${h(e._uploadResult || '')}</p>
+      ${state.dataset==='production'?(Sb.pendingCaseEvidence(e.dbId)||[]).map(p=>`<div class="alert warn"><p>${h(p.name)} · ${p.uploaded?'ไฟล์อยู่ในคลังแล้ว ยังรอยืนยันทะเบียน':'ยังรอตรวจผลส่งไฟล์'} · รหัส ${h(p.id)}</p><button class="ghost-button" data-resume-evidence="${h(p.id)}" ${p.busy?'disabled':''}>ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button><small>คำขอเดิมเก็บในหน้าต่างนี้ อย่ารีเฟรชหรือปิดหน้าต่างจนยืนยันผลได้</small></div>`).join(''):''}
+      <div class="evidence-box">
+        ${(e.evidence||[]).filter(f=>f.replacesSourceFileId).map(f=>`<p class="hint"><span class="badge amber">ไฟล์ชี้แจงเดิมแทนที่แล้ว · เก็บต้นฉบับ</span> ${h(f.replacesSourceFileId)} → ${h(f.name)}</p>`).join('')}
+        ${
+          (e.evidence || []).length
+            ? `<ul class="evidence-list">${e.evidence
+                .map(
+                  (f) =>
+                    `<li><span class="ev-ico">${f.name.match(/\.(png|jpe?g|gif|webp)$/i) ? "🖼" : "📄"}</span><div><b>${h(f.name)}</b>${f.replacedBy?'<span class="badge amber">แทนที่แล้ว · เก็บต้นฉบับ</span>':''}${f.correctionReason?`<span class="badge blue">หลักฐานแก้ไขใหม่</span><small>เหตุผล: ${h(f.correctionReason)} · แทนไฟล์ ${h(f.replacesEvidenceId||f.replacesSourceFileId)} · โดย ${h(f.uploadedBy)}</small>`:''}<small>${(f.size / 1024).toFixed(0)} KB · แนบเมื่อ ${h(displayTime(f.at))}</small></div>${f.storagePath ? `<button class="link-btn" data-case-evidence="${h(f.storagePath)}">เปิดหลักฐาน</button>` : f.url ? `<a class="link-btn" href="${h(f.url)}" target="_blank" rel="noopener">เปิดดู</a>` : '<span class="muted">บันทึกไว้เฉพาะรายการ</span>'}</li>`,
+                )
+                .join("")}</ul>`
+            : `<p class="muted small-note">${state.dataset==='production' && Sb.pendingCaseEvidence(e.dbId).length ? "มีคำขอแนบไฟล์ค้างยืนยันทะเบียน — กดตรวจ / ลองบันทึกต่อด้านบน ไม่ต้องแนบซ้ำ และยังไม่นับเป็นหลักฐานที่ผูกเคสสำเร็จ" : e.clarificationFileId ? "มีเอกสารชี้แจงผูกกับเคสแล้ว — เปิดได้ในไฟล์ประกอบของเคสนี้" : sourceEvidence ? "ไม่ต้องแนบไฟล์ชี้แจงเพิ่มเติม — ใช้ข้อมูลต้นฉบับ BO/PM ที่ผ่านเกณฑ์ตรวจ" : "ยังไม่มีไฟล์แนบ — ต้องตรวจหลักฐานและเงื่อนไขปิดเคสให้ครบ"}</p>`
+        }
+        <label class="attach-btn ${can("attach") || can("note") ? "" : "locked"}">
+          <input type="file" id="evInput" multiple hidden accept="image/*,.pdf,.docx,.csv,.xlsx,.txt" ${can("attach") || can("note") ? "" : "disabled"} />
+          แนบเอกสาร / สลิป / ไฟล์ชี้แจง
+        </label>
+        <p class="muted small-note">แนบได้หลายไฟล์: PDF, Word (.docx), รูปภาพ, Excel, CSV หรือ TXT · ไฟล์ละไม่เกิน 20 MB · การแนบไม่ใช่การอนุมัติหรือปิดเคส</p>
+      </div>
+
+      <h3 class="drawer-h3" ${state.role==='shift_lead'?'hidden':''}>รายละเอียดที่ Audit ขอให้บริษัทชี้แจง</h3>
+      <p class="hint" ${state.role==='shift_lead'?'hidden':''}>ข้อความที่บันทึกจะแสดงแก่ผู้ชี้แจงของบริษัทนี้ เก็บประวัติเดิม ไม่ส่งคำตอบและไม่ปิดเคส หากยังไม่ส่งเคส ให้กดส่งขอชี้แจงต่อ</p>
+      <div class="note-form" ${state.role==='shift_lead'?'hidden':''}>
+        <textarea id="noteText" rows="3" maxlength="2000" placeholder="ระบุสิ่งที่ต้องชี้แจงและหลักฐานที่ต้องการ..." ${closed?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.note||'')}</textarea>
+        <button class="ghost-button" id="btnNote" ${closed?'disabled':''}>บันทึกรายละเอียดคำขอชี้แจง</button>
+      </div>
+      <section class="case-response-section" id="caseResponseSection">
+        <h3>คำชี้แจงสำหรับส่งให้ Audit</h3><p>1 เลือกหลักฐาน → 2 ระบุสาเหตุ → 3 ส่งคำชี้แจงพร้อมหลักฐาน · การเลือกไฟล์อย่างเดียวยังไม่ส่งและไม่ปิดเคส</p>
+        ${ClarificationFlow.draftMarkup(e._clarificationDraftFile)}
+        ${e.responseText ? `<div class="case-response-saved"><b>คำชี้แจงที่บันทึกไว้</b><p>${h(e.responseText)}</p><small>${h(displayTime(e.respondedAt))}</small></div>` : ''}
+        ${e.clarificationHistoryError?`<p role="alert">ยังอ่านข้อความเดิมไม่สำเร็จ: ${h(e.clarificationHistoryError)} กรุณาเปิดเคสใหม่ก่อนส่ง</p>`:ClarificationFlow.historyMarkup(e.clarificationHistory,displayTime)}
+        <label ${!ClarificationFlow.canRespond(e.status,state.role)?'hidden':''}>ต้องการชี้แจงเคสนี้ โดยสาเหตุ…<textarea id="responseText" rows="4" maxlength="2000" placeholder="ระบุสาเหตุ ข้อเท็จจริง ยอด วันที่ เลขอ้างอิง และสิ่งที่หลักฐานยืนยัน" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>${h(caseOpenDrafts.get(caseOpenDraftKey(e))?.response??e._clarificationDraftText??'')}</textarea></label>
+        <button class="primary-button" id="btnRespond" ${!ClarificationFlow.canRespond(e.status,state.role)||!can('respond')?'disabled':''}>ส่งคำชี้แจงพร้อมหลักฐาน</button>
+        <small>ส่งสำเร็จแล้วจะรอ Audit ตรวจคำตอบและหลักฐานพร้อมกัน เก็บข้อความเดิมและไฟล์เดิมครบ ยังไม่ปิดเคส</small>
+      </section>
+    <footer class="drawer-foot" id="caseActionSection">
+      <div class="drawer-next"><span>ขั้นตอนถัดไป</span><b>${state.role==='shift_lead'?(closed?'ปิดเคสแล้ว — ดูประวัติเดิม ไม่ส่งคำตอบซ้ำ':e.status==='clarifying'?'อ่านคำขอ Audit แนบหลักฐาน แล้วกดส่งคำชี้แจงพร้อมหลักฐาน':e.status==='answered'?'ส่งคำชี้แจงแล้ว — รอ Audit ตรวจคำตอบ':'ยังไม่อยู่ในสถานะส่งคำชี้แจง กรุณาติดต่อ Audit'):closed ? "ปิดเคสแล้ว — ดูหลักฐานและประวัติการยืนยัน" : e.closureRequestId ? "ส่งผลตรวจแล้ว — หัวหน้าตรวจและปิดเคสด้านล่าง ไม่ส่งเข้าคิวต่อ" : e.status==='pair_pending' ? "ตรวจคำขอจับคู่ด้านล่าง — อนุมัติหรือส่งกลับผ่านคำขอเดิม" : quickCloseEligible ? "อ้างอิงและยอดตรง — Audit ยืนยันปิดเคสต่างเวลาได้" : e.hasEvidence ? (can('approve') ? "ตรวจเอกสารและผลยอด แล้วปิดเคสได้ในขั้นตอนเดียว" : "Audit ตรวจเอกสารและผลยอด แล้วส่งหัวหน้ารอปิดเคส") : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง"}</b></div>
+      <p class="case-action-help">มีไฟล์ชี้แจงไม่ได้แปลว่ายอดผ่านแล้ว — หากเป็นเคส BO กับ STM/PM คนละฝั่ง ให้ใช้ “จับคู่เอง” เลือกเคสคู่ เหตุผล และติ๊กยืนยัน ระบบจะตรวจสิทธิ์กับต้นทางจริงแยกจากเช็กลิสต์ปิดเคสทั่วไป ไม่ต้องกรอกข้อมูลสมมติหรือบันทึกความเสียหายเพื่อให้ผ่าน</p>
+      ${missingChecks.length ? `<div class="case-close-blockers"><b>ยังปิดไม่ได้: ขาด ${missingChecks.length} ข้อ</b><ul>${missingChecks.map(item=>`<li>${h(item.label)}</li>`).join('')}</ul>${missingChecks.some(item=>['cause','owner'].includes(item.key))?'<p>ถ้าไม่มีช่องแก้สาเหตุหรือผู้รับผิดชอบ ให้ส่งเลขเคสและหลักฐานแก่ผู้ดูแล ไม่กรอกข้อมูลสมมติเพื่อให้ผ่าน</p>':''}<button class="ghost-button sm" id="btnGoMissing">ไปตรวจสิ่งที่ขาด</button></div>` : ''}
+      ${['lead','admin'].includes(state.role)&&['closed','damage'].includes(e.status)?'<div class="alert warn"><b>ผลปิดผิดสามารถย้อนกลับได้โดยหัวหน้าออดิท/ผู้ดูแลระบบ</b><div class="inline-actions"><button class="ghost-button" id="btnReopenClosedCase">ยกเลิกผลปิด — คืน Audit ตรวจ</button><button class="ghost-button" id="btnReturnClosedCase">ตีกลับให้ชี้แจงเพิ่มเติม</button></div><small>ยอดและหลักฐานเดิมไม่ถูกลบ แต่จะเก็บเป็นประวัติที่ยกเลิกและไม่นับในยอดปัจจุบัน</small></div>':''}
+      <div class="drawer-primary-actions"><button class="ghost-button" id="btnChooseClarification" ${closed?'disabled':''}>เลือกเอกสารชี้แจง</button><button class="ghost-button" id="btnManualPair" ${!ManualPairing.eligible(e)?'disabled':''}>${e.type==='amount_diff'?'ตรวจยอดต่าง / จับคู่เอง':'จับคู่เอง'}</button>${['7M','UFABET7M'].includes(String(e.company).toUpperCase())?`<button class="ghost-button" id="btnInternalTransferPair" ${!ManualPairing.eligible(e)?'disabled':''}>จับคู่ข้ามบัญชีภายในบริษัท</button>`:''}<button class="ghost-button" id="btnCrossCompanyPair" ${e.status!=='open'?'disabled':''}>จับคู่ข้ามบริษัท</button><button class="ghost-button" id="btnClarify">ส่งขอชี้แจง</button>${ClarificationReturn.eligible(e)?'<button class="ghost-button" id="btnReturnClarification">ตีกลับให้ชี้แจงเพิ่มเติม</button>':''}<button class="primary-button" id="btnApprove" ${closureActionReady ? "" : "disabled"}>${closed ? "ปิดเคสแล้ว" : quickCloseEligible ? "ยืนยันปิดเคสต่างเวลา" : closureReviewReady ? "ตรวจผลและปิดเคส" : "ยังตรวจผลไม่ได้"}</button></div>
+      <div id="manualPairReview"></div>
+      <div id="caseClosureReview"></div>
+      ${!closed&&!e.manualPairId&&!e.closureRequestId&&['monitor','audit_assistant','lead','admin'].includes(state.role)?`<button class="primary-button" id="btnSendClosure">${can('approve')?'ปิดเคส':'Audit ตรวจเอกสาร / ผลยอด แล้วส่งหัวหน้ารอปิดเคส'}</button>`:''}
+      <details class="drawer-more-actions"><summary>แนบไฟล์และเครื่องมืออื่น</summary><div><button class="ghost-button" id="btnJumpFiles">ดูไฟล์ประกอบ</button><button class="ghost-button" id="btnAttachQuick">แนบหลักฐาน</button><button class="ghost-button" id="btnDocReq">ใบขอให้ชี้แจง (PDF)</button><button class="ghost-button" id="btnDocClr">เอกสารชี้แจง (PDF)</button><button class="ghost-button" id="btnDamage">บันทึกเป็นความเสียหาย</button></div></details>
+    </footer>
+    </div>`;
+
+  drawer.dataset.caseDraftKey=caseOpenDraftKey(e);
+  $('#noteText').addEventListener('input',captureCaseOpenDraft);
+  $('#responseText').addEventListener('input',captureCaseOpenDraft);
+  drawer.hidden = false;
+  overlay.hidden = false;
+  requestAnimationFrame(() => drawer.classList.add("on"));
+  AuditUi.open(drawer);
+
+  $("#drawerClose").addEventListener("click", closeDrawer);
+  $('#btnReturnClarification')?.addEventListener('click',()=>ClarificationReturn.open(e).catch(err=>toast(err.message,'warn')));
+  $('#btnReopenClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'reopen_audit'));
+  $('#btnReturnClosedCase')?.addEventListener('click',()=>openWrongClosureReversal(e,'return_clarification'));
+  $('#caseNextQueue')?.addEventListener('click',()=>showReadOnlyCaseQueue(e));
+  $('#btnGoMissing')?.addEventListener('click',()=>{
+    const first=missingChecks[0]?.key;
+    const target=first==='raw'||first==='evidence'?'#caseFilesSection':first==='note'?'#noteText':'#caseChecklistSection';
+    $(target)?.scrollIntoView({behavior:'smooth',block:'center'});
+    if(first==='note')$('#noteText')?.focus();
+  });
+  const moveReview = (offset) => {
+    if (String($('#noteText')?.value || '').trim() || String($('#responseText')?.value || '').trim()) return toast('มีข้อความที่ยังไม่บันทึก กรุณาบันทึกหรือล้างข้อความก่อนเปลี่ยนเคส', 'warn');
+    const nextId = queue[queueIndex + offset];
+    if (nextId) openException(nextId);
+  };
+  $('#reviewPrevious')?.addEventListener('click', () => moveReview(-1));
+  $('#reviewNext')?.addEventListener('click', () => moveReview(1));
+  overlay.onclick=closeDrawer;
+  $("#btnJumpFiles").addEventListener("click", () => $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  $("#btnAttachQuick").addEventListener("click", () => closed?toast('เคสปิดแล้ว ต้องใช้ปุ่มแก้ไขหลักฐานสำหรับหัวหน้า/ผู้ดูแล','warn'):$("#evInput")?.click());
+  $('#btnCorrectClosedEvidence')?.addEventListener('click',()=>openClosedEvidenceCorrection(e).catch(err=>toast(err.message,'warn')));
+  $("#btnChooseClarification").addEventListener("click", () => {
+    if (!can("attach") && !can("note")) return deny("เลือกเอกสารชี้แจง");
+    $("#caseFilesSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const picker = $("#caseMailEvidenceButton");
+    if (picker) picker.click();
+    else { e._openClarificationPicker = true; toast("กำลังโหลดทะเบียนเอกสารชี้แจงของบริษัทนี้…"); }
+  });
+  if(CrossDayWorkbench.eligible(e)){
+    $('#btnManualPair').disabled=false;
+    $('#btnManualPair').textContent='จับคู่ข้ามวัน / เตรียมหลายคู่';
+  }
+  $('#btnManualPair').addEventListener('click',()=>CrossDayWorkbench.eligible(e)?CrossDayWorkbench.open(e):ManualPairing.open(e,'same'));
+  $('#btnInternalTransferPair')?.addEventListener('click',()=>ManualPairing.open(e,'internal'));
+  $('#btnCrossCompanyPair').addEventListener('click',()=>ManualPairing.open(e,'cross'));
+  if(['lead','admin'].includes(state.role)&&can('approve')&&!closed){
+    const headClose=document.createElement('button');
+    headClose.id='btnHeadClose';headClose.type='button';headClose.className='primary-button';
+    headClose.textContent='ปิดเคส (หัวหน้า / ผู้ดูแลระบบ)';
+    headClose.addEventListener('click',()=>{
+      if(!['lead','admin'].includes(state.role)||!can('approve'))return deny('ปิดเคส');
+      if(quickCloseEligible)return confirmQuickClose(e);
+      if (state.dataset === 'production') return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+      $('#btnApprove')?.click();
+    });
+    $('#btnCrossCompanyPair').after(headClose);
+  }
+  if(state.role!=='shift_lead'){
+    ManualPairing.mountReview(e,$('#manualPairReview'));
+    CaseClosure.mountReview(e,$('#caseClosureReview'));
+  }
+  $('#btnSendClosure')?.addEventListener('click',()=>CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn')));
+  $("#caseOpenAllFiles").addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
+  drawer.querySelectorAll("[data-case-step]").forEach((button) => button.addEventListener("click", () => {
+    const target = button.dataset.caseStep === "files" ? $("#caseFilesSection") : button.dataset.caseStep === "action" ? $("#caseActionSection") : $("#caseSummarySection");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  loadExceptionSupport(e, options);
+  if(state.dataset==='production' && e.dbId) EvidenceRecommendations.mountCaseBanner(drawer.querySelector('.drawer-body') || drawer, e, Sb, openStoredFilePreview, openEvidenceRelatedCase);
+  drawer.querySelectorAll('[data-case-evidence]').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      const file = (e.evidence || []).find(f => f.storagePath === button.dataset.caseEvidence);
+      await openStoredFilePreview({path:button.dataset.caseEvidence, name:file?.name || 'หลักฐานจากเคส',
+        size:file?.size, company:e.company, date:e.date, kind:'doc_clarify', status:'parsed',
+        readOnly:true, caseCode:e.id, evidenceOrigin:'แนบผ่านเคส / ผู้ชี้แจง'});
+    } catch (error) { toast("เปิดหลักฐานไม่ได้: " + error.message, "warn"); }
+    finally { button.disabled = false; }
+  }));
+
+  const acceptStoredEvidence = file => {
+    e.evidence=e.evidence||[];
+    if(!e.evidence.some(item=>item.id===file.id))e.evidence.push({id:file.id,name:file.file_name,size:file.size_bytes,at:file.created_at||nowStamp(),storagePath:file.storage_path});
+    e.hasEvidence=true;
+  };
+  document.querySelectorAll('[data-resume-evidence]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{acceptStoredEvidence(await Sb.resumeCaseEvidence(button.dataset.resumeEvidence));e._caseEvidenceLoaded=false;e._uploadResult='ยืนยันหลักฐานเดิมและผูกเคสสำเร็จแล้ว — ไม่อัปไฟล์ซ้ำ';toast(e._uploadResult);}
+    catch(error){e._uploadResult=error.message;toast(error.message,'warn');}
+    finally{if(state.selected===e.id)await openException(e.id);else button.disabled=false;}
+  });
+  $("#evInput").addEventListener("change", async (evt) => {
+    if (!can("attach") && !can("note")) return deny("แนบหลักฐาน");
+    const files = [...evt.target.files];
+    if (!files.length) return;
+    if (state.dataset === "production") {
+      const input = evt.target;
+      input.disabled = true;
+      let saved = 0;
+      const uploadActor = Sb.authUser()?.id;
+      e._uploadResult = `กำลังแนบหลักฐาน ${files.length} ไฟล์…`;
+      let uploadComplete = false;
+      const uploadErrors = [];
+      try {
+        for (const [fileIndex,file] of files.entries()) {
+          if(Sb.authUser()?.id!==uploadActor)throw new Error('บัญชีผู้ใช้เปลี่ยนระหว่างแนบไฟล์ หยุดไฟล์ที่เหลือ ไม่ผูกเคสข้ามบัญชี');
+          try { acceptStoredEvidence(await Sb.uploadCaseEvidence(e.dbId, file, (stage) => {
+            e._uploadResult = `ไฟล์ ${fileIndex + 1}/${files.length}: ${file.name} · ${stage}`;
+            const progress = $('#caseUploadProgress');
+            if (progress && state.selected === e.id) progress.textContent = e._uploadResult;
+          }));
+          saved++;
+          } catch(error) { uploadErrors.push(`${file.name}: ${error.message}`); }
+        }
+        if(uploadErrors.length)throw new Error(uploadErrors.join('\n'));
+        uploadComplete = saved === files.length;
+        e._uploadResult = `บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`;
+        recordCaseUiResult(e, `แนบหลักฐานสำเร็จ ${saved} ไฟล์ — รอตรวจ ไม่ใช่ปิดเคส`);
+        toast(`บันทึกหลักฐานและผูกเคสแล้ว ${saved} ไฟล์`);
+      } catch (error) {
+        e._uploadResult = `แนบสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message} · หากผลไม่แน่นอน โปรดตรวจทะเบียนหลักฐานก่อนอัปซ้ำ`;
+        toast(`ยืนยันสำเร็จ ${saved}/${files.length} ไฟล์ · ${error.message}`, "warn");
+      } finally {
+        input.value = "";
+        input.disabled = false;
+        e._caseEvidenceLoaded = false;
+        if (state.selected === e.id) {
+          await openException(e.id);
+          if (uploadComplete) showCaseSubmissionReceipt(['pair_pending','answered'].includes(e.status)?'additional_evidence':'evidence',e.id);
+        }
+      }
+      return;
+    }
+    e.evidence = e.evidence || [];
+    files.forEach((f) => e.evidence.push({ name: f.name, size: f.size, at: nowStamp(), url: URL.createObjectURL(f) }));
+    e.hasEvidence = true;
+    logAction("attach", "evidence", e.id, `แนบไฟล์ ${files.map((f) => f.name).join(", ")}`);
+    saveOverride(e);
+    recordCaseUiResult(e, `แนบหลักฐาน ${files.length} ไฟล์แล้ว — ยังไม่ปิดเคส`);
+    toast(`แนบหลักฐาน ${files.length} ไฟล์แล้ว`);
+    openException(id);
+  });
+
+  $("#btnNote").addEventListener("click", async () => {
+    if (!can("note")) return deny("เพิ่ม note");
+    const txt = $("#noteText").value.trim();
+    if (!txt) return toast("กรุณาพิมพ์ note ก่อน", "warn");
+    const button = $("#btnNote");
+    button.disabled = true;
+    try {
+      if (state.dataset === "production") {
+        if (!e.dbId) throw new Error("ไม่พบรหัสเคสฐานข้อมูล");
+        await Sb.appendCaseNote(e.dbId, txt);
+      } else {
+        e.notes.push({ by: currentUser().username, at: nowStamp(), text: txt });
+        logAction("note", "exception", e.id, "เพิ่ม note: " + txt.slice(0, 60));
+        saveOverride(e);
+      }
+      recordCaseUiResult(e, 'บันทึกรายละเอียดคำขอแล้ว — ผู้ชี้แจงเห็นในเคสที่ส่งแล้ว ยังไม่ปิดเคส');
+      clearSavedCaseDraft(e,'note',txt);
+      toast("บันทึกรายละเอียดคำขอชี้แจงแล้ว");
+      if (state.selected === id) await openException(id);
+    } catch (err) {
+      toast("บันทึก Note ไม่สำเร็จ: " + err.message, "warn");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  $("#btnDocReq").addEventListener("click", () => {
+    const d = dueOf(e);
+    issueRequestDoc([e], {
+      key: e.id,
+      shiftName: (DB.shifts.find((s) => s.code === e.shift) || {}).name || e.shift,
+      toName: (DB.users.find((u) => u.role === "shift_lead" && u.shift === e.shift) || {}).name,
+      periodLabel: `วันที่ ${e.date} · เคส ${e.id}`,
+    });
+  });
+  $("#btnDocClr").addEventListener("click", () =>
+    issueClarificationDoc(e, ($("#responseText").value || "").trim() || e.responseText || ''),
+  );
+
+  $("#btnClarify").textContent = e.hasEvidence && !isUnsentClarificationCase(e) ? (can('approve')?'ปิดเคส':'ตรวจเอกสารแล้ว ส่งหัวหน้ารอปิดเคส') : "เปิดเคสจริง / ส่งขอเอกสารผู้ชี้แจง";
+  if(e.hasEvidence && isUnsentClarificationCase(e))$('.drawer-next b').textContent='มีหลักฐานแนบแล้ว แต่ยังไม่ส่งขอชี้แจง · ตรวจรายละเอียดแล้วกดส่งขอเอกสารผู้ชี้แจง';
+  $("#btnClarify").disabled = !["open", "pending_next_day"].includes(e.status);
+  const clarificationSendStatus = document.createElement('p');
+  clarificationSendStatus.id = 'clarificationSendStatus';
+  clarificationSendStatus.setAttribute('role','status');
+  clarificationSendStatus.setAttribute('aria-live','polite');
+  $('#btnClarify').parentElement.after(clarificationSendStatus);
+  $("#btnClarify").addEventListener("click", async (event) => {
+    if (!can("request_clarify")) return deny("ส่งชี้แจง");
+    if(e.hasEvidence && !isUnsentClarificationCase(e))return CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+    if (!["open", "pending_next_day"].includes(e.status)) return;
+    if ($('#noteText').value.trim()) return toast('มีรายละเอียดคำขอที่ยังไม่บันทึก กรุณากดบันทึกรายละเอียดคำขอชี้แจงก่อนส่งเคส','warn');
+    const requestKey=caseUiKey(e);
+    if(clarificationRequestFlights.has(requestKey))return;
+    const context=captureClarificationRequestContext(e);
+    clarificationRequestFlights.add(requestKey);
+    const button = event.currentTarget;
+    button.disabled = true;
+    const sendStatus = $('#clarificationSendStatus');
+    if(sendStatus)sendStatus.textContent = 'กำลังส่งและอ่านยืนยันจากระบบ — ยังไม่ถือว่าส่งสำเร็จ';
+    try {
+      const previousStatus=e.status;
+      let confirmedRequest;
+      const requestedAt = new Date().toISOString();
+      const requestedBy = state.dataset === "production" ? Sb.authUser()?.id : null;
+      if (state.dataset === "production") {
+        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
+        confirmedRequest=await Sb.requestClarification(e.dbId, e.status, {
+          status: "clarifying", requested_at: requestedAt, requested_by: requestedBy, updated_at: requestedAt,
+        });
+      }
+      e.status = "clarifying";
+      e.requestedAt = confirmedRequest?.requested_at || requestedAt;
+      e.requestedBy = confirmedRequest?.requested_by || requestedBy;
+      recordCaseUiResult(e, 'ส่งเข้าชีทรอชี้แจงสำเร็จ — รอผู้มีสิทธิ์ตอบพร้อมหลักฐาน');
+      saveOverride(e, false);
+      if(previousStatus!=='pending_next_day' || state.dataset!=="production") logAction("request_clarify", "exception", e.id, "Audit รีวิวแล้ว รอผู้ชี้แจงบริษัท " + e.company);
+      toast("ส่งไปชีทต้องชี้แจงแล้ว — ใช้เคสเดิม ไม่สร้างซ้ำ");
+      await showClarificationRequestReceipt(e,context);
+    } catch (err) {
+      const message = err.message.startsWith('ยังยืนยันการส่งไม่ได้') ? err.message : 'ยังยืนยันการส่งไม่ได้ — กรุณาเปิดเคสล่าสุดก่อนลองใหม่: ' + err.message;
+      if(sendStatus)sendStatus.textContent = message;
+      toast(message, "warn");
+      // Keep this attempt locked until a fresh case is loaded. A timeout can
+      // happen after commit, so an automatic or immediate retry is unsafe.
+    } finally {
+      clarificationRequestFlights.delete(requestKey);
+    }
+  });
+  $('#responseText').addEventListener('input',event=>e._clarificationDraftText=event.target.value);
+  if(options.focusResponse)setTimeout(()=>$('#caseResponseSection')?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+  $("#btnRespond").disabled = !ClarificationFlow.canRespond(e.status,state.role) || !!e.clarificationInstructionsError || !!e.clarificationHistoryError || !can('respond');
+  $("#btnRespond").addEventListener("click", async (event) => {
+    if (!can("respond")) return deny("ตอบชี้แจง");
+    if (!ClarificationFlow.canRespond(e.status,state.role)) return;
+    if(e.clarificationInstructionsError) return toast('ยังอ่านคำขอชี้แจงไม่ได้ กรุณาโหลดเคสใหม่ก่อนตอบ','warn');
+    const answerText = $("#responseText").value.trim();
+    if (answerText.length<10||answerText.length>2000) return toast("กรอกสาเหตุ 10–2,000 ตัวอักษรก่อนส่ง", "warn");
+    const answeringRole=currentUser().role;
+    const response=['monitor','audit_assistant','lead','admin'].includes(answeringRole)
+      ? `[คำชี้แจงโดย ${answeringRole==='admin'?'แอดมินระบบ':'Audit'} — ไม่ใช่การอนุมัติปิดเคส]\n${answerText}` : answerText;
+    const selectedFileId=e._clarificationDraftFile?.id||e.clarificationFileId;
+    if (state.dataset === "production" && !selectedFileId && !(e.evidence || []).some(f => f.storagePath)) return toast("ยังไม่มีไฟล์ชี้แจงที่บันทึกในระบบ กรุณาเลือกไฟล์หรือแนบหลักฐานก่อนส่ง", "warn");
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const stamp = new Date().toISOString();
+      if (state.dataset === "production") {
+        if (!Sb.signedIn() || !e.dbId) throw new Error("ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน");
+        if(e.clarificationHistoryError)throw Error('ยังอ่านข้อความเดิมไม่สำเร็จ กรุณาเปิดเคสใหม่ก่อนส่ง');
+        const saved=await Sb.submitClarificationWithFile(e.dbId,response,selectedFileId,e.status,e.clarificationFileId);
+        if(saved.id!==e.dbId||saved.status!=='answered'||saved.response_text!==response)throw Error('ยังยืนยันการบันทึกคำตอบไม่ได้');
+        e.clarificationFileId=saved.clarification_file_id;
+      }
+      delete e._clarificationDraftFile;delete e._clarificationDraftText;
+      clearSavedCaseDraft(e,'response',answerText);
+      e.status = "answered";
+      e.responseText = response;
+      e.respondedAt = stamp;
+      e.respondedBy = Sb.authUser()?.id || currentUser().username;
+      recordCaseUiResult(e, 'ส่งคำชี้แจงสำเร็จ — รอ Audit ตรวจคำตอบ ยังไม่ปิดเคส');
+      saveOverride(e, false);
+      logAction("respond", "clarification", e.id, "บันทึกคำชี้แจงแล้ว รอ Audit ตรวจคำตอบ");
+      render();
+      await openException(id);
+      showCaseSubmissionReceipt('clarification', e.id);
+    } catch (err) {
+      toast("ยังยืนยันการบันทึกไม่ได้: " + err.message, "warn");
+      button.disabled = false;
+    }
+  });
+  $("#btnDamage").addEventListener("click", async () => {
+    if (state.dataset === 'production' && ['monitor','audit_assistant','lead','admin'].includes(state.role)) return CaseClosure.openSubmit(e,'damage');
+    if (!can("close_case")) return deny("บันทึกความเสียหาย");
+    if (!e.hasEvidence) return toast("ต้องมีหลักฐานก่อนบันทึกเป็นความเสียหาย", "warn");
+    if (e.status === "damage") return toast("เคสนี้บันทึกเป็นความเสียหายแล้ว");
+    openModal("ยืนยันความเสียหาย", `<p>ระบุยอดเสียหายที่ตรวจหลักฐานแล้ว ไม่ใช่ยอดถอนทั้งหมดหรือยอดที่ระบบยังจับคู่ไม่ได้</p>
+      <label>ประเภทความเสียหาย<select id="damageCategory"><option value="">เลือกประเภท</option>${Object.entries(DamageSummary.categories).filter(([key])=>!['unclassified','system'].includes(key)).map(([key,label])=>`<option value="${key}">${h(label)}</option>`).join('')}</select></label>
+      <div class="damage-form-grid"><label>พนักงาน / ผู้เกี่ยวข้อง<input id="damageEmployee" maxlength="200" placeholder="รอยืนยันผู้เกี่ยวข้อง — ไม่ระบุผู้รับผิดโดยเดา"></label>
+      <label>กะทำงาน<select id="damageShift"><option value="">เลือกกะจากหลักฐาน</option><option value="day">กะเช้า 08:00–20:00</option><option value="night">กะดึก 20:00–08:00</option></select></label>
+      <label>เวลาที่เกิดเหตุ<input id="damageTime" type="time" step="1" value="${h(/^\d{2}:\d{2}(:\d{2})?$/.test(e.time || '') ? e.time : '')}"></label></div>
+      <p class="hint">ตรวจสอบชื่อและกะจากหลักฐาน ณ วันที่เกิดเหตุ ไม่ใช้ผู้ตรวจหรือผู้แนบเอกสารแทนผู้เกี่ยวข้อง เวลาที่ไม่ทราบให้เว้นว่าง ไม่ใช้ 00:00 แทน</p>
+      <label>ยอดเสียหายที่ยืนยัน (บาท)<input id="damageConfirmedAmount" type="number" min="0.01" step="0.01" inputmode="decimal"></label>
+      <label>สาเหตุ / หลักฐานอ้างอิง<textarea id="damageConfirmedCause">${h(e.cause || '')}</textarea></label>
+      <p class="hint">บันทึกเข้าทะเบียนเท่านั้น ไม่ส่งข้อความให้บุคคลหรือการเงิน</p>`, `<button class="ghost-button" id="damageCancel">ยกเลิก</button><button class="primary-button" id="damageConfirm">ยืนยันบันทึก</button>`);
+    $("#damageCancel").addEventListener('click', closeModal);
+    $("#damageConfirm").addEventListener('click', async (event) => {
+    let confirmedCause;
+    const confirmedCents = DamageSummary.cents($("#damageConfirmedAmount").value);
+    if (confirmedCents === null || confirmedCents <= 0) return toast("กรอกยอดเสียหายมากกว่า 0 และไม่เกิน 2 ตำแหน่งทศนิยม", "warn");
+    try { confirmedCause = DamageSummary.encodeDetails($("#damageCategory").value, $("#damageConfirmedCause").value); }
+    catch (error) { return toast(error.message, "warn"); }
+    if ($('#damageCategory').value==='employee' && (!$('#damageEmployee').value.trim() || !DamageSummary.shiftKey({shift:$('#damageShift').value})
+        || ['-','ไม่ระบุ','รอยืนยันผู้เกี่ยวข้อง'].includes($('#damageEmployee').value.trim())
+        || ['-','รอยืนยันกะ'].includes($('#damageShift').value.trim()))) return toast('ประเภทพนักงานต้องยืนยันชื่อและกะจากหลักฐานก่อน เพื่อไม่ระบุผิดคน','warn');
+    if (state.dataset === 'production' && (!Sb.signedIn() || !e.dbId)) return toast('ต้องเข้าสู่ระบบและโหลดเคสจริงก่อน', 'warn');
+    event.currentTarget.disabled = true;
+    if (e.status !== "damage") {
+      const previousStatus = e.status;
+      const damage = {
+        id: "DMG-" + (e.dbId || e.id),
+        exceptionId: e.id,
+        date: e.date,
+        company: e.company,
+        employee: $("#damageEmployee").value.trim(),
+        shift: $("#damageShift").value.trim(),
+        time: $("#damageTime").value,
+        amount: confirmedCents / 100,
+        cause: confirmedCause,
+        cycle: Number(e.date?.slice(8,10)) <= 15 ? "C1" : Number(e.date?.slice(8,10)) <= 25 ? "C2" : "C3",
+        evidence: true,
+        hrStatus: "ยังไม่ส่งบุคคล",
+        financeStatus: "รอปิดรอบ",
+      };
+      if (state.dataset === "production" && Sb.signedIn()) {
+        try {
+          const saved = await Sb.confirmDamage(e.dbId, previousStatus, damage.amount, damage.cause, damage);
+          damage.dbId = saved.id;
+        } catch (err) {
+          toast("ยังยืนยันผลบันทึกไม่ได้ กรุณารีเฟรชทะเบียนก่อนลองใหม่: " + err.message, "warn");
+          closeModal();
+          openException(id);
+          return;
+        }
+        e.status = "damage";
+        recordCaseUiResult(e, 'บันทึกความเสียหายสำเร็จ — ดูรายการในทะเบียนความเสียหาย');
+        DB.damages.push(damage);
+        saveOverride(e, false);
+        logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
+        await loadLiveDamage(true).catch(() => toast('บันทึกแล้ว แต่โหลดทะเบียนใหม่ไม่ได้ กรุณารีเฟรช', 'warn'));
+        loadLiveOverview(true);
+        toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
+      } else {
+        e.status = "damage";
+        recordCaseUiResult(e, 'บันทึกความเสียหายในข้อมูลตัวอย่างแล้ว');
+        DB.damages.push(damage);
+        Store.data.extraDamages.push(damage);
+        saveOverride(e);
+        logAction("damage", "damage_record", e.id, "บันทึกความเสียหาย " + money(damage.amount) + " บาท");
+        toast("บันทึกเข้าทะเบียนความเสียหายแล้ว");
+      }
+    }
+    closeModal();
+    openException(id);
+    });
+  });
+  $("#btnApprove").addEventListener("click", async () => {
+    if (!can("approve")) return deny("อนุมัติ/ปิดเคส");
+    if (quickCloseEligible) return confirmQuickClose(e);
+    if (state.dataset === 'production') {
+      if (!closureReviewReady) return toast("ข้อมูลหรือหลักฐานยังไม่ครบ เปิดขั้นตอนยืนยันผลไม่ได้", "warn");
+      return CaseClosure.openSubmit(e);
+    }
+    if (!closureActionReady) return toast("เช็กลิสต์ยังไม่ครบ ปิดเคสไม่ได้", "warn");
+    if (!await persistCaseClosure(e, e.resolutionNote || e.notes.map((note) => note.text).filter(Boolean).join("\n"))) return;
+    logAction("approve", "exception", e.id, "อนุมัติและปิดเคส");
+    toast("อนุมัติและปิดเคส " + e.id + " แล้ว");
+    render();
+    await openException(e.id);
+  });
+
+  const gate = { btnNote: "note", btnClarify: "request_clarify", btnRespond: "respond", btnDamage: "close_case", btnApprove: "approve", btnDocReq: "request_clarify" };
+  if(e.reviewHold) for(const id of ['btnApprove','btnDamage']) {const button=$('#'+id);if(button){button.disabled=true;button.title=AccountReviewHolds.label;}}
+  Object.entries(gate).forEach(([btn, cap]) => {
+    const el = $("#" + btn);
+    if (!can(cap)) {
+      el.classList.add("locked");
+      el.disabled = true;
+      el.title = `ต้องมีสิทธิ์: ${cap} (บทบาทปัจจุบัน ${DB.roles[state.role].name} ไม่มีสิทธิ์นี้)`;
+    }
+  });
+  if(caseOpenTicket===ticket)caseOpenTicket=null;
+  })();
+  return ticket.promise;
+}
+async function openApprovalReview(exceptionId, kind, requestId) {
+  if (!can('approve')) return toast('เฉพาะหัวหน้าทีม / ผู้ดูแลระบบอนุมัติได้', 'warn');
+  const row = await Sb.exceptionDetail(exceptionId);
+  if (!row) throw new Error('ไม่พบเคสของคำขอนี้ กรุณารีเฟรชคิว');
+  const e = mapLiveException(row);
+  // The queue identifies a request, not just a case whose pointer may change.
+  if (kind === 'closure' && requestId) e.closureRequestId = requestId;
+  openModal('อนุมัติ', '<div id="approvalQueueReview"></div>', '<button class="ghost-button" id="approvalReviewEvidence">ดูรายละเอียดและหลักฐาน</button><button class="ghost-button" id="approvalReviewCancel">ยกเลิก</button>');
+  $('#approvalReviewCancel').onclick = closeModal;
+  $('#approvalReviewEvidence').onclick = async () => {
+    closeModal();
+    try { await openEvidenceRelatedCase(exceptionId, {focusFiles:true}); }
+    catch (err) { toast(err.message, 'warn'); }
+  };
+  const host = $('#approvalQueueReview');
+  await (kind === 'pair' ? ManualPairing : CaseClosure).mountReview(e, host);
+}
+
+async function refreshCaseView() {
+  const root = $('#viewRoot');
+  if(state.route==='audit-review'&&typeof root?.auditQueueUpdateInPlace==='function'){
+    root.auditQueueUpdateInPlace();return;
+  }
+  // The company review / Excel table is mounted inside auditViewBody.
+  // Refresh its existing instance rather than remounting the parent shell.
+  const workspace = typeof root?.auditRefreshInPlace === 'function'
+    ? root : root?.querySelector?.('#auditViewBody');
+  if (typeof workspace?.auditRefreshInPlace === 'function') {
+    await workspace.auditRefreshInPlace();
+    return; // Inactive/stale instance is not permission to redraw a new page.
+  }
+  const x = window.scrollX, y = window.scrollY;
+  render();
+  window.scrollTo(x, y);
+}
+async function finishApprovalReview() {
+  // A saved decision must not reopen the old case or send the head away
+  // from the queue. A refresh failure is not a failed database decision.
+  closeModal();
+  closeDrawer();
+  const savedRoute=state.route;
+  try {
+    if(typeof liveOverviewState!=='undefined'){
+      const deadline=Date.now()+30000;
+      while(liveOverviewState.loading||liveOverviewState.auxiliaryLoading){
+        if(Date.now()>deadline)throw Error('รอบโหลดก่อนหน้ายังไม่เสร็จ');
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+    }
+    if(typeof liveQueueRoute==='function'&&liveQueueRoute()){
+      for(const queue of [CaseClosure,ManualPairing,CrossDayWorkbench])queue.queueState.at=0;
+    }
+    await loadLiveOverview(true);
+    if(state.route!==savedRoute)return true;
+    if(typeof liveQueueRoute==='function'&&liveQueueRoute()&&liveQueueProtected()){
+      liveQueueUpdatePending=true;return true;
+    }
+    await refreshCaseView();
+    return true;
+  }
+  catch (err) { toast('บันทึกอนุมัติแล้ว แต่โหลดภาพรวมใหม่ไม่ได้ กรุณารีเฟรชคิว: ' + err.message, 'warn'); return false; }
+}
+function closeDrawer() {
+  captureCaseOpenDraft();
+  caseOpenTicket=null;
+  const d = $("#drawer");
+  if (!d || d.hidden) return;
+  d.classList.remove("on");
+  $("#drawerOverlay").hidden = true;
+  AuditUi.close(d);
+  clearTimeout(d._hideTimer);
+  d._hideTimer = setTimeout(() => { d.hidden = true; d._hideTimer = null; }, 220);
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (AuditUi.top()?.id === 'modal') closeModal();
+    else closeDrawer();
+  }
+});
+
+/* =============================================================
+   VIEW: 3-Point Match
+   ============================================================= */
+VIEWS.matching = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  const ruleEditable = can("rules") && state.dataset !== "production";
+  const list = scopedExceptions().filter((e) => e.type !== "missing_stm");
+  if (!list.length) {
+    root.innerHTML = `<div class="panel"><p class="empty">ไม่มีรายการให้ตรวจในตัวกรองนี้</p></div>`;
+    return;
+  }
+  state.matchIndex = Math.min(state.matchIndex, list.length - 1);
+  const e = list[state.matchIndex];
+  const tol = e.direction === "ถอน" ? DB.settings.toleranceWithdraw : DB.settings.toleranceDeposit;
+  const bankRule = (DB.banks.find((bank) => bank.code === e.bank) || {}).rule || "ใช้กฎมาตรฐานจากข้อมูลที่มีในไฟล์";
+  const ruleBreach = {
+    duplicate: "พบรายการยอดเดียวกันซ้ำในฝั่ง BO — เข้าเงื่อนไขเติมซ้ำ",
+    backdated: "รายการถูกบันทึกย้อนหลังหลังปิดยอดของช่วงเวลานั้น",
+    cross_day: "อยู่ในช่วง 23:00-23:59 ต้องตรวจร่วมกับไฟล์ของวันถัดไป",
+    wrong_bank: "ธนาคารปลายทางไม่ตรงกับที่ระบุในรายการ BO",
+    wrong_account: "บัญชีปลายทางไม่อยู่ใน master list ของบริษัท",
+    unexplained_out: "ยอดโอนออกยังไม่มีไฟล์ชี้แจงประกอบ",
+    missing_bo: "มีรายการฝั่ง STM แต่ไม่พบฝั่ง BO",
+    missing_stm: "มีรายการฝั่ง BO แต่ไม่พบฝั่ง STM",
+  };
+  const checks = [
+    { name: "Bank Account", ok: true, detail: `${e.account} ตรงกับ master list ของ ${e.company}` },
+    { name: "Time Window", ok: !hasComparableExceptionTimes(e) || e.timeDiffSec <= tol, detail: hasComparableExceptionTimes(e) ? `ต่างกัน ${e.timeDiffSec} วินาที · tolerance ${tol} วินาที` : "ต้นทางไม่มีเวลา — ไม่ใช้เวลาเป็นเงื่อนไข" },
+    {
+      name: "Amount",
+      ok: e.bankAmount !== null && e.systemAmount !== null && Math.abs(e.amountDiff) < DB.settings.diffAlert,
+      detail:
+        e.bankAmount === null
+          ? "ไม่พบรายการฝั่ง STM (BO มากกว่า STM)"
+          : e.systemAmount === null
+            ? "ไม่พบรายการฝั่ง BO (STM มากกว่า BO)"
+            : `ต่างกัน ${money(Math.abs(e.amountDiff))} บาท · เกณฑ์แจ้งเตือน ${DB.settings.diffAlert} บาท`,
+    },
+  ];
+  checks.push({
+    name: "Business Rule",
+    ok: !ruleBreach[e.type],
+    detail: ruleBreach[e.type] || "ผ่านกฎธนาคารและกฎธุรกิจเพิ่มเติมทั้งหมด",
+  });
+  const passed = checks.filter((c) => c.ok).length;
+
+  root.innerHTML = `
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">รายการที่ ${state.matchIndex + 1} จาก ${list.length}</p><h2>${h(caseLabel(e))} · ${h(e.typeName)}</h2></div>
+        <div class="inline-actions">
+          <button class="ghost-button sm" id="mPrev" ${state.matchIndex === 0 ? "disabled" : ""}>← ก่อนหน้า</button>
+          <button class="ghost-button sm" id="mNext" ${state.matchIndex === list.length - 1 ? "disabled" : ""}>ถัดไป →</button>
+          <button class="primary-button sm" id="mOpen">เปิดรายละเอียดเต็ม</button>
+        </div>
+      </div>
+
+      <div class="match-score ${passed === 4 ? "ok" : passed === 3 ? "warn" : "bad"}">
+        <strong>${passed}/4</strong><span>เกณฑ์ที่ผ่าน — 3 จุดหลัก (account / time / amount) และกฎธุรกิจเพิ่มเติม</span>
+      </div>
+
+      <div class="match-3">
+        ${checks
+          .map(
+            (c) => `<div class="match-card ${c.ok ? "ok" : "bad"}">
+          <i>${c.ok ? "✓" : "✕"}</i>
+          <strong>${h(c.name)}</strong>
+          <span>${h(c.detail)}</span>
+        </div>`,
+          )
+          .join("")}
+      </div>
+
+      <div class="compare">
+        <div class="compare-col">
+          <h3>ฝั่งธนาคาร (STM)</h3>
+          <code>${h(e.stmRaw)}</code>
+          <div class="kv-line"><span>เวลา</span><b>${e.bankAmount === null ? "-" : e.time}</b></div>
+          <div class="kv-line"><span>ยอด</span><b>${e.bankAmount === null ? "-" : money(e.bankAmount)}</b></div>
+          <div class="kv-line"><span>กฎที่ใช้</span><b>${h(bankRule)}</b></div>
+        </div>
+        <div class="compare-mid"><span>เทียบกับ</span></div>
+        <div class="compare-col">
+          <h3>ฝั่งระบบหลังบ้าน (BO)</h3>
+          <code>${h(e.boRaw)}</code>
+          <div class="kv-line"><span>เวลา</span><b>${e.systemAmount === null ? "-" : h(exceptionSideTimestamp(e, "bo"))}</b></div>
+          <div class="kv-line"><span>ยอด</span><b>${e.systemAmount === null ? "ไม่พบรายการ" : money(e.systemAmount)}</b></div>
+          <div class="kv-line"><span>ผู้ทำรายการ</span><b>${h(e.employee)}</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Tolerance</p><h2>เกณฑ์จับคู่ที่ใช้งานอยู่</h2></div><span class="health ${ruleEditable ? "ok" : "attention"}">${ruleEditable ? "แก้ไขได้" : "ค่าที่ deploy · อ่านอย่างเดียว"}</span></div>
+        <div class="setting-list">
+          <label><span>Time tolerance ฝาก</span><input type="number" id="tolD" value="${DB.settings.toleranceDeposit}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
+          <label><span>Time tolerance ถอน</span><input type="number" id="tolW" value="${DB.settings.toleranceWithdraw}" ${ruleEditable ? "" : "disabled"} /><b>วินาที</b></label>
+          <label><span>คู่ยอดตรงที่ไม่กำกวม</span><input type="number" value="${DB.settings.exactUniqueTolerance || 600}" disabled /><b>วินาที</b></label>
+          <label><span>ยอด Diff ที่ต้องแจ้งเตือน</span><input type="number" id="tolA" value="${DB.settings.diffAlert}" ${ruleEditable ? "" : "disabled"} /><b>บาท</b></label>
+        </div>
+        <button class="primary-button" id="tolSave" ${ruleEditable ? "" : "disabled"}>บันทึกและคำนวณผลใหม่</button>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">ลำดับการจับคู่</p><h2>ระบบทำอะไรบ้าง</h2></div></div>
+        <ol class="step-list">
+          <li>เลือก business date และ company</li>
+          <li>ตรวจ source file completeness (quality gate)</li>
+          <li>Normalize STM และ BO เป็น schema เดียวกัน</li>
+          <li>Apply bank rule (X1/X2/XB, ยอดยกมา, รอบวันที่)</li>
+          <li>สร้าง candidate จาก account + amount</li>
+          <li>คำนวณ time difference และให้คะแนน</li>
+          <li>ถ้าบัญชี/Provider + ฝาก–ถอน + ยอดตรง และมีผู้สมัครเพียงคู่เดียว ระบบจับให้อัตโนมัติได้ถึง ${num(DB.settings.exactUniqueTolerance || 600)} วินาที</li>
+          <li>ถ้ามียอดซ้ำหลายรายการ ระบบไม่เดาคู่และยังส่งให้ Audit ตรวจ</li>
+          <li>ผ่าน threshold = matched, ไม่ผ่าน = exception</li>
+          <li>ส่ง exception เข้า workflow ชี้แจง</li>
+        </ol>
+      </div>
+    </section>`;
+
+  $("#mPrev").addEventListener("click", () => ((state.matchIndex = Math.max(0, state.matchIndex - 1)), render()));
+  $("#mNext").addEventListener("click", () => ((state.matchIndex = Math.min(list.length - 1, state.matchIndex + 1)), render()));
+  $("#mOpen").addEventListener("click", () => openException(e.id));
+  $("#tolSave").addEventListener("click", () => {
+      if (!ruleEditable) return deny("แก้ tolerance");
+    DB.settings.toleranceDeposit = +$("#tolD").value || 0;
+    DB.settings.toleranceWithdraw = +$("#tolW").value || 0;
+    DB.settings.diffAlert = +$("#tolA").value || 0;
+    Store.data.settings = { ...DB.settings };
+    Store.persist();
+    logAction("update", "settings", "tolerance", `ฝาก ${DB.settings.toleranceDeposit}s / ถอน ${DB.settings.toleranceWithdraw}s / diff ${DB.settings.diffAlert} บาท`);
+    toast("บันทึก tolerance แล้ว ระบบกำลังกระทบยอดใหม่ให้");
+    renormalizeAll();
+    scheduleAutoReconcile("เปลี่ยน tolerance");
+    render();
+  });
+};
+
+/* =============================================================
+   VIEW: Approvals
+   ============================================================= */
+VIEWS['audit-review'] = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  AuditReview.mount(root, {
+    get exceptions(){return DB.exceptions;}, get filters(){return state.filters;}, companies:companyMaster().map(c=>typeof c==='string'?c:c.code).filter(canAccessCompany), canAccessCompany, h, money, caseLabel, openException, toast,
+    canReturn:e=>ClarificationReturn.eligible(e),returnCase:id=>{const e=DB.exceptions.find(x=>x.id===id);if(e)return ClarificationReturn.open(e).catch(err=>toast(err.message,'warn'));},
+    isActive:()=>state.route==='audit-review',
+    isReady:()=>state.dataset!=='production'||(liveOverviewState.exceptionsReady&&liveOverviewState.key===`${state.filters.from}|${state.filters.to}|${state.filters.company}`),
+    loadMessage:()=>liveOverviewState.error||liveOverviewState.auxiliaryError||'กำลังโหลดคิวบริษัทที่เลือก ยังไม่สรุปว่าไม่มีเคส',
+    selectCompany:async company=>{if(company!=='ALL'&&!canAccessCompany(company))throw Error('ไม่มีสิทธิ์บริษัทนี้');state.filters.company=company;renderFilters();if(state.dataset==='production')await loadResponderQueue();},
+    openOverview: () => { state.reviewSheet = 'all'; go('exceptions', { exFilter: { status: 'ALL', q: '', sla: false, type: 'ALL', severity: 'ALL' } }); },
+    refresh: async () => { await loadLiveOverview(true); },
+  });
+  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
+};
+
+
+
+VIEWS.approvals = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  if(state.dataset==='production'&&!liveOverviewState.exceptionsReady){root.innerHTML='<section class="panel" role="status">กำลังโหลดคิวอนุมัติจริง… ยังไม่สรุปเป็นศูนย์</section>';return;}
+  const approvalCases = scopedExceptions();
+  const queue = approvalCases.filter((e) => !e.closureRequestId && e.status === 'damage');
+  root.innerHTML = `
+    <div class="alert warn"><strong>ขอบเขตคิวอนุมัติ</strong><span>แสดงเฉพาะ ${num(approvalCases.length)} เคสที่โหลดตามสิทธิ์และตัวกรองปัจจุบัน ไม่ใช่ยอดครบทั้งระบบ หากข้อมูลยังโหลดไม่ครบ ห้ามใช้ยอดศูนย์ยืนยันปิดงาน</span></div>
+    <section class="panel" id="pendingManualPairQueue"></section>
+    <section class="panel" id="pendingCrossDayQueue"></section>
+    <section class="panel" id="pendingDocumentClosureQueue"></section>
+    <section class="status-strip four">
+      <article><span>รอชี้แจง</span><strong>${num(approvalCases.filter((e) => e.status === "clarifying").length)}</strong><small>ส่งให้ผู้ดูแลบริษัทแล้ว</small></article>
+      <article class="warn"><span>Audit รอตรวจเอกสาร</span><strong>${num(AuditReview.rows(DB.exceptions, { filters: state.filters, canAccessCompany }).length)}</strong><small><a href="#/audit-review">เปิดคิว Audit รอตรวจ →</a> · ยังไม่ใช่คำขอหัวหน้าปิด</small></article>
+      <article class="bad"><span>รอปิดเป็นความเสียหาย</span><strong>${num(approvalCases.filter((e) => e.status === "damage").length)}</strong><small>เข้าทะเบียนแล้ว รอปิดรอบ</small></article>
+      <article class="ok"><span>ปิดแล้วในรายการที่โหลด</span><strong>${num(approvalCases.filter((e) => ["closed", "approved"].includes(e.status)).length)}</strong><small>มีหลักฐานและผู้อนุมัติครบ</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Approval Queue</p><h2>รายการรอตรวจทานและอนุมัติ</h2></div>
+        <span class="health ${can("approve") ? "ok" : "attention"}">${can("approve") ? "คุณมีสิทธิ์อนุมัติ" : "บทบาทนี้อนุมัติไม่ได้"}</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>เคส</th><th>ประเภท</th><th class="right">ยอด Diff</th><th>ระดับ</th><th>หลักฐาน</th><th>สถานะ</th><th class="right">การทำงาน</th></tr></thead>
+          <tbody>
+            ${
+              queue
+                .slice(0, 20)
+                .map(
+                  (e) => `<tr>
+              <td><button class="link-btn" data-ex="${e.id}">${e.id}</button></td>
+              <td>${h(e.typeName)}</td>
+              <td class="right tnum">${e.riskAmount ? money(e.riskAmount) : "—"}</td>
+              <td><span class="badge ${e.severity}">${h(sevMeta(e.severity).name)}</span></td>
+              <td>${e.clarificationFileId ? `<button class="ghost-button xs" data-review-evidence="${h(e.dbId||e.id)}">เปิดเอกสารที่เลือก</button>` : e.hasEvidence ? '<span class="badge green">มีหลักฐานแนบ</span>' : '<span class="badge red">ยังไม่มี</span>'}</td>
+              <td><span class="badge ${caseStatusMeta(e).tone}">${h(caseStatusMeta(e).name)}</span></td>
+              <td class="right nowrap">
+                <button class="ghost-button xs" data-reject="${e.id}">ส่งกลับ</button>
+                <button class="primary-button xs" data-approve="${e.id}" ${e.status!=='pair_pending'&&!e.hasEvidence && DB.settings.rules.requireEvidence ? 'disabled title="กฎบังคับแนบหลักฐานก่อนปิดเคส"' : ""}>${e.status==='pair_pending'?'ตรวจคู่รออนุมัติ':'ปิดเคส'}</button>
+              </td>
+            </tr>`,
+                )
+                .join("") || `<tr><td colspan="7" class="empty">ไม่พบรายการรออนุมัติในข้อมูลที่โหลด — ยังไม่ใช่การยืนยันว่าไม่มีเคสค้างทั้งหมด</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+
+  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
+  root.querySelectorAll('[data-review-evidence]').forEach(b=>b.addEventListener('click',()=>openEvidenceRelatedCase(b.dataset.reviewEvidence,{focusFiles:true}).catch(err=>toast('เปิดเอกสารที่ผูกไว้ไม่ได้: '+err.message,'warn'))));
+  const approvalScope = {company:state.filters.company,from:state.filters.from,to:state.filters.to};
+  const draftKey=fastQueueDraftKey();
+  ManualPairing.mountQueue($('#pendingManualPairQueue'),null,approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
+  CrossDayWorkbench.mountQueue($('#pendingCrossDayQueue'),approvalScope).then(()=>restoreFastQueueDrafts(draftKey));
+  CaseClosure.mountQueue($('#pendingDocumentClosureQueue'),{scope:approvalScope}).then(()=>restoreFastQueueDrafts(draftKey));
+  root.insertAdjacentHTML('afterbegin','<p class="hint" role="status">คิวอัปเดตอัตโนมัติทุก 30 วินาที · พักการอัปเดตระหว่างเปิดเคสหรือแก้ข้อมูล เพื่อไม่ทับข้อความร่าง</p>');
+  root.querySelectorAll("[data-approve]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (!can("approve")) return deny("อนุมัติ");
+      const e=DB.exceptions.find(x=>x.id===b.dataset.approve);
+      if(!e)return toast('ไม่พบเคส กรุณาโหลดใหม่','warn');
+      if(e.manualPairId)return openApprovalReview(e.dbId,'pair').catch(err=>toast(err.message,'warn'));
+      if(e.closureRequestId)return openApprovalReview(e.dbId,'closure').catch(err=>toast(err.message,'warn'));
+      // Document review by a closer is one atomic close, not another pending queue.
+      CaseClosure.openSubmit(e).catch(err=>toast(err.message,'warn'));
+    }),
+  );
+  root.querySelectorAll("[data-reject]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (!can("approve")) return deny("ส่งกลับ");
+      const e = DB.exceptions.find((x) => x.id === b.dataset.reject);
+      if(e.status==='pair_pending') return openException(e.id);
+      e.status = "clarifying";
+      logAction("reject", "exception", e.id, "ส่งกลับให้ชี้แจงเพิ่ม");
+      saveOverride(e);
+      toast("ส่งกลับให้ชี้แจงเพิ่มแล้ว");
+      render();
+    }),
+  );
+};
+
+/* =============================================================
+   VIEW: Damage register
+   ============================================================= */
+/* ยอดความเสียหาย (บาท) */
+function dmgTHB(d) {
+  return d.amount;
+}
+function cycleQuoteLabel() {
+  return "";
+}
+
+const liveDamageState = {
+  rows: null,
+  evidence: null,
+  evidenceReady: false,
+  loading: false,
+  ready: false,
+  error: null,
+  key: "",
+  requestId: 0,
+  updatedAt: null,
+  category: "ALL",
+  team: "ALL",
+  employee: "ALL",
+  collectionError: null,
+};
+
+function damageQueryKey() {
+  return `${state.filters.from}|${state.filters.to}|${state.filters.company}`;
+}
+
+async function loadLiveDamage(force = false) {
+  const key = damageQueryKey();
+  if (liveDamageState.loading || (!force && liveDamageState.ready && liveDamageState.key === key)) return;
+  const changedFilter = liveDamageState.key !== key;
+  const requestId = ++liveDamageState.requestId;
+  liveDamageState.key = key;
+  liveDamageState.loading = true;
+  liveDamageState.ready = false;
+  liveDamageState.error = null;
+  if (changedFilter) {
+    liveDamageState.rows = null;
+    liveDamageState.evidence = null;
+    liveDamageState.evidenceReady = false;
+  }
+  if (state.route === "damage") render();
+  try {
+    const result = await Promise.allSettled([
+      Sb.damages({
+        from: state.filters.from,
+        to: state.filters.to,
+        company: state.filters.company,
+        limit: 5000,
+      }),
+      Sb.evidenceFiles({ from: state.filters.from, to: state.filters.to, limit: 2000 }),
+    ]);
+    if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
+    if (result[0].status === "rejected") throw result[0].reason;
+    liveDamageState.rows = (result[0].value || []).map(mapLiveDamage);
+    liveDamageState.collectionError = null;
+    try {
+      const ledger = await Sb.damageCollections(liveDamageState.rows.map(d=>d.dbId));
+      if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
+      for (const row of liveDamageState.rows) {
+        row.collectionReady=true;
+        const collection=ledger.collections.find(c=>c.damage_id===row.dbId);
+        row.receipts=ledger.receipts.filter(r=>r.damage_id===row.dbId);
+        if(collection) {
+          if(collection.company!==row.company || collection.category!==DamageSummary.classify(row.cause).category) throw new Error('บริษัทหรือประเภทเคสไม่ตรงยอดเรียกเก็บที่อนุมัติ ต้องตรวจสอบก่อน');
+          const paidCents=row.receipts.filter(r=>!r.voided_at).reduce((s,r)=>s+DamageSummary.cents(r.amount),0);
+          row.collection={...collection,paid_amount:(paidCents/100).toFixed(2)};
+          // Employee identity comes only from explicitly approved collection details.
+          if(collection.category==='employee') row.employeeCode=collection.party_code;
+        }
+      }
+    } catch(error) { liveDamageState.collectionError=error.message || 'โหลดสมุดยอดโอนคืนไม่สำเร็จ'; }
+    liveDamageState.evidence = result[1].status === "fulfilled" ? (result[1].value || []) : [];
+    liveDamageState.evidenceReady = result[1].status === "fulfilled";
+    liveDamageState.ready = true;
+    liveDamageState.updatedAt = new Date();
+    DB.damages = liveDamageState.rows.slice();
+  } catch (error) {
+    if (requestId !== liveDamageState.requestId) return;
+    liveDamageState.rows = null;
+    liveDamageState.error = error.message || "โหลดทะเบียนความเสียหายไม่สำเร็จ";
+  } finally {
+    if (requestId === liveDamageState.requestId) {
+      liveDamageState.loading = false;
+      if (state.route === "damage") render();
+    }
+  }
+}
+
+async function openDamageCollection(row) {
+  if (!can('close_case') || !Sb.signedIn()) return deny('อนุมัติยอดเรียกเก็บ');
+  if (!row.collectionReady || liveDamageState.collectionError) return toast('โหลดสมุดยอดโอนคืนให้ครบก่อน','warn');
+  const classification=DamageSummary.classify(row.cause),category=classification.category;
+  if (classification.observation) return toast('รายการนี้เป็นข้อสังเกต 0 บาท จึงไม่ส่งเข้าการเงินหรืออนุมัติเรียกเก็บ','warn');
+  if (!['employee','backoffice','pm','game','external'].includes(category)) return toast('ประเภทเดิมยังไม่ชัดเจน ไม่เรียกเก็บอัตโนมัติ','warn');
+  const collection=row.collection;
+  if (!collection) {
+    openModal('อนุมัติผู้รับผิดชอบและยอดเรียกเก็บ', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(DamageSummary.categories[category])} · เสียหายเดิม ${money(row.amount)} บาท</p>
+      <p class="hint">ยืนยันจากหลักฐาน ไม่ใช้ชื่อผู้ตรวจหรือผู้ส่งเมลแทนผู้รับผิดชอบ หลังอนุมัติจะไม่เขียนทับตัวคนเดิม</p>
+      <label>รหัสพนักงาน / รหัสผู้รับผิดชอบ<input id="collectionPartyCode" maxlength="100" placeholder="รหัสประจำตัวที่ตรวจสอบแล้ว ไม่ใช้ชื่ออย่างเดียว"></label>
+      <label>ชื่อผู้รับผิดชอบ<input id="collectionPartyName" maxlength="200" value="${h(category==='employee'?row.employee:'')}" ${category==='employee'?'readonly':''}></label>
+      <label>กะ ณ วันเกิดเหตุ<input id="collectionShift" maxlength="32" value="${h(row.shift==='-'?'':row.shift)}" ${category==='employee'?'readonly':''}></label>
+      <label>ยอดอนุมัติให้เรียกเก็บ (บาท)<input id="collectionApproved" type="number" min="0" max="${h(row.amount)}" step="0.01"></label>
+      <label>เหตุผลและหลักฐานยืนยันตัวตน / ยอด<textarea id="collectionReason"></textarea></label>
+      <label><input type="checkbox" id="collectionIdentityChecked">ตรวจบริษัท รหัส ชื่อ กะ และยอดจากหลักฐานแล้ว เป็นผู้รับผิดชอบที่ถูกต้อง</label>`, '<button class="ghost-button" id="collectionCancel">ยกเลิก</button><button class="primary-button" id="collectionSave">อนุมัติยอดเรียกเก็บ</button>');
+    $('#collectionCancel').addEventListener('click',closeModal);
+    $('#collectionSave').addEventListener('click',async event=>{
+      if(!$('#collectionIdentityChecked').checked) return toast('ต้องตรวจและยืนยันตัวตนก่อน','warn');
+      const amount=DamageSummary.cents($('#collectionApproved').value);
+      if(amount===null || amount>DamageSummary.cents(row.amount)) return toast('ยอดเรียกเก็บไม่ถูกต้อง','warn');
+      const body={p_damage_id:row.dbId,p_party_code:$('#collectionPartyCode').value.trim(),p_party_name:$('#collectionPartyName').value.trim(),p_shift:$('#collectionShift').value.trim(),p_amount:amount/100,p_reason:$('#collectionReason').value.trim()};
+      if(!body.p_party_code || !body.p_party_name || body.p_reason.length<10 || (category==='employee' && (!body.p_shift || body.p_party_name==='ไม่ระบุ'))) return toast('รหัส ชื่อ กะ และเหตุผลต้องครบ ห้ามเดาตัวคน','warn');
+      event.currentTarget.disabled=true;
+      try { await Sb.approveDamageCollection(body); closeModal(); await loadLiveDamage(true); toast('อนุมัติยอดเรียกเก็บแล้ว ยังไม่มีการรับโอนคืน'); }
+      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันการอนุมัติไม่ได้ กรุณาตรวจทะเบียนก่อนลองใหม่: '+error.message,'warn'); }
+    });
+    return;
+  }
+  let files;
+  try { files=(await Sb.evidenceFiles({from:row.date,company:row.company,limit:2000})).filter(f=>f.company===row.company && f.storage_path && !f.is_archived); }
+  catch(error) { return toast('ยังโหลดหลักฐานโอนคืนไม่ได้: '+error.message,'warn'); }
+  const totals=DamageSummary.collectionTotals(row), requestId=crypto.randomUUID();
+  openModal('ตรวจยอดโอนคืน — ไม่ใช่คำสั่งโอนเงิน', `<p>เคส ${h(row.id)} · ${h(row.company)} · ${h(collection.party_name)} · รหัส ${h(collection.party_code)} · กะ ${h(collection.shift || 'ไม่เกี่ยวกับกะ')}</p>
+    <p>อนุมัติ ${money(totals.approved)} · รับคืนแล้ว ${money(totals.paid)} · คงเหลือ ${money(totals.net)} บาท</p>
+    <p class="hint">เลือกเฉพาะสลิปหรือเอกสารที่ตรวจว่ารับเงินจริงแล้วของรายการนี้ รหัสโอนและไฟล์หลักฐานหนึ่งรายการหักได้ครั้งเดียว หากโอนรวมหลายเคสให้ส่งตรวจจัดสรร ไม่บันทึกซ้ำ</p>
+    <label>วันที่โอนคืน<input id="receiptDate" type="date" min="${h(row.date)}"></label>
+    <label>ยอดโอนคืนที่ยืนยัน (บาท)<input id="receiptAmount" type="number" min="0.01" max="${h(totals.net)}" step="0.01"></label>
+    <label>เลขอ้างอิงการโอนจากธนาคาร<input id="receiptReference" maxlength="200"></label>
+    <label>หลักฐานในระบบบริษัทเดียวกัน<select id="receiptEvidence"><option value="">เลือกไฟล์หลักฐานโอนคืน</option>${files.map(f=>`<option value="${h(f.id)}">${h(f.file_name)}</option>`).join('')}</select></label>
+    <button class="ghost-button sm" id="receiptPreview">เปิดหลักฐานโอนคืนในหน้าต่างใหม่</button>
+    <label>ผลตรวจหลักฐานและผู้ชำระ<textarea id="receiptNote"></textarea></label>
+    <label><input id="receiptChecked" type="checkbox">ตรวจว่ารับเงินจริงแล้ว และตรงบริษัท / ผู้รับผิดชอบ / เคสนี้ ไม่ใช่ยอดที่คาดว่าจะโอน</label>
+    <h3>ประวัติการรับคืน</h3>${(row.receipts || []).map(r=>`<p>${h(displayTime(r.paid_at))} · ${money(r.amount)} · ${h(r.transfer_reference)} · ${r.voided_at?'ยกเลิกแล้ว: '+h(r.void_reason):`ยืนยันแล้ว <button class="ghost-button sm" data-void-receipt="${h(r.id)}">ยกเลิกบันทึกผิด</button>`}</p>`).join('') || '<p>ยังไม่มีรายการโอนคืน</p>'}`, '<button class="ghost-button" id="receiptCancel">ยกเลิก</button><button class="primary-button" id="receiptSave">ยืนยันรับโอนคืนตามหลักฐาน</button>');
+  $('#receiptCancel').addEventListener('click',closeModal);
+  $('#receiptEvidence').addEventListener('change',()=>{ $('#receiptChecked').checked=false; });
+  $('#receiptPreview').addEventListener('click',async()=>{
+    const file=files.find(f=>f.id===$('#receiptEvidence').value);
+    if(!file) return toast('เลือกหลักฐานก่อน','warn');
+    const preview=window.open('about:blank','_blank');
+    if(preview) preview.opener=null;
+    try { const url=await Sb.signedUrl(file.storage_path); if(preview) preview.location.href=url; else toast('เบราว์เซอร์บล็อกหน้าต่าง กรุณาเปิดไฟล์จากกล่องหลักฐาน','warn'); }
+    catch(error) { if(preview) preview.close(); toast('เปิดหลักฐานไม่ได้: '+error.message,'warn'); }
+  });
+  document.querySelectorAll('[data-void-receipt]').forEach(button=>button.addEventListener('click',()=>{
+    const receiptId=button.dataset.voidReceipt;
+    openModal('ยกเลิกบันทึกโอนคืนผิด — เก็บประวัติเดิม', '<label>เหตุผลและหลักฐานที่ตรวจว่าบันทึกผิด<textarea id="receiptVoidReason"></textarea></label>', '<button class="ghost-button" id="receiptVoidCancel">ยกเลิก</button><button class="primary-button" id="receiptVoidSave">ยืนยันยกเลิกรายการ</button>');
+    $('#receiptVoidCancel').addEventListener('click',closeModal);
+    $('#receiptVoidSave').addEventListener('click',async event=>{
+      const reason=$('#receiptVoidReason').value.trim();
+      if(reason.length<10) return toast('ระบุเหตุผลอย่างน้อย 10 ตัวอักษร','warn');
+      event.currentTarget.disabled=true;
+      try { await Sb.voidDamageReceipt(receiptId,reason); closeModal(); await loadLiveDamage(true); toast('ยกเลิกบันทึกผิดและเก็บประวัติแล้ว'); }
+      catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันผลไม่ได้: '+error.message,'warn'); }
+    });
+  }));
+  $('#receiptSave').addEventListener('click',async event=>{
+    const amount=DamageSummary.cents($('#receiptAmount').value);
+    if(!$('#receiptChecked').checked || amount===null || amount<=0 || amount>DamageSummary.cents(totals.net)) return toast('ตรวจหลักฐานและระบุยอดไม่เกินคงเหลือ','warn');
+    const body={p_id:requestId,p_damage_id:row.dbId,p_paid_at:$('#receiptDate').value,p_amount:amount/100,p_reference:$('#receiptReference').value.trim(),p_source_file_id:$('#receiptEvidence').value,p_note:$('#receiptNote').value.trim()};
+    if(!body.p_paid_at || !body.p_reference || !body.p_source_file_id || body.p_note.length<10) return toast('วันที่ รหัสโอน หลักฐาน และเหตุผลต้องครบ','warn');
+    event.currentTarget.disabled=true;
+    try { await Sb.confirmDamageReceipt(body); closeModal(); await loadLiveDamage(true); toast('ยืนยันยอดโอนคืนแล้ว ไม่เปลี่ยนยอดเสียหายเดิม'); }
+    catch(error) { closeModal(); await loadLiveDamage(true); toast('ยังยืนยันยอดโอนไม่ได้ ตรวจทะเบียนก่อนบันทึกซ้ำ: '+error.message,'warn'); }
+  });
+}
+
+function renderLiveDamage(root) {
+  const key = damageQueryKey();
+  const stale = liveDamageState.key !== key;
+  if ((stale || !liveDamageState.ready) && !liveDamageState.loading && (!liveDamageState.error || stale)) loadLiveDamage(stale);
+  if (liveDamageState.loading && (stale || !liveDamageState.rows)) {
+    root.innerHTML = `<section class="panel live-loading"><span class="spinner"></span><div><h2>กำลังโหลดทะเบียนความเสียหายจริง</h2><p class="hint">อ่านเฉพาะข้อมูลที่ยืนยันเป็นความเสียหายแล้วจาก Supabase...</p></div></section>`;
+    return;
+  }
+  if (liveDamageState.error && !liveDamageState.rows) {
+    root.innerHTML = `<section class="panel"><div class="alert bad"><strong>โหลดทะเบียนความเสียหายไม่สำเร็จ</strong><span>${h(liveDamageState.error)}</span><button class="ghost-button sm" id="damageRetry">ลองใหม่</button></div></section>`;
+    $("#damageRetry")?.addEventListener("click", () => loadLiveDamage(true));
+    return;
+  }
+  const scopedRows = (liveDamageState.rows || []).filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
+  const categoryRows = scopedRows.filter(d => liveDamageState.category === 'ALL' || DamageSummary.classify(d.cause).category === liveDamageState.category);
+  const teamRows = categoryRows.filter(d => !liveDamageState.team || liveDamageState.team === 'ALL' || DamageSummary.teamCode(d) === liveDamageState.team);
+  const rows = teamRows.filter(d => !liveDamageState.employee || liveDamageState.employee === 'ALL' || DamageSummary.employeeKey(d) === liveDamageState.employee);
+  const observationRows=rows.filter(d=>DamageSummary.classify(d.cause).observation);
+  const financialRows=rows.filter(d=>!DamageSummary.classify(d.cause).observation);
+  const classifiedSummary = DamageSummary.summarize(rows);
+  const drillTable = (records, field, title) => {
+    const summary = DamageSummary.groupBy(records, field);
+    return `<section class="panel damage-drill"><h2>${title}</h2><p class="hint">กดยอดรวมเพื่อดูจำนวนครั้ง วัน เวลา และหลักฐาน · ชื่อซ้ำแยกตามบริษัท รหัส และกะ · ไม่ทราบรหัสจะแยกไว้รายเคส ไม่รวมเป็นคนเดียวกัน</p><div class="table-wrap"><table><thead><tr><th>${field==='team'?'รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส'}</th><th>จำนวนครั้ง</th><th>ยอดเสียหายเดิม</th>${Object.entries(DamageSummary.categories).filter(([key])=>!['system','unclassified'].includes(key)).map(([,label])=>`<th class="right">${h(label)}สุทธิคงเหลือ</th>`).join('')}<th>รับโอนคืนแล้ว</th><th>รอยืนยันยอดเรียกเก็บ</th></tr></thead><tbody>${summary.map(g=>`<tr><td>${h(g.label)}</td><td>${num(g.groups.reduce((s,c)=>s+c.count,0))}</td><td class="right"><button class="link-btn tnum" data-damage-drill="${field}" data-damage-value="${h(g.key)}">${money(g.total)}</button></td>${g.netGroups.filter(c=>!['system','unclassified'].includes(c.category)).map(c=>`<td class="right tnum">${liveDamageState.collectionError?'—':money(c.net)}${c.pending?`<small class="sub">รอยืนยัน ${num(c.pending)} เคส</small>`:''}</td>`).join('')}<td>${liveDamageState.collectionError?'—':money(g.netGroups.reduce((s,c)=>s+c.paid,0))}</td><td>${num(g.netGroups.reduce((s,c)=>s+c.pending,0))} เคส</td></tr>`).join('') || `<tr><td colspan="10" class="empty">ไม่มีรายการที่ยืนยันแล้ว</td></tr>`}</tbody></table></div></section>`;
+  };
+  const evidenceRows = (liveDamageState.evidence || []).filter((file) => {
+    const company = normalizeLiveCompanyCode(file.company || file.batch_company);
+    return file.business_date && inRange(file.business_date) && canAccessCompany(company) && (state.filters.company === "ALL" || company === state.filters.company);
+  });
+  const total = classifiedSummary.total;
+  const byCompany = companyMaster().map((company) => ({ label: company.code, value: rows.filter((row) => row.company === company.code).reduce((sum, row) => sum + Number(row.amount || 0), 0) })).filter((item) => item.value);
+  const open = financialRows.filter((row) => !DamageSummary.financeComplete(row.financeStatus)).length;
+  const loadedAt = liveDamageState.updatedAt ? displayTime(liveDamageState.updatedAt) : "-";
+  root.innerHTML = `
+    <section class="panel damage-period"><div><h2>สรุปความเสียหายรายเดือน</h2><p class="hint">บริษัทตามตัวกรองด้านบน · ช่วงที่ใช้อยู่ ${h(rangeLabel())} · กันยายน 2569 แสดงตั้งแต่ 15/09 ตามขอบเขตระบบ</p></div><label>เลือกเดือน<input type="month" id="damageMonth" min="2026-09" value="${h(state.filters.from.slice(0,7))}"></label><button class="primary-button sm" id="damageMonthApply">แสดงทั้งเดือน</button><button class="ghost-button sm" id="damageDrillReset">ล้างตัวกรองรายละเอียด</button></section>
+    <section class="damage-definition panel">
+      <div><p class="eyebrow">ทะเบียนผลตรวจ</p><h2>ความเสียหายจริงและข้อสังเกต 0 บาท</h2><p class="hint">ข้อสังเกตเก็บชื่อ กะ เหตุการณ์ และหลักฐาน แต่ไม่เพิ่มยอดความเสียหายและไม่ส่งเข้าการเงิน · อัปเดตล่าสุด ${h(loadedAt)}</p></div>
+      <div class="inline-actions"><label>ประเภท<select id="damageCategoryFilter"><option value="ALL">ทุกประเภท</option>${Object.entries(DamageSummary.categories).map(([key,label])=>`<option value="${key}" ${liveDamageState.category===key?'selected':''}>${h(label)}</option>`).join('')}</select></label><button class="ghost-button sm" id="damageExportLive">Export Excel</button><button class="ghost-button sm" id="damageRefresh">รีเฟรชข้อมูล</button></div>
+    </section>
+    ${liveDamageState.collectionError ? `<div class="alert bad">ยังยืนยันยอดสุทธิไม่ได้: ${h(liveDamageState.collectionError)} · ไม่แสดงเป็นศูนย์และไม่อนุญาตบันทึกเพิ่มจนกว่าจะโหลดสมุดยอดสำเร็จ</div>` : ''}
+    <div class="alert">ยอดสุทธิคงเหลือ = ยอดอนุมัติเรียกเก็บ − ยอดโอนคืนที่ตรวจหลักฐานแล้ว · ยึดเดือนที่เกิดเหตุ แม้โอนคืนในเดือนถัดไป · รายการที่ยังไม่อนุมัติไม่ถือว่ายอดเรียกเก็บเป็นศูนย์</div>
+    ${classifiedSummary.issues.length ? `<div class="alert bad">พบ ${num(classifiedSummary.issues.length)} รายการรหัสหรือยอดไม่ถูกต้อง ยอดรวมด้านล่างยังไม่ครบ</div>` : ''}
+    ${scopedRows.length >= 5000 ? '<div class="alert warn">ถึงขีดจำกัด 5,000 รายการ กรุณาลดช่วงวันที่ก่อนสรุปหรือ Export</div>' : ''}
+    <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · ทีม ${h(!liveDamageState.team || liveDamageState.team==='ALL' ? 'ทุกทีม' : liveDamageState.team)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
+    ${drillTable(categoryRows, 'team', 'ยอดรวมแยกรหัสทีม')}
+    ${drillTable(teamRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
+    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แสดงเฉพาะความเสียหายจริง · ข้อสังเกต 0 บาทไม่เข้าการเงิน</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายจริงที่ต้องเรียกเก็บ</td></tr>'}</tbody></table></div></section>
+    <section class="status-strip four">
+      <article><span>รายการในทะเบียน</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
+      <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
+      <article class="${observationRows.length ? "warn" : "ok"}"><span>ข้อสังเกต 0 บาท</span><strong>${num(observationRows.length)}</strong><small>ไม่ส่งเข้าการเงิน</small></article>
+      <article class="${open ? "warn" : "ok"}"><span>ความเสียหายรอการเงิน</span><strong>${num(open)}</strong><small>ไม่รวมข้อสังเกต</small></article>
+    </section>
+    <section class="grid-2">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ตามบริษัท</p><h2>ยอดความเสียหาย</h2></div></div><div class="chart" id="liveDamageCompany">${rows.length ? "" : '<div class="empty-box">ยังไม่มีข้อมูลสำหรับสร้างกราฟ</div>'}</div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">สาเหตุ</p><h2>รายการที่พบ</h2></div></div><div class="exception-summary">${Object.entries(rows.reduce((acc, row) => { const detail=DamageSummary.classify(row.cause).detail; acc[detail]=(acc[detail]||0)+1; return acc; }, {})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([cause,count])=>`<div><span>${h(cause)}</span><b>${num(count)}</b></div>`).join("") || `<p class="empty">ยังไม่มีรายการความเสียหายในช่วงนี้</p>`}</div></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Evidence inbox</p><h2>หลักฐานที่ได้รับและรอผู้ตรวจยืนยัน</h2><small class="head-sub">รายการนี้แสดงว่าได้รับไฟล์แล้ว แต่ยังไม่ถือเป็นความเสียหายจนกว่าจะผูกกับเคสและผู้ตรวจยืนยัน</small></div><button class="ghost-button sm" id="damageGoClarify">เปิดหน้าติดตามเคส</button></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th>บริษัท</th><th>ไฟล์หลักฐาน</th><th>หัวข้อเมล</th><th>สถานะ</th></tr></thead><tbody>${evidenceRows.map((file) => {
+        const company = normalizeLiveCompanyCode(file.company || file.batch_company) || "ไม่ระบุ";
+        return `<tr><td>${h(file.business_date)}</td><td><b>${h(company)}</b></td><td><button class="file-name-link" data-storage-open="${h(file.storage_path)}" data-file-id="${h(file.id)}" data-file-name="${h(file.file_name)}" data-file-mime="${h(file.mime_type || "")}" data-file-size="${h(file.size_bytes || "")}" data-file-kind="doc_clarify" data-file-company="${h(company)}" data-file-date="${h(file.business_date)}" data-file-status="evidence" ${file.storage_path ? "" : "disabled"}><span>${h(file.file_name)}</span><small>ดูตัวอย่างหลักฐาน</small></button></td><td>${h(file.subject || "-")}<small class="sub">${h(file.sender || "-")}</small></td><td><span class="badge amber">รอผูกและยืนยันเคส</span></td></tr>`;
+      }).join("") || `<tr><td colspan="5" class="empty">${liveDamageState.evidenceReady ? "ยังไม่มีไฟล์หลักฐานในช่วงนี้" : "ยังโหลดรายการไฟล์หลักฐานไม่สำเร็จ — กดรีเฟรชเพื่อลองใหม่"}</td></tr>`}</tbody></table></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนผลตรวจและความเสียหาย</h2></div><span class="health ok">ข้อมูลจริง</span></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผลตรวจ</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
+      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td><span class="badge ${c.observation?'amber':'red'}">${c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย'}</span></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="9"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>รวมถึงยังไม่มีข้อสังเกต 0 บาทตามตัวกรอง · ลองล้างตัวกรอง หรือเปิดเคสเพื่อตรวจหลักฐาน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
+    </section>`;
+  if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
+  $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
+  root.querySelectorAll('[data-damage-collection]').forEach(button=>button.addEventListener('click',()=>openDamageCollection(rows.find(d=>d.dbId===button.dataset.damageCollection))));
+  $("#damageMonthApply")?.addEventListener('click', () => {
+    try { const range=DamageSummary.monthRange($("#damageMonth").value); Object.assign(state.filters,range); liveDamageState.team=liveDamageState.employee=liveDamageState.category='ALL'; render(); }
+    catch(error) { toast(error.message,'warn'); }
+  });
+  $("#damageDrillReset")?.addEventListener('click', () => { liveDamageState.team=liveDamageState.employee=liveDamageState.category='ALL'; renderLiveDamage(root); });
+  root.querySelectorAll('[data-damage-drill]').forEach(button => button.addEventListener('click', () => {
+    liveDamageState[button.dataset.damageDrill]=button.dataset.damageValue;
+    if(button.dataset.damageDrill==='team') liveDamageState.employee='ALL';
+    if(button.dataset.damageDrill==='category') liveDamageState.team=liveDamageState.employee='ALL';
+    renderLiveDamage(root);
+  }));
+  $("#damageCategoryFilter")?.addEventListener('change', event => { liveDamageState.category=event.target.value; liveDamageState.team=liveDamageState.employee='ALL'; renderLiveDamage(root); });
+  $("#damageExportLive")?.addEventListener('click', () => {
+    if (classifiedSummary.issues.length || liveDamageState.collectionError || scopedRows.length >= 5000) return toast('ยังสรุปไม่ครบ กรุณาตรวจข้อมูลหรือลดช่วงวันที่ก่อน Export', 'warn');
+    exportSheets('confirmed-damages', [
+      {name:'สรุปประเภท',headers:['ประเภท','จำนวน','ยอดที่บันทึก (บาท)'],widths:[38,14,24],rows:classifiedSummary.groups.map(g=>[g.label,g.count,g.amount])},
+      {name:'รายละเอียด',headers:['วันที่','บริษัท','รหัส','เคส','ผลตรวจ','ประเภท','รหัสประเภทเดิม','ยอดที่บันทึก (บาท)','สาเหตุ','หลักฐาน','การเงิน','เวลาเกิดเหตุ','ผู้เกี่ยวข้อง','กะ','รหัสทีม'],widths:[16,14,42,42,34,30,18,24,60,14,24,16,24,22,18],rows:rows.map(d=>{const c=DamageSummary.classify(d.cause);return[d.date,d.company,d.id,d.exceptionId,c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย',DamageSummary.categories[c.category],c.subcategory,d.amount,c.detail,d.evidence?'มี':'รอ',d.financeStatus,d.time || 'ไม่ระบุเวลา',DamageSummary.employeeLabel(d),DamageSummary.shiftLabel(d),DamageSummary.teamCode(d)];})},
+      ...['team','employee'].map(field=>({name:field==='team'?'สรุปรหัสทีม':'สรุปพนักงาน',headers:[field==='team'?'รหัสทีม':'ชื่อ · กะ · บริษัท · รหัส',...Object.values(DamageSummary.categories),'เสียหายเดิมรวม',...Object.values(DamageSummary.categories).map(c=>c+'สุทธิคงเหลือ'),'โอนคืนแล้ว','รอยืนยัน (เคส)'],widths:[48,...Array(17).fill(24)],rows:DamageSummary.groupBy(rows,field).map(g=>[g.label,...g.groups.map(c=>c.amount),g.total,...g.netGroups.map(c=>c.pending?`รอยืนยัน ${c.pending} เคส; คงเหลือยืนยันแล้ว ${c.net}`:c.net),g.netGroups.reduce((s,c)=>s+c.paid,0),g.netGroups.reduce((s,c)=>s+c.pending,0)])})),
+      {name:'เรียกเก็บรายเคส',headers:['เคส','บริษัท','ประเภท','ผู้รับผิดชอบ','รหัส','กะ','อนุมัติเรียกเก็บ','โอนคืนแล้ว','สุทธิคงเหลือ'],widths:[42,14,30,30,24,18,24,24,24],rows:financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return[d.id,d.company,DamageSummary.categories[DamageSummary.classify(d.cause).category],d.collection?.party_name || 'รอยืนยัน',d.collection?.party_code || '',d.collection?.shift || '',...['approved','paid','net'].map(k=>t[k]??'รอยืนยัน')];})},
+      {name:'ประวัติโอนคืน',headers:['เคส','บริษัท','วันที่โอน','ยอด','รหัสโอน','ไฟล์หลักฐาน ID','สถานะ','เหตุผลยกเลิก'],widths:[42,14,16,24,42,42,20,60],rows:financialRows.flatMap(d=>(d.receipts || []).map(r=>[d.id,d.company,r.paid_at,Number(r.amount),r.transfer_reference,r.source_file_id,r.voided_at?'ยกเลิกแล้ว':'ยืนยันแล้ว',r.void_reason || '']))}
+    ]);
+  });
+  $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));
+  $("#damageGoClarify")?.addEventListener("click", () => go("clarify"));
+  bindStoredFileLinks(root);
+  root.querySelectorAll("[data-damage-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.damageEx)));
+}
+
+VIEWS.damage = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveDamage(root);
+    return;
+  }
+  const sum = (arr) => arr.reduce((a, c) => a + dmgTHB(c), 0);
+  const byCycle = DB.damageCycles.map((c) => ({ ...c, records: DB.damages.filter((d) => d.cycle === c.code && inRange(d.date)) }));
+  const cycle = DB.damageCycles.find((c) => c.code === state.damageCycle) || DB.damageCycles[0];
+  const rows = DB.damages.filter((d) => d.cycle === cycle.code && inRange(d.date));
+  const byShift = DB.shifts.map((s) => ({ label: s.name, value: sum(rows.filter((d) => d.shift === s.code)) }));
+  const byEmp = Object.entries(
+    rows.reduce((a, d) => {
+      a[d.employee] = (a[d.employee] || 0) + dmgTHB(d);
+      return a;
+    }, {}),
+  )
+    .map(([k, v]) => ({ label: k, value: v }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  root.innerHTML = `
+    <section class="cycle-cards">
+      ${byCycle
+        .map(
+          (c) => `<article class="panel cycle ${c.status} ${c.code === cycle.code ? "selected" : ""}" data-cycle="${c.code}">
+        <p class="eyebrow">${c.status === "open" ? "รอบที่เปิดอยู่" : "ปิดรอบแล้ว"}</p>
+        <h2>${h(c.name)}</h2>
+        <strong>${money0(sum(c.records))} บาท</strong>
+        <small>${cycleQuoteLabel(c.records)}${c.records.length} เคส · ให้เวลาแนบหลักฐาน ${DB.settings.slaEvidenceDays} วัน</small>
+        ${
+          c.status === "open"
+            ? `<button class="primary-button sm" data-close-cycle="${c.code}">ปิดรอบและส่งการเงิน/บุคคล</button>`
+            : `<span class="lock-tag">🔒 ล็อกแล้ว แก้ย้อนหลังต้องมีเหตุผลและ approval ใหม่</span>`
+        }
+      </article>`,
+        )
+        .join("")}
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">ตามกะ</p><h2>ยอดความเสียหายแยกกะ</h2></div></div>
+        <div class="chart" id="chDmgShift"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">ตามพนักงาน</p><h2>ผู้ที่เกิดเคสซ้ำ</h2></div></div>
+        <div class="chart" id="chDmgEmp"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Damage Register</p><h2>รายการความเสียหาย ${h(cycle.name)}</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}</small></div>
+        <div class="inline-actions">
+          <select id="dmgCycle" aria-label="เลือกรอบชี้แจง">
+            ${DB.damageCycles.map((c) => `<option value="${c.code}" ${c.code === cycle.code ? "selected" : ""}>${h(c.name)}</option>`).join("")}
+          </select>
+          <button class="ghost-button sm" id="dmgExport">Export ส่งการเงิน</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>รหัส</th><th>เคสอ้างอิง</th><th>บริษัท</th><th>พนักงาน</th><th>กะ</th><th class="right">ยอดเสียหาย (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>สถานะ HR</th></tr></thead>
+          <tbody>
+            ${rows
+              .map(
+                (d) => `<tr>
+              <td><b>${d.id}</b></td>
+              <td>${d.exceptionId === "-" ? '<span class="muted">-</span>' : `<button class="link-btn" data-ex="${d.exceptionId}">${d.exceptionId}</button>`}</td>
+              <td>${h(DB.companies.find((c) => c.code === d.company)?.name || d.company)}</td>
+              <td>${h(d.employee)}</td>
+              <td>${h(DB.shifts.find((s) => s.code === d.shift).name)}</td>
+              <td class="right tnum">${money(dmgTHB(d))}</td>
+              <td>${h(d.cause)}</td>
+              <td>${d.evidence ? '<span class="badge green">ครบ</span>' : '<span class="badge amber">รอ</span>'}</td>
+              <td>${h(d.hrStatus)}</td>
+            </tr>`,
+              )
+              .join("")}
+          </tbody>
+          <tfoot><tr><td colspan="5">รวม ${rows.length} เคส</td><td class="right tnum"><b>${money(sum(rows))}</b></td><td colspan="3"></td></tr></tfoot>
+        </table>
+      </div>
+    </section>`;
+
+  Charts.draw("#chDmgShift", "bars", { label: "ความเสียหายตามกะ", items: byShift, color: "#d03b3b", money: true, metric: "ยอด (บาท)", height: 220 });
+  Charts.draw("#chDmgEmp", "hbars", { label: "ความเสียหายตามพนักงาน", items: byEmp, color: Charts.PALETTE.s2, money: true, metric: "ยอด (บาท)" });
+
+  root.querySelectorAll("[data-ex]").forEach((b) => b.addEventListener("click", () => openException(b.dataset.ex)));
+  root.querySelectorAll("[data-cycle]").forEach((c) =>
+    c.addEventListener("click", (evt) => {
+      if (evt.target.closest("button")) return;
+      state.damageCycle = c.dataset.cycle;
+      render();
+    }),
+  );
+  root.querySelectorAll("[data-close-cycle]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (!can("close_cycle")) return deny("ปิดรอบความเสียหาย");
+      const c = DB.damageCycles.find((x) => x.code === b.dataset.closeCycle);
+      const noEvidence = DB.damages.filter((d) => d.cycle === c.code && !d.evidence).length;
+      if (noEvidence) return toast(`ยังมี ${noEvidence} เคสไม่มีหลักฐาน ปิดรอบไม่ได้`, "warn");
+      c.status = "locked";
+      logAction("close_cycle", "damage_cycle", c.code, "ปิดรอบและส่งสรุปให้การเงิน/บุคคล");
+      toast("ปิดรอบ " + c.name + " และล็อกข้อมูลแล้ว");
+      render();
+    }),
+  );
+  $("#dmgCycle").addEventListener("click", (e) => e.stopPropagation());
+  $("#dmgCycle").addEventListener("change", (e) => {
+    state.damageCycle = e.target.value;
+    render();
+  });
+  $("#dmgExport").addEventListener("click", () =>
+    exportSheets("ความเสียหาย_" + cycle.code, [
+      {
+        name: "ความเสียหาย " + cycle.code,
+        title: "ทะเบียนความเสียหาย " + cycle.name,
+        headers: ["รหัส", "เคสอ้างอิง", "วันที่", "บริษัท", "พนักงาน", "กะ", "ยอดเสียหาย", "สาเหตุ", "หลักฐาน", "สถานะ HR", "สถานะการเงิน"],
+        widths: [14, 12, 12, 14, 17, 10, 14, 32, 10, 16, 16],
+        rows: rows.map((d) => [d.id, d.exceptionId, d.date, (DB.companies.find((c) => c.code === d.company) || {}).name || d.company, d.employee, (DB.shifts.find((sh) => sh.code === d.shift) || {}).name || d.shift, d.amount, d.cause, d.evidence ? "ครบ" : "รอ", d.hrStatus, d.financeStatus]),
+      },
+    ]),
+  );
+};
+
+function pmProviderOf(value) {
+  const text = String(value || "").toUpperCase();
+  if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/.test(text)) return "ANT";
+  if (/AUTOPEER|\bATP\b/.test(text)) return "AUTOPEER";
+  if (/AZPAY/.test(text)) return "AZPAY";
+  if (/COREPAY|CP[ _-]?PAY/.test(text)) return "COREPAY";
+  if (/CPXM/.test(text)) return "COREPAY";
+  if (/CYBERPLUS|CYNERPLUS|\bCBY\b/.test(text)) return "CYBERPLUS";
+  if (/MYPAY/.test(text)) return "MYPAY";
+  if (/(?:12|123)PAY/.test(text)) return "12PAY";
+  return null;
+}
+
+/* =============================================================
+   VIEW: KPI
+   ============================================================= */
+function renderLiveKpi(root) {
+  if (!ensureLiveOverview(root)) return;
+  const ex = scopedExceptions();
+  const byCompany = companyMaster().map((company) => ({ label: company.code, value: ex.filter((e) => e.company === company.code).length })).filter((item) => item.value);
+  const byDirection = ["PM", "ฝาก", "ถอน"].map((direction) => ({ label: direction, value: ex.filter((e) => e.direction === direction).length }));
+  const employeeNames = [...new Set(ex.map((e) => e.employee || "ไม่ระบุ"))];
+  const employees = employeeNames.map((employee) => {
+    const rows = ex.filter((e) => (e.employee || "ไม่ระบุ") === employee);
+    return { employee, rows, critical: rows.filter((e) => e.severity === "critical").length, sla: rows.filter((e) => e.overSla).length, amount: sumRisk(rows) };
+  }).sort((a,b)=>b.rows.length-a.rows.length);
+  root.innerHTML = `
+    <section class="status-strip four">
+      <article><span>เคสที่ระบบตรวจพบ</span><strong>${num(ex.length)}</strong><small>${h(rangeLabel())}</small></article>
+      <article class="bad"><span>Critical</span><strong>${num(ex.filter((e)=>e.severity==="critical").length)}</strong><small>ต้องตรวจเร่งด่วน</small></article>
+      <article class="warn"><span>เกิน SLA</span><strong>${num(ex.filter((e)=>e.overSla).length)}</strong><small>คำนวณจาก created_at จริง</small></article>
+      <article><span>ยอดเสี่ยงรวม</span><strong>${money0(sumRisk(ex))}</strong><small>บาท</small></article>
+    </section>
+    <section class="grid-2">
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">บริษัท</p><h2>Exception ตามบริษัท</h2></div></div><div class="chart" id="liveKpiCompany"></div></div>
+      <div class="panel"><div class="panel-heading"><div><p class="eyebrow">ประเภท</p><h2>PM / ฝาก / ถอน</h2></div></div><div class="chart" id="liveKpiDirection"></div></div>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">ผู้เกี่ยวข้องจากข้อมูลจริง</p><h2>สรุปตาม employee ใน Exception</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>ผู้เกี่ยวข้อง</th><th class="right">เคส</th><th class="right">Critical</th><th class="right">เกิน SLA</th><th class="right">ยอดเสี่ยง</th></tr></thead>
+      <tbody>${employees.slice(0,100).map((row)=>`<tr><td>${h(row.employee)}</td><td class="right tnum">${num(row.rows.length)}</td><td class="right tnum">${num(row.critical)}</td><td class="right tnum">${num(row.sla)}</td><td class="right tnum">${money(row.amount)}</td></tr>`).join("") || `<tr><td colspan="5" class="empty">ยังไม่มี Exception ในช่วงนี้</td></tr>`}</tbody></table></div>
+      <p class="hint">ตารางนี้ใช้ค่าที่อยู่ในฟิลด์ employee ของข้อมูลจริงเท่านั้น ไม่มีรายชื่อพนักงานตัวอย่าง</p>
+    </section>`;
+  Charts.draw("#liveKpiCompany", "hbars", { label: "Exception ตามบริษัท", items: byCompany, color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
+  Charts.draw("#liveKpiDirection", "bars", { label: "Exception ตามประเภท", items: byDirection, color: Charts.PALETTE.s3, metric: "จำนวนเคส", height: 230 });
+}
+
+VIEWS.kpi = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveKpi(root);
+    return;
+  }
+  const ex = scopedExceptions();
+  const byShift = DB.shifts.map((s) => ({
+    label: `${s.name}\n${s.range}`,
+    value: ex.filter((e) => e.shift === s.code).length,
+    code: s.code,
+  }));
+  const byEmp = Object.entries(
+    ex.reduce((a, e) => {
+      a[e.employee] = (a[e.employee] || 0) + 1;
+      return a;
+    }, {}),
+  )
+    .map(([k, v]) => ({ label: k, value: v }))
+    .sort((a, b) => b.value - a.value);
+  const byCompany = companyMaster().map((c) => ({ label: c.name, value: ex.filter((e) => e.company === c.code).length })).filter((x) => x.value);
+
+  root.innerHTML = `
+    <section class="grid-3">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Shift</p><h2>เคสตามกะ</h2></div></div>
+        <div class="chart" id="kShift"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Employee</p><h2>พนักงานที่เกิดเคสมากที่สุด</h2></div></div>
+        <div class="chart" id="kEmp"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Company</p><h2>เคสตามบริษัท</h2></div></div>
+        <div class="chart" id="kCompany"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">KPI Table</p><h2>สรุปรายพนักงาน</h2></div>
+        <button class="ghost-button sm" id="kpiExport">Export CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>พนักงาน</th><th>กะ</th><th class="right">เคสทั้งหมด</th><th class="right">Critical</th><th class="right">เกิน SLA</th><th class="right">ยอด diff รวม</th><th>ระดับความเสี่ยง</th></tr></thead>
+          <tbody>
+            ${DB.employees
+              .map((emp) => {
+                const rows = ex.filter((e) => e.employee === emp.username);
+                const crit = rows.filter((e) => e.severity === "critical").length;
+                const sla = rows.filter((e) => e.overSla).length;
+                const amt = sumRisk(rows);
+                const risk = crit >= 4 || sla >= 5 ? "สูง" : crit >= 2 ? "กลาง" : "ต่ำ";
+                const tone = risk === "สูง" ? "red" : risk === "กลาง" ? "amber" : "green";
+                return `<tr><td>${h(emp.username)}</td><td>${h(DB.shifts.find((s) => s.code === emp.shift).name)}</td>
+                  <td class="right tnum">${rows.length}</td><td class="right tnum">${crit}</td>
+                  <td class="right tnum ${sla ? "danger" : ""}">${sla}</td><td class="right tnum">${money0(amt)}</td>
+                  <td><span class="badge ${tone}">${risk}</span></td></tr>`;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+      <p class="chart-note">KPI นี้ใช้ประกอบการหาสาเหตุเชิงกระบวนการ ไม่ควรใช้ตัดสินลงโทษโดยไม่ผ่านการอนุมัติและตรวจหลักฐานตามรอบชี้แจง</p>
+    </section>`;
+
+  Charts.draw("#kShift", "bars", { label: "เคสตามกะ", items: byShift, color: Charts.PALETTE.s4, metric: "จำนวนเคส", height: 230 });
+  Charts.draw("#kEmp", "hbars", { label: "เคสตามพนักงาน", items: byEmp.slice(0, 8), color: Charts.PALETTE.s2, metric: "จำนวนเคส" });
+  Charts.draw("#kCompany", "hbars", { label: "เคสตามบริษัท", items: byCompany, color: Charts.PALETTE.s1, metric: "จำนวนเคส" });
+
+  $("#kpiExport").addEventListener("click", () => exportSheets("KPI", [SHEET_BUILDERS.kpi.build()]));
+};
+
+/* =============================================================
+   VIEW: Reports
+   ============================================================= */
+function renderLiveReports(root) {
+  if (!ensureLiveOverview(root)) return;
+  const inScope = (row) => row.business_date >= state.filters.from && row.business_date <= state.filters.to && (state.filters.company === "ALL" || row.company === state.filters.company);
+  const quality = (liveOverviewState.quality || []).filter(inScope);
+  const operations = (liveOverviewState.operations || []).filter(inScope);
+  const exceptions = scopedExceptions();
+  const damages = DB.damages.filter((d) => inRange(d.date) && (state.filters.company === "ALL" || d.company === state.filters.company));
+  const matched = quality.reduce((sum,row)=>sum+Number(row.matched||0),0);
+  const stm = quality.reduce((sum,row)=>sum+Number(row.stm_count||0),0);
+  const totalDamage = damages.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const qualityAvailable = Array.isArray(liveOverviewState.quality) && !hasLiveCoreError("ผลกระทบยอด");
+  const operationsAvailable = Array.isArray(liveOverviewState.operations) && !hasLiveCoreError("คิวกระทบยอด");
+  const exceptionsAvailable = liveOverviewState.exceptionsReady;
+  const damagesAvailable = liveOverviewState.damagesReady;
+  const reportMetric = (available, value, formatter = num) => available ? formatter(value) : "—";
+  const allCompanyOverview = AuditCompanyOverview.build({groups:AUDIT_COMPANY_GROUPS,companies:companyMaster().filter(company=>canAccessCompany(company.code)&&(state.filters.company==='ALL'||company.code===state.filters.company)),quality,available:qualityAvailable});
+  const dateMap = new Map();
+  operations.forEach((row)=>{
+    const item=dateMap.get(row.business_date)||{date:row.business_date,mails:0,files:0,completed:0,review:0,waiting:0,error:0};
+    item.mails+=Number(row.mail_count||0); item.files+=Number(row.file_count||0);
+    if(row.status==="completed") item.completed++; else if(row.status==="waiting_files") item.waiting++; else if(row.status==="error") item.error++; else item.review++;
+    dateMap.set(row.business_date,item);
+  });
+  const daily=[...dateMap.values()].sort((a,b)=>b.date.localeCompare(a.date));
+  const monthMap=new Map();
+  damages.forEach((row)=>{const ym=String(row.date||"").slice(0,7);monthMap.set(ym,(monthMap.get(ym)||0)+Number(row.amount||0));});
+  const monthly=[...monthMap.entries()].sort().map(([label,value])=>({label,value}));
+  root.innerHTML=`
+    <section class="status-strip four action-tiles">
+      <article data-action-route="cloud"><span>รายการ STM จริง</span><strong>${reportMetric(qualityAvailable, stm)}</strong><small>${qualityAvailable ? `${quality.length} งาน` : "กำลังรอข้อมูลจริง"} · กดดูไฟล์ต้นทาง</small></article>
+      <article class="ok" data-action-route="daily-summary"><span>จับคู่สำเร็จ</span><strong>${reportMetric(qualityAvailable, matched)}</strong><small>${qualityAvailable ? `${stm?((matched/stm)*100).toFixed(2):"0.00"}%` : "กำลังรอข้อมูลจริง"} · กดดูผลรายวัน</small></article>
+      <article class="bad" data-action-route="exceptions"><span>Exception</span><strong>${reportMetric(exceptionsAvailable, exceptions.length)}</strong><small>${exceptionsAvailable ? `เกิน SLA ${num(exceptions.filter((e)=>e.overSla).length)}` : "กำลังรอข้อมูลจริง"} · กดตรวจเคส</small></article>
+      <article class="bad" data-action-route="damage"><span>ความเสียหายที่บันทึกจริง</span><strong>${reportMetric(damagesAvailable, totalDamage, money0)}</strong><small>${damagesAvailable ? `บาท · ${num(damages.length)} รายการ` : "กำลังรอข้อมูลจริง"} · กดดูทะเบียน</small></article>
+    </section>
+    <section class="panel export-bar no-capture"><div><p class="eyebrow">รายงานข้อมูลจริง</p><h2>ช่วง ${h(rangeLabel())}</h2><span class="muted">สรุปจาก Supabase ตามบริษัทและวันที่ที่เลือก</span></div><div class="inline-actions"><button class="ghost-button" id="liveRepException">Export Exception</button><button class="primary-button" id="liveRepDamage">Export ความเสียหาย</button></div></section>
+    ${AuditCompanyOverview.markup(allCompanyOverview,{h,num})}
+    ${monthly.length?`<section class="panel"><div class="panel-heading"><div><p class="eyebrow">Damage Trend</p><h2>ความเสียหายรายเดือนจากข้อมูลจริง</h2></div></div><div class="chart" id="liveReportDamage"></div></section>`:""}
+    <section class="panel"><div class="panel-heading"><div><p class="eyebrow">รายวัน</p><h2>สถานะไฟล์และงานกระทบยอด</h2></div><span class="health ok">ข้อมูลจริง</span></div>
+      <div class="table-wrap"><table><thead><tr><th>วันที่</th><th class="right">เมล</th><th class="right">ไฟล์</th><th class="right">สำเร็จ</th><th class="right">ต้องตรวจ</th><th class="right">รอไฟล์</th><th class="right">ล้มเหลว</th></tr></thead>
+      <tbody>${daily.map((row)=>`<tr class="action-row" data-report-date="${h(row.date)}" role="link" tabindex="0"><td><b>${h(row.date)}</b><small class="sub">กดดูสรุปรายวัน</small></td><td class="right tnum">${num(row.mails)}</td><td class="right tnum">${num(row.files)}</td><td class="right tnum">${num(row.completed)}</td><td class="right tnum">${num(row.review)}</td><td class="right tnum">${num(row.waiting)}</td><td class="right tnum">${num(row.error)}</td></tr>`).join("")||`<tr><td colspan="7" class="empty">${operationsAvailable ? "ยังไม่มีข้อมูลในช่วงนี้" : "ข้อมูลคิวกระทบยอดยังโหลดไม่สำเร็จ — ยังไม่สรุปเป็นศูนย์"}</td></tr>`}</tbody></table></div>
+    </section>`;
+  if(monthly.length) Charts.draw("#liveReportDamage","bars",{label:"ความเสียหายรายเดือน",items:monthly,color:"#d03b3b",money:true,metric:"บาท",height:240});
+  $("#liveRepException")?.addEventListener("click",()=>exportSheets("Exception_ข้อมูลจริง",[{name:"Exception",title:`Exception ${rangeLabel()}`,headers:["วันที่","เวลา","บริษัท","ประเภท","ระดับ","สถานะ","ยอดเสี่ยง","สาเหตุ"],rows:exceptions.map((e)=>[e.date,e.time,e.company,e.typeName,e.severity,e.status,e.riskAmount,e.cause])}]));
+  $("#liveRepDamage")?.addEventListener("click",()=>exportSheets("ความเสียหาย_ข้อมูลจริง",[{name:"ความเสียหาย",title:`ความเสียหาย ${rangeLabel()}`,headers:["วันที่","รหัส","บริษัท","ผู้เกี่ยวข้อง","ยอด","สาเหตุ","หลักฐาน","สถานะการเงิน"],rows:damages.map((d)=>[d.date,d.id,d.company,d.employee,d.amount,d.cause,d.evidence?"มี":"รอ",d.financeStatus])}]));
+  root.querySelectorAll("[data-action-route]").forEach((item)=>item.addEventListener("click",()=>go(item.dataset.actionRoute)));
+  root.querySelectorAll("[data-report-date]").forEach((row)=>{
+    const open=()=>{state.dailySummary.date=row.dataset.reportDate;go("daily-summary");};
+    row.addEventListener("click",open);
+    row.addEventListener("keydown",(event)=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();open();}});
+  });
+  root.querySelectorAll("[data-recon-company]").forEach((item) => {
+    const open = () => {
+      if (!item.dataset.reconDate) return;
+      state.dailySummary.company = item.dataset.reconCompany;
+      state.dailySummary.date = item.dataset.reconDate;
+      go("daily-summary");
+    };
+    item.addEventListener("click", open);
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+  });
+}
+
+VIEWS.reports = (root) => {
+  if (state.dataset === "production" && Sb.signedIn()) {
+    renderLiveReports(root);
+    return;
+  }
+  const all = DB.monthlyTrend;
+  const inMonths = all.filter((m) => m.ym >= state.filters.from.slice(0, 7) && m.ym <= state.filters.to.slice(0, 7));
+  const t = inMonths.length >= 2 ? inMonths : all;
+  const last = t[t.length - 1];
+  const prev = t[t.length - 2] || last;
+  const delta = prev === last ? "0.0" : (((last.damage - prev.damage) / prev.damage) * 100).toFixed(1);
+
+  root.innerHTML = `
+    <section class="panel export-bar no-capture">
+      <div>
+        <p class="eyebrow">Export</p>
+        <h2>ออกรายงานช่วง ${h(rangeLabel())}</h2>
+        <span class="muted">เลือกช่วงวันที่ได้จากแถบตัวกรองด้านบน · ไฟล์ Excel จะมีหลายชีตในไฟล์เดียว · ทุกการ์ดในหน้านี้มีปุ่มกล้องสำหรับบันทึกเฉพาะส่วนนั้นเป็นภาพ</span>
+      </div>
+      <div class="inline-actions">
+        <button class="ghost-button" id="repImage">บันทึกทั้งหน้าเป็นภาพ</button>
+        <button class="primary-button" id="repAll">เลือกชุดข้อมูล & Export Excel</button>
+      </div>
+    </section>
+
+    <section class="status-strip four">
+      <article><span>ความเสียหายเดือนนี้</span><strong>${money0(last.damage)}</strong><small>บาท · ${last.cases} เคส</small></article>
+      <article class="${delta < 0 ? "ok" : "bad"}"><span>เทียบเดือนก่อน</span><strong>${delta > 0 ? "+" : ""}${delta}%</strong><small>${delta < 0 ? "ลดลง" : "เพิ่มขึ้น"}จาก ${money0(prev.damage)} บาท</small></article>
+      <article class="ok"><span>มูลค่าที่ป้องกันได้</span><strong>${money0(last.prevented)}</strong><small>จากการตรวจพบเร็ว</small></article>
+      <article><span>เคสที่ยังไม่ปิด</span><strong>${num(DB.exceptions.filter((e) => !["closed", "approved"].includes(e.status)).length)}</strong><small>ต้องระบุเหตุผลในรายงาน</small></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Trend 12 เดือน</p><h2>ความเสียหายเทียบมูลค่าที่ป้องกันได้</h2></div><span class="health ok">${t.length} เดือน · ${h(rangeLabel())}</span></div>
+      <div class="chart" id="rTrend"></div>
+      <div class="c-legend static"><span class="c-leg"><i style="background:${Charts.PALETTE.s2}"></i>ความเสียหายจริง</span><span class="c-leg"><i style="background:${Charts.PALETTE.s3}"></i>มูลค่าที่ป้องกันได้</span></div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Daily Report</p><h2>รายงานช่วง ${h(rangeLabel())}</h2></div></div>
+        <ul class="report-list">
+          <li><span>รายการทั้งหมด</span><b>${num(DB.hourly.reduce((a, c) => a + c.total, 0))}</b></li>
+          <li><span>จับคู่สำเร็จ</span><b>${num(DB.hourly.reduce((a, c) => a + c.matched, 0))}</b></li>
+          <li><span>Exception</span><b>${num(DB.hourly.reduce((a, c) => a + c.exception, 0))}</b></li>
+          <li><span>ไฟล์ที่มีปัญหา</span><b>${DB.files.filter((f) => f.status !== "received").length}</b></li>
+          <li><span>เคสเกิน SLA</span><b>${DB.exceptions.filter((e) => e.overSla).length}</b></li>
+          <li><span>ยอดที่อาจเป็นความเสียหาย</span><b>${money0(DB.damages.reduce((a, c) => a + c.amount, 0))} บาท</b></li>
+        </ul>
+        <div class="inline-actions">
+          <button class="ghost-button" id="repDaily">Excel รายงานรายวัน</button>
+          <button class="ghost-button" id="repEx">Excel Exception</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Monthly Package</p><h2>ชุดรายงานส่งผู้บริหาร</h2></div></div>
+        <ul class="tick-list">
+          <li>มูลค่าความเสียหายจริงและที่ป้องกันได้</li>
+          <li>Top cause และ Top employee / shift risk</li>
+          <li>Trend เทียบเดือนก่อนและไตรมาสก่อน</li>
+          <li>เคสที่ยังไม่ปิดพร้อมเหตุผล</li>
+          <li>ข้อเสนอปรับ process เพื่อลดความผิดซ้ำ</li>
+        </ul>
+        <div class="inline-actions">
+          <button class="ghost-button" id="repMonthly">Excel สรุปรายเดือน</button>
+          <button class="primary-button" id="repSend">ส่งให้การเงิน / บุคคล</button>
+        </div>
+        <p class="hint">รายงานสำหรับ Finance / HR จะดึงเฉพาะ damage record ที่ปิดรอบแล้วเท่านั้น</p>
+      </div>
+    </section>`;
+
+  Charts.draw("#rTrend", "line", {
+    label: "แนวโน้มความเสียหายรายเดือน",
+    xLabels: t.map((x) => x.month),
+    short: true,
+    series: [
+      { name: "ความเสียหายจริง", color: Charts.PALETTE.s2, values: t.map((x) => x.damage), area: true },
+      { name: "ป้องกันได้", color: Charts.PALETTE.s3, values: t.map((x) => x.prevented) },
+    ],
+    height: 260,
+  });
+
+  $("#repDaily").addEventListener("click", () =>
+    exportSheets("รายงานรายวัน", [SHEET_BUILDERS.daily.build(), SHEET_BUILDERS.exceptions.build(), SHEET_BUILDERS.intake.build()]),
+  );
+  $("#repEx").addEventListener("click", () => exportSheets("รายการผิดปกติ", buildReviewExportSheets()));
+  $("#repMonthly").addEventListener("click", () =>
+    exportSheets("สรุปรายเดือน", [SHEET_BUILDERS.monthly.build(), SHEET_BUILDERS.damage.build(), SHEET_BUILDERS.kpi.build()]),
+  );
+  $("#repAll").addEventListener("click", openExportDialog);
+  $("#repImage").addEventListener("click", capturePage);
+  $("#repSend").addEventListener("click", () => {
+    if (!can("export")) return deny("ส่งรายงาน");
+    const open = DB.damageCycles.filter((c) => c.status === "open").length;
+    if (open) return toast("ยังมีรอบที่ไม่ได้ปิด — ปิดรอบก่อนจึงส่งการเงิน/บุคคลได้", "warn");
+    logAction("send_report", "report", "monthly", "ส่งสรุปความเสียหายให้การเงินและบุคคล");
+    toast("ส่งชุดรายงานให้การเงินและบุคคลแล้ว");
+  });
+};
+
+/* =============================================================
+   VIEW: Talk to Data
+   ============================================================= */
+const SUGGESTIONS = [
+  "บริษัทไหนมีรายการผิดปกติมากที่สุด",
+  "สาเหตุหลักในช่วงนี้คืออะไร",
+  "ไฟล์ไหนยังไม่ได้ส่ง",
+  "ความเสียหายเดือนนี้เท่าไหร่",
+  "เคสไหนเลย SLA บ้าง",
+  "บัญชีไหนเกิด diff บ่อยที่สุด",
+];
+
+function answerQuestion(q) {
+  const t = q.toLowerCase();
+  const live = state.dataset === "production" && Sb.signedIn();
+  const ex = live ? scopedExceptions() : DB.exceptions;
+  const has = (...w) => w.some((x) => t.includes(x));
+
+  if (has("บริษัท", "company")) {
+    const agg = Object.entries(ex.reduce((a,e)=>((a[e.company]=(a[e.company]||0)+1),a),{})).sort((a,b)=>b[1]-a[1]);
+    return {
+      text: agg.length ? `ช่วง ${rangeLabel()} บริษัทที่มี Exception มากที่สุดคือ ${agg.slice(0,3).map(([company,count])=>`${company} ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception ที่ระบุบริษัท`,
+      link: { label: "ดู KPI บริษัท", route: "kpi" },
+    };
+  }
+  if (has("สาเหตุ", "cause", "ทำไม")) {
+    const agg = Object.entries(ex.reduce((a, e) => ((a[e.cause] = (a[e.cause] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
+    return {
+      text: agg.length ? `สาเหตุอันดับต้นช่วง ${rangeLabel()} คือ ${agg.slice(0,3).map(([cause,count])=>`"${cause}" ${num(count)} เคส`).join(", ")}` : `ช่วง ${rangeLabel()} ยังไม่มี Exception`,
+      link: { label: "ดูรายการทั้งหมด", route: "exceptions" },
+    };
+  }
+  if (has("ไฟล์", "file", "stm", "bo ")) {
+    if (live) {
+      const ops=(liveOverviewState.operations||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
+      const bad=ops.filter((row)=>["waiting_files","needs_review","error"].includes(row.status));
+      return {text:bad.length?`ช่วง ${rangeLabel()} มี ${num(bad.length)} งานที่ต้องตาม: ${bad.slice(0,5).map((row)=>`${row.business_date} ${row.company} (${row.status})`).join(", ")}`:`ช่วง ${rangeLabel()} ไม่พบงานรอไฟล์หรือล้มเหลวใน Supabase`,link:{label:"เปิดหน้าตรวจไฟล์เข้า",route:"intake"}};
+    }
+    const bad = DB.files.filter((f) => f.status !== "received");
+    return {
+      text: bad.length
+        ? `ยังมีไฟล์ที่มีปัญหา ${bad.length} รายการ: ${bad.slice(0, 5).map((b) => `${b.companyName} - ${b.fileType} (${b.status === "missing" ? "ไม่ได้ส่ง" : b.status === "late" ? "ส่งช้า" : "ผิดบริษัท"})`).join(", ")}${bad.length > 5 ? " และอื่น ๆ" : ""}`
+        : "ไฟล์ครบทุกบริษัทและทุกประเภทแล้ว",
+      link: { label: "เปิดหน้า Intake Control", route: "intake" },
+    };
+  }
+  if (has("เสียหาย", "damage", "เดือนนี้")) {
+    const sum = DB.damages.reduce((a, c) => a + c.amount, 0);
+    if (live) return { text: `ช่วง ${rangeLabel()} มีความเสียหายที่บันทึกใน Supabase ${money0(sum)} บาท จาก ${num(DB.damages.length)} รายการ`, link: { label: "เปิดทะเบียนความเสียหาย", route: "damage" } };
+    const last = DB.monthlyTrend[DB.monthlyTrend.length - 1];
+    return {
+      text: `รอบ 1 (1-15 ส.ค. 2026) มีความเสียหายที่บันทึกแล้ว ${money0(sum)} บาท จาก ${DB.damages.length} เคส สำหรับทั้งเดือนล่าสุดในระบบอยู่ที่ ${money0(last.damage)} บาท ${last.cases} เคส และป้องกันได้ ${money0(last.prevented)} บาท`,
+      link: { label: "เปิดทะเบียนความเสียหาย", route: "damage" },
+    };
+  }
+  if (has("sla", "เลยกำหนด", "ช้า")) {
+    const over = ex.filter((e) => e.overSla);
+    return {
+      text: `มีเคสเกิน SLA ${over.length} รายการ แยกเป็น Critical ${over.filter((e) => e.severity === "critical").length}, High ${over.filter((e) => e.severity === "high").length}, Medium ${over.filter((e) => e.severity === "medium").length} เคสที่ค้างนานที่สุดคือ ${over.sort((a, b) => b.ageHours - a.ageHours)[0]?.id || "-"}`,
+      link: { label: "กรองเฉพาะเคสเลย SLA", route: "exceptions", exFilter: { sla: true } },
+    };
+  }
+  if (has("บัญชี", "account", "diff บ่อย")) {
+    const agg = Object.entries(ex.reduce((a, e) => ((a[e.account] = (a[e.account] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
+    return {
+      text: `บัญชีที่เกิด diff บ่อยที่สุดคือ ${agg[0][0]} จำนวน ${agg[0][1]} เคส รองลงมา ${agg[1][0]} ${agg[1][1]} เคส และ ${agg[2][0]} ${agg[2][1]} เคส ควรตรวจว่าเป็นปัญหาที่รูปแบบไฟล์ธนาคารหรือขั้นตอนการทำงานของทีม`,
+      link: { label: "ดูหน้า KPI", route: "kpi" },
+    };
+  }
+  if (has("matched", "จับคู่", "กี่รายการ", "วันนี้")) {
+    if (live) {
+      const q=(liveOverviewState.quality||[]).filter((row)=>row.business_date>=state.filters.from&&row.business_date<=state.filters.to&&(state.filters.company==="ALL"||row.company===state.filters.company));
+      const tot=q.reduce((sum,row)=>sum+Number(row.stm_count||0),0),m=q.reduce((sum,row)=>sum+Number(row.matched||0),0);
+      return {text:`ช่วง ${rangeLabel()} มีรายการ STM ${num(tot)} จับคู่สำเร็จ ${num(m)} คิดเป็น ${tot?((m/tot)*100).toFixed(2):"0.00"}% และมี Exception ${num(ex.length)} รายการ`,link:{label:"เปิดแดชบอร์ด",route:"dashboard"}};
+    }
+    const tot = DB.hourly.reduce((a, c) => a + c.total, 0);
+    const m = DB.hourly.reduce((a, c) => a + c.matched, 0);
+    return {
+      text: `วันที่ ${DB.BUSINESS_DATE} มีรายการทั้งหมด ${num(tot)} จับคู่สำเร็จ ${num(m)} คิดเป็น ${((m / tot) * 100).toFixed(2)}% เหลือ exception ${num(tot - m)} รายการที่ต้องตรวจ`,
+      link: { label: "เปิดแดชบอร์ด", route: "dashboard" },
+    };
+  }
+  return {
+    text: `ยังไม่มีข้อมูลตรงกับคำถามนี้ ลองถามเกี่ยวกับบริษัท สาเหตุ ไฟล์ที่ขาด ความเสียหาย SLA บัญชีที่เกิด diff บ่อย หรืออัตราจับคู่ในช่วง ${rangeLabel()}`,
+    link: null,
+  };
+}
+
+VIEWS.talk = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  root.innerHTML = `
+    <section class="grid-talk">
+      <div class="panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">Talk to Data</p><h2>ถามข้อมูลที่ผ่าน reconcile แล้ว</h2></div>
+          <span class="health ok">ข้อมูล ${DB.BUSINESS_DATE}</span>
+        </div>
+        <div class="chat-box big" id="chatBox">
+          ${
+            state.chat.length
+              ? state.chat
+                  .map(
+                    (m) =>
+                      `<div class="message ${m.type}">${h(m.text)}${m.link ? `<button class="chat-link" data-route="${m.link.route}" data-payload='${h(JSON.stringify(m.link))}'>${h(m.link.label)} →</button>` : ""}</div>`,
+                  )
+                  .join("")
+              : `<div class="message system">ลองถามว่า "บริษัทไหนมีรายการผิดปกติมากที่สุด" หรือ "ไฟล์ไหนยังไม่ได้ส่ง" — ทุกคำตอบจะอ้างอิงข้อมูลจริงในช่วงที่เลือก</div>`
+          }
+        </div>
+        <form class="ask-form" id="askForm">
+          <input id="askInput" type="text" placeholder="พิมพ์คำถามถึงข้อมูล..." autocomplete="off" />
+          <button type="submit" class="primary-button">ถาม</button>
+        </form>
+        <div class="chips">${SUGGESTIONS.map((s) => `<button class="chip" data-q="${h(s)}">${h(s)}</button>`).join("")}</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">ข้อกำหนด</p><h2>กติกาของคำตอบ</h2></div></div>
+        <ul class="tick-list">
+          <li>ตอบจากข้อมูลที่ผ่าน reconcile แล้วเท่านั้น</li>
+          <li>ต้องระบุตัวเลขและช่วงวันที่ชัดเจน</li>
+          <li>คำตอบที่กระทบการลงโทษหรือการเงิน ต้องมีลิงก์กลับไปหลักฐาน</li>
+          <li>ไม่ตอบจากข้อมูลดิบที่ยังไม่ผ่าน quality gate</li>
+        </ul>
+        <div class="panel-heading mt"><div><p class="eyebrow">ตัวอย่างที่ตอบได้</p><h2>ขอบเขตปัจจุบัน</h2></div></div>
+        <ul class="tick-list">
+          <li>ยอด Exception แยกตามบริษัท / ประเภท / บัญชี</li>
+          <li>ไฟล์ที่ขาดหรือส่งผิดบริษัท</li>
+          <li>ยอดความเสียหายและแนวโน้มรายเดือน</li>
+          <li>เคสที่เลย SLA และเคสที่ค้างนานที่สุด</li>
+        </ul>
+      </div>
+    </section>`;
+
+  const send = (q) => {
+    state.chat.push({ type: "user", text: q });
+    const a = answerQuestion(q);
+    state.chat.push({ type: "system", text: a.text, link: a.link });
+    logAction("query", "talk_to_data", q.slice(0, 40), a.text.slice(0, 80));
+    render();
+    const box = $("#chatBox");
+    if (box) box.scrollTop = box.scrollHeight;
+  };
+
+  $("#askForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#askInput").value.trim();
+    if (v) send(v);
+  });
+  root.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => send(c.dataset.q)));
+  root.querySelectorAll(".chat-link").forEach((b) =>
+    b.addEventListener("click", () => {
+      const p = JSON.parse(b.dataset.payload);
+      go(p.route, { filters: p.filters, exFilter: p.exFilter });
+    }),
+  );
+  const box = $("#chatBox");
+  if (box) box.scrollTop = box.scrollHeight;
+};
+
+/* =============================================================
+   VIEW: Bank rules
+   ============================================================= */
+VIEWS.rules = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  const editable = can("rules") && state.dataset !== "production";
+  root.innerHTML = `
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Rule Engine</p><h2>กฎรายธนาคาร</h2></div>
+        <span class="health ${editable ? "ok" : "attention"}">${editable ? "แก้ไขได้" : "กฎที่ใช้งานจริง · อ่านอย่างเดียว"}</span>
+      </div>
+      <div class="rule-rows">
+        ${DB.settings.bankRules
+          .map(
+            (r) => `<div class="rule-row">
+          <label class="switch"><input type="checkbox" data-bank="${r.bank}" ${r.enabled ? "checked" : ""} ${editable ? "" : "disabled"} /><span></span></label>
+          <div><strong>${h(r.bank)}</strong><span>${h(r.detail)}</span></div>
+          <span class="badge ${r.enabled ? "green" : "grey"}">${r.enabled ? "เปิดใช้" : "ปิด"}</span>
+        </div>`,
+          )
+          .join("")}
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Rule Preset</p><h2>กฎควบคุมการทำงาน</h2></div></div>
+        <div class="toggle-list">
+          ${[
+            ["crossDay", "ตรวจช่วงข้ามวัน 23:00-23:59 ร่วมกับวันถัดไป"],
+            ["lockDelete", "ห้ามลบข้อมูลหลัง import (ใส่ note ได้เท่านั้น)"],
+            ["requireEvidence", "บังคับแนบหลักฐานก่อนปิดเคส"],
+            ["pmSuccessOnly", "PM: กรองเฉพาะรายการสำเร็จ"],
+            ["filterCarryForward", 'กรอง "ยอดยกมา" และ "รอบวันที่" อัตโนมัติ'],
+            ["notifyTelegram", "แจ้งเตือน Telegram เมื่อ severity สูง"],
+          ]
+            .map(
+              ([k, label]) =>
+                `<label><input type="checkbox" data-rule="${k}" ${DB.settings.rules[k] ? "checked" : ""} ${editable ? "" : "disabled"} /> ${h(label)}</label>`,
+            )
+            .join("")}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">Taxonomy</p><h2>ประเภท exception และ SLA</h2></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ประเภท</th><th>ระดับเริ่มต้น</th><th class="right">SLA (ชม.)</th><th class="right">เคสวันนี้</th></tr></thead>
+            <tbody>
+              ${DB.exceptionTypes
+                .map(
+                  (t) => `<tr><td>${h(t.name)}</td>
+                <td><span class="badge ${t.baseSeverity}">${h(sevMeta(t.baseSeverity).name)}</span></td>
+                <td class="right tnum">${sevMeta(t.baseSeverity).sla}</td>
+                <td class="right tnum">${DB.exceptions.filter((e) => e.type === t.code).length}</td></tr>`,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>`;
+
+  root.querySelectorAll("[data-bank]").forEach((c) =>
+    c.addEventListener("change", () => {
+      const r = DB.settings.bankRules.find((x) => x.bank === c.dataset.bank);
+      r.enabled = c.checked;
+      logAction("update", "bank_rule", r.bank, (c.checked ? "เปิดใช้" : "ปิด") + "กฎธนาคาร");
+      toast(`${r.bank}: ${c.checked ? "เปิดใช้" : "ปิด"}กฎแล้ว`);
+      renormalizeAll();
+      scheduleAutoReconcile("เปลี่ยนกฎธนาคาร " + r.bank);
+      render();
+    }),
+  );
+  root.querySelectorAll("[data-rule]").forEach((c) =>
+    c.addEventListener("change", () => {
+      DB.settings.rules[c.dataset.rule] = c.checked;
+      Store.data.settings = { ...DB.settings };
+      Store.persist();
+      logAction("update", "rule_preset", c.dataset.rule, c.checked ? "เปิด" : "ปิด");
+      toast("บันทึกการตั้งค่ากฎแล้ว");
+      renormalizeAll();
+      scheduleAutoReconcile("เปลี่ยนกฎการทำงาน");
+    }),
+  );
+};
+
+VIEWS['account-holds'] = (root) => AccountReviewHolds.mountManager(root,{
+  actor:()=>Sb.authUser()?.id,
+  role:()=>state.role,
+  today:PROD_TODAY,
+  companies:Sb.reviewHoldRegistryCompanies,
+  accounts:()=>{const aliases={"7M":"UFABET7M"};return (loadRegistryAccounts()||[]).map(row=>({company:aliases[row.company]||row.company,bank:row.bank,account:row.id,account_name:row.holder}));},
+  scopes:Sb.reviewHoldScopes,
+  save:Sb.manageAccountReviewHold,
+});
+
+/* =============================================================
+   VIEW: Users & permission
+   ============================================================= */
+VIEWS['case-settings'] = (root) => CaseClosure.mountSettings(root);
+VIEWS.users = async (root) => {
+  if(state.role==='lead'){
+    root.innerHTML='<div class="feature-workspace" id="scopedUsersHost"></div>';
+    ScopedUserManagement.mount(root.querySelector('#scopedUsersHost'),{actor:()=>Sb.authUser()?.id,role:()=>state.role,load:Sb.leadUserManagementContext,update:Sb.leadUpdateUserAccess,create:Sb.leadCreateUser});
+    return;
+  }
+  const caps = [
+    ["view", "ดูหน้าที่ได้รับสิทธิ์ / dashboard"],
+    ["note", "ใส่ note"],
+    ["status", "เปลี่ยนสถานะ"],
+    ["request_clarify", "ส่งให้ชี้แจง"],
+    ["respond", "ตอบชี้แจง"],
+    ["attach", "แนบหลักฐาน"],
+    ["approve", "อนุมัติ"],
+    ["close_case", "ปิดเคส"],
+    ["close_cycle", "ปิดรอบความเสียหาย"],
+    ["rules", "แก้ rule / tolerance"],
+    ["users", "จัดการผู้ใช้"],
+    ["settings", "ตั้งค่าระบบ"],
+    ["export", "export รายงาน"],
+  ];
+  root.innerHTML = `<section class="panel"><div class="loading-block"><span class="spinner"></span><strong>กำลังโหลดผู้ใช้และสิทธิ์จริงจาก Supabase</strong></div></section>`;
+  let users = [];
+  let loadError = "";
+  try {
+    users = await Sb.adminUserAccess();
+    if (!Array.isArray(users)) users = users ? [users] : [];
+  } catch (error) {
+    loadError = error.message || "โหลดผู้ใช้ไม่สำเร็จ";
+  }
+  root.innerHTML = `
+    ${loadError ? `<section class="alert warn"><strong>ยังโหลดทะเบียนผู้ใช้ไม่ได้</strong><span>${h(loadError)}</span></section>` : ""}
+    <section class="panel access-admin-panel">
+      <div class="panel-heading"><div><p class="eyebrow">User access</p><h2 id="accessFormTitle">เพิ่มผู้ใช้ใหม่</h2><small class="head-sub">กรอกข้อมูลครั้งเดียว ระบบจะส่งอีเมลเชิญเข้าใช้งานและกำหนดสิทธิ์ให้ทันที ไม่ต้องเปิดหน้า Supabase</small></div>
+      <button class="primary-button" type="button" id="newAccessUser">+ เพิ่มผู้ใช้</button></div>
+      <form id="accessUserForm" class="access-user-form">
+        <p id="accessFormError" class="form-error" role="alert" tabindex="-1" hidden></p>
+        <label>วิธีสร้างบัญชี<select id="accessLoginMode"><option value="email">อีเมล / ส่งคำเชิญ</option><option value="username">ชื่อผู้ใช้ / ไม่ใช้อีเมล</option></select></label>
+        <label><span id="accessIdentityLabel">อีเมล</span><input id="accessEmail" type="email" required placeholder="name@company.com" autocomplete="off"></label>
+        <label id="accessPasswordLabel" hidden>รหัสผ่านบัญชีใหม่<input id="accessPassword" type="password" autocomplete="new-password" minlength="9" maxlength="128"><small>อย่างน้อย 9 ตัว มีตัวอักษรและตัวเลข ไม่ใช้รหัสเดียวกับบัญชีอื่น</small></label>
+        <label>ชื่อที่แสดง<input id="accessName" type="text" required placeholder="ชื่อ-นามสกุล"></label>
+        <label>บทบาท<select id="accessRole">${Object.entries(DB.roles).map(([key, role]) => `<option value="${key}">${h(role.name)}</option>`).join("")}</select></label>
+        <label class="access-active"><input id="accessActive" type="checkbox" checked> เปิดใช้งาน</label>
+        <fieldset><legend>บริษัทที่รับผิดชอบ</legend><div class="company-access-grid">
+          ${companyMaster().map((company) => `<label><input type="checkbox" name="accessCompany" value="${h(company.code)}"> ${h(company.code)}</label>`).join("")}
+        </div><small>Audit Lead, ผู้บริหาร และผู้ดูแลระบบเห็นทุกบริษัทโดยตำแหน่งอยู่แล้ว</small></fieldset>
+        <div class="access-submit"><small id="accessSubmitHint">ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน</small><button class="primary-button" type="submit">ส่งคำเชิญและบันทึกสิทธิ์</button></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Permission Matrix</p><h2>สิทธิ์ตามบทบาท</h2></div>
+      <span class="health ok">ไม่มีบทบาทใดลบข้อมูลได้</span></div>
+      <div class="table-wrap">
+        <table class="matrix">
+          <thead><tr><th>ความสามารถ</th>${Object.values(DB.roles).map((r) => `<th class="center">${h(r.name)}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${caps
+              .map(
+                ([k, label]) =>
+                  `<tr><td>${h(label)}</td>${Object.keys(DB.roles)
+                    .map((rk) => `<td class="center">${DB.roles[rk].can.includes(k) ? '<span class="yes">✓</span>' : '<span class="no">–</span>'}</td>`)
+                    .join("")}</tr>`,
+              )
+              .join("")}
+            <tr class="deny-row"><td>ลบ transaction / หลักฐาน</td>${Object.keys(DB.roles).map(() => `<td class="center"><span class="no">✕</span></td>`).join("")}</tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">Users</p><h2>ผู้ใช้งานในระบบ</h2></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ชื่อผู้ใช้ / อีเมล</th><th>ชื่อ</th><th>บทบาท</th><th>บริษัทที่รับผิดชอบ</th><th>สถานะ</th></tr></thead>
+          <tbody>
+            ${users
+              .map(
+                (u) => `<tr class="access-user-row" data-email="${h(u.email)}"><td class="mono">${h(Sb.displayLogin(u.email))}</td><td>${h(u.full_name || "-")}</td>
+              <td><span class="badge blue">${h(DB.roles[u.role]?.name || u.role)}</span></td>
+              <td>${(u.companies || []).length ? (u.companies || []).map((company) => `<span class="badge">${h(company)}</span>`).join(" ") : '<span class="muted">ทุกบริษัทตามบทบาท</span>'}</td>
+              <td>${u.active ? '<span class="badge green">ใช้งาน</span>' : '<span class="badge red">ระงับ</span>'}</td></tr>`,
+              )
+              .join("") || `<tr><td colspan="5" class="empty">ยังไม่มีผู้ใช้ในทะเบียนสิทธิ์</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+
+  if(state.role==='admin'){
+    const passwordHost=document.createElement('div');root.prepend(passwordHost);
+    PasswordAccounts.mount(passwordHost,{users,companies:companyMaster().map(c=>c.code),actor:()=>Sb.authUser()?.id,role:()=>state.role,call:Sb.passwordAccount});
+  }
+  const setAccessMode = (editing=false) => {
+    const username = $('#accessLoginMode').value === 'username';
+    $('#accessEmail').type = username ? 'text' : 'email';
+    $('#accessIdentityLabel').textContent = username ? 'ชื่อผู้ใช้' : 'อีเมล';
+    $('#accessEmail').placeholder = username ? 'ชื่อผู้ใช้' : 'name@company.com';
+    $('#accessPasswordLabel').hidden = !username || editing;
+    $('#accessPassword').required = username && !editing;
+    $('#accessPassword').disabled = !username || editing;
+    $('#accessSubmitHint').textContent = editing ? 'บันทึกสิทธิ์โดยไม่เปลี่ยนรหัสผ่าน' : username ? 'สร้างชื่อผู้ใช้ทันที ไม่ส่งอีเมล / ลืมรหัสผ่านให้ติดต่อผู้ดูแล' : 'ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน';
+    $("#accessUserForm button[type='submit']").textContent = editing ? 'บันทึกการเปลี่ยนแปลง' : username ? 'สร้างผู้ใช้และบันทึกสิทธิ์' : 'ส่งคำเชิญและบันทึกสิทธิ์';
+  };
+  $('#accessLoginMode').onchange = () => { $('#accessPassword').value=''; setAccessMode(); };
+  const resetAccessForm = () => {
+    $("#accessUserForm").reset();
+    $("#accessActive").checked = true;
+    $("#accessRole").value = "monitor";
+    $("#accessEmail").readOnly = false;
+    $('#accessLoginMode').disabled=false;
+    setAccessMode();
+    $("#accessFormTitle").textContent = "เพิ่มผู้ใช้ใหม่";
+    $("#accessSubmitHint").textContent = "ผู้ใช้ใหม่จะได้รับอีเมลเชิญเพื่อตั้งรหัสผ่าน";
+    $("#accessUserForm button[type='submit']").textContent = "ส่งคำเชิญและบันทึกสิทธิ์";
+  };
+  $("#newAccessUser")?.addEventListener("click", () => {
+    resetAccessForm();
+    $("#accessEmail").focus();
+  });
+  root.querySelectorAll(".access-user-row").forEach((row) => row.addEventListener("click", () => {
+    const user = users.find((item) => item.email === row.dataset.email);
+    if (!user) return;
+    $('#accessLoginMode').value = Sb.displayLogin(user.email) === user.email ? 'email' : 'username';
+    $('#accessLoginMode').disabled=true;
+    $("#accessEmail").value = Sb.displayLogin(user.email);
+    $('#accessPassword').value='';
+    setAccessMode(true);
+    $("#accessName").value = user.full_name || "";
+    $("#accessRole").value = user.role || "monitor";
+    $("#accessActive").checked = user.active !== false;
+    $("#accessEmail").readOnly = true;
+    $("#accessFormTitle").textContent = "แก้สิทธิ์ผู้ใช้";
+    $("#accessSubmitHint").textContent = "บันทึกการเปลี่ยนแปลงโดยไม่ส่งคำเชิญซ้ำ";
+    $("#accessUserForm button[type='submit']").textContent = "บันทึกการเปลี่ยนแปลง";
+    const selected = new Set(user.companies || []);
+    $$('[name="accessCompany"]', root).forEach((box) => { box.checked = selected.has(box.value); });
+    $("#accessEmail").scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
+  $("#accessUserForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = "กำลังบันทึก...";
+    $('#accessFormError').hidden = true;
+    try {
+      const companies = $$('[name="accessCompany"]:checked', root).map((box) => box.value);
+      const usernameMode = $('#accessLoginMode').value === 'username';
+      const identity = $("#accessEmail").value.trim().toLowerCase();
+      const email = usernameMode ? Sb.loginIdentity(identity) : identity;
+      const existing = users.some((user) => String(user.email || "").toLowerCase() === email);
+      if (existing) {
+        await Sb.adminSaveUserAccess(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      } else if (usernameMode) {
+        await Sb.adminCreateUsernameUser(identity,$('#accessPassword').value,$('#accessName').value,$('#accessRole').value,$('#accessActive').checked,companies);
+        $('#accessPassword').value='';
+      } else {
+        await Sb.adminInviteUser(email, $("#accessName").value, $("#accessRole").value, $("#accessActive").checked, companies);
+      }
+      toast(existing ? "บันทึกบทบาทและบริษัทที่รับผิดชอบแล้ว" : usernameMode ? 'สร้างชื่อผู้ใช้และกำหนดสิทธิ์แล้ว' : "ส่งอีเมลเชิญและกำหนดสิทธิ์แล้ว");
+      logAction("update", "user_access", $("#accessEmail").value, `${$("#accessRole").value} · ${companies.join(", ") || "ทุกบริษัทตามบทบาท"}`);
+      VIEWS.users(root);
+    } catch (error) {
+      const feedback = $('#accessFormError');
+      feedback.textContent = 'บันทึกสิทธิ์ไม่สำเร็จ: ' + error.message + ' — ข้อมูลในฟอร์มยังอยู่ กรุณาตรวจสอบก่อนลองอีกครั้ง';
+      feedback.hidden = false;
+      feedback.focus({preventScroll:true});
+      toast("บันทึกสิทธิ์ไม่สำเร็จ: " + error.message, "warn");
+    } finally {
+      button.disabled = false;
+      setAccessMode($('#accessEmail').readOnly);
+    }
+  });
+};
+
+/* =============================================================
+   VIEW: Audit log
+   ============================================================= */
+VIEWS["audit-log"] = (root) => {
+  if (!ensureLiveOverview(root)) return;
+  const logs = DB.auditLog.filter((l) => inRange(String(l.at).slice(0, 10)));
+  const logsAvailable = liveOverviewState.logsReady;
+  root.innerHTML = `
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">Audit Log</p><h2>${logsAvailable ? `บันทึกทุกการเปลี่ยนแปลง (${logs.length} จาก ${DB.auditLog.length} รายการ)` : "กำลังรอบันทึกจากฐานข้อมูลจริง"}</h2><small class="head-sub">ช่วงข้อมูล ${h(rangeLabel())}${logsAvailable ? "" : " · ยังไม่สรุปเป็น 0"}</small></div>
+        <div class="inline-actions">
+          <input type="search" id="logSearch" placeholder="ค้นหา user / เคส / action" />
+          <button class="ghost-button sm" id="logExport">Export CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="logTable">
+          <thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Action</th><th>Entity</th><th>เป้าหมาย</th><th>รายละเอียด</th></tr></thead>
+          <tbody>
+            ${logs
+              .map(
+                (l) => `<tr><td class="mono">${h(displayTime(l.at))}</td><td>${h(l.user)}</td>
+              <td><span class="badge blue">${h(l.action)}</span></td><td>${h(l.entity)}</td>
+              <td class="mono">${h(l.target)}</td><td class="muted">${h(l.detail)}</td></tr>`,
+              )
+              .join("") || `<tr><td colspan="6" class="empty">${logsAvailable ? "ยังไม่มีบันทึกในช่วงนี้" : "ข้อมูล Audit Log ยังโหลดไม่สำเร็จ — กดลองใหม่จากแถบแจ้งเตือนด้านบน"}</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">Audit log เขียนได้อย่างเดียว (append-only) ไม่มีบทบาทใดแก้หรือลบได้ ตามข้อกำหนด non-functional</p>
+    </section>`;
+
+  $("#logSearch").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    $$("#logTable tbody tr").forEach((tr) => (tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none"));
+  });
+  $("#logExport").addEventListener("click", () =>
+    exportSheets("audit-log", [
+      {
+        name: "Audit Log",
+        title: "บันทึกการใช้งานระบบ",
+        headers: ["เวลา", "ผู้ใช้", "action", "entity", "target", "รายละเอียด"],
+        widths: [20, 18, 16, 16, 22, 60],
+        rows: logs.map((l) => [l.at, l.user, l.action, l.entity, l.target, l.detail]),
+      },
+    ]),
+  );
+};
+
+/* =============================================================
+   VIEW: Cloud - คลังไฟล์จาก Supabase (n8n ส่งเข้ามาจากเมล)
+   ============================================================= */
+const cloudState = { batches: null, caseAttachments: null, evidenceError: null, daily: null, operations: null, loading: false, auxiliaryLoading: false, error: null, partialError: null, key: "", requestId: 0, picked: {}, busy: "", activeJob: null, fileView: "all" };
+
+const cloudQueryKey = () => `${Sb.authUser()?.id || ''}|${state.role}|${state.filters.from || ""}|${state.filters.to || ""}|${state.filters.company || "ALL"}`;
+
+function isTransientFileError(error) {
+  return /timeout|timed out|abort|network|fetch|connection|temporar|gateway|database/i.test(String(error?.message || error || ""));
+}
+
+async function retryTransientFileRequest(action, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return await action(); }
+    catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientFileError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+function filePreviewTable(rows) {
+  const use = (rows || []).slice(0, 50).map((row) => (row || []).slice(0, 20));
+  const width = Math.max(1, ...use.map((row) => row.length));
+  return `<div class="file-preview-note">แสดงตัวอย่าง ${num(use.length)} แถวแรก · สูงสุด ${num(width)} คอลัมน์</div><div class="file-preview-table"><table><tbody>${use.map((row, index) => `<tr>${Array.from({ length: width }, (_, col) => `<${index === 0 ? "th" : "td"}>${h(row[col] ?? "")}</${index === 0 ? "th" : "td"}>`).join("")}</tr>`).join("") || `<tr><td class="empty">ไฟล์ไม่มีข้อมูลที่แสดงตัวอย่างได้</td></tr>`}</tbody></table></div>`;
+}
+
+function updateSourceFileCaches(fileId, changes) {
+  const seen = new Set();
+  [cloudState.batches, liveIntakeState.batches, dailyCompanyState.batches].forEach((batches) => {
+    if (!Array.isArray(batches) || seen.has(batches)) return;
+    seen.add(batches);
+    batches.forEach((batch) => (batch.source_files || []).forEach((file) => {
+      if (file.id === fileId) Object.assign(file, changes);
+    }));
+  });
+}
+
+function exportOcrExcel(meta, ocr) {
+  const parsedRows = Array.isArray(ocr.rows) ? ocr.rows : [];
+  let headers;
+  let rows;
+  if (parsedRows.length) {
+    headers = ["วันที่", "เวลา", "บริษัท", "ธนาคาร/ช่องทาง", "บัญชี", "ทิศทาง", "จำนวนเงิน", "ยอดคงเหลือ", "รายละเอียด", "แถวต้นฉบับ"];
+    const timeOf = (sec) => Number.isFinite(Number(sec)) ? Engine.hhmmss(Number(sec)) : "";
+    rows = parsedRows.map((row) => [
+      row.date || meta.date || "", timeOf(row.sec), row.subco || row.company || meta.company || "",
+      row.bank || row.channel || "", row.account || "", row.direction || "", row.amount ?? "",
+      row.balance ?? "", row.desc || row.detail || "", row.raw || "",
+    ]);
+  } else {
+    headers = ["ลำดับ", "ข้อความที่ OCR อ่านได้"];
+    rows = String(ocr.extracted_text || "").split(/\r?\n/).filter((line) => line.trim()).map((line, index) => [index + 1, line]);
+  }
+  const result = Exporter.workbook([{ name: "OCR", headers, rows, widths: headers.map((_, index) => index === headers.length - 1 ? 52 : 18) }],
+    `${String(meta.name || "pdf-ocr").replace(/\.pdf$/i, "")}-OCR.xlsx`,
+    { title: `ผล OCR: ${meta.name || "PDF"}`, subject: `Google Document AI · ความมั่นใจ ${Math.round(Number(ocr.confidence || 0) * 100)}%` });
+  if (!result.ok) throw new Error(result.reason || "สร้าง Excel ไม่สำเร็จ");
+}
+
+async function validateReplacementFile(file) {
+  if (!file || !file.size) throw new Error("ไฟล์ใหม่ไม่มีข้อมูล");
+  if (file.size > 50 * 1024 * 1024) throw new Error("ไฟล์ใหม่ต้องมีขนาดไม่เกิน 50 MB");
+  const ext = (String(file.name || "").split(".").pop() || "").toLowerCase();
+  if (!["xlsx", "xlsm", "csv", "txt", "pdf", "docx"].includes(ext)) {
+    throw new Error("รองรับไฟล์ XLSX, XLSM, CSV, TXT, PDF และ DOCX เท่านั้น");
+  }
+  const buffer = await file.arrayBuffer();
+  if (["xlsx", "xlsm"].includes(ext)) {
+    try { await XlsxReader.read(buffer); }
+    catch (error) { throw new Error("ไฟล์ Excel ใหม่ยังเปิดไม่ได้ กรุณาเปิดใน Excel แล้ว Save As เป็น .xlsx ก่อนอัปโหลด"); }
+  } else if (ext === "pdf") {
+    const signature = new TextDecoder("latin1").decode(new Uint8Array(buffer.slice(0, 5)));
+    if (signature !== "%PDF-") throw new Error("ไฟล์ที่เลือกใช้นามสกุล PDF แต่เนื้อหาไม่ใช่ PDF ที่สมบูรณ์");
+  } else if (ext === "docx") {
+    const bytes = new Uint8Array(buffer.slice(0, 2));
+    if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error("ไฟล์ DOCX ใหม่ไม่สมบูรณ์ กรุณาเปิดและบันทึกใหม่ก่อนอัปโหลด");
+  }
+  return true;
+}
+
+VIEWS["monthly-audit"] = async (root) => {
+  root.innerHTML='<div class="feature-workspace" id="monthlyAuditHost"></div>';
+  MonthlyAudit.mount(root.querySelector('#monthlyAuditHost'),{
+    actor:()=>Sb.authUser()?.id,role:()=>state.role,today:PROD_TODAY,
     load:Sb.monthlyAuditContext,create:Sb.createMonthlyAuditSet,detail:Sb.monthlyAuditDetail,review:Sb.monthlyAuditItemReview,
     assign:Sb.assignMonthlyAuditReviewer,save:Sb.saveMonthlyAuditAssessment,upload:Sb.uploadMonthlyAuditEvidence,
     preview:meta=>openStoredFilePreview({id:meta.id,name:meta.file_name,path:meta.storage_path,size:meta.size_bytes,mime:meta.mime_type,company:meta.company,kind:meta.kind||'doc_clarify',readOnly:true}),

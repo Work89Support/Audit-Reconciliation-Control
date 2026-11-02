@@ -1564,6 +1564,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return [...pendingEvidenceUploads.values()].filter(p=>p.metadata.exception_id===exceptionId&&p.metadata.uploaded_by===authUser()?.id)
       .map(p=>({id:p.metadata.id,name:p.metadata.file_name,uploaded:p.uploaded,busy:!!p.inFlight}));
   }
+  const isStorageDatabaseTimeout=error=>/DatabaseTimeout|connection to the database timed out|canceling statement due to statement timeout/i.test(error?.message||'');
   async function resumeCaseEvidence(id) {
     const pending=pendingEvidenceUploads.get(id);
     if(!pending||!signedIn()||pending.metadata.uploaded_by!==authUser()?.id)throw new Error('ไม่พบคำขอเดิมของบัญชีนี้ในหน้าต่างนี้');
@@ -1600,6 +1601,11 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
           // is retried without upsert. Verify the uploader's existing object.
           checkActor();
           try{await signedUrl(metadata.storage_path,60);pending.uploaded=true;break;}catch{
+            // A Storage DatabaseTimeout has already consumed the server's
+            // statement timeout. Do not lock the modal for two more identical
+            // 30-second attempts; keep the exact request for the recovery button.
+            if(metadata.correction_reason&&isStorageDatabaseTimeout(error))
+              throw new Error(`คลังไฟล์ตรวจสิทธิ์ฐานข้อมูลหมดเวลา (รหัส ${id}) เก็บคำขอและไฟล์เดิมในหน้าต่างนี้แล้ว กดตรวจ/ลองต่อได้โดยไม่เลือกไฟล์ใหม่`);
             if(storageAttempt<2&&/connection.*timed out|database timed out|failed to fetch|networkerror|network request failed/i.test(error.message||'')){
               progress(`คลังไฟล์เชื่อมต่อฐานข้อมูลไม่สำเร็จ กำลังลองด้วยรหัสและเส้นทางเดิม (${storageAttempt+2}/3)`);
               await new Promise(resolve=>setTimeout(resolve,1000*(storageAttempt+1)));checkActor();continue;
