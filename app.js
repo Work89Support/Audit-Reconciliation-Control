@@ -4204,7 +4204,222 @@ async function loadExceptionSupport(e, options = {}) {
         if(candidates.length>=2000){const limitNote=document.createElement('p');limitNote.textContent='แสดงได้สูงสุด 2,000 ไฟล์ต่อช่วง กรุณาลดช่วงวันที่เพื่อค้นหาให้ครบ';list.prepend(limitNote);}
         const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาชื่อไฟล์ / หัวข้อเมล / ผู้ส่ง / ยอดเงิน';search.setAttribute('aria-label','ค้นหาเอกสารชี้แจง รวมยอดเงิน');list.querySelector('h4').after(search);
         search.oninput=()=>{const q=normalizeEvidenceSearch(search.value);list.querySelectorAll('article').forEach(article=>{article.hidden=!!q&&!String(article.dataset.evidenceSearch||normalizeEvidenceSearch(article.textContent)).includes(q);});};
-        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent=state.role==='shift_lead'?'เลือกไฟล์เดิมนี้ (ยังไม่ส่�۝�弭z�&��^w กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
+        list.querySelectorAll('[data-link-mail]').forEach(button=>{if(button.dataset.linkMail===e.clarificationFileId){button.textContent=state.role==='shift_lead'?'เลือกไฟล์เดิมนี้ (ยังไม่ส่ง)':'ใช้กับเคสนี้แล้ว';button.disabled=state.role!=='shift_lead';}});
+        try {
+          const uses=await Sb.evidenceUsage(candidates.filter(f=>(f.company||f.batch_company)===e.company).map(f=>f.id),e.company);
+          if(!document.body.contains(list))return;
+          list.querySelectorAll('[data-link-mail]').forEach(button=>{
+            const rows=uses.filter(row=>row.clarification_file_id===button.dataset.linkMail);
+            const detail=document.createElement('details');
+            detail.innerHTML=`<summary>ใช้เป็นหลักฐาน ${rows.length} เคสในบริษัทนี้ (รวมเคสปิดแล้ว)</summary>${rows.map(row=>`<p>${h(row.code)} · ${h(row.business_date)} · ${h(row.status)}</p>`).join('')}`;
+            button.closest('article').append(detail);
+          });
+        }catch(error){const note=document.createElement('p');note.textContent='ยังโหลดประวัติการใช้ไฟล์ไม่ได้: '+error.message;list.append(note);}
+        list.querySelectorAll('[data-link-mail]').forEach(b=>b.onclick=async()=>{
+          if(!can('attach')&&!can('note')) return deny('ผูกหลักฐาน');
+          if(state.role==='shift_lead'){
+            if(!ClarificationFlow.canRespond(e.status,state.role))return toast('เคสนี้ไม่อยู่ในสถานะรับคำชี้แจง','warn');
+            const file=candidates.find(f=>f.id===b.dataset.linkMail);
+            if(!file||file.company!==e.company)return toast('เลือกหลักฐานของบริษัทเดียวกับเคสเท่านั้น','warn');
+            e._clarificationDraftText=$('#responseText')?.value||e._clarificationDraftText||'';
+            e._clarificationDraftFile=file;
+            await openException(e.id,{focusResponse:true});
+            return;
+          }
+          b.disabled=true;
+          const form=document.createElement('form');
+          form.className='case-mail-reason';
+          form.innerHTML='<label>เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน (ยังไม่ปิดเคส)<textarea name="reason" required rows="3" aria-label="เหตุผลที่ใช้เอกสารนี้เป็นหลักฐาน"></textarea></label><p role="status"></p><button type="submit" class="ghost-button sm">ยืนยันผูกหลักฐาน</button><button type="button" class="ghost-button sm">ยกเลิก</button>';
+          form.querySelector('textarea').placeholder='ระบุรายการ ยอดเงิน วันที่ และเลขอ้างอิงที่เอกสารนี้ยืนยัน';
+          const formActions=document.createElement('div');formActions.className='case-mail-reason-actions';
+          form.querySelector('[type="submit"]').className='primary-button sm';
+          formActions.append(...form.querySelectorAll('button'));form.append(formActions);
+          b.closest('article').append(form);
+          const input=form.querySelector('textarea');
+          const submit=form.querySelector('[type="submit"]');
+          const cancel=form.querySelector('[type="button"]');
+          const status=form.querySelector('[role="status"]');
+          let saving=false;
+          cancel.onclick=()=>{if(!saving){form.remove();b.disabled=false;}};
+          input.focus();
+          form.onsubmit=async(event)=>{
+            event.preventDefault();
+            if(saving)return;
+            if(!can('attach')&&!can('note'))return deny('ผูกหลักฐาน');
+            if(state.selected!==e.id||!document.body.contains(form))return;
+            const note=input.value.trim();
+            if(!note){status.textContent='กรุณาระบุเหตุผลก่อนผูกหลักฐาน';input.focus();return;}
+            if((headFilePicker||e.type==='cross_day'&&e.status==='pending_next_day')&&(note.length<10||note.length>2000)){status.textContent='ระบุเหตุผลที่ไฟล์นี้ยืนยันรายการของเคส 10–2,000 ตัวอักษร';input.focus();return;}
+            saving=true;submit.disabled=true;cancel.disabled=true;input.disabled=true;
+            status.textContent='กำลังผูกหลักฐาน…';
+            try{
+              const recommendationId=recommended.get(b.dataset.linkMail);
+              if(e.type==='cross_day'&&e.status==='pending_next_day')await Sb.linkWaitingCrossDayFile(e.dbId,b.dataset.linkMail,note);
+              else if(headFilePicker)await Sb.linkSelectedCaseFile(e.dbId,b.dataset.linkMail,note);
+              else if(recommendationId)await Sb.linkRecommendedEvidence(e.dbId,recommendationId,note);
+              else await Sb.manualMatchClarificationFile(b.dataset.linkMail,[e.dbId],note);
+              const saved=await Sb.exceptionDetail(e.dbId);
+              if(!saved||saved.clarification_file_id!==b.dataset.linkMail)throw new Error('ยังยืนยันไฟล์ที่ผูกกับเคสไม่ได้ กรุณาตรวจสถานะล่าสุดก่อนเลือกซ้ำ');
+              Object.assign(e,mapLiveException(saved),{id:e.id,notes:e.notes,evidence:e.evidence});
+              renderNav();
+              recordCaseUiResult(e, 'ผูกหลักฐานสำเร็จ — '+(candidates.find(f=>f.id===b.dataset.linkMail)?.file_name || '')+' · รอ Audit ตรวจ ยังไม่ปิดเคส');
+              exceptionSupportCache.clear();e._detailLoaded=false;e._caseEvidenceLoaded=false;
+              if(state.selected===e.id)await openException(e.id,{focusFiles:true});
+              showCaseSubmissionReceipt(e.status==='answered'?'clarification':'review_evidence',e.id);
+            }catch(err){status.textContent='ผูกหลักฐานไม่สำเร็จ: '+err.message;}
+            finally{saving=false;submit.disabled=false;cancel.disabled=false;input.disabled=false;}
+          };
+        });
+        mailButton.disabled=false;mailButton.textContent='ค้นหาใหม่ตามช่วงวันที่';
+      }catch(err){toast('โหลดเอกสารเมลไม่ได้: '+err.message,'warn');mailButton.disabled=false;}
+    };
+    if(e._openClarificationPicker){e._openClarificationPicker=false;setTimeout(()=>mailButton.click(),0);}
+    bindStoredFileLinks(host);
+    $("#caseGoAllFiles")?.addEventListener("click", () => (closeDrawer(), go("cloud", { filters: { date: e.date, from: e.date, to: e.date, company: e.company } })));
+    if (options.focusFiles) setTimeout(() => host.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  } catch (error) {
+    if (!document.body.contains(host)) return;
+    host.innerHTML = `<div class="case-files-empty bad"><b>โหลดไฟล์ประกอบไม่สำเร็จ</b><span>${h(error.message)}</span><button class="ghost-button sm" id="caseFilesRetry">ลองใหม่</button></div>`;
+    $("#caseFilesRetry")?.addEventListener("click", () => (exceptionSupportCache.delete(cacheKey), loadExceptionSupport(e, options)));
+  }
+}
+
+function clarificationReturnCommitted(id) {
+  const e=DB.exceptions.find(row=>row.dbId===id);if(e)e.status='clarifying';
+  if(responderQueueCache){
+    responderQueueCache.rows.forEach(row=>{if(row.id===id)row.status='clarifying';});
+    responderQueueCache.at=0;
+  }
+  $('#viewRoot')?.auditQueueUpdateInPlace?.();
+  renderNav();
+}
+async function openEvidenceRelatedCase(id, options = {}) {
+  const actor=Sb.authUser()?.id,role=state.role,route=state.route;
+  const row = await Sb.exceptionDetail(id);
+  if(actor!==Sb.authUser()?.id||role!==state.role||route!==state.route)return;
+  if (!row || !canAccessCompany(row.company)) throw new Error('ไม่พบเคสหรือไม่มีสิทธิ์เข้าถึงบริษัทนี้');
+  const item = mapLiveException(row);
+  item.id = row.id;
+  const index = DB.exceptions.findIndex(e => e.dbId === item.dbId);
+  if (index < 0) DB.exceptions.push(item); else DB.exceptions[index] = item;
+  reviewQueueIds = [];
+  closeModal();
+  await openException(item.id, options);
+}
+async function openClosedEvidenceCorrection(e) {
+  if(state.dataset!=='production'||!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('เฉพาะหัวหน้า/ผู้ดูแลของบริษัทนี้เท่านั้น');
+  const [fresh,files]=await Promise.all([Sb.exceptionDetail(e.dbId),Sb.caseEvidence(e.dbId)]);
+  if(!fresh||!['closed','approved'].includes(fresh.status))throw new Error('สถานะล่าสุดไม่ใช่เคสปิดแล้ว กรุณาโหลดใหม่');
+  const replaced=new Set(files.map(f=>f.replaces_evidence_id).filter(Boolean));
+  const originals=files.filter(f=>!replaced.has(f.id)).map(f=>({value:'evidence:'+f.id,name:f.file_name}));
+  if(fresh.clarification_file_id&&!files.some(f=>f.replaces_source_file_id===fresh.clarification_file_id))originals.push({value:'source:'+fresh.clarification_file_id,name:'ไฟล์ชี้แจงเดิม · '+(e._clarificationFileName||fresh.clarification_file_id)});
+  openModal('แก้ไขหลักฐาน · '+h(caseLabel(e)),
+    `<p>เคสปิดแล้ว · เก็บไฟล์เดิมและประวัติ · ไม่เปิดเคสใหม่ ไม่เปลี่ยนยอดหรือผลอนุมัติ</p>
+    <div class="evidence-correction-fields"><label>หลักฐานเดิมที่แนบผิด<select id="correctionOriginal"><option value="">เลือกหลักฐานเดิม</option>${originals.map(f=>`<option value="${h(f.value)}">${h(f.name)}</option>`).join('')}</select></label>
+    ${originals.length?'':'<p class="alert warn">ไม่พบหลักฐานแนบที่เลือกแทนได้ กรุณาตรวจไฟล์ต้นทางก่อน ไม่สร้างหลักฐานทดแทนอัตโนมัติ</p>'}
+    <label>เหตุผลที่แก้ไข<textarea id="correctionReason" maxlength="2000" placeholder="เช่น แนบผิดเคส หรือเลือกไฟล์ผิด"></textarea></label>
+    <label>ไฟล์หลักฐานใหม่<input type="file" id="correctionFile" accept="image/*,.pdf,.docx,.csv,.xlsx,.txt"></label>
+    <label class="evidence-correction-confirm"><input type="checkbox" id="correctionConfirm"><span>ตรวจเคสและไฟล์ใหม่แล้ว ยืนยันให้เก็บไฟล์เดิมและบันทึกเหตุผล</span></label></div>
+    <p id="correctionProgress" role="status"></p>
+    <div id="correctionRecovery" class="alert warn" hidden><p>คำขอเดิมและไฟล์ยังอยู่ในหน้าต่างนี้ กรุณาอย่ารีเฟรชหรือเลือกไฟล์ซ้ำ</p><button class="ghost-button" id="correctionRetry">ตรวจ / ลองบันทึกต่อโดยไม่แนบไฟล์ซ้ำ</button></div>`,
+    '<button class="ghost-button" id="correctionCancel">ยกเลิก</button><button class="primary-button" id="correctionSave">ยืนยันบันทึกหลักฐานใหม่</button>');
+  $('#correctionCancel').onclick=closeModal;
+  const completeCorrection=async()=>{
+    e._caseEvidenceLoaded=false;e._detailLoaded=false;
+    closeModal();toast('แก้หลักฐานแล้ว เก็บต้นฉบับและประวัติครบ — เคสยังปิดเดิม ยอดไม่เปลี่ยน');
+    await openException(e.id);
+  };
+  const showCorrectionRecovery=()=>{
+    const pending=(Sb.pendingCaseEvidence(e.dbId)||[]).at(-1),recovery=$('#correctionRecovery'),retry=$('#correctionRetry');
+    if(!pending||!recovery||!retry)return null;
+    recovery.hidden=false;retry.dataset.evidenceId=pending.id;retry.disabled=!!pending.busy;
+    return pending;
+  };
+  $('#correctionRetry').onclick=async()=>{
+    const retry=$('#correctionRetry'),button=$('#correctionSave'),progress=$('#correctionProgress');
+    const pending=showCorrectionRecovery();
+    if(!pending){progress.textContent='ไม่พบคำขอเดิมในหน้าต่างนี้ กรุณาเลือกไฟล์ใหม่อีกครั้ง';return;}
+    try{
+      retry.disabled=true;button.disabled=true;$('#correctionCancel').disabled=true;
+      await Sb.resumeCaseEvidence(pending.id);
+      await completeCorrection();
+    }catch(error){progress.textContent=error.message;retry.disabled=false;button.disabled=false;$('#correctionCancel').disabled=false;showCorrectionRecovery();}
+  };
+  $('#correctionSave').onclick=async()=>{
+    const button=$('#correctionSave'),progress=$('#correctionProgress');
+    try{
+      const original=$('#correctionOriginal').value,reason=$('#correctionReason').value.trim(),file=$('#correctionFile').files[0];
+      if(!originals.some(f=>f.value===original)||!reason||!file||!$('#correctionConfirm').checked)throw new Error('เลือกหลักฐานเดิม ระบุเหตุผล เลือกไฟล์ใหม่ และติ๊กยืนยันก่อนบันทึก');
+      if(!['lead','admin'].includes(state.role)||!canAccessCompany(e.company))throw new Error('สิทธิ์ผู้ใช้งานเปลี่ยน กรุณาโหลดใหม่');
+      button.disabled=true;$('#correctionCancel').disabled=true;
+      const [kind,id]=original.split(':');
+      await Sb.uploadCaseEvidence(e.dbId,file,stage=>{progress.textContent=stage;},{reason,evidenceId:kind==='evidence'?id:null,sourceFileId:kind==='source'?id:null});
+      await completeCorrection();
+    }catch(error){progress.textContent=error.message;button.disabled=false;$('#correctionCancel').disabled=false;showCorrectionRecovery();}
+  };
+}
+
+const caseOpenDrafts = new Map();
+let caseOpenTicket = null;
+function caseOpenActor() { return `${state.dataset}|${typeof Sb!=='undefined'?Sb.authUser()?.id||'':''}|${state.role}`; }
+function caseOpenDraftKey(e) { return `${caseOpenActor()}|${caseUiKey(e)}`; }
+function captureCaseOpenDraft() {
+  const drawer=$('#drawer'),key=drawer?.dataset.caseDraftKey;
+  if(!key || !key.startsWith(caseOpenActor()+'|'))return;
+  const note=$('#noteText'),response=$('#responseText');
+  if(!note && !response)return;
+  caseOpenDrafts.set(key,{note:note?.value||'',response:response?.value||''});
+}
+function clearSavedCaseDraft(e,field,submitted) {
+  const key=caseOpenDraftKey(e),draft=caseOpenDrafts.get(key);
+  const input=$('#drawer')?.dataset.caseDraftKey===key?$(field==='note'?'#noteText':'#responseText'):null;
+  if(input && input.value.trim()===submitted.trim())input.value='';
+  if(draft && draft[field]?.trim()===submitted.trim())draft[field]='';
+}
+function showCaseOpenLoading(e,error) {
+  const drawer=$('#drawer'),overlay=$('#drawerOverlay');
+  clearTimeout(drawer._hideTimer);drawer._hideTimer=null;
+  delete drawer.dataset.caseDraftKey;
+  drawer.innerHTML=`<header class="drawer-head"><h2>${h(caseLabel(e))}</h2><button id="drawerClose" aria-label="ปิด">✕</button></header><div class="drawer-body"><div role="${error?'alert':'status'}" aria-live="polite" aria-busy="${!error}"><h3>${error?'ยังเปิดเคสไม่ได้':'กำลังโหลดรายละเอียดเคส…'}</h3><p>${h(error||'กำลังตรวจสถานะล่าสุด หลักฐาน และประวัติพร้อมกัน · ยังไม่มีการส่งคำขอหรือเปลี่ยนข้อมูล')}</p>${error?'<button id="caseOpenRetry" class="ghost-button">ลองโหลดเคสอีกครั้ง</button>':''}</div></div>`;
+  drawer.hidden=false;overlay.hidden=false;drawer.classList.add('on');AuditUi.open(drawer);
+  $('#drawerClose').onclick=closeDrawer;
+  overlay.onclick=closeDrawer;
+  if(error)$('#caseOpenRetry').onclick=()=>openException(e.id);
+}
+function loadCaseOpenSnapshot(e) {
+  // Start independent reads together. No completed-result cache; writes still
+  // validate current state at the server and invalidate transport flights.
+  return Promise.allSettled([
+    Sb.exceptionDetail(e.dbId),Sb.reviewHoldForCase(e.dbId),
+    state.role==='shift_lead'?Promise.resolve([]):Sb.caseNotes(e.dbId),
+    Sb.clarificationInstructions(e.dbId),Sb.clarificationHistory(e.dbId),Sb.caseEvidence(e.dbId),
+  ]);
+}
+function applyCaseOpenSnapshot(e,results) {
+  const [detail,hold,notes,instructions,history]=results;
+  if(detail.status==='rejected')throw detail.reason;
+  if(!detail.value)throw Error('ไม่พบเคสล่าสุด');
+  if(hold.status==='rejected')throw hold.reason;
+  const register=results[5];
+  if(register?.status==='rejected')throw register.reason;
+  Object.assign(e,mapLiveException(detail.value),{notes:e.notes||[],evidence:e.evidence||[],_detailLoaded:true});
+  e.reviewHold=hold.value;
+  if(register){
+    if(!Array.isArray(register.value))throw Error('อ่านทะเบียนหลักฐานไม่ครบ');
+    e.evidence=register.value.map(f=>({id:f.id,name:f.file_name,size:f.size_bytes,at:f.created_at,storagePath:f.storage_path,correctionReason:f.correction_reason,replacesEvidenceId:f.replaces_evidence_id,replacesSourceFileId:f.replaces_source_file_id,uploadedBy:f.uploaded_by,replacedBy:register.value.find(next=>next.replaces_evidence_id===f.id)?.id}));
+    e._caseEvidenceLoaded=true;
+  }
+  if(e._caseEvidenceLoaded)e.hasEvidence=e.hasEvidence||(e.evidence||[]).some(file=>file.storagePath);
+  e.notes=notes.status==='fulfilled'?notes.value:[];
+  e.clarificationInstructions=instructions.status==='fulfilled'?instructions.value:[];
+  e.clarificationInstructionsError=instructions.status==='rejected'?instructions.reason.message:null;
+  e.clarificationHistory=history.status==='fulfilled'?history.value:[];
+  e.clarificationHistoryError=history.status==='rejected'?history.reason.message:null;
+  if(notes.status==='rejected')toast('โหลด Note ส่วนกลางไม่สำเร็จ: '+notes.reason.message,'warn');
+}
+async function openException(id, options = {}) {
+  const e = DB.exceptions.find((x) => x.id === id);
+  if (!e) return toast('ไม่พบรายละเอียดเคสจริง กรุณารีเฟรชข้อมูลแล้วลองใหม่', 'warn');
   if (!canAccessCompany(e.company)) return toast('บัญชีนี้ไม่มีสิทธิ์เปิดเคสของบริษัท ' + e.company, 'warn');
   captureCaseOpenDraft();
   const actor=caseOpenActor(),route=state.route;
