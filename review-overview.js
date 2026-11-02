@@ -12,12 +12,12 @@ const ReviewOverview = (() => {
     const code=String(item?.code||item?.id||'').trim();
     const date=String(item?.business_date||item?.date||fallbackDate||'').slice(0,10);
     const legacy=code.match(/^EX-(\d+)(?:$|-C)/i);
-    if(date==='2026-10-25'&&legacy){
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&legacy){
       const ordinal=Number(legacy[1])-3000;
       if(ordinal>0&&ordinal<=999){
         const rawCompany=String(item?.company||fallbackCompany||'').trim().toUpperCase();
         const company=rawCompany==='UFABET7M'?'7M':rawCompany;
-        return `${company}-25.10.2026-${String(ordinal).padStart(3,'0')}`;
+        return `${company}-${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(0,4)}-${String(ordinal).padStart(3,'0')}`;
       }
     }
     return code;
