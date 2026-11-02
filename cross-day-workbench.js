@@ -146,7 +146,7 @@ const CrossDayWorkbench = (() => {
         }
         host.querySelectorAll('[data-cross-case]').forEach(button=>button.closest('.cross-day-case').classList.toggle('active',button.dataset.crossCase===active));
         const count=$('#crossDayBoPickCount');if(count)count.textContent=`เลือกไว้ ${visibleCases().filter(c=>picked.has(c.id)).length} เคส`;
-        const comparison=$('#crossDayComparison');if(comparison)comparison.textContent=d?`กำลังตรวจ BO ${current()?.code||''} · STM ${d.row.source_mode==='image'?'ภาพหน้า':'แถว'} ${d.row.rowNo} · ยังไม่บันทึก`:'เลือก BO ทางซ้าย แล้วเลือกแถว STM หรือส่งตรวจจากภาพทางขวา';
+        const comparison=$('#crossDayComparison');if(comparison)comparison.textContent=d?`กำลังตรวจ BO ${caseLabel(current())} · STM ${d.row.source_mode==='image'?'ภาพหน้า':'แถว'} ${d.row.rowNo} · ยังไม่บันทึก`:'เลือก BO ทางซ้าย แล้วเลือกแถว STM หรือส่งตรวจจากภาพทางขวา';
         restorePosition(host,position);
       };});
       const boList=host.querySelector('.cross-day-cases');

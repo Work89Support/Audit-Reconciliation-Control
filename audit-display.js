@@ -18,5 +18,19 @@
   return `${get('day')} ${get('month')} ${get('year')} เวลา ${get('hour')}:${get('minute')} น. (เวลาไทย)`;
  }
  function dateOnly(value){const text=String(value||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(text))return 'ไม่พบวันที่ที่ถูกต้อง';const date=new Date(text+'T00:00:00+07:00');if(!Number.isFinite(date.getTime())||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Bangkok',year:'numeric',month:'2-digit',day:'2-digit'}).format(date)!==text)return 'ไม่พบวันที่ที่ถูกต้อง';return new Intl.DateTimeFormat('th-TH-u-ca-gregory',{timeZone:'Asia/Bangkok',day:'numeric',month:'short',year:'numeric'}).format(date);}
- root.AuditDisplay={dateTime,dateOnly};if(typeof module!=='undefined')module.exports=root.AuditDisplay;
+ function caseCode(item,fallbackCompany='',fallbackDate=''){
+  const code=String(item?.code||item?.id||'').trim();
+  const date=String(item?.business_date||item?.date||fallbackDate||'').slice(0,10);
+  const legacy=code.match(/^EX-(\d+)(?:$|-C)/i);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(date)&&legacy){
+   const ordinal=Number(legacy[1])-3000;
+   if(ordinal>0&&ordinal<=999){
+    const rawCompany=String(item?.company||fallbackCompany||'').trim().toUpperCase();
+    const company=rawCompany==='UFABET7M'?'7M':rawCompany;
+    if(company)return `${company}-${date.slice(8,10)}.${date.slice(5,7)}.${date.slice(0,4)}-${String(ordinal).padStart(3,'0')}`;
+   }
+  }
+  return code;
+ }
+ root.AuditDisplay={dateTime,dateOnly,caseCode};if(typeof module!=='undefined')module.exports=root.AuditDisplay;
 })(typeof window==='undefined'?globalThis:window);

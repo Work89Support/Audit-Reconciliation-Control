@@ -9,6 +9,7 @@ const ReviewOverview = (() => {
   const holdFor=row=>typeof AccountReviewHolds!=='undefined'?AccountReviewHolds.match(row):null;
   const canClarifyCase=row=>!holdFor(row)&&['open','pending_next_day'].includes(row.status);
   function displayedCaseCode(item,fallbackCompany='',fallbackDate='') {
+    if(typeof AuditDisplay!=='undefined'&&AuditDisplay?.caseCode)return AuditDisplay.caseCode(item,fallbackCompany,fallbackDate);
     const code=String(item?.code||item?.id||'').trim();
     const date=String(item?.business_date||item?.date||fallbackDate||'').slice(0,10);
     const legacy=code.match(/^EX-(\d+)(?:$|-C)/i);
@@ -193,7 +194,13 @@ const ReviewOverview = (() => {
     if(savedView){Object.assign(values,savedView.values);columnRules=savedView.columnRules;columnSort=savedView.columnSort;page=savedView.page;preliminaryOnly=savedView.preliminaryOnly;pendingActions=savedView.pendingActions;statusSelected=savedView.statusSelected;}
     const amount = n => n == null ? '—' : Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
     const timestamp = side => !side?.date ? 'ไม่ระบุ' : `${side.date} ${Number.isFinite(side.sec) ? new Date(side.sec*1000).toISOString().slice(11,19) : 'ไม่ระบุเวลา'}`;
-    const customer = p => `<small>บัญชีลูกค้า: ${escape(p?.account || (p?.last4 ? 'ปิดบังเลขบัญชี · ท้าย '+p.last4 : 'ไม่ระบุ'))}<br>ธนาคารลูกค้า: ${escape(p?.bank || 'ไม่ระบุ')}<br>ชื่อ: ${escape(p?.name || 'ไม่ระบุ')}<br>User: ${escape(p?.user || 'ไม่ระบุ')}<br>อ้างอิง: ${escape(p?.reference || 'ไม่ระบุ')}${p?.description ? '<br>รายละเอียดต้นฉบับ: '+escape(p.description) : ''}</small>`;
+    const customer = p => {
+      const money=n=>n===null||n===undefined||n===''?'—':Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const statementContext=p?.noTime&&p?.statementOrder!=null
+        ? `<br><strong>ตำแหน่ง Statement:</strong> ลำดับ ${escape(p.statementOrder)} · หน้า ${escape(p.page??'ไม่ระบุ')} · แถว ${escape(p.sourceLine??'ไม่ระบุ')}<br><strong>ยอดคงเหลือ:</strong> ${escape(money(p.balance))} · ก่อนหน้า ${escape(money(p.previousBalance))} · ถัดไป ${escape(money(p.nextBalance))}`
+        : '';
+      return `<small>บัญชีลูกค้า: ${escape(p?.account || (p?.last4 ? 'ปิดบังเลขบัญชี · ท้าย '+p.last4 : 'ไม่ระบุ'))}<br>ธนาคารลูกค้า: ${escape(p?.bank || 'ไม่ระบุ')}<br>ชื่อ: ${escape(p?.name || 'ไม่ระบุ')}<br>User: ${escape(p?.user || 'ไม่ระบุ')}<br>อ้างอิง: ${escape(p?.reference || 'ไม่ระบุ')}${p?.description ? '<br>รายละเอียดต้นฉบับ: '+escape(p.description) : ''}${statementContext}</small>`;
+    };
     function legacyRowHtml(row) {
       const p=row.pair, e=row.case;
       const b=p ? timestamp(p.bo) : e.bo_date ? `${e.bo_date} ${e.bo_time || 'ไม่ระบุเวลา'}` : 'ไม่พบ BO';

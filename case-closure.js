@@ -146,7 +146,7 @@ const CaseClosure=(()=>{
       $('#closureBulkResult').textContent='กำลังตรวจและดำเนินการทีละเคส กรุณารอ ไม่กดส่งซ้ำ';
       try{
         const results=await approveBulkReviewed(reviewed);
-        $('#closureBulkResult').textContent=results.map(r=>`${r.q.company} ${r.q.snapshot?.code||r.q.exception_id}: ${r.ok?'ปิดสำเร็จ':r.error}`).join('\n');
+        $('#closureBulkResult').textContent=results.map(r=>`${caseLabel({...r.q.snapshot,company:r.q.company,date:r.q.business_date,code:r.q.snapshot?.code||r.q.exception_id})}: ${r.ok?'ปิดสำเร็จ':r.error}`).join('\n');
         $('#closureBulkCancel').disabled=false;$('#closureBulkCancel').textContent='กลับไปตรวจคิวล่าสุด';
         $('#closureBulkCancel').onclick=async()=>{closeModal();await refresh();};
       }catch(err){$('#closureBulkResult').textContent=err.message+' — ตรวจสถานะก่อนลองซ้ำ';$('#closureBulkCancel').disabled=false;}
@@ -288,7 +288,7 @@ const CaseClosure=(()=>{
     queueActions.append(retry);host.querySelector('.closure-hub-heading').append(queueActions);
     if(!rows.length||recentHistory.length){
       const info=document.createElement('p');info.setAttribute('role','status');
-      info.textContent=recentHistory.length?'ไม่มีคำขอรอในฐานข้อมูลขณะตรวจ ประวัติคำขอล่าสุด: '+recentHistory.map(q=>(q.company||'')+' '+(q.snapshot?.code||q.exception_id)+' ('+(q.status==='approved'?'อนุมัติแล้ว':'ส่งกลับ Audit')+')').join(' · '):'ไม่มีคำขอรอในข้อมูลล่าสุด · เลือกดูประวัติเมื่อต้องการ ไม่โหลดประวัติซ้ำตอนสลับบริษัท';
+      info.textContent=recentHistory.length?'ไม่มีคำขอรอในฐานข้อมูลขณะตรวจ ประวัติคำขอล่าสุด: '+recentHistory.map(q=>caseLabel({...q.snapshot,company:q.company,date:q.business_date,code:q.snapshot?.code||q.exception_id})+' ('+(q.status==='approved'?'อนุมัติแล้ว':'ส่งกลับ Audit')+')').join(' · '):'ไม่มีคำขอรอในข้อมูลล่าสุด · เลือกดูประวัติเมื่อต้องการ ไม่โหลดประวัติซ้ำตอนสลับบริษัท';
       const historyButton=document.createElement('button');historyButton.className='ghost-button sm';historyButton.textContent='ดูคำขอที่อนุมัติแล้วและประวัติ';
       historyButton.onclick=()=>{const select=$('#closureQueueStatus');select.value='ALL';select.onchange({target:select});};
       host.querySelector('.closure-list-heading').before(info,historyButton);

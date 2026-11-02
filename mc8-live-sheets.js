@@ -65,6 +65,7 @@
   const slots=new WeakMap(),remembered={date:'',company:''};
 
   function displayedCaseCode(item,fallbackCompany='',fallbackDate=''){
+    if(root.AuditDisplay?.caseCode)return root.AuditDisplay.caseCode(item,fallbackCompany,fallbackDate);
     const code=String(item?.code||item?.id||'').trim();
     const date=String(item?.business_date||item?.date||fallbackDate||'').slice(0,10);
     const legacy=code.match(/^EX-(\d+)(?:$|-C)/i);
@@ -374,7 +375,7 @@
             &&s?.fileId===boSource?.fileId&&s?.row===boSource?.row;
         });
         if(history.length===1){
-          row.case=history[0];row.key=history[0].id;row.code=history[0].code||history[0].id;
+          row.case=history[0];row.key=history[0].id;row.code=displayedCaseCode(history[0],row.company,row.boDate);
           row.kind=history[0].status==='closed'?'closed':'review';
           row.reason=[row.reason,`${history[0].customer_details?.manual_primary_id===data?.primaryResult?.id?'เคสชุดใหม่':'เคสประวัติ'} ${row.code}: ${history[0].status}`,history[0].resolution_note].filter(Boolean).join(' · ');
         }
@@ -781,7 +782,19 @@
     const amount=row.pmSource?.amountColumn||(ant?'รอยืนยันช่องยอด ANT':row.direction==='deposit'?'realAmount':/^(AT|M)$/.test(providerOf(row.account))?'transferredAmount':'amount');
     return {time,amount};
   }
-  function sourceCondition(row){if(row.waiting)return row.reason;const s=sourceColumns(row);return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`,row.pmSource?.noTime&&row.pmSource?.fileId?`STM ไฟล์ ${row.pmSource.fileId} · แถว ${row.pmSource.row??'ไม่ระบุ'}`:''].filter(Boolean).join(' · ');}
+  function sourceCondition(row){
+    if(row.waiting)return row.reason;
+    const s=sourceColumns(row),source=row.pmSource||{},balance=n=>n===null||n===undefined||n===''?'—':Number(n).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const noTimeContext=source.noTime&&source.fileId
+      ? [`STM ไฟล์ ${source.fileId}`,
+          `หน้า ${source.page??'ไม่ระบุ'} · แถวต้นฉบับ ${source.sourceLine??source.row??'ไม่ระบุ'}`,
+          source.statementOrder!=null?`ลำดับใน Statement ${source.statementOrder}`:'',
+          source.balance!=null?`ยอดคงเหลือ ${balance(source.balance)}`:'',
+          source.previousBalance!=null?`ก่อนหน้า ${balance(source.previousBalance)}`:'',
+          source.nextBalance!=null?`ถัดไป ${balance(source.nextBalance)}`:''].filter(Boolean).join(' · ')
+      :'';
+    return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`,noTimeContext].filter(Boolean).join(' · ');
+  }
   function allExportRow(row,complete){
     const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pm||{};
     const state=row.kind==='closed'?'ปิดเคสแล้ว':row.waiting?'รอ STM/PM':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':displayKind(row)==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
@@ -1111,7 +1124,7 @@
         ${caseReceipt?`<p role="status">${esc(caseReceipt)}</p>`:''}
         ${waitingStatementPanel(waiting)}
         ${root.AccountRecheck?.reportPanel(data?.confirmedRechecks||[])||''}
-${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผลตรวจมือเป็นผลหลักแล้ว</strong>${root.ManualPrimary.noticeInfo(data.primaryResult)}<p>${data.caseHistoryDeferred?'ประวัติเคสเดิมยังไม่โหลดในหน้านี้ เพื่อให้ผลหลักขนาดใหญ่แสดงได้ · ข้อมูลเดิมยังอยู่ครบ':`เคสเดิม ${(data.caseHistory||[]).length} เคส — คงสถานะเดิมทุกเคส`}</p>${!data.primaryResult.case_set&&opts.onNewCaseSet?`<button id="mc8-new-primary-cases">ทบทวนสร้างเคสชุดใหม่จากผลหลักนี้</button>`:''}${data.caseHistoryDeferred?'':`<details><summary>ประวัติเคสเดิม — ไม่รวมยอดซ้ำในผลหลักใหม่</summary>${(data.caseHistory||[]).map(e=>`<p>${esc(e.code||e.id)} · ${esc(e.status)} · ${esc(e.account)} <button data-live-case="${esc(e.id)}">ดูเคสเดิม</button></p>`).join('')}</details>`}</section>`:''}
+${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผลตรวจมือเป็นผลหลักแล้ว</strong>${root.ManualPrimary.noticeInfo(data.primaryResult)}<p>${data.caseHistoryDeferred?'ประวัติเคสเดิมยังไม่โหลดในหน้านี้ เพื่อให้ผลหลักขนาดใหญ่แสดงได้ · ข้อมูลเดิมยังอยู่ครบ':`เคสเดิม ${(data.caseHistory||[]).length} เคส — คงสถานะเดิมทุกเคส`}</p>${!data.primaryResult.case_set&&opts.onNewCaseSet?`<button id="mc8-new-primary-cases">ทบทวนสร้างเคสชุดใหม่จากผลหลักนี้</button>`:''}${data.caseHistoryDeferred?'':`<details><summary>ประวัติเคสเดิม — ไม่รวมยอดซ้ำในผลหลักใหม่</summary>${(data.caseHistory||[]).map(e=>`<p>${esc(displayedCaseCode(e,company,date))} · ${esc(e.status)} · ${esc(e.account)} <button data-live-case="${esc(e.id)}">ดูเคสเดิม</button></p>`).join('')}</details>`}</section>`:''}
         ${data?.waitingHistoryError?'<p role="alert">แสดงผลกระทบยอดหลักแล้ว แต่ประวัติเคส BO รอ STM บางส่วนยังโหลดไม่ได้ · ไม่กระทบจำนวนคู่หรือยอดของผลหลัก</p>':''}
         ${data?.recheckReportError?'<p role="alert">ยังโหลดรายงานตรวจซ้ำเพิ่มเติมไม่ได้ · ผลรอบบริษัทด้านล่างยังเป็นผลเดิม</p>':''}
         ${data?.run?`<p>วันที่ผลที่โหลด: <strong>${esc(date)}</strong> · Run: ${esc(data.run.id)} · สถานะงาน: ${data.run.retainedCompletedResult?'ผลเดิมจบแล้ว · พักรันซ้ำ':esc(data.run.jobStatus)}</p>${data.run.retainedCompletedResult?'<p role="status">พักเฉพาะบอทรันซ้ำ · ใช้ผลเดิมที่จบแล้วดำเนินเคสตามสิทธิ์ปกติ ไฟล์ที่มาเพิ่มยังไม่รวมในผลนี้ · เคสรอ STM/PM หรือหลักฐานขาดจริงยังคงต้องตรวจ</p>':''}${data.run.retainedResultError?'<p role="alert">ยังตรวจสถานะพักรันและผลเดิมไม่สำเร็จ กรุณาโหลดใหม่ · ไม่ถือว่าผลครบ</p>':''}<p>ระบบรายงานจับคู่ ${esc(data.run.matched??'ไม่ระบุ')} คู่ · มีหลักฐานคู่ ${evidence} คู่ · ผลรอบใหม่ต้องตรวจ ${esc(data.run.exception_count??'ไม่ระบุ')} เคส</p>${!complete?'<p role="alert" class="mc8-warning">โหลดผลหรือหลักฐานคู่ไม่ครบ · ห้ามใช้ยอดนี้ยืนยันปิดงาน</p>':'<p role="status">โหลดผลรอบงานและหลักฐานคู่ครบแล้ว · ไม่ได้หมายความว่าปิดเคสทั้งหมด</p>'}${all.some(row=>row.waiting)?`<p role="status">${esc(waitingCaseNotice(all))}</p>`:''}
@@ -1154,7 +1167,7 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
           const sheets=buildAuditExportSheets(all,company,date,complete,root.MC8SheetSchema,data?.run?.summary?.bo_first,data?.xbInformation);
           sheets.push(...(root.AccountRecheck?.confirmedSheets(data?.confirmedRechecks||[])||[]));
           if(data?.primaryResult)sheets.push(...root.ManualPrimary.sheets(data.primaryResult));
-          if(data?.primaryResult)sheets.push({name:'ประวัติเคสเดิม',title:'สถานะจริงของเคสเดิม · ไม่รวมเป็นยอดผลหลักใหม่',headers:['เคส','บัญชี','ประเภท','สถานะ','ยอด BO เดิม','ยอด STM เดิม'],rows:(data.caseHistory||[]).map(e=>[e.code||e.id,e.account,e.direction,e.status,e.system_amount,e.bank_amount]),widths:[42,30,18,24,20,20]});
+          if(data?.primaryResult)sheets.push({name:'ประวัติเคสเดิม',title:'สถานะจริงของเคสเดิม · ไม่รวมเป็นยอดผลหลักใหม่',headers:['เคส','บัญชี','ประเภท','สถานะ','ยอด BO เดิม','ยอด STM เดิม'],rows:(data.caseHistory||[]).map(e=>[displayedCaseCode(e,company,date),e.account,e.direction,e.status,e.system_amount,e.bank_amount]),widths:[42,30,18,24,20,20]});
           const filename=`Audit_${company}_${date}_AllCases.xlsx`;
           const result=opts.exportWorkbook?.(sheets,filename,`บริษัท ${company} · วันที่ ${date} · ${waiting.length?'ยังรอ STM · ห้ามยืนยันปิดงาน':'ข้อมูลครบทุกสถานะ'}`);
           if(!result?.ok)throw new Error(result?.reason||'ตัวเขียน Excel ยังไม่พร้อม');
@@ -1165,9 +1178,9 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
       container.querySelectorAll('[data-live-sheet]').forEach(b=>b.onclick=()=>{sheet=b.dataset.liveSheet;page=0;draw();});
       const prev=container.querySelector('#mc8-live-prev'),next=container.querySelector('#mc8-live-next');if(prev)prev.onclick=()=>{page--;draw();};if(next)next.onclick=()=>{page++;draw();};
       const related=shown.flatMap(row=>(row.relatedAlerts||[]).map(alert=>({row,alert})));
-      if(related.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนที่ผูกกับรายการเดิม"><b>คำเตือนสงสัยเติมซ้ำ — ไม่เพิ่มจำนวนหรือยอดธุรกรรม</b>${related.map(({row,alert})=>`<p>${esc(row.code)} · ${esc(alert.code||alert.id)} <button data-live-case="${esc(alert.id)}">ตรวจคำเตือน</button></p>`).join('')}</section>`);
+      if(related.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนที่ผูกกับรายการเดิม"><b>คำเตือนสงสัยเติมซ้ำ — ไม่เพิ่มจำนวนหรือยอดธุรกรรม</b>${related.map(({row,alert})=>`<p>${esc(row.code)} · ${esc(displayedCaseCode(alert,company,date))} <button data-live-case="${esc(alert.id)}">ตรวจคำเตือน</button></p>`).join('')}</section>`);
       const crossDayWarnings=(sheet==='summary'?all:shown).flatMap(row=>(row.relatedCrossDayWarnings||[]).map(alert=>({row,alert})));
-      if(crossDayWarnings.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนข้ามวันที่ผูกกับรายการเดิม"><b>คำเตือนข้ามวัน ${crossDayWarnings.length} รายการผูกกับ BO เดิม — ไม่ใช่ธุรกรรมหรือยอด STM เพิ่ม</b><p>จัดกลุ่มเฉพาะการแสดงเว็บและ Excel · ผลหลักต้นฉบับ เคส และประวัติไม่เปลี่ยน</p>${crossDayWarnings.map(({row,alert})=>`<p>${esc(row.code)} · คำเตือน ${esc(alert.code||alert.id)} · ${esc(alert.detail||'')}${alert.id?` <button data-live-case="${esc(alert.id)}">ดูคำเตือนเดิม</button>`:''}</p>`).join('')}</section>`);
+      if(crossDayWarnings.length)container.insertAdjacentHTML('beforeend',`<section class="mc8-source-note" aria-label="คำเตือนข้ามวันที่ผูกกับรายการเดิม"><b>คำเตือนข้ามวัน ${crossDayWarnings.length} รายการผูกกับ BO เดิม — ไม่ใช่ธุรกรรมหรือยอด STM เพิ่ม</b><p>จัดกลุ่มเฉพาะการแสดงเว็บและ Excel · ผลหลักต้นฉบับ เคส และประวัติไม่เปลี่ยน</p>${crossDayWarnings.map(({row,alert})=>`<p>${esc(row.code)} · คำเตือน ${esc(displayedCaseCode(alert,company,date))} · ${esc(alert.detail||'')}${alert.id?` <button data-live-case="${esc(alert.id)}">ดูคำเตือนเดิม</button>`:''}</p>`).join('')}</section>`);
       const newSet=container.querySelector('#mc8-new-primary-cases');if(newSet)newSet.onclick=()=>opts.onNewCaseSet(data.primaryResult.id,()=>load({preserveView:true}));
       container.querySelectorAll('[data-live-case]').forEach(b=>b.onclick=async()=>{
         const row=all.find(r=>r.key===b.dataset.liveCase),liveCase=row?.case||all.flatMap(r=>[...(r.relatedAlerts||[]),...(r.relatedCrossDayWarnings||[])]).find(e=>e.id===b.dataset.liveCase)||(data?.caseHistory||[]).find(e=>e.id===b.dataset.liveCase);
