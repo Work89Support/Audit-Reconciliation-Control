@@ -49,5 +49,5 @@ jobs:
             exit 1
           fi
           curl --fail-with-body --silent --show-error --max-time 60 \
-            --request GET "$COOLIFY_WEBHOOK" \
+            --request POST "$COOLIFY_WEBHOOK" \
             --header "Authorization: Bearer $COOLIFY_TOKEN"
