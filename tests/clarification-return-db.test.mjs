@@ -28,6 +28,7 @@ const oldDeadline=fs.readFileSync('supabase/20261005_document_closure_workflow.s
 await db.exec(oldDeadline);
 await db.exec(fs.readFileSync('supabase/20261013_clarification_instructions.sql','utf8'));
 const migration=fs.readFileSync('supabase/20261017_return_clarification.sql','utf8');await db.exec(migration);await db.exec(migration);
+const receiptMigration=fs.readFileSync('supabase/20261103_return_clarification_request_receipt.sql','utf8');await db.exec(receiptMigration);await db.exec(receiptMigration);
 const companies=['3XB','FR8','AT4','SK8','MR9','MC8','UR9','PS8','UFABET7M'];
 for(const [n,role,active] of [[1,'monitor',true],[2,'audit_assistant',true],[3,'lead',true],[4,'admin',true],[5,'shift_lead',true],[6,'monitor',false],[7,'monitor',true]]){
  await db.query('insert into auth.users values($1)',[id(n)]);await db.query('insert into app_profiles values($1,$2,$3,$4,$4)',[id(n),role,active,'Actor'+n]);
@@ -67,9 +68,25 @@ await seed(307,'FR8',false,null);await actor(1);
 let fresh=(await db.query('select * from exceptions where id=$1',[id(307)])).rows[0];
 await db.query('select return_case_for_clarification($1,$2,$3,$4,$5)',[id(1307),id(307),reason,fresh.updated_at,fresh.responded_at]);
 assert.equal((await db.query('select document_due_at from exceptions where id=$1',[id(307)])).rows[0].document_due_at,null);
+// A case answered without a prior clarification request must become visible to
+// the responder queue after Audit returns it. The return creates request
+// receipt metadata but preserves the answer/evidence and all financial values.
+await seed(308);await db.exec('alter table exceptions disable trigger exceptions_touch;alter table exceptions disable trigger exceptions_document_deadline;');
+await db.query('update exceptions set requested_at=null,requested_by=null,document_due_at=null where id=$1',[id(308)]);
+await db.exec('alter table exceptions enable trigger exceptions_document_deadline;alter table exceptions enable trigger exceptions_touch;');
+await actor(1);fresh=(await db.query('select * from exceptions where id=$1',[id(308)])).rows[0];
+await db.query('select return_case_for_clarification($1,$2,$3,$4,$5)',[id(1308),id(308),reason,fresh.updated_at,fresh.responded_at]);
+const returnedWithoutPriorRequest=(await db.query('select * from exceptions where id=$1',[id(308)])).rows[0];
+assert.equal(returnedWithoutPriorRequest.status,'clarifying');
+assert.ok(returnedWithoutPriorRequest.requested_at,'returned case must have a queue receipt timestamp');
+assert.equal(returnedWithoutPriorRequest.requested_by,id(1));
+assert.ok(returnedWithoutPriorRequest.document_due_at,'first returned request receives the normal company SLA');
+assert.equal(returnedWithoutPriorRequest.response_text,'คำตอบเดิมและประวัติเดิม');
+assert.equal(Number(returnedWithoutPriorRequest.system_amount),100);
+assert.equal(Number(returnedWithoutPriorRequest.bank_amount),100);
 await assert.rejects(db.query('insert into case_clarification_returns(id) values($1)',[id(999)]),/permission denied/);
 await db.exec('reset role;set role anon');await assert.rejects(call(300),/permission denied/);
-await db.exec('reset role');assert.equal((await db.query('select count(*) n from case_clarification_returns')).rows[0].n,19);
-assert.equal((await db.query('select count(*) n from case_evidence')).rows[0].n,26);
+await db.exec('reset role');assert.equal((await db.query('select count(*) n from case_clarification_returns')).rows[0].n,20);
+assert.equal((await db.query('select count(*) n from case_evidence')).rows[0].n,27);
 await db.close();console.log('PASS return clarification: nine companies x manual/system; scoped Audit roles; immutable receipts; atomic instruction/status; original answers, evidence, financial values and SLA retained; retries/stale/holds/reservations/denials covered. Synthetic DB only.');
 
