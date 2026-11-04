@@ -358,6 +358,19 @@ const Registry = (() => {
 },
 {
 "subco": "FR8",
+"provider": "",
+"bank": "SCB",
+"account": "4102050696",
+"accountRaw": "410-205069-6",
+"name": "นาย อำนาจ สาธุชาติ",
+"type": "ถอน-ฝาก",
+"channel": "ENET",
+"source": "bank",
+"file": "SCB อำนาจ ถอน-ฝาก ว/ด/ป.pdf",
+"note": "บัญชียืนยันโดยผู้ดูแล 4 พ.ย. 2026"
+},
+{
+"subco": "FR8",
 "provider": "AUTOPEER",
 "bank": "",
 "account": "",
