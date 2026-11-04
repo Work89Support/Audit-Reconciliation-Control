@@ -172,6 +172,15 @@
     const performedBy=source.performedBy||sourceOperator||'';
     return {...source,performedBy,...(providerReference?{providerReference,note:providerReference}:{})};
   }
+  function boHeadingFromRaw(raw,company){
+    if(!XB_COMPANIES.includes(company))return '';
+    const cells=String(raw||'').split(/\s*\|\s*/);
+    // XB BO transaction export: id | time | type | operation | user |
+    // bank/account heading | amount. Require that layout before using it.
+    if(cells.length<8||!/^\d+$/.test(cells[0])||!/^\d{4}-\d\d-\d\d\s+\d\d:\d\d/.test(cells[1])
+      ||!/^(?:ฝาก|ถอน)$/.test(cells[2])||!Number.isFinite(Number(String(cells[6]).replace(/,/g,''))))return '';
+    return cells[5]&&cells[5]!=='-'?cells[5]:'';
+  }
   function uniqueProviderId(value){
     const ids=[...new Set(String(value??'').toLowerCase().match(/\b[a-f0-9]{24}\b/g)||[])];
     return ids.length===1?ids[0]:'';
@@ -359,6 +368,8 @@
         boTime:[e.boDate||e.date,e.boTime||e.time].filter(Boolean).join(' '),pmTime:'',
         boSource,pmSource:null,boRaw:e.boRaw||'',pmRaw:'',crossDay:false,boTransactionTime:e.boTransactionTime||'',
         code:'ยังไม่สร้างเคส',exType:'waiting_source',reason:e.detail||'อ่าน BO แล้ว · ยังไม่มี STM/PM'};
+      const rawHeading=boHeadingFromRaw(e.boRaw,row.company);
+      if(rawHeading)row.boAccountLabel=rawHeading;
       // Waiting snapshots carry canonical account IDs. Restore a borrowed
       // account's BO label only from the exact source row, never by amount.
       const original=borrowSources.get(`${boSource?.fileId}|${boSource?.row}`);
