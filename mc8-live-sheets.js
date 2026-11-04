@@ -129,12 +129,17 @@
     data.sourceBo=[];
     if(typeof readRows!=='function')return;
     const company=data?.run?.company;
+    // The accepted manual report records the actual parse result. Source-file
+    // registry flags can lag behind it, so use that receipt for this exact BO.
+    const parsedPrimaryBo=new Set((data?.primaryResult?.report?.source_files||[])
+      .filter(item=>item?.parsed===true&&Number(item?.row_count)>0)
+      .map(item=>item?.id).filter(Boolean));
     const needed=new Set([
       ...(data?.run?.summary?.match_evidence||[]).filter(p=>!p.customer?.bo?.performedBy).map(p=>p.bo?.fileId),
       ...(data?.cases||[]).filter(e=>!e.customer_details?.bo?.performedBy).map(e=>e.customer_details?.source_rows?.bo?.fileId)
     ].filter(Boolean));
     const errors=[];
-    for(const file of files.filter(f=>f.kind==='bo_main'&&f.parsed&&!f.parse_error&&f.company===company)){
+    for(const file of files.filter(f=>f.kind==='bo_main'&&(f.parsed||parsedPrimaryBo.has(f.id))&&!f.parse_error&&f.company===company)){
       try{
         const result=await readRows(file,data.run.business_date);
         if(!Array.isArray(result))throw new Error('ข้อมูลต้นทางไม่ใช่รายการ BO');
