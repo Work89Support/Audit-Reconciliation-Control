@@ -9,6 +9,8 @@ assert.equal(canOpenRealCase(actionRow('approved','closed'),true),false);
 assert.equal(canOpenRealCase(actionRow('open','matched'),true),false);
 assert.equal(canOpenRealCase({...actionRow('open'),pmAmount:null,pmRaw:''},true),true);
 assert.equal(canOpenRealCase({...actionRow('open','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),true,'real open BO waiting case must expose open-real-case action');
+assert.equal(canOpenRealCase({...actionRow('clarifying','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),true,'BO waiting case must remain viewable after clarification is requested');
+assert.equal(canOpenRealCase({...actionRow('answered','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),true,'BO waiting case must remain viewable after a clarification reply');
 assert.equal(canOpenRealCase({...actionRow('closed','waiting_source'),waiting:true,pmAmount:null,pmRaw:''},true),false,'closed waiting case must not be reopened');
 assert.equal(canOpenRealCase({kind:'waiting_source',waiting:true,case:undefined,pmAmount:null,pmRaw:''},true),false,'snapshot-only waiting row must not expose a fake action');
 {
