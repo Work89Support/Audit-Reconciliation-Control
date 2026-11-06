@@ -54,12 +54,12 @@ async function runScenario({direction,stmRaw,boRaw,wrongRaw,boStatus='open',boDi
   vm.createContext(context);vm.runInContext(code+';this.api=ManualPairing;',context);
   await context.api.open({dbId:stm.id,id:stm.code,company:'UFABET7M',date:'2026-10-25',direction,type:'missing_bo',status:'open'},'internal');
   assert.equal(calls[0][1],'จับคู่รายการภายในบริษัท');
-  assert.match(html,/ปิดได้เฉพาะ 7M บัญชีเดียวกัน/);
-  assert.match(html,/ความสัมพันธ์ A → B เก็บเป็นหลักฐานได้แต่ใช้ปิดแทนกันไม่ได้/);
+  assert.match(html,/เลือกได้ทุกบัญชี BO ของ 7M บริษัทเดียวกัน/);
+  assert.match(html,/ข้ามบัญชี: STM\/PM ออก ↔ BO รับเข้า/);
   await node('pairSearch').onclick({target:node('pairSearch')});
   assert.equal(candidateArgs[3],null,'internal search must inspect both directions');
   assert.match(node('pairBoAccount').innerHTML,/TMN-1/,'same STM and BO account must be selectable');
-  assert.doesNotMatch(node('pairBoAccount').innerHTML,/TMN-2/,'cross-account relation must not be offered as a closing pair');
+  assert.match(node('pairBoAccount').innerHTML,/TMN-2/,'all BO accounts remain visible before checking pair eligibility');
   node('pairBoAccount').value='TMN-1';node('pairBoAccount').onchange();
   assert.match(node('pairCandidate').innerHTML,new RegExp(bo.id));
   assert.doesNotMatch(node('pairCandidate').innerHTML,new RegExp(wrongBo.id),'opposite adjustment semantic must be rejected');

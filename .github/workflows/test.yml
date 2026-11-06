@@ -19,6 +19,8 @@ jobs:
       # เทสใช้เฉพาะโมดูลในตัวของ Node ไม่มี dependency ภายนอก จึงไม่ต้อง npm install
       - name: Run unit tests
         run: npm test && npm run test:paused-result && node tests/physical-bo-row-count.test.cjs && node tests/shared-difference-basis.test.cjs && node tests/waiting-source-filter.test.cjs
+      - name: Verify PDF parser parity without altering workflow orchestration
+        run: node scripts/sync-worker-pdf-parsers.mjs --check && node tests/worker-pdf-sync.test.mjs
       - name: Verify clarification send receipts without production writes
         run: node tests/clarification-send-confirmation.test.cjs
       - name: Verify trusted late BBL reruns and round schedule
@@ -112,4 +114,27 @@ jobs:
           node tests/password-accounts-db.test.mjs "$RUNNER_TEMP/image-review-db/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify confirmed damage and PM payout guards
         run: node tests/damage-save.test.mjs && node tests/damage-summary.test.mjs && node tests/damage-pagination.test.mjs && node tests/damage-view.test.mjs && node tests/pm-partial-payout.test.mjs
+
+  internal-cross-account:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Verify BO directory and same/cross-account UI without production writes
+        run: node tests/internal-pair-bo-accounts.test.mjs && node tests/internal-cross-account-ui.test.cjs && node tests/seven-m-internal-transfer-manual-pair.test.mjs && npm run test:pairing-upload
+      - name: Install isolated database and browser test runtimes
+        run: |
+          npm install --prefix "$RUNNER_TEMP/internal-pair-tests" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 playwright@1.62.1
+          node "$RUNNER_TEMP/internal-pair-tests/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Verify real SQL migration and guarded actions against synthetic PostgreSQL
+        run: |
+          node tests/internal-cross-account-db.test.mjs "$RUNNER_TEMP/internal-pair-tests/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-pair-scoped-readiness.test.mjs "$RUNNER_TEMP/internal-pair-tests/node_modules/@electric-sql/pglite/dist/index.js"
+          node tests/manual-primary-pair-readiness.test.mjs "$RUNNER_TEMP/internal-pair-tests/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify desktop/mobile interactions in isolated Chromium
+        run: |
+          mkdir -p .test-tools
+          node tests/internal-cross-account-browser.test.cjs "$RUNNER_TEMP/internal-pair-tests/node_modules/playwright"
 
