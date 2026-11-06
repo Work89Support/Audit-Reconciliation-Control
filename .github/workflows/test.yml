@@ -19,6 +19,8 @@ jobs:
       # เทสใช้เฉพาะโมดูลในตัวของ Node ไม่มี dependency ภายนอก จึงไม่ต้อง npm install
       - name: Run unit tests
         run: npm test && npm run test:paused-result && node tests/physical-bo-row-count.test.cjs && node tests/shared-difference-basis.test.cjs && node tests/waiting-source-filter.test.cjs
+      - name: Verify PDF parser parity without altering workflow orchestration
+        run: node scripts/sync-worker-pdf-parsers.mjs --check && node tests/worker-pdf-sync.test.mjs
       - name: Verify clarification send receipts without production writes
         run: node tests/clarification-send-confirmation.test.cjs
       - name: Verify trusted late BBL reruns and round schedule

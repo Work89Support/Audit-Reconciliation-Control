@@ -36,7 +36,7 @@ for(const company of ['3XB','AT4','FR8','SK8','MC8','MR9','PS8','UR9','UFABET7M'
  assert.equal(r.quality.complete,true);
  assert.equal(r.quality.parsedRows,24);assert.equal(r.records.length,12);
  assert.equal(r.quality.outOfDayDirectionRows.length,1);
- assert.equal(r.quality.businessDayPolicy,'bbl_previous_day_direction_v1');
+ assert.equal(r.quality.businessDayPolicy,'bbl_older_day_direction_with_balance_v2');
  assert.ok(r.records.every(r=>r.date==='2026-10-19'&&r.sourceDate==='2026-10-19'));
  assert.equal(r.records.filter(r=>r.direction==='deposit').length,7);
  assert.equal(r.records.filter(r=>r.direction==='withdraw').length,5);
@@ -46,9 +46,19 @@ for(const company of ['3XB','AT4','FR8','SK8','MC8','MR9','PS8','UR9','UFABET7M'
  assert.equal(old.quality.complete,false,'same ambiguous row still blocks its own day');
 }
 for(const extra of ['19/10/26 TRF FR OTH BK unreadable','19/10/26 TRANSFER 12.00 999.00',
- '18/10/26 TRF FR OTH BK unreadable','17/10/26 TRANSFER 12.00 999.00']){
+ '18/10/26 TRF FR OTH BK unreadable','17/10/26 TRANSFER 12.00','20/10/26 TRANSFER 12.00 999.00']){
  const r=await c.P.parseText('SK8_STM_BBL.pdf',text+'\n'+extra,'2026-10-19');
  assert.equal(r.quality.complete,false,extra);
+}
+// v2 permits an older printed row's direction-only diagnostic only when its
+// balance is present and every business-day balance transition is proven.
+const olderOnly=await c.P.parseText('SK8_STM_BBL.pdf',text+'\n17/10/26 TRANSFER 12.00 999.00','2026-10-19');
+assert.equal(olderOnly.quality.complete,true);
+assert.equal(olderOnly.quality.outOfDayDirectionRows.length,2);
+assert.ok(olderOnly.records.every(row=>row.date==='2026-10-19'));
+for(const broken of [text.replace('19/10/26 TRF FR OTH BK 40.00 661.74','19/10/26 TRF FR OTH BK 40.00 662.74'),text.replace('19/10/26 TRF FR OTH BK 50.00 711.74 mPhone\n','')]){
+ const r=await c.P.parseText('SK8_STM_BBL.pdf',broken,'2026-10-19');
+ assert.equal(r.quality.complete,false,'older diagnostic must never conceal a current-day balance gap');
 }
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 for(const name of ['audit-headless-worker','audit-account-recheck','audit-round-worker']){
@@ -65,7 +75,7 @@ for(const name of ['audit-headless-worker','audit-account-recheck','audit-round-
  vm.runInContext(normalized.slice(0,normalized.indexOf('const meta='))+';globalThis.P=PdfStm',runtime);
  const parsed=await runtime.P.parseText('SK8_STM_BBL.pdf',text,'2026-10-19');
  assert.equal(parsed.quality.complete,true);
- assert.equal(parsed.quality.businessDayPolicy,'bbl_previous_day_direction_v1');
+ assert.equal(parsed.quality.businessDayPolicy,'bbl_older_day_direction_with_balance_v2');
 }
 // Reproduce with a locally downloaded original when supplied; never commit it.
 if(process.argv[2]){
