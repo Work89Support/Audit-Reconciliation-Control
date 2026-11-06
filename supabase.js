@@ -1340,6 +1340,29 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     }
   }
 
+  // BO account directory is independent of whether an account has an eligible
+  // open counterpart. Read only the accepted primary, never historical runs.
+  async function manualPairBoAccounts(company,date) {
+    if(!company||!date)throw new Error('เลือกบริษัทและวันที่ก่อน');
+    const primary=await readManualPrimary(company,date);
+    if(primary?.stale||primary?.sourceCheckError)throw new Error(primary.message||primary.sourceCheckError);
+    let coverage=primary?.report?.summary?.bo_first;
+    if(!primary){
+      const jobs=await json(`/rest/v1/daily_recon_jobs?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&is_archived=eq.false&select=last_run_id&limit=1`);
+      if(!jobs[0]?.last_run_id)return [];
+      const runs=await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&select=coverage:summary->bo_first&limit=1`);
+      coverage=runs[0]?.coverage;
+    }
+    const accounts=new Map();
+    for(const row of coverage?.required||[]){
+      if(row.company!==company||!String(row.identity||'').trim())continue;
+      const account=String(row.identity);
+      const label=(row.source_labels||[]).filter(Boolean).join(' / ')||row.label||account;
+      if(!accounts.has(account))accounts.set(account,{account,label});
+    }
+    return [...accounts.values()];
+  }
+
   async function manualPairCandidates(company,date,type,direction=null) {
     if(!company || !date || !['missing_stm','missing_bo'].includes(type)) throw new Error('เลือกบริษัท วันที่ และฝั่งรายการ');
     const adjacent=(value,days)=>{const parsed=new Date(value+'T12:00:00Z');parsed.setUTCDate(parsed.getUTCDate()+days);return parsed.toISOString().slice(0,10);};
@@ -1869,7 +1892,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     leadUserManagementContext,leadUpdateUserAccess,leadCreateUser,
     monthlyAuditContext,createMonthlyAuditSet,monthlyAuditDetail,monthlyAuditItemReview,assignMonthlyAuditReviewer,saveMonthlyAuditAssessment,uploadMonthlyAuditEvidence,
     loginIdentity,displayLogin,adminCreateUsernameUser,
-    manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeInternalTransferPair,closeDocumentCase,closeDocumentCaseWithResponsibility,closeProcessErrorCase,
+    manualPairBoAccounts,manualPairCandidates,manualPair,pendingManualPairs,submitManualPair,decideManualPair,closeManualPair,closeInternalTransferPair,closeDocumentCase,closeDocumentCaseWithResponsibility,closeProcessErrorCase,
     crossDayWorkbench,submitCrossDayPair,crossDayPair,pendingCrossDayPairs,crossDayPairHistory,decideCrossDayPair,
     submitCrossDayImageReview,crossDayImageReview,decideCrossDayImageReview,closeCrossDayPair,closeCrossDayImageReview,
     pendingCaseClosures,caseClosureRequest,caseClosureHistory,pendingDocumentClosurePreview,submitCaseClosure,submitProcessErrorCase,decideCaseClosure,decideProcessErrorCase,approveOwnDocumentClosure,companyCaseSlas,saveCompanyCaseSla,
