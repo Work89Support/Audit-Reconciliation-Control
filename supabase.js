@@ -864,12 +864,13 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
         confirmations.push(...page);if(page.length<1000)break;
       }
     } catch(error) { confirmationError=error.message; }
-    // Read prior-run waiting cases for this company-day, including approved
-    // closures. They annotate exact BO source rows, never add transactions.
+    // Read active BO-side exceptions across runs, including cases created
+    // before waiting_source was introduced. The sheet links them only by the
+    // exact BO file and row; this never adds transactions or creates cases.
     const waitingHistory=[];let waitingHistoryError='';
     try{
       for(let offset=0;;offset+=500){
-        const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&customer_details->>waiting_source=eq.true&superseded_by_exception_id=is.null&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true,recoverRead:true});
+        const page=await json(`/rest/v1/exceptions?company=eq.${encodeURIComponent(company)}&business_date=eq.${encodeURIComponent(date)}&ex_type=eq.missing_stm&superseded_by_exception_id=is.null&select=*&order=created_at.desc,id.asc&limit=500&offset=${offset}`,{includeHistorical:true,recoverRead:true});
         waitingHistory.push(...page);if(page.length<500)break;
       }
     }catch(error){waitingHistoryError=error.message;}

@@ -60,3 +60,17 @@ for(const company of ['3XB','MC8','MR9','PS8','UR9','FR8','AT4','SK8','UFABET7M'
   assert.ok(closedDetail.rowTones.every(tone=>tone===''),'closed waiting rows are not painted red');
   assert.equal(sheets.rowsOf({...d,waitingHistory:[{...h,customer_details:{...h.customer_details,source_rows:{bo:{...w.boSource,row:99}}}}]},company)[0].case,undefined,'equal amount is not identity');
 }
+const legacyWaiting={...waiting,company:'3XB',account:'AZPAY',systemAmount:200000,
+  boDate:'2026-11-08',boTime:'11:09:00',boSource:{fileId:'374982f4-a5e9-4d3e-beff-26757af729a7',row:2359}};
+const legacy={...existing,id:'legacy-bo-case',code:'3XB-08.11.2026-017',company:'3XB',
+  account:'AZPAY',system_amount:200000,bo_date:legacyWaiting.boDate,bo_time:legacyWaiting.boTime,
+  status:'answered',ex_type:'missing_stm',business_date:legacyWaiting.boDate,
+  customer_details:{...existing.customer_details,source_rows:{bo:legacyWaiting.boSource}}};
+const legacyInput={run:{company:'3XB',business_date:legacyWaiting.boDate,summary:{waiting_bo:[legacyWaiting]}},
+  cases:[],waitingHistory:[legacy]};
+const legacyRows=sheets.rowsOf(legacyInput,'3XB');
+assert.equal(legacyRows.length,1,'a historical BO case must not duplicate its source row');
+assert.equal(legacyRows[0].case.id,legacy.id,'legacy BO case is linked by exact source row');
+assert.equal(sheets.canOpenRealCase(legacyRows[0]),true,'Audit can open the existing legacy case');
+assert.equal(sheets.rowsOf({...legacyInput,waitingHistory:[{...legacy,customer_details:{...legacy.customer_details,source_rows:{bo:{...legacyWaiting.boSource,row:2}}}}]},'3XB')[0].case,undefined,
+  'same amount without the same BO source is never enough to link a case');
