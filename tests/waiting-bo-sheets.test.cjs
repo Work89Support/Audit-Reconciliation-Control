@@ -74,3 +74,13 @@ assert.equal(legacyRows[0].case.id,legacy.id,'legacy BO case is linked by exact 
 assert.equal(sheets.canOpenRealCase(legacyRows[0]),true,'Audit can open the existing legacy case');
 assert.equal(sheets.rowsOf({...legacyInput,waitingHistory:[{...legacy,customer_details:{...legacy.customer_details,source_rows:{bo:{...legacyWaiting.boSource,row:2}}}}]},'3XB')[0].case,undefined,
   'same amount without the same BO source is never enough to link a case');
+const actualBoRaw='10841622 | 2026-11-08 11:09 | ถอน | ถอน | | azpay audi333(azpay)(QR) | 200000.00 | | | 2026-11-08 12:09 | 3XB 08-11-69 ถอนเงินออกจาก AZpay เป็น USDT เข้า หลัก B10 ยอด 200,000 บาท เวลา 11.09 น. | น้องติน X1';
+const shiftedWaiting={...legacyWaiting,boRaw:actualBoRaw,boSource:{...legacyWaiting.boSource,row:2360}};
+const shiftedCase={...legacy,bo_raw:actualBoRaw};
+const shiftedInput={...legacyInput,run:{...legacyInput.run,summary:{waiting_bo:[shiftedWaiting]}},waitingHistory:[shiftedCase]};
+assert.equal(sheets.rowsOf(shiftedInput,'3XB')[0].case.id,shiftedCase.id,
+  'same full BO row and file links the existing case despite a legacy row index shift');
+assert.equal(sheets.rowsOf({...shiftedInput,run:{...shiftedInput.run,summary:{waiting_bo:[shiftedWaiting,{...shiftedWaiting,boSource:{...shiftedWaiting.boSource,row:2361}}]}}},'3XB')
+  .every(row=>!row.case),true,'repeated identical BO rows remain ambiguous');
+assert.equal(sheets.rowsOf({...shiftedInput,waitingHistory:[{...shiftedCase,bo_raw:actualBoRaw.replace('10841622','10841623')}]},'3XB')[0].case,undefined,
+  'different BO transaction ID never links to the old case');
