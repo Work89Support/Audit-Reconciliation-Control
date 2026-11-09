@@ -10,7 +10,8 @@ const primaryEnd = supabase.indexOf('  const manualPrimaryCasesPreview', primary
 const primary = supabase.slice(primaryStart, primaryEnd);
 const liveSheets = fs.readFileSync(new URL('../mc8-live-sheets.js', import.meta.url), 'utf8');
 
-assert.match(overview, /customer_details->>waiting_source=eq\.true/);
+assert.match(overview, /ex_type=eq\.missing_stm&superseded_by_exception_id=is\.null/,
+  'BO-only history must include active legacy cases without the waiting_source flag');
 assert.match(overview, /\{includeHistorical:true,recoverRead:true\}/,
   'waiting history must read the indexed base table instead of the active-case projection');
 assert.equal((overview.match(/\{includeHistorical:true,recoverRead:true\}/g)||[]).length, 3,
@@ -19,8 +20,8 @@ assert.match(overview, /catch\(error\)\{waitingHistoryError=error\.message;\}/,
   'auxiliary waiting history must not block the committed reconciliation result');
 assert.match(overview, /return \{ run, cases, waitingHistory, waitingHistoryError, complete: true/);
 assert.match(liveSheets, /ประวัติเคส BO รอ STM บางส่วนยังโหลดไม่ได้/);
-assert.match(primary, /manual_primary_results\?company=eq\./,
-  'large accepted manual results need an indexed read-only fallback');
+assert.match(primary, /read_manual_primary_saved/,
+  'large accepted manual results need a saved read-only fallback');
 assert.match(primary, /sourceCheckError:error\.message/);
 assert.match(primary, /ห้ามยืนยันหรือปิดงานจากหน้านี้จนตรวจไฟล์สำเร็จ/);
 assert.match(overview, /complete:!run\.primaryResult\.sourceCheckError/,
