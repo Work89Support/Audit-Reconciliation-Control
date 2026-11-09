@@ -358,7 +358,9 @@
     const snapshot=data?.run?.boWaitingSnapshot;
     const waitingBo=snapshot?.company===fallbackCompany&&snapshot?.business_date===data?.run?.business_date&&Array.isArray(snapshot.waiting_bo)
       ?snapshot.waiting_bo:Array.isArray(data?.run?.summary?.waiting_bo)?data.run.summary.waiting_bo:[];
-    for(const [index,e] of [...waitingBo,...(data.sourceBo||data.borrowBo||[])].entries()){
+    const allWaitingBo=[...waitingBo,...(data.sourceBo||data.borrowBo||[])];
+    const exactBoRaw=value=>String(value||'').trim().replace(/\s+/g,' ');
+    for(const [index,e] of allWaitingBo.entries()){
       if(e.company&&fallbackCompany&&e.company!==fallbackCompany)continue;
       const boSource=e.boSource||e.customerDetails?.source_rows?.bo;
       const row={key:`waiting-bo-${index}`,isPair:false,kind:'waiting_source',waiting:true,
@@ -384,12 +386,28 @@
       const key=sideKey(row,'bo');
       const source=sourceIdentity(row);
       if(key&&!representedBo.has(key)&&(!source||!representedSources.has(source))){
-        const history=(data.waitingHistory||[]).filter(h=>{
+        let history=(data.waitingHistory||[]).filter(h=>{
           const s=h.customer_details?.source_rows?.bo;
           return h.company===row.company&&h.business_date===row.boDate
             &&directionOf(h.direction)===row.direction&&cents(h.system_amount)===cents(row.boAmount)
             &&s?.fileId===boSource?.fileId&&s?.row===boSource?.row;
         });
+        // Older case materialization may use a different row index for the
+        // same BO file. Fall back only to a unique full source row, never to
+        // amount/time alone; repeated identical BO rows remain unlinked.
+        if(history.length!==1&&boSource?.fileId&&exactBoRaw(row.boRaw).length>=40){
+          const raw=exactBoRaw(row.boRaw);
+          const physicalRows=new Set(allWaitingBo.filter(candidate=>candidate.company===row.company
+            &&candidate.boSource?.fileId===boSource.fileId
+            &&exactBoRaw(candidate.boRaw)===raw)
+            .map(candidate=>`${candidate.boSource?.fileId}|${candidate.boSource?.row}`));
+          if(physicalRows.size===1)history=(data.waitingHistory||[]).filter(h=>{
+            const s=h.customer_details?.source_rows?.bo;
+            return h.company===row.company&&h.business_date===row.boDate
+              &&directionOf(h.direction)===row.direction&&cents(h.system_amount)===cents(row.boAmount)
+              &&s?.fileId===boSource.fileId&&exactBoRaw(h.bo_raw)===raw;
+          });
+        }
         if(history.length===1){
           row.case=history[0];row.key=history[0].id;row.code=displayedCaseCode(history[0],row.company,row.boDate);
           row.kind=history[0].status==='closed'?'closed':'review';
