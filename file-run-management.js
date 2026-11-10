@@ -38,7 +38,7 @@
  function noticeHtml(s){const n=runNotice(s);return `<aside class="manual-note" role="status"><strong>${esc(n.title)}</strong><p>สาเหตุ: ${esc(n.reason)}</p><p>ทำต่อ: ${esc(n.next)}</p></aside>`;}
  function preflightHtml(s){
   const p=s?.preflight;if(!p)return '';
-  const queueCaseLabel=e=>root.AuditDisplay.caseCode({code:e.code,company:e.company||s?.job?.company||s?.company,business_date:e.business_date||e.source_date});
+  const queueCaseLabel=e=>root.AuditDisplay?.caseCode?.({code:e.code,company:e.company||s?.job?.company||s?.company,business_date:e.business_date||e.source_date})||e.code;
   const labels={file_day_mismatch:'วันในชื่อไฟล์ไม่ตรงรอบ',parse_error:'ไฟล์อ่านไม่ผ่าน',files_after_run:'มีไฟล์ใหม่หลังผลเดิม',cross_day_scope:'รายการข้ามวันรอทบทวนเดิม',cross_day_context_unverified:'บริบทหรือแถวต้นทางยังไม่ครบ',historical_primary_protected:'ต้องตรวจผลหลักและเคสเดิมก่อน',source_held:'รอบนี้พักรันหรือมีไฟล์แก้ไข'};
   const warnings=Array.isArray(p.warnings)?p.warnings:[],queue=Array.isArray(p.cross_day_queue)?p.cross_day_queue:[],informational=Array.isArray(p.informational)?p.informational:[];
   return `<aside class="manual-note" role="${p.blocked?'alert':'status'}"><strong>${p.blocked?'พักอัตโนมัติเมื่อพบคำเตือน — รอคนตัดสินใจ':'ตรวจคำเตือนก่อนรันแล้ว — รอบปกติทำงานอัตโนมัติได้'}</strong>
