@@ -13,13 +13,17 @@ const rows=lib.entries(mail,[original,replacement,original,{id:'inaccessible'}])
 assert.equal(rows.length,3,'identity dedupe only; keep both old/replacement and mail');
 assert.equal(JSON.stringify([mail,original,replacement]),before,'never mutate source/history');
 assert.equal(rows.find(r=>r.id==='f1').business_date,'2026-10-10','filter by case date, not upload date');
+assert.equal(rows.find(r=>r.id==='f1').case_label,'3XB-10.10.2026-005','show the same scoped number as the case drawer');
 const meta=lib.previewMeta(rows.find(r=>r.id==='f2'));
 assert.equal(meta.readOnly,true); assert.equal(meta.path,replacement.storage_path); assert.equal(meta.replacesEvidenceId,'f1');
+assert.equal(meta.caseCode,'3XB-10.10.2026-005');
 const html=lib.render(rows);
 assert.match(html,/ปิดเคสแล้ว/); assert.match(html,/แนบผิดชีต/); assert.match(html,/ไฟล์เดิม/);
+assert.match(html,/3XB-10\.10\.2026-005/);
 assert.match(html,/12 ต.ค. 2026 เวลา 08:00 น. \(เวลาไทย\)/);
 assert.doesNotMatch(html,/type="checkbox"|data-pick|data-storage-open|บันทึกและรัน/);
 assert.match(lib.render(rows,'EX-3005'),/แสดง 2 จาก 3/);
+assert.match(lib.render(rows,'3XB-10.10.2026-005'),/แสดง 2 จาก 3/);
 assert.match(lib.render([{...rows[0],file_name:'<img src=x onerror=bad>'}]),/&lt;img/);
 const source=read('supabase.js');
 const start=source.indexOf('async function caseEvidenceLibrary('), end=source.indexOf('\n  // Full, append-only',start);

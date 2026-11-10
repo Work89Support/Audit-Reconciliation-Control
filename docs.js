@@ -84,7 +84,7 @@ const Docs = (() => {
       .map(
         (e, i) => `<tr>
       <td class="c">${i + 1}</td>
-      <td><b>${esc(e.displayCase || e.code || e.id)}</b></td>
+      <td><b>${esc(e.displayCase || (typeof AuditDisplay !== 'undefined' ? AuditDisplay.caseCode(e) : e.code || e.id))}</b></td>
       <td>${esc(e.time)}</td>
       <td>${esc(e.account)}<br><span style="color:#7a8b9e;font-size:8.4pt">${esc(e.bank)} · ${esc(e.direction)}</span></td>
       <td>${esc(e.typeName)}</td>
@@ -182,7 +182,7 @@ const Docs = (() => {
   </div>
   <div class="meta">
     <div><span>เลขที่</span><b>${esc(o.docNo)}</b></div>
-    <div><span>เลขเคส</span><b>${esc(e.displayCase || e.code || e.id)}</b></div>
+    <div><span>เลขเคส</span><b>${esc(e.displayCase || (typeof AuditDisplay !== 'undefined' ? AuditDisplay.caseCode(e) : e.code || e.id))}</b></div>
     <div><span>วันที่ออกเอกสาร</span><b>${thLong(o.issuedAt)}</b></div>
     <div><span>รอบชี้แจง</span><b>${esc(o.trackName)}</b></div>
   </div>
@@ -228,7 +228,7 @@ ${
   <div><div class="line"></div><div class="who">ผู้อนุมัติ (Audit Lead)</div><div class="sm">&nbsp;</div><div class="sm">วันที่ ......./......./..........</div></div>
 </div>
 
-<p class="foot">${esc(o.docNo)} · ออกจากระบบ Audit AI Reconciliation เมื่อ ${esc(o.stamp)} · ข้อมูลดิบและประวัติการแก้ไขทั้งหมดตรวจสอบย้อนกลับได้จากเลขเคส ${esc(e.id)}</p>
+<p class="foot">${esc(o.docNo)} · ออกจากระบบ Audit AI Reconciliation เมื่อ ${esc(o.stamp)} · ข้อมูลดิบและประวัติการแก้ไขทั้งหมดตรวจสอบย้อนกลับได้จากเลขเคส ${esc(e.displayCase || (typeof AuditDisplay !== 'undefined' ? AuditDisplay.caseCode(e) : e.code || e.id))}</p>
 </div></body></html>`;
   }
 
