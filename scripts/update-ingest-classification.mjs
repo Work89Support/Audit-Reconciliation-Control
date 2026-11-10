@@ -44,7 +44,7 @@ function kindOf(name, subject) {
   if (/ฝากมือ.*โบนัส/.test(n)) return 'manual_bonus';
   if (/ขอถอนค่าคอม/.test(n)) return 'comm_req';
   if (/ถอนเครดิต/.test(n)) return 'credit_out';
-  if (/\.(xlsx|xlsm?|csv)$/i.test(n) && (/รายงาน\s*PM/i.test(s) || /AUTOPEER|CYBER|AZPAY|MYPAY|12PAY|CPXM|COREPAY|CPPAY|(?:^|[^a-z0-9])CP2(?:[^a-z0-9]|$)/i.test(n))) return 'pm_statement';
+  if (/\.(xlsx|xlsm?|csv)$/i.test(n) && (/รายงาน\s*PM/i.test(s) || /AUTOPEER|CYBER|AZPAY|MYPAY|12PAY|CPXM|COREPAY|CPPAY|CELOX|(?:^|[^a-z0-9])CP2(?:[^a-z0-9]|$)/i.test(n))) return 'pm_statement';
   return 'unknown';
 }
 function companyOf(name, current) {

@@ -127,7 +127,7 @@ const Engine = (() => {
     if (map.txid !== undefined && map.username !== undefined) source = "bo";
     else if (map.status !== undefined && map.amount !== undefined && map.username === undefined) source = "pm";
     else if (map.balance !== undefined || (map.debit !== undefined && map.credit !== undefined)) source = "stm";
-    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes(" atp ")) source = "pm";
+    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes("celox") || blob.includes(" atp ")) source = "pm";
     if (name.startsWith("bo_")) source = "bo";
 
     let bank = null;
@@ -139,7 +139,7 @@ const Engine = (() => {
     }
 
     let company = null;
-    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "SYS123"].forEach((c) => {
+    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "CELOX", "SYS123"].forEach((c) => {
       if (blob.toUpperCase().includes(c)) company = c;
     });
 
@@ -661,7 +661,25 @@ const Engine = (() => {
     let timeDiffCount = 0;
     const xbCompanies = new Set(["3XB", "MC8", "MR9", "PS8", "UR9"]);
     const timeVarianceAutoPassCompanies = new Set([...xbCompanies, "AT4", "FR8", "SK8"]);
-    const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase();
+    const celoxIdentityMatches = (s, b) => {
+      const sCelox = String(s.account || "").toUpperCase() === "CELOX";
+      const bCelox = String(b.account || "").toUpperCase() === "CELOX";
+      if (!sCelox && !bCelox) return true;
+      if (!sCelox || !bCelox || s.direction !== b.direction) return false;
+      if (String(s.subco || s.company || "").toUpperCase() !== "3XB"
+        || String(b.subco || b.company || "").toUpperCase() !== "3XB") return false;
+      if (s.direction === "deposit") {
+        const pmUser = memberIdentityText(s.memberCode);
+        return !!pmUser && pmUser === memberIdentityText(b.memberCode);
+      }
+      if (s.direction === "withdraw") {
+        const pmTransactionId = identityText(s.transactionId || s.ref);
+        return !!pmTransactionId && pmTransactionId === identityText(b.ref);
+      }
+      return false;
+    };
+    const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase()
+      && celoxIdentityMatches(s, b);
     const plausibleTmnOcrAmount = (ocrAmount, boAmount) => {
       if (!Number.isInteger(ocrAmount) || !Number.isInteger(boAmount) || ocrAmount <= boAmount || boAmount <= 0) return false;
       const ratio = ocrAmount / boAmount;
@@ -864,7 +882,8 @@ const Engine = (() => {
     const xbProviderRefMatched = new Set();
     // An exact Sapan/Spean provider id is stronger than inconsistent upstream
     // company/provider labels (for example `3xbet` instead of `3XB`).
-    const xbProviderRefCandidate = (s, b) => Number.isFinite(s.amount) && Math.abs(s.amount) > 0
+    const xbProviderRefCandidate = (s, b) => celoxIdentityMatches(s, b)
+      && Number.isFinite(s.amount) && Math.abs(s.amount) > 0
       // The 24-character provider `_id` is the transaction identity. Some BO
       // exports keep withdrawals as a signed amount or classify their type
       // inconsistently, so compare the absolute amount and do not let those

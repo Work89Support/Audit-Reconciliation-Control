@@ -271,7 +271,7 @@ const Formats = (() => {
     return { terminal, channel: canonicalPm(s) || channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "MYPAY", "LOCALPAY", "QPAY"];
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "123PAY", "MYPAY", "LOCALPAY", "QPAY", "CELOX", "CLX"];
   const canonicalPm = (ch) => {
     if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/i.test(String(ch || ""))) return "ANT";
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -283,7 +283,8 @@ const Formats = (() => {
     if (/MYPAY/.test(s)) return "MYPAY";
     if (/LOCALPAY|LOCELPAY/.test(s)) return "LOCALPAY";
     if (/QPAY/.test(s)) return "QPAY";
-    if (/12PAY/.test(s)) return "12PAY";
+    if (/CELOX|^CLX/.test(s)) return "CELOX";
+    if (/(?:12|123)PAY/.test(s)) return "12PAY";
     return "";
   };
   const isPm = (ch) => !!canonicalPm(ch);
@@ -330,7 +331,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["celox", "CELOX"], ["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     if (canonicalPm(s) === "ANT") return "ANT";
@@ -603,18 +604,22 @@ const Formats = (() => {
         || providerFromBoAccount
         || providerFromRef
         || (provRaw ? provRaw.toUpperCase() : "PM");
+      // CELOX withdrawals use transactionId as the BO transaction code.
+      // Column A `id` is a provider order identifier, not BO column `รหัส`.
+      const reconcileRef = provider === "CELOX" && dir === "withdraw"
+        ? transactionId : transactionRef;
       const subco = normalizeCompany((meta && meta.subco) || company);
       if (XB_COMPANIES.has(subco) && provider === "ANT") {
         return drop("ANT/anypay: รอตรวจไฟล์ตัวอย่างเพื่อยืนยันช่องยอดและเวลา PM (ยังไม่ปิดเคสอัตโนมัติ)"), null;
       }
-      const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "MYPAY"];
-      const localPayEnabled = subco === "3XB" && provider === "LOCALPAY";
-      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !localPayEnabled) {
+      const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "CYBERPLUS", "12PAY", "MYPAY"];
+      const threeXbOnlyProvider = subco === "3XB" && ["LOCALPAY", "CELOX"].includes(provider);
+      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !threeXbOnlyProvider) {
         return drop(provider === "QPAY"
           ? "QPAY ยังไม่เปิดใช้โดยแอดมิน จึงไม่นำมากระทบยอด"
-          : "Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M และ LOCALPAY เฉพาะ 3XB)"), null;
+          : "Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M/CYBER/12PAY และ LOCALPAY/CELOX เฉพาะ 3XB)"), null;
       }
-      const xbPolicy = XB_COMPANIES.has(subco) && (xbProviders.includes(provider) || localPayEnabled);
+      const xbPolicy = XB_COMPANIES.has(subco) && (xbProviders.includes(provider) || threeXbOnlyProvider);
       const partial = ["partial", "success-partial"].includes(status);
       // Partial payouts are a provider rule, not a company/date exception.
       // Unsupported partials must not pass the worker's "no successful rows" gate.
@@ -729,9 +734,9 @@ const Formats = (() => {
         custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า", "bankAccountNo", "เลขบัญชี"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
         custBank: valAny(f, r, ["ชื่อธนาคารสมาชิก", "ธนาคารลูกค้า", "ธนาคาร", "ธนาคารต้นทาง"]),
-        ref: transactionRef,
+        ref: reconcileRef,
         sourceId,
-        transactionRef,
+        transactionRef: reconcileRef,
         transactionId,
         providerRef,
         status,
