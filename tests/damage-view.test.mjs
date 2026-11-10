@@ -17,7 +17,9 @@ const context=vm.createContext({
   go:()=>{},exportSheets:(name,sheets)=>{context.exported=sheets;},toast:()=>{},
   can:()=>false,
 });
-vm.runInContext(fs.readFileSync(new URL('../damage-summary.js',import.meta.url),'utf8')+'\n'+app.slice(start,end),context);
+const labelStart=app.indexOf('function damageDisplayCode(d)');
+const labelEnd=app.indexOf('\nfunction openWrongClosureReversal',labelStart);
+vm.runInContext(fs.readFileSync(new URL('../damage-summary.js',import.meta.url),'utf8')+'\n'+app.slice(labelStart,labelEnd)+'\n'+app.slice(start,end),context);
 const root={innerHTML:'',querySelectorAll(selector){
   if(selector!=='[data-damage-drill]') return [];
   return [...this.innerHTML.matchAll(/data-damage-drill="([^"]+)" data-damage-value="([^"]+)"/g)].map(m=>{const value=m[2].replace(/&quot;/g,'"').replace(/&amp;/g,'&');return {dataset:{damageDrill:m[1],damageValue:value},addEventListener(event,fn){listeners['drill:'+m[1]+':'+value]=fn;}};});
