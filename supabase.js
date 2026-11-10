@@ -786,6 +786,21 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     return rows[0] || null;
   }
 
+  async function exceptionSummaries(ids) {
+    const unique=[...new Set((ids||[]).filter(id=>/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(String(id))))];
+    const rows=[];
+    for(let i=0;i<unique.length;i+=320){
+      const groups=[];
+      for(let j=i;j<Math.min(i+320,unique.length);j+=80)groups.push(unique.slice(j,j+80));
+      const found=await Promise.all(groups.map(group=>json(`/rest/v1/exceptions?select=id,code,company,business_date&id=in.(${group.join(',')})&limit=${group.length}`,{recoverRead:true})));
+      for(const batch of found){
+        if(!Array.isArray(batch))throw Error('อ่านรหัสเคสในทะเบียนความเสียหายไม่สำเร็จ');
+        rows.push(...batch);
+      }
+    }
+    return rows;
+  }
+
   // Follow the job's committed run, never select a possibly stale run by date alone.
   async function matchedEvidence(company, date) {
     if (!company || company === "ALL" || !date) throw new Error("เลือกบริษัทและวันที่ก่อน");
@@ -1946,6 +1961,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     currentExceptionsSummary,
     searchExceptions,
     exceptionDetail,
+    exceptionSummaries,
     matchedEvidence,
     reconciliationEvidence,
     reconciliationOverview,

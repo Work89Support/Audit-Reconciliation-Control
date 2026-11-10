@@ -683,7 +683,12 @@ async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}
   let acted=false,busy=false,failed=false;
   $('#modal')._contentCleanup=()=>{acted=true;};
   const active=()=>!acted&&state.route===context.route&&(Sb.authUser()?.id||null)===context.actor&&$('#requestReceiptNext')===nextButton;
-  const returnToList=()=>{closeModal();if(!readOnly)closeDrawer();if(!readOnly&&context.route!=='mc8-sheets')render();restoreClarificationRequestScroll(context);};
+  const returnToList=async()=>{
+    closeModal();if(!readOnly)closeDrawer();
+    try { if(!readOnly)await refreshCaseView(); }
+    catch(error) { toast('ส่งคำขอสำเร็จแล้ว แต่โหลดรายการล่าสุดไม่ได้: '+error.message,'warn'); }
+    finally { restoreClarificationRequestScroll(context); }
+  };
   const refresh=async()=>{
     busy=true;nextButton.disabled=true;status.textContent='กำลังตรวจเคสถัดไปจากผลหลักล่าสุด…';
     try{
@@ -699,7 +704,7 @@ async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}
     }catch(error){if(active()){failed=true;status.textContent='ยังตรวจเคสถัดไปไม่สำเร็จ: '+error.message+(readOnly?' · ยังไม่ได้ส่งคำขอ':' · คำขอเดิมส่งสำเร็จแล้ว ไม่ต้องส่งซ้ำ');nextButton.disabled=false;nextButton.textContent='ลองตรวจเคสถัดไปอีกครั้ง';if(readOnly)$('#readOnlyCaseQueue').innerHTML='';}}
     finally{busy=false;}
   };
-  $('#requestReceiptReturn').onclick=()=>{if(acted)return;acted=true;returnToList();};
+  $('#requestReceiptReturn').onclick=async()=>{if(acted)return;acted=true;await returnToList();};
   $('#requestReceiptNext').onclick=async()=>{
     if(!active()||busy)return;
     if(!can('request_clarify'))return deny('ตรวจเคสถัดไป');
@@ -707,7 +712,7 @@ async function showClarificationRequestReceipt(e, context, {readOnly=false} = {}
     // Re-read the accepted current case set on navigation, not another send.
     await refresh();if(!active()||failed)return;
     const row=next();if(!row){$('#requestReceiptNext').disabled=true;return toast('ไม่มีเคสถัดไปในบริษัทและตัวกรองเดิมแล้ว','warn');}
-    acted=true;if(readOnly)captureCaseOpenDraft();returnToList();await openException(row.id);
+    acted=true;if(readOnly)captureCaseOpenDraft();await returnToList();await openException(row.id);
   };
   await refresh();
 }
@@ -723,7 +728,7 @@ function showCaseSubmissionReceipt(kind, label = '') {
   if (!receipt) throw new Error('Unknown case submission receipt');
   openModal(receipt[0], `<div role="status"><p>${h(label)}</p><p>${h(receipt[1])}</p><p>กลับไปหน้าภาพรวมเคสเพื่อดำเนินการเคสถัดไป</p></div>`, '<button class="ghost-button" id="receiptViewCase">ดูเคสนี้ต่อ</button><button class="primary-button" id="receiptOverview">กลับไปหน้าภาพรวมเคส</button>');
   $('#receiptViewCase').onclick = closeModal;
-  $('#receiptOverview').onclick = () => { closeModal(); closeDrawer(); state.reviewSheet='all'; state.exFilter.status='ALL'; go('exceptions'); };
+  $('#receiptOverview').onclick = async () => { closeModal(); closeDrawer(); await refreshCaseView(); };
 }
 async function persistCaseClosure(e, note) {
   if (e._closing) return false;
@@ -771,8 +776,8 @@ async function completeQuickClose(e) {
   closeModal();
   toast(`ปิดเคส ${e.id} แล้ว — ยอดสองฝั่งตรงกัน`);
   renderNav();
+  closeDrawer();
   await refreshCaseView();
-  await openException(e.id);
 }
 
 let bulkCaseApprovalRunning = false;
@@ -1659,6 +1664,7 @@ function mapLiveDamage(d) {
     id: d.code || d.id,
     dbId: d.id,
     exceptionId: d.exception_id || "-",
+    linkedCaseCode: null,
     date: d.business_date,
     company: normalizeLiveCompanyCode(d.company) || d.company || "ไม่ระบุ",
     employee: d.employee || "ไม่ระบุ",
@@ -1672,6 +1678,14 @@ function mapLiveDamage(d) {
     financeStatus: d.finance_status || "รอดำเนินการ",
     createdAt: d.created_at || null,
   };
+}
+
+function damageDisplayCode(d) {
+  if (d.linkedCaseCode) return d.linkedCaseCode;
+  const company=d.company==='UFABET7M'?'7M':String(d.company||'').trim();
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')
+    ? `${d.date.slice(8,10)}.${d.date.slice(5,7)}.${d.date.slice(0,4)}` : 'ไม่ระบุวัน';
+  return `${company}-${date}-OBS-${String(d.dbId||d.id).slice(0,8)}`;
 }
 
 function openWrongClosureReversal(e,action) {
@@ -5343,6 +5357,17 @@ async function loadLiveDamage(force = false) {
     if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
     if (result[0].status === "rejected") throw result[0].reason;
     liveDamageState.rows = (result[0].value || []).map(mapLiveDamage);
+    liveDamageState.labelError = null;
+    try {
+      const linked=await Sb.exceptionSummaries(liveDamageState.rows.map(d=>d.exceptionId));
+      if (requestId !== liveDamageState.requestId || key !== damageQueryKey()) return;
+      const byId=new Map(linked.map(e=>[e.id,e]));
+      for(const row of liveDamageState.rows){
+        const related=byId.get(row.exceptionId);
+        if(related&&normalizeLiveCompanyCode(related.company)===row.company)
+          row.linkedCaseCode=caseLabel({...related,date:related.business_date});
+      }
+    } catch(error) { liveDamageState.labelError=error.message || 'อ่านรหัสเคสที่เกี่ยวข้องไม่สำเร็จ'; }
     liveDamageState.collectionError = null;
     try {
       const ledger = await Sb.damageCollections(liveDamageState.rows.map(d=>d.dbId));
@@ -5499,7 +5524,7 @@ function renderLiveDamage(root) {
     <section class="panel"><h2>สรุปตามประเภทความเสียหาย</h2><p class="hint">เฉพาะรายการที่ผู้ตรวจยืนยันแล้ว · ทีม ${h(!liveDamageState.team || liveDamageState.team==='ALL' ? 'ทุกทีม' : liveDamageState.team)} · ผู้เกี่ยวข้อง ${h(!liveDamageState.employee || liveDamageState.employee==='ALL' ? 'ทุกคน' : liveDamageState.employee)} · ข้อมูลเก่าไม่จัดประเภทใหม่อัตโนมัติ</p><div class="table-wrap"><table><thead><tr><th>ประเภท</th><th>จำนวน</th><th class="right">ยอดที่บันทึก (บาท)</th></tr></thead><tbody>${classifiedSummary.groups.map(g=>`<tr><td>${h(g.category==='system'?'ระบบเดิม (ยังไม่แยกหลังบ้าน / PM / เกม)':g.label)}</td><td>${num(g.count)}</td><td class="right tnum"><button class="link-btn" data-damage-drill="category" data-damage-value="${h(g.category)}">${money(g.amount)}</button></td></tr>`).join('')}</tbody><tfoot><tr><th>รวม</th><th>${num(classifiedSummary.groups.reduce((s,g)=>s+g.count,0))}</th><th class="right">${money(total)}</th></tr></tfoot></table></div><p class="hint">ยอดนี้ยังไม่ใช่ยอดสุทธิหลังได้รับคืน หากยังไม่มีการบันทึกหลักฐานและจำนวนเงินรับคืนแยกต่างหาก</p></section>
     ${drillTable(categoryRows, 'team', 'ยอดรวมแยกรหัสทีม')}
     ${drillTable(teamRows, 'employee', 'ยอดรวมแยกพนักงาน / ผู้เกี่ยวข้อง')}
-    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แสดงเฉพาะความเสียหายจริง · ข้อสังเกต 0 บาทไม่เข้าการเงิน</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(d.id)} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายจริงที่ต้องเรียกเก็บ</td></tr>'}</tbody></table></div></section>
+    <section class="panel"><h2>ยอดเรียกเก็บและยอดโอนคืนรายเคส</h2><p class="hint">แสดงเฉพาะความเสียหายจริง · ข้อสังเกต 0 บาทไม่เข้าการเงิน</p><div class="table-wrap"><table><thead><tr><th>เคส / บริษัท</th><th>ผู้รับผิดชอบที่อนุมัติ</th><th>ประเภท</th><th>อนุมัติเรียกเก็บ</th><th>โอนคืนยืนยันแล้ว</th><th>สุทธิคงเหลือ</th><th>ดำเนินการ</th></tr></thead><tbody>${financialRows.map(d=>{const t=DamageSummary.collectionTotals(d);return `<tr><td>${h(damageDisplayCode(d))} · ${h(d.company)}</td><td>${d.collection?`${h(d.collection.party_name)} · ${h(d.collection.party_code)} · ${h(d.collection.shift || 'ไม่เกี่ยวกับกะ')}`:'รอยืนยันผู้รับผิดชอบ'}</td><td>${h(DamageSummary.categories[DamageSummary.classify(d.cause).category])}</td>${['approved','paid','net'].map(k=>`<td class="right">${t[k]===null?'รอยืนยัน':money(t[k])}</td>`).join('')}<td>${can('close_case')?`<button class="ghost-button sm" data-damage-collection="${h(d.dbId)}" ${!d.collectionReady || liveDamageState.collectionError?'disabled':''}>${d.collection?'บันทึก / ตรวจยอดโอนคืน':'ตรวจตัวคนและอนุมัติเรียกเก็บ'}</button>`:'เฉพาะผู้มีสิทธิ์อนุมัติ'}</td></tr>`;}).join('') || '<tr><td colspan="7">ยังไม่มีความเสียหายจริงที่ต้องเรียกเก็บ</td></tr>'}</tbody></table></div></section>
     <section class="status-strip four">
       <article><span>รายการในทะเบียน</span><strong>${num(rows.length)}</strong><small>ช่วง ${h(rangeLabel())}</small></article>
       <article class="bad"><span>ยอดความเสียหายรวม</span><strong>${money0(total)}</strong><small>บาท</small></article>
@@ -5518,7 +5543,7 @@ function renderLiveDamage(root) {
     </section>
     <section class="panel"><div class="panel-heading"><div><p class="eyebrow">Supabase damages</p><h2>ทะเบียนผลตรวจและความเสียหาย</h2></div><span class="health ok">ข้อมูลจริง</span></div>
       <div class="table-wrap"><table><thead><tr><th>วันที่ / เวลาเกิดเหตุ</th><th>รหัส / เปิดเคสและหลักฐาน</th><th>บริษัท</th><th>ผลตรวจ</th><th>ผู้เกี่ยวข้อง / กะ</th><th class="right">ยอด (บาท)</th><th>สาเหตุ</th><th>หลักฐาน</th><th>การเงิน</th></tr></thead>
-      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(d.id)}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(d.id)}</button>`}</td><td><b>${h(d.company)}</b></td><td><span class="badge ${c.observation?'amber':'red'}">${c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย'}</span></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td><span class="badge ${d.evidence?"green":"amber"}">${d.evidence?"มี":"รอ"}</span></td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="9"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>รวมถึงยังไม่มีข้อสังเกต 0 บาทตามตัวกรอง · ลองล้างตัวกรอง หรือเปิดเคสเพื่อตรวจหลักฐาน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
+      <tbody>${rows.map((d)=>{const c=DamageSummary.classify(d.cause);return `<tr><td>${h(d.date)}<small class="sub">${h(d.time || 'ไม่ระบุเวลา')}</small></td><td>${d.exceptionId === "-" ? `<span class="mono">${h(damageDisplayCode(d))}</span>` : `<button class="link-btn mono" data-damage-ex="${h(d.exceptionId)}">${h(damageDisplayCode(d))}</button>`}<small class="sub">ทะเบียนเดิม ${h(d.id)}</small></td><td><b>${h(d.company)}</b></td><td><span class="badge ${c.observation?'amber':'red'}">${c.observation?'ทำงานผิดพลาด · ไม่เสียหาย':'ยืนยันความเสียหาย'}</span></td><td>${h(DamageSummary.employeeLabel(d))}<small class="sub">${h(DamageSummary.shiftLabel(d))}</small></td><td class="right tnum">${d.amount == null ? 'ไม่ระบุ' : money(d.amount)}</td><td>${h(DamageSummary.categories[c.category])}${c.subcategory?' / รหัสเดิม '+h(c.subcategory):''}<small class="sub">${h(c.detail)}</small></td><td>${d.evidence && d.exceptionId !== '-' ? `<button class="link-btn" data-damage-evidence="${h(d.exceptionId)}">เปิดหลักฐาน</button>` : `<span class="badge ${d.evidence?'green':'amber'}">${d.evidence?'มี · ไม่พบเคสอ้างอิง':'รอ'}</span>`}</td><td>${h(d.financeStatus)}</td></tr>`;}).join("") || `<tr><td colspan="9"><div class="damage-empty"><strong>ยังไม่มีความเสียหายที่ยืนยันแล้วในช่วงนี้</strong><span>รวมถึงยังไม่มีข้อสังเกต 0 บาทตามตัวกรอง · ลองล้างตัวกรอง หรือเปิดเคสเพื่อตรวจหลักฐาน</span><button class="primary-button sm" id="damageGoExceptions">ไปตรวจรายการผิดปกติ</button></div></td></tr>`}</tbody></table></div>
     </section>`;
   if (rows.length) Charts.draw("#liveDamageCompany", "hbars", { label: "ยอดความเสียหายตามบริษัท", items: byCompany, color: "#d03b3b", money: true, metric: "ยอด (บาท)" });
   $("#damageRefresh")?.addEventListener("click", () => loadLiveDamage(true));
@@ -5548,7 +5573,13 @@ function renderLiveDamage(root) {
   $("#damageGoExceptions")?.addEventListener("click", () => go("exceptions"));
   $("#damageGoClarify")?.addEventListener("click", () => go("clarify"));
   bindStoredFileLinks(root);
-  root.querySelectorAll("[data-damage-ex]").forEach((button) => button.addEventListener("click", () => openException(button.dataset.damageEx)));
+  root.querySelectorAll("[data-damage-ex], [data-damage-evidence]").forEach(button => button.addEventListener("click", async () => {
+    const id=button.dataset.damageEx || button.dataset.damageEvidence;
+    button.disabled=true;
+    try { await openEvidenceRelatedCase(id,{focusFiles:!!button.dataset.damageEvidence}); }
+    catch(error) { toast('เปิดเคสหรือหลักฐานไม่ได้: '+error.message,'warn'); }
+    finally { button.disabled=false; }
+  }));
 }
 
 VIEWS.damage = (root) => {
