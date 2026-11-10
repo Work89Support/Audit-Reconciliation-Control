@@ -1451,6 +1451,9 @@ const Registry = (() => {
 ];
 
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
+  // CELOX is enabled for 3XB only until source and BO samples are verified
+  // for another XB company.
+  for (const direction of ['ถอน', 'ฝาก']) ACCOUNTS.push({subco:'3XB',provider:'CELOX',bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:'CELOX',source:'pm',file:`3X_PM_CELOX_${direction === 'ฝาก' ? 'D' : 'W'}_ว-ด-ป.csv`,note:'พร้อมเพย์-CLX(celox)(P2P) · 3XB'});
   // XB keeps the channel available even when it is temporarily unused.
   for (const subco of ['3XB','MC8','MR9','PS8','UR9']) {
     for (const direction of ['ถอน','ฝาก']) ACCOUNTS.push({subco,provider:'ANT',bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:'ANT',source:'pm',file:`${subco} ANT ${direction} ว/ด/ป.xlsx`,note:'ANT-AU (anypay) · เครือ XB'});
@@ -1458,7 +1461,7 @@ const Registry = (() => {
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
                   cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY",
-                  localpay:"LOCALPAY", locelpay:"LOCALPAY", qpay:"QPAY" };
+                  localpay:"LOCALPAY", locelpay:"LOCALPAY", qpay:"QPAY", celox:"CELOX", clx:"CELOX" };
 
   function normalizeAccount(s, bank) {
     let d = String(s || "").replace(/\D/g, "");
@@ -1503,6 +1506,7 @@ const Registry = (() => {
       const fileToks = tokens(fileName);
       // 1) จับชื่อบริษัทย่อยแบบเต็ม เช่น "sk8" (รวมกรณีเขียนติดกับคำอื่น)
       let hit = ACCOUNTS.filter((a)=>a.source==="pm" && a.provider===pm && norm(a.subco).length>=2 && raw.includes(norm(a.subco)));
+      if (!hit.length && pm === 'CELOX' && fileToks.includes('3x')) hit = ACCOUNTS.filter((a)=>a.source==='pm' && a.provider==='CELOX' && a.subco==='3XB');
       // 2) ถ้าไม่เจอ ลองตัวย่อ = ตัดเลขท้าย (sk8->sk, mr9->mr) แต่ต้องเป็น "คำเดี่ยว" ในชื่อไฟล์ และชี้ชัดบริษัทเดียว
       if (!hit.length){
         const shortHit = ACCOUNTS.filter((a)=>{
