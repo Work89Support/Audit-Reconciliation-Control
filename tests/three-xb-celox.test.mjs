@@ -82,6 +82,13 @@ assert.equal(wrongIdentity.matched, 0,
   'CELOX must not match on amount and time when BO user or transaction code conflicts');
 
 const workflow = JSON.parse(fs.readFileSync(new URL('../n8n/audit-mail-ingest.json', import.meta.url), 'utf8'));
+const worker = JSON.parse(fs.readFileSync(new URL('../n8n/audit-headless-worker.json', import.meta.url), 'utf8'));
+const normalizeNode = worker.nodes.find(node => node.name === 'แปลงรายการเป็นมาตรฐาน');
+const matcherNode = worker.nodes.find(node => node.name === 'กระทบยอดและสร้าง Exception');
+assert.match(normalizeNode.parameters.jsCode, /1\.9\.99-3xb-celox/);
+assert.match(normalizeNode.parameters.jsCode, /CELOX withdrawal:|CELOX withdrawals use transactionId/);
+assert.match(matcherNode.parameters.jsCode, /celoxIdentityMatches/);
+assert.equal(Formats.canonicalPm('123PAY'), '12PAY');
 const classifier = workflow.nodes.find(node => node.id === 'classify').parameters.jsCode;
 const classified = vm.runInNewContext(`(function(){${classifier}})()`, {
   $input: { all: () => [{ json: {

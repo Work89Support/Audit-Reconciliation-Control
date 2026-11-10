@@ -1460,7 +1460,7 @@ const Registry = (() => {
   }
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
   const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
-                  cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", mypay:"MYPAY",
+                  cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", "123pay":"12PAY", mypay:"MYPAY",
                   localpay:"LOCALPAY", locelpay:"LOCALPAY", qpay:"QPAY", celox:"CELOX", clx:"CELOX" };
 
   function normalizeAccount(s, bank) {
