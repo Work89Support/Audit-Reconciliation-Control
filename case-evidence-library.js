@@ -13,7 +13,8 @@
       const e = file.exceptions;
       if (!e?.id) continue;
       rows.push({...file, origin:'case', kind:'doc_clarify', company:e.company, business_date:e.business_date,
-        uploader:file.uploaded_by || '', received_at:file.created_at, case_code:e.code || e.id, case_status:e.status});
+        uploader:file.uploaded_by || '', received_at:file.created_at, case_code:e.code || e.id,
+        case_label:root.AuditDisplay.caseCode(e), case_status:e.status});
     }
     // File identity, not amount/name: old and replacement evidence remain separate.
     return [...new Map(rows.map(row => [`${row.origin}:${row.id}`, row])).values()]
@@ -23,19 +24,19 @@
     return {path:row.storage_path, id:row.id, name:row.file_name, mime:row.mime_type,
       size:row.size_bytes, kind:'doc_clarify', company:row.company, date:row.business_date,
       status:'parsed', readOnly:true, evidenceOrigin:row.origin === 'case' ? 'แนบผ่านเคส / ผู้ชี้แจง' : 'ไฟล์จากเมล',
-      caseCode:row.case_code, uploadedBy:row.uploader, uploadedAt:row.received_at,
+      caseCode:row.case_label || row.case_code, uploadedBy:row.uploader, uploadedAt:row.received_at,
       correctionReason:row.correction_reason, replacesEvidenceId:row.replaces_evidence_id,
       replacesSourceFileId:row.replaces_source_file_id};
   }
   function render(rows, query='') {
     const needle = query.trim().toLocaleLowerCase();
-    const visible = rows.filter(row => [row.file_name,row.company,row.business_date,row.case_code,row.uploader]
+    const visible = rows.filter(row => [row.file_name,row.company,row.business_date,row.case_code,row.case_label,row.uploader]
       .join(' ').toLocaleLowerCase().includes(needle));
     const statuses = {closed:'ปิดเคสแล้ว',approved:'อนุมัติแล้ว',open:'เคสเปิด',clarifying:'รอชี้แจง',answered:'รอ Audit ตรวจ',pair_pending:'รออนุมัติจับคู่'};
     return `<p role="status">แสดง ${visible.length} จาก ${rows.length} ไฟล์ · หลักฐานเท่านั้น ไม่เข้ากระทบยอด</p><div class="table-wrap"><table class="case-evidence-catalogue"><colgroup><col style="width:26%"><col style="width:10%"><col style="width:21%"><col style="width:17%"><col style="width:14%"><col style="width:12%"></colgroup><thead><tr><th>ไฟล์ / ที่มา</th><th>บริษัท / วันที่เคส</th><th>เลขเคส / สถานะ</th><th>ผู้แนบ / เวลารับ</th><th>ประวัติหลักฐาน</th><th></th></tr></thead><tbody>${visible.map(row => {
       const time = row.received_at ? (root.AuditDisplay||(typeof require==='function'?require('./audit-display.js'):null)).dateTime(row.received_at) : 'ยังไม่มีข้อมูลเวลา';
       const correction = row.correction_reason;
-      return `<tr><td><b>${esc(row.file_name)}</b><small class="sub">${row.origin === 'case' ? 'แนบผ่านเคส / ผู้ชี้แจง' : 'ไฟล์จากเมล'} · ${Math.ceil(Number(row.size_bytes || 0)/1024)} KB</small></td><td>${esc(row.company)}<small class="sub">${esc(row.business_date)}</small></td><td>${esc(row.case_code || '—')}<small class="sub">${esc(statuses[row.case_status] || row.case_status || 'หลักฐานจากเมล')}</small></td><td><small>${esc(row.uploader || 'ไม่ระบุ')}</small><small class="sub">${esc(time)}</small></td><td>${correction ? `<b>ฉบับแก้หลักฐาน</b><small class="sub">เหตุผล: ${esc(correction)}</small><small class="sub">อ้างถึงไฟล์เดิม ${esc(row.replaces_evidence_id || row.replaces_source_file_id)}</small>` : 'ไฟล์เดิม · เก็บไว้ครบ'}</td><td><button type="button" class="primary-button xs" data-library-preview="${esc(row.origin+':'+row.id)}" ${row.storage_path ? '' : 'disabled'}>เปิดดูในระบบ</button></td></tr>`;
+      return `<tr><td><b>${esc(row.file_name)}</b><small class="sub">${row.origin === 'case' ? 'แนบผ่านเคส / ผู้ชี้แจง' : 'ไฟล์จากเมล'} · ${Math.ceil(Number(row.size_bytes || 0)/1024)} KB</small></td><td>${esc(row.company)}<small class="sub">${esc(row.business_date)}</small></td><td>${esc(row.case_label || row.case_code || '—')}<small class="sub">${esc(statuses[row.case_status] || row.case_status || 'หลักฐานจากเมล')}</small></td><td><small>${esc(row.uploader || 'ไม่ระบุ')}</small><small class="sub">${esc(time)}</small></td><td>${correction ? `<b>ฉบับแก้หลักฐาน</b><small class="sub">เหตุผล: ${esc(correction)}</small><small class="sub">อ้างถึงไฟล์เดิม ${esc(row.replaces_evidence_id || row.replaces_source_file_id)}</small>` : 'ไฟล์เดิม · เก็บไว้ครบ'}</td><td><button type="button" class="primary-button xs" data-library-preview="${esc(row.origin+':'+row.id)}" ${row.storage_path ? '' : 'disabled'}>เปิดดูในระบบ</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">ไม่พบหลักฐานตามตัวกรองนี้</td></tr>'}</tbody></table></div>`;
   }
   function mount(host, rows, openPreview) {

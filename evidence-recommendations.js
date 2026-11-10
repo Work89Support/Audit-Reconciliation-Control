@@ -1,5 +1,6 @@
 /* Private, database-backed proposals. No localStorage, auto-approval or case mutation. */
 const EvidenceRecommendations = (() => {
+  const caseLabel = e => typeof AuditDisplay !== 'undefined' && AuditDisplay?.caseCode ? AuditDisplay.caseCode(e) : (e?.code || e?.id || 'เคส');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const providerFromName = (name) => {
     const value=String(name||'').toUpperCase();
@@ -91,7 +92,7 @@ const EvidenceRecommendations = (() => {
   function groupCasesHtml(r, links, currentIds) {
     const statuses={open:'รอ Audit ตรวจ',pending:'รอตรวจ',clarifying:'รอชี้แจง',answered:'รอตรวจคำตอบ',approved:'อนุมัติแล้ว',closed:'ปิดเคสแล้ว',damage:'บันทึกความเสียหาย'};
     const cases=[...new Map(links.filter(l=>l.recommendation_id===r.id && l.exceptions?.business_date===r.business_date && [r.company,r.payer_company].includes(l.exceptions?.company)).map(l=>[l.exception_id,l.exceptions])).values()];
-    return `<div class="recommendation-case-list">${[...new Set([r.company,r.payer_company])].map(company=>`<section><b>${esc(company)} · ${company===r.company?'เจ้าของรายการ':'จ่ายแทน'}</b>${cases.filter(e=>e.company===company).map(e=>`<div class="recommendation-case"><span>${esc(e.code||'เคส')} <small>${currentIds.includes(e.id)?'· เคสที่กำลังดู':''}</small><br><span class="recommendation-case-status">${esc(statuses[e.status]||'สถานะ: '+(e.status||'ไม่ระบุ'))}</span></span><button type="button" class="ghost-button" data-related-case="${esc(e.id)}">ดูเคส</button></div>`).join('')||'<p class="recommendation-missing">ยังไม่มีเคสที่เชื่อมและคุณมีสิทธิ์ดู · ไม่ได้หมายความว่าตรวจครบ</p>'}</section>`).join('')}</div>`;
+    return `<div class="recommendation-case-list">${[...new Set([r.company,r.payer_company])].map(company=>`<section><b>${esc(company)} · ${company===r.company?'เจ้าของรายการ':'จ่ายแทน'}</b>${cases.filter(e=>e.company===company).map(e=>`<div class="recommendation-case"><span>${esc(caseLabel(e))} <small>${currentIds.includes(e.id)?'· เคสที่กำลังดู':''}</small><br><span class="recommendation-case-status">${esc(statuses[e.status]||'สถานะ: '+(e.status||'ไม่ระบุ'))}</span></span><button type="button" class="ghost-button" data-related-case="${esc(e.id)}">ดูเคส</button></div>`).join('')||'<p class="recommendation-missing">ยังไม่มีเคสที่เชื่อมและคุณมีสิทธิ์ดู · ไม่ได้หมายความว่าตรวจครบ</p>'}</section>`).join('')}</div>`;
   }
   async function loadGroupCases(root, rows, links, api, onCase) {
     if(!api.evidenceCaseRecommendations)return;
@@ -130,7 +131,7 @@ const EvidenceRecommendations = (() => {
       const button=document.createElement('button');
       button.type='button';button.className='evidence-recommendation-badge';
       button.textContent=`🟡 มีคู่แนะนำ (${suggestions.length}) · รอ Audit ยืนยัน`;
-      button.setAttribute('aria-label','ดูเหตุผลและหลักฐานแนะนำของ '+(rows[index].case.code||rows[index].id));
+      button.setAttribute('aria-label','ดูเหตุผลและหลักฐานแนะนำของ '+(caseLabel(rows[index].case)));
       button.onclick=()=>onOpen(suggestions);
       tr.cells[0]?.append(button);
     });

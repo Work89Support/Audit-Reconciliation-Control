@@ -4661,7 +4661,7 @@ async function openException(id, options = {}) {
       const file = (e.evidence || []).find(f => f.storagePath === button.dataset.caseEvidence);
       await openStoredFilePreview({path:button.dataset.caseEvidence, name:file?.name || 'หลักฐานจากเคส',
         size:file?.size, company:e.company, date:e.date, kind:'doc_clarify', status:'parsed',
-        readOnly:true, caseCode:e.id, evidenceOrigin:'แนบผ่านเคส / ผู้ชี้แจง'});
+        readOnly:true, caseCode:caseLabel(e), evidenceOrigin:'แนบผ่านเคส / ผู้ชี้แจง'});
     } catch (error) { toast("เปิดหลักฐานไม่ได้: " + error.message, "warn"); }
     finally { button.disabled = false; }
   }));
