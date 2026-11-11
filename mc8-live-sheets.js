@@ -63,6 +63,9 @@
   const money=v=>v===null||v===undefined||v===''?'—':numeric(v)===null?'อ่านยอดไม่ได้':Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const moneyCents=v=>money(v/100);
   const slots=new WeakMap(),remembered={date:'',company:''};
+  // A case action can remount the workbook. Keep the opened BO account within
+  // its company and business date so the next case remains in the same view.
+  const viewStates=new Map();
 
   function displayedCaseCode(item,fallbackCompany='',fallbackDate=''){
     if(root.AuditDisplay?.caseCode)return root.AuditDisplay.caseCode(item,fallbackCompany,fallbackDate);
@@ -1123,6 +1126,17 @@
     let company=companies.includes(opts.company)?opts.company:(companies.includes(remembered.company)?remembered.company:companies[0]||'MC8');
     let date=opts.date||remembered.date||'2026-09-16',pm='all',direction='all',status='all',sheet='summary',page=0,data=null,files=[],holdScopes=[],holdLoading=false,holdError='',loading=false,auxLoading=false,error='',fileError='',generation=0,fullscreen=false,wrapText=false,caseReceipt='';
     const columnFilters={},sortBySheet={};
+    const viewKey=()=>`${company}|${date}`;
+    const restoreView=()=>{
+      const saved=viewStates.get(viewKey());
+      sheet=saved?.sheet||'summary';pm=saved?.pm||'all';direction=saved?.direction||'all';status=saved?.status||'all';
+      for(const key of Object.keys(columnFilters))delete columnFilters[key];
+      for(const key of Object.keys(sortBySheet))delete sortBySheet[key];
+      Object.assign(columnFilters,structuredClone(saved?.columnFilters||{}));
+      Object.assign(sortBySheet,structuredClone(saved?.sortBySheet||{}));
+    };
+    const rememberView=()=>viewStates.set(viewKey(),{sheet,pm,direction,status,columnFilters:structuredClone(columnFilters),sortBySheet:structuredClone(sortBySheet)});
+    restoreView();
     let hiddenBySheet={};
     try{hiddenBySheet=JSON.parse(root.localStorage?.getItem('audit-live-hidden-columns-v1')||'{}')||{};}catch(_){hiddenBySheet={};}
     const hiddenSet=()=>new Set(Array.isArray(hiddenBySheet[sheet])?hiddenBySheet[sheet]:[]);
@@ -1137,7 +1151,8 @@
       const all=data?rowsOf(data,company):[],accountGroups=accountReviewGroups(all);
       const excludedAccountRows=all.filter(isExcludedAccountSheetRow);
       const infoSheets=informationSheets(data?.xbInformation,company),infoSheet=infoSheets.find(s=>'xb-info:'+s.name===sheet);
-      if(sheet!=='all'&&sheet!=='summary'&&!infoSheet&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
+      if(data&&sheet!=='all'&&sheet!=='summary'&&!infoSheet&&!accountGroups.some(group=>group.key===sheet))sheet='summary';
+      rememberView();
       const filtered=infoSheet?[]:filter(all,pm,direction,status,sheet);
       const baseShown=infoSheet?infoSheet.rows.map((values,index)=>({key:'info-'+index,kind:'information',values})):chronologicalRows(filtered,company==='3XB'&&sheet.startsWith('bo-account:')&&filtered.some(combinedBorrow)),providerNames=providerSheets(company,all),statementSets=statementGroups(all,company);
       const waitingSources=new Set(all.filter(row=>row.waiting&&!row.case).map(row=>`${row.boSource?.fileId}|${row.boSource?.row}`));
