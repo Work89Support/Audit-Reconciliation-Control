@@ -47,3 +47,25 @@ assert.deepEqual(bayStatementDisplay('โอนเงิน SCB PIMPORN KAEWS �
   assert.equal(rowsOf(mismatched,'FR8')[0].pm.account,undefined,'wrong source amount cannot supply display data');
   console.log('BAY STM display tests passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// BAY's current PDF places the time and counterparty on continuation lines.
+const line=(...cells)=>({items:cells.map(([x,s])=>({x,s})),text:cells.map(c=>c[1]).join(' ')});
+const splitPages=[[line([136,'ถอน'],[220,'ฝาก'],[272,'ยอดเงินในบัญชี'],[325,'รหัส'],[350,'คำอธิบายรายละเอียด'],[492,'ช่องทาง']),
+  line([25,'17/11/2026'],[201,'3,000.00'],[284,'3,613.00'],[324,'TN'],[350,'รับโอนเงิน'],[492,'MOBILE']),
+  line([25,'03:09:10'],[350,'BAAC TEST ONE']),line([350,'บัญชีต้นทาง : X501671']),line([350,'หมายเลขอ้างอิง : 123456']),
+  line([25,'17/11/2026'],[119,'3,000.00'],[290,'613.00'],[324,'TW'],[350,'โอนเงิน'],[492,'INTERNET']),
+  line([25,'03:09:17'],[350,'KBANK TEST TWO']),line([350,'บัญชีปลายทาง : X855007']),line([350,'หมายเลขอ้างอิง : 456789'])]];
+(async()=>{
+  const m=require('../mc8-live-sheets.js');const records=m.bayStatementDisplayRecords(splitPages);
+  assert.equal(records.length,2);assert.equal(records[0].sec,11350);assert.equal(records[1].direction,'withdraw');
+  const pair=(row,direction)=>({company:'3XB',direction,amount:3000,stmAmount:3000,boAmount:3000,stm:{fileId:'bay',row,date:'2026-11-17',sec:11340},bo:{fileId:'bo',row,date:'2026-11-17',sec:11340},customer:{stm:{},bo:{}}});
+  const data={run:{business_date:'2026-11-17',summary:{match_evidence:[pair(1,'deposit'),pair(2,'withdraw')]}},cases:[]};
+  const original=JSON.stringify(data.run);
+  await m.hydrateBayStatementDisplay(data,[{id:'bay',kind:'stm_pdf',file_name:'3XB_STM_BAY_DW.pdf'}],async()=>({bank:'BAY',records}));
+  assert.equal(data.bayDisplayBySource['bay|1'].name,'TEST ONE');assert.equal(data.bayDisplayBySource['bay|2'].name,'TEST TWO');
+  assert.equal(JSON.stringify(data.run),original);
+  const conflict={...data,cases:[],run:{summary:{match_evidence:[pair(1,'withdraw')]}}};
+  await m.hydrateBayStatementDisplay(conflict,[{id:'bay',kind:'stm_pdf',file_name:'3XB_STM_BAY_DW.pdf'}],async()=>({bank:'BAY',records}));
+  assert.deepEqual(conflict.bayDisplayBySource,{});
+  console.log('BAY split-line display and minute provenance tests passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

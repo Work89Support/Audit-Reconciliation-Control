@@ -1288,22 +1288,9 @@ async function readAuditBayStatementDisplayRecords(file,date) {
   const response=await fetch(await Sb.signedUrl(file.storage_path));
   if(!response.ok)throw new Error('ดาวน์โหลด STM BAY ไม่สำเร็จ ('+response.status+')');
   const pages=await PdfStm.textLines(await response.arrayBuffer());
-  const parsed=await PdfStm.parse(file.file_name,pages,date);
-  if(parsed.format?.bank!=='BAY')throw new Error('เนื้อหาไฟล์ไม่ใช่ STM BAY');
-  const lines=pages.flat();
-  let lastLine=-1;
-  const records=parsed.records.map(record=>{
-    const at=lines.findIndex((line,index)=>index>lastLine&&line.text===record.raw);
-    if(at>=0)lastLine=at;
-    const continuation=[];
-    if(at>=0)for(let next=at+1;next<Math.min(at+4,lines.length);next++){
-      const text=lines[next].text;
-      if(/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}/.test(text))break;
-      if(/บัญชี(?:ต้นทาง|ปลายทาง)|หมายเลขอ้างอิง/.test(text))continuation.push(text);
-    }
-    const description=[record.code,record.desc].filter(Boolean).join(' ').trim();
-    return {...record,description:[description,...continuation.filter(text=>!description.includes(text))].filter(Boolean).join(' ')};
-  });
+  if(PdfStm.header(pages).bank!=='BAY')throw new Error('เนื้อหาไฟล์ไม่ใช่ STM BAY');
+  const records=MC8LiveSheets.bayStatementDisplayRecords(pages);
+  if(!records.length)throw new Error('ไม่พบแถวรายละเอียด BAY ที่ตรวจสอบได้');
   return {bank:'BAY',records};
 }
 async function openManualPrimaryCaseSet(id,onReload){
