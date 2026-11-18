@@ -1282,6 +1282,30 @@ async function readAuditBoOperatorRecords(file,date) {
   if(!['bo_compact','bo_transaction_export','bo_main'].includes(result.code))throw new Error('ไม่พบรูปแบบ BO ที่ตรวจสอบได้');
   return [...result.records,...(result.aux||[]).filter(r=>r.kind==='xb_information')];
 }
+async function readAuditBayStatementDisplayRecords(file,date) {
+  if(state.dataset!=='production'||!Sb.signedIn()||file.kind!=='stm_pdf'||!canAccessCompany(file.company))throw new Error('ไม่มีสิทธิ์อ่าน STM ต้นทาง');
+  if(!/\.pdf$/i.test(file.file_name)||!/(?:^|[_\s-])BAY(?:[_\s.-]|$)/i.test(file.file_name))throw new Error('ไฟล์นี้ไม่ใช่ STM BAY PDF');
+  const response=await fetch(await Sb.signedUrl(file.storage_path));
+  if(!response.ok)throw new Error('ดาวน์โหลด STM BAY ไม่สำเร็จ ('+response.status+')');
+  const pages=await PdfStm.textLines(await response.arrayBuffer());
+  const parsed=await PdfStm.parse(file.file_name,pages,date);
+  if(parsed.format?.bank!=='BAY')throw new Error('เนื้อหาไฟล์ไม่ใช่ STM BAY');
+  const lines=pages.flat();
+  let lastLine=-1;
+  const records=parsed.records.map(record=>{
+    const at=lines.findIndex((line,index)=>index>lastLine&&line.text===record.raw);
+    if(at>=0)lastLine=at;
+    const continuation=[];
+    if(at>=0)for(let next=at+1;next<Math.min(at+4,lines.length);next++){
+      const text=lines[next].text;
+      if(/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}/.test(text))break;
+      if(/บัญชี(?:ต้นทาง|ปลายทาง)|หมายเลขอ้างอิง/.test(text))continuation.push(text);
+    }
+    const description=[record.code,record.desc].filter(Boolean).join(' ').trim();
+    return {...record,description:[description,...continuation.filter(text=>!description.includes(text))].filter(Boolean).join(' ')};
+  });
+  return {bank:'BAY',records};
+}
 async function openManualPrimaryCaseSet(id,onReload){
   if(!['lead','admin'].includes(state.role))return deny('ยืนยันเคสชุดใหม่');
   return PrimaryCaseSets.open(id,{actor:()=>Sb.authUser()?.id,role:()=>state.role,preview:Sb.manualPrimaryCasesPreview,activate:Sb.activateManualPrimaryCases,onActivated:()=>{toast('สร้างเคสชุดใหม่แล้ว เก็บเคสเดิมเป็นประวัติ');onReload?.();}});
@@ -1295,6 +1319,7 @@ VIEWS["mc8-sheets"] = root => MC8LiveSheets.mount(root, {
   loadHoldScopes: Sb.reviewHoldScopes,
   loadFiles: (runId, sourceFileIds) => Sb.exceptionFiles(runId, null, sourceFileIds),
   readBoRecords: readAuditBoOperatorRecords,
+  readBayRecords: readAuditBayStatementDisplayRecords,
   onRecheck: openAccountRecheck,
   onManageFiles: openFileRunManagement,
   exportBoWaitingCases: downloadBoWaitingCaseRequest,
@@ -3711,6 +3736,7 @@ VIEWS.exceptions = (root) => {
         loadHoldScopes: Sb.reviewHoldScopes,
   loadFiles: (runId, sourceFileIds) => Sb.exceptionFiles(runId, null, sourceFileIds),
         readBoRecords: readAuditBoOperatorRecords,
+        readBayRecords: readAuditBayStatementDisplayRecords,
         onRecheck: openAccountRecheck,
         onManageFiles: openFileRunManagement,
         exportBoWaitingCases: downloadBoWaitingCaseRequest,
