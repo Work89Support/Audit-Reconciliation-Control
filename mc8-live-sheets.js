@@ -152,7 +152,9 @@
           continue;
         }
         if(!columns)continue;
-        const text=String(line.text||'').trim(),date=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/);
+        const text=String(line.text||'').trim();
+        if(/^(?:ถอนเงินรวม|ฝากเงินรวม)(?:\s|$)/.test(text)){finish();continue;}
+        const date=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/);
         if(date){
           finish();
           const amounts=items.filter(item=>money(item.s)!=null);
