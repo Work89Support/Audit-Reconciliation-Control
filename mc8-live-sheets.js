@@ -135,6 +135,41 @@
     const digits=account.replace(/\D/g,'');
     return {account,tail:digits.length>=4?digits.slice(-4):'',bank:bankAndName?.[1]?.toUpperCase()||'',name:bankAndName?.[2]?.trim()||'',reference,description:source};
   }
+  // Read only the presentation fields from BAY's split-line statement layout.
+  // This is not used by the reconciliation engine or persisted to a run.
+  function bayStatementDisplayRecords(pages){
+    const records=[];
+    let columns=null,current=null;
+    const money=value=>{const text=String(value||'').trim();return /^[\d,]+\.\d{2}$/.test(text)?Number(text.replace(/,/g,'')):null;};
+    const finish=()=>{if(!current)return;if(current.sec!=null&&current.amount!=null&&current.direction)records.push({...current,rowNo:records.length+1,description:current.parts.join(' ')});current=null;};
+    for(const lines of pages||[]){
+      for(const line of lines){
+        const items=(line.items||[]).filter(item=>String(item.s||'').trim());
+        const heading=items.find(item=>item.s.trim()==='คำอธิบายรายละเอียด');
+        if(heading){
+          const debit=items.find(item=>item.s.trim()==='ถอน'),credit=items.find(item=>item.s.trim()==='ฝาก'),balance=items.find(item=>item.s.trim()==='ยอดเงินในบัญชี'),code=items.find(item=>item.s.trim()==='รหัส'),channel=items.find(item=>item.s.trim()==='ช่องทาง');
+          if(debit&&credit&&balance&&code&&channel)columns={debit:debit.x,credit:credit.x,balance:balance.x,code:code.x,description:heading.x,channel:channel.x};
+          continue;
+        }
+        if(!columns)continue;
+        const text=String(line.text||'').trim(),date=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s|$)/);
+        if(date){
+          finish();
+          const amounts=items.filter(item=>money(item.s)!=null);
+          const movement=amounts.find(item=>item.x>columns.debit-40&&item.x<columns.balance-40);
+          if(!movement)continue;
+          current={date:`${date[3]}-${date[2]}-${date[1]}`,sec:null,amount:money(movement.s),direction:movement.x<columns.debit+10?'withdraw':'deposit',parts:[]};
+        }
+        if(!current)continue;
+        const time=text.match(/^(?:\d{2}\/\d{2}\/\d{4}\s+)?(\d{2}):(\d{2}):(\d{2})(?:\s|$)/);
+        if(time)current.sec=Number(time[1])*3600+Number(time[2])*60+Number(time[3]);
+        const description=items.filter(item=>item.x>=columns.description-3&&item.x<columns.channel-3).map(item=>item.s.trim()).join(' ');
+        if(description)current.parts.push(description);
+      }
+    }
+    finish();
+    return records;
+  }
   async function hydrateBayStatementDisplay(data,files,readRows){
     data.bayDisplayBySource={};
     if(typeof readRows!=='function')return [];
@@ -162,7 +197,8 @@
           const record=records.get(String(item.source.row));
           if(!record||record.date!==item.source.date||cents(record.amount)!==cents(item.amount)
             ||directionOf(record.direction)!==directionOf(item.direction)
-            ||item.source.sec!=null&&record.sec!==item.source.sec)continue;
+            ||item.source.sec!=null&&record.sec!==item.source.sec
+              &&!(item.source.sec%60===0&&Math.floor(record.sec/60)===item.source.sec/60))continue;
           const display=bayStatementDisplay(record.description||record.desc);
           if(display)data.bayDisplayBySource[file.id+'|'+item.source.row]=display;
         }
@@ -1329,6 +1365,6 @@ ${data?.primaryResult?`<section class="primary-result-note"><strong>ใช้ผ
     };
     load();
   }
-  root.MC8LiveSheets={mount,resultComplete,hydrateBoOperators,hydrateBayStatementDisplay,bayStatementDisplay,informationSheets,rowsOf,accountReviewGroups,holdForAccount,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,canOpenRealCase,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
+  root.MC8LiveSheets={mount,resultComplete,bayStatementDisplayRecords,hydrateBoOperators,hydrateBayStatementDisplay,bayStatementDisplay,informationSheets,rowsOf,accountReviewGroups,holdForAccount,filter,filterAndSortEntries,columnMatch,providerOf,sheetOf,summarize,summaries,auditStatus,canOpenRealCase,buildAuditExportSheets,tableView,providerHeader,providerFooter,pmAmountHeader,COMPANIES,SHEETS,ALL_HEADERS,STATEMENT_HEADERS};
   if(typeof module!=='undefined')module.exports=root.MC8LiveSheets;
 })(typeof window==='undefined'?globalThis:window);
