@@ -82,3 +82,6 @@ const splitPages=[[line([136,'ถอน'],[220,'ฝาก'],[272,'ยอดเ�
  assert.equal(rows[0].pmDisplay.reference,'111111');
  console.log('BAY duplicate display references preserve all financial totals');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+const footerFixture=splitPages.map(lines=>[...lines,line([25,'ถอนเงินรวม'],[280,'3,000.00'],[350,'จำนวน 1 รายการ']),line([25,'ฝากเงินรวม'],[280,'3,000.00'],[350,'จำนวน 1 รายการ'])]);
+assert.ok(require('../mc8-live-sheets.js').bayStatementDisplayRecords(footerFixture).every(row=>!row.description.includes('จำนวน')),'statement control totals are not transaction details');
