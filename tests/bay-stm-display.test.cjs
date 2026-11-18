@@ -69,3 +69,16 @@ const splitPages=[[line([136,'ถอน'],[220,'ฝาก'],[272,'ยอดเ�
   assert.deepEqual(conflict.bayDisplayBySource,{});
   console.log('BAY split-line display and minute provenance tests passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+(async()=>{
+ const m=require('../mc8-live-sheets.js');
+ const pairs=[1,2].map(row=>({company:'3XB',account:'0019657483',direction:'deposit',amount:3000,stmAmount:3000,boAmount:3000,stm:{fileId:'bay',row,date:'2026-11-17',sec:11340},bo:{fileId:'bo',row,date:'2026-11-17',sec:11340},customer:{stm:{},bo:{}}}));
+ const d={run:{business_date:'2026-11-17',summary:{match_evidence:pairs}},cases:[]};
+ const before=m.summarize(m.rowsOf(d,'3XB'));
+ await m.hydrateBayStatementDisplay(d,[{id:'bay',kind:'stm_pdf',file_name:'3XB_STM_BAY_DW.pdf'}],async()=>({bank:'BAY',records:[1,2].map(rowNo=>({rowNo,date:'2026-11-17',sec:11350,amount:3000,direction:'deposit',description:'รับโอนเงิน SCB TEST บัญชีต้นทาง : X123456 หมายเลขอ้างอิง : 111111'}))}));
+ const rows=m.rowsOf(d,'3XB');
+ assert.deepEqual(m.summarize(rows),before,'display-only bank references must never alter physical-row totals');
+ assert.equal(rows[0].pm.reference,undefined,'financial identity is unchanged');
+ assert.equal(rows[0].pmDisplay.reference,'111111');
+ console.log('BAY duplicate display references preserve all financial totals');
+})().catch(e=>{console.error(e);process.exitCode=1;});

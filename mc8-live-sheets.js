@@ -510,9 +510,9 @@
       const source=row.pmSource||row.case?.customer_details?.source_rows?.stm;
       const display=data.bayDisplayBySource?.[source?.fileId+'|'+source?.row];
       if(!display)continue;
-      row.pm={...row.pm};
-      for(const key of ['account','tail','bank','name','reference'])if(!String(row.pm[key]||'').trim())row.pm[key]=display[key]||'';
-      if(!row.pmRaw)row.pmRaw=display.description;
+      row.pmDisplay={...row.pm};
+      for(const key of ['account','tail','bank','name','reference'])if(!String(row.pmDisplay[key]||'').trim())row.pmDisplay[key]=display[key]||'';
+      row.pmDisplayRaw=row.pmRaw||display.description;
     }
     return visibleRows.filter(row=>{
       // SK8 commission-request users are not company deposit/withdrawal
@@ -903,7 +903,7 @@
     };
   }
   function amountDiff(row){if(row.waiting)return '';const pm=cents(row.pmAmount),bo=cents(row.boAmount);return pm===null&&bo===null?'':((pm||0)-(bo||0))/100;}
-  function detail(row,side,key){return row?.[side]?.[key]??'';}
+  function detail(row,side,key){return (side==='pm'?row.pmDisplay||row.pm:row?.[side])?.[key]??'';}
   function sourceColumns(row){
     const ant=providerOf(row.account)==='ANT';
     // Persisted 7M CYBERPLUS cases retain the amount but may not carry the
@@ -931,11 +931,11 @@
     return [row.reason||'',`เวลา PM: ${s.time}`,`ยอด PM: ${s.amount}`,noTimeContext].filter(Boolean).join(' · ');
   }
   function allExportRow(row,complete){
-    const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pm||{};
+    const status=auditStatus(row,complete),bo=row.bo||{},pm=row.pmDisplay||row.pm||{};
     const state=row.kind==='closed'?'ปิดเคสแล้ว':row.waiting?'รอ STM/PM':row.kind==='matched'?'คู่สำเร็จ':row.kind==='advisory'?'แจ้งข้อมูล':displayKind(row)==='pending_next_day'?'ค้างรอข้อมูลข้ามวัน':'รอตรวจ';
     const sources=sourceColumns(row);
     const boNote=bo.providerReference||sapanProviderId(bo.note)||sapanProviderId(row.boRaw)||row.boRaw||bo.note||'';
-    return [row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmRaw||pm.note||'',row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,row.waiting?'BO รอ STM/PM':row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`STM/PM ${row.pmSource?.row??''}`,`BO ${row.boSource?.row??''}`,row.waiting?'':`เวลา ${sources.time}`,row.waiting?'':`ยอด ${sources.amount}`].filter(v=>v&&!v.endsWith(' ')).join(' · '),amountDiff(row),status];
+    return [row.pmTime||'',numeric(row.pmAmount)??'',pm.account||'',pm.tail||'',pm.bank||'',pm.name||pm.user||'',pm.user||'',pm.reference||'',row.pmDisplayRaw||row.pmRaw||pm.note||'',row.boTime||'',numeric(row.boAmount)??'',bo.account||'',bo.tail||'',bo.bank||'',bo.name||bo.user||'',bo.user||'',bo.reference||'',boNote,row.waiting?'BO รอ STM/PM':row.isPair?'จับคู่ได้':'Exception',state,row.code||row.key,row.account||'',thaiDirection(row),secondsBetween(row),sourceCondition(row),row.case?.resolution_note||'',[`STM/PM ${row.pmSource?.row??''}`,`BO ${row.boSource?.row??''}`,row.waiting?'':`เวลา ${sources.time}`,row.waiting?'':`ยอด ${sources.amount}`].filter(v=>v&&!v.endsWith(' ')).join(' · '),amountDiff(row),status];
   }
   function leftExportValue(header,row){
     const pm=row.pm||{},provider=providerOf(row.account),code=(provider==='AT'?'autopeer':provider==='AZ'?'azpay':provider==='CP'?'corepay':provider==='LP'?'localpay':'mypays24');
@@ -1121,7 +1121,7 @@
       if(template)return {headers:[...template.headers,...AUDIT_HEADERS],rows:ordered.map(row=>providerExportRow(template,row,complete)),templateSheet:template.name};
       if(ordered.length&&ordered.every(isStatement)){
         const headers=[...STATEMENT_HEADERS,'BO · ผู้ดำเนินการ','STM/PM · รายละเอียดต้นฉบับ','BO · รายละเอียดต้นฉบับ','STM/PM · สถานะต้นทาง','BO · เวลาทำรายการต้นทาง'];
-        return placeBoOperator({headers,rows:ordered.map((row,index)=>[...statementExportRow(row,index,company,date,complete),row.bo?.performedBy||'',row.pmRaw||row.pm?.description||row.pm?.note||'',row.boRaw||row.bo?.note||'',row.pm?.status||'',row.boTransactionTime||'']),templateSheet:'statement:account'});
+        return placeBoOperator({headers,rows:ordered.map((row,index)=>[...statementExportRow(row,index,company,date,complete),row.bo?.performedBy||'',row.pmDisplayRaw||row.pmRaw||row.pm?.description||row.pm?.note||'',row.boRaw||row.bo?.note||'',row.pm?.status||'',row.boTransactionTime||'']),templateSheet:'statement:account'});
       }
       const borrowed=ordered.some(combinedBorrow);
       const headers=[...ALL_HEADERS,'BO · ผู้ดำเนินการ',...(borrowed?['BO ฝาก','BO ถอน','BO · เวลาทำรายการต้นทาง']:[])];
