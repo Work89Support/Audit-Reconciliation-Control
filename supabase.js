@@ -813,7 +813,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     const runs = await json(`/rest/v1/recon_runs?id=eq.${encodeURIComponent(jobs[0].last_run_id)}&select=id,company,business_date,created_at,stm_count,bo_count,exception_count,matched,summary&limit=1`);
     if(!runs[0])return null;
     let state=null,retainedResultError='';
-    if(!['completed','needs_review','running'].includes(jobs[0].status)){
+    if(!['completed','running'].includes(jobs[0].status)){
       try{state=await fileRunManagement(company,date);}catch(e){retainedResultError=e.message;}
     }
     return { ...runs[0],jobStatus:jobs[0].status,...retainedRunState(jobs[0],runs[0],state),retainedResultError,boWaitingSnapshot:snapshot };
@@ -826,7 +826,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
     const retained=!!(state?.hold?.paused&&state.manualOnly===false&&current
       &&job.company===run.company&&job.business_date===run.business_date
       &&current.last_run_id===run.id&&job.last_run_id===run.id
-      &&current.status===job.status&&['queued','error','waiting_files'].includes(job.status)
+      &&current.status===job.status&&['queued','needs_review','error','waiting_files'].includes(job.status)
       &&job.error_count===0&&Number.isFinite(finished)&&Number.isFinite(created)&&finished>=created);
     return {automaticPaused:!!state?.hold?.paused,retainedCompletedResult:retained,
       resultStatus:retained?'completed':job?.status};
