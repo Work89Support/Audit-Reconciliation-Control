@@ -29,12 +29,22 @@
   const j=s.job||s;
   if(s.workerFailure?.source_kind==='manual'&&j.status==='error')return {title:s.workerFailure.diagnostic_only?'ผลตรวจไฟล์ในเครื่อง · ยังไม่รันใหม่':'ประวัติรอบตรวจมือที่ไม่ผ่าน',reason:`หลักฐานตรวจมือ ${s.workerFailure.execution_id||'—'} · ${s.workerFailure.detail} · รายละเอียด: ${s.workerFailure.message}`,next:'เก็บคำขอและประวัติเดิม · ตรวจ OCR และแถวต้นทางให้ครบก่อนสั่งงานใหม่ ไม่ใช้ผลที่อ่านไม่ครบเป็นยอดศูนย์',blocked:false};
   if(s.workerFailure&&j.status==='error')return {title:'รอบหลักบันทึกผลไม่สำเร็จ',reason:`หลักฐานรันเดิม ${s.workerFailure.execution_id||'—'} · ${s.workerFailure.detail} · ข้อความ worker: ${s.workerFailure.message}`,next:'เก็บคำขอและประวัติเดิม · ตรวจผลรันมือและแถวอ้างอิงก่อนให้หัวหน้า/Admin ยืนยัน ไม่ลองรันซ้ำอัตโนมัติ',blocked:false};
+  if(s.hold?.paused||s.manualOnly){
+   const stopped=['ready','queued','running'].includes(j.status);
+   return {title:(stopped?'พักบอทแล้ว · คิวเดิมหยุดรอตรวจ':'พักบอทรอบหลัก')+(s.manualOnly?' · มีไฟล์แก้ไข':''),reason:s.hold?.reason||'ล็อกผลรอบหลักเพื่อรักษาผลที่ยืนยัน เคสเดิม และป้องกันการรันซ้ำ',next:'กักหรือแก้เวอร์ชันไฟล์ผิดก่อน แล้วรันตรวจมือเป็นรายงานแยก · ผลหลักเดิมและเคสที่ปิดแล้วไม่เปลี่ยนจนหัวหน้า/ผู้ดูแลยืนยันผลใหม่',blocked:false};
+  }
   if(j.status==='running')return {title:'บอทรอบหลักกำลังรัน',reason:'ยังไม่รับงานตรวจมือซ้อนกับบริษัทและวันนี้',next:'รอรอบหลักจบ แล้วโหลดสถานะล่าสุด',blocked:true};
-  if(s.hold?.paused||s.manualOnly)return {title:'พักบอทรอบหลัก'+(s.manualOnly?' · มีไฟล์แก้ไข':''),reason:s.hold?.reason||'ล็อกผลรอบหลักเพื่อรักษาประวัติเคสเดิมและป้องกันเคสซ้ำ',next:'เลือกไฟล์แล้วรันตรวจมือเป็นรายงานแยกได้ แม้ยังไม่มีผลเดิม · หัวหน้า/ผู้ดูแลยืนยันผลเท่านั้น',blocked:false};
   if(Number(j.attempt_count)>=3&&['queued','error'].includes(j.status))return {title:'รอบหลักลองครบ 3 ครั้ง',reason:j.last_error?.includes('ตรวจรูปแบบไฟล์หรือเพิ่มไฟล์ที่ถูกต้อง')?'หยุดหลังลองครบ 3 ครั้ง · ยังไม่ทราบสาเหตุจากข้อความนี้ ต้องตรวจบันทึก worker ไม่ได้ยืนยันว่าไฟล์เสีย':j.last_error||'ต้องตรวจสาเหตุเดิมก่อนส่งรอบหลักซ้ำ',next:'ตรวจไฟล์และเหตุผลล้มเหลว · ใช้รันตรวจมือเพื่อทบทวนผลแยกได้',blocked:false};
   if(j.status==='error')return {title:'รอบหลักล้มเหลว',reason:j.last_error||'ยังไม่มีรายละเอียดข้อผิดพลาด',next:'ตรวจไฟล์และโหลดสถานะล่าสุดก่อนสั่งตรวจมือ',blocked:false};
   return {title:j.status==='queued'?'คิวหลักรอรอบบอท':'สถานะรอบหลัก',reason:j.last_run_id?'มีผลเดิมอ้างอิง':'ยังไม่มีผลเดิม ไม่ใช่ยอดศูนย์',next:j.status?'รันตรวจมือได้ทันทีเป็นรายงานแยก · ไม่เปลี่ยนคิวหลัก ยอด หรือเคส':'ยังไม่มีคิวบริษัท/วันที่นี้ กรุณาตรวจการรับไฟล์',blocked:!j.status};
  }
+ function fieldGuideHtml(company,date){return `<details class="file-run-flow file-run-field-guide"><summary>แนวทางหน้างาน: ส่งไฟล์ผิดวัน หรือพบหลังปิดเคส</summary><ol>
+  <li><strong>พักรอบ ${esc(company)} · ${esc(date)} ก่อน</strong> ระบบจะหยุดคิวเดิมรอตรวจ ล้างคำขอรันซ้ำ แต่ไม่ลบผลกระทบยอด ไม่เปิดเคสที่ปิดแล้ว และไม่แก้ยอด</li>
+  <li><strong>กักไฟล์ผิดหรือเพิ่มเวอร์ชันแก้ไข</strong> เก็บต้นฉบับและประวัติไว้ ห้ามลบไฟล์เดิมหรือย้ายยอดด้วยมือ</li>
+  <li><strong>ตรวจมือด้วยชุดไฟล์ที่ถูกต้อง</strong> ผลตรวจมือนี้เป็นรายงานเปรียบเทียบ ยังไม่แทนผลหลักและยังไม่สร้าง/ปิดเคส</li>
+  <li><strong>ให้หัวหน้า/Admin เทียบผลเดิมกับผลแก้ไข</strong> ถ้ามีเคสปิดแล้ว ให้ตรวจสายหลักฐานและจำนวนเคสก่อนยืนยันผลใหม่</li>
+  <li><strong>รอบวันถัดไปเดินแยกกัน</strong> ตรวจว่าไฟล์เป็นของวันถัดไปจริง แล้วค่อยเปิดหรือรันรอบนั้น ไม่ต้องเปิดรอบวันที่ผิดกลับมาเพื่อให้ปิดข้ามวัน</li>
+ </ol><p>หากยังขึ้น “เข้าคิว” หลังพัก ให้โหลดสถานะล่าสุด คิวต้องเป็น “รอตรวจ” ก่อนทำงานวันถัดไป</p></details>`;}
  function noticeHtml(s){const n=runNotice(s);return `<aside class="manual-note" role="status"><strong>${esc(n.title)}</strong><p>สาเหตุ: ${esc(n.reason)}</p><p>ทำต่อ: ${esc(n.next)}</p></aside>`;}
  function preflightHtml(s){
   const p=s?.preflight;if(!p)return '';
@@ -69,6 +79,7 @@
    if(!sameActor()){host.innerHTML='<p role="alert">ผู้ใช้เปลี่ยน กรุณาเปิดหน้าจัดการไฟล์ใหม่</p>';return;}
    host.innerHTML=`<section class="manual-tools"><div class="manual-scope"><strong>${esc(opts.company)} · ${esc(opts.date)}</strong><span>เลือกไฟล์ → ตรวจซ้ำ → หัวหน้ายืนยันผล</span></div><h3>เลือกไฟล์และจัดการรอบตรวจ</h3>
     <p>เก็บไฟล์ต้นฉบับทุกฉบับ การแก้ข้อมูลเป็นเวอร์ชันใหม่ ไม่แก้ยอดและไม่ปิดเคส</p>
+    ${fieldGuideHtml(opts.company,opts.date)}
     <details class="file-run-flow"><summary>ขั้นตอนรอบปกติ / รอบที่ต้องรันใหม่</summary><p>รอบปกติ: บอทรับไฟล์ → อ่านและกระทบยอดตามปกติ</p><p>รอบผิดปกติ: เลือก/เพิ่มไฟล์ → ทบทวนและสั่งรันมือ → หัวหน้า/Admin ยืนยันผลหลักและชุดเคส → ดำเนินการ ส่งชี้แจง และปิดเคสตามสิทธิ์และเงื่อนไขเดิม</p><p>การเลือกไฟล์หรือรันมืออย่างเดียวยังไม่เปลี่ยนผลหลัก ไม่สร้างหรือปิดเคส และไม่ย้ายคำอนุมัติจากเคสเก่า</p></details>
     ${noticeHtml(runState)}${preflightHtml(runState)}
     <p role="status">${hold?.paused?'พักรันอยู่ · '+esc(hold.reason):runState?.preflight?.blocked?'พักรันอัตโนมัติจากคำเตือน · ไม่ลองรันซ้ำเอง':'ยังไม่ได้พักรัน'}</p>
@@ -186,5 +197,5 @@
   async function load(){try{const result=await opts.load(opts.company,opts.date);if(!alive||!sameActor())return;runState=result;files=result.files;hold=result.hold;manualOnly=!!result.manualOnly;selected=initialSelection(files,opts.company,opts.date,selectionLoaded?selected:null);selectionLoaded=true;error='';if(opts.initialFileId&&!initialOpened){initialOpened=true;const file=files.find(f=>f.id===opts.initialFileId);if(file)edit(file);}}catch(e){runState=null;error=e.message;}draw();}
   draw();load();return()=>{alive=false;};
  }
- root.FileRunManagement={mount,canManage,canReparse,validateCorrection,runNotice,noticeHtml,preflightHtml,confirmAction,selectionSummary,initialSelection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
+ root.FileRunManagement={mount,canManage,canReparse,validateCorrection,runNotice,noticeHtml,preflightHtml,fieldGuideHtml,confirmAction,selectionSummary,initialSelection};if(typeof module!=='undefined')module.exports=root.FileRunManagement;
 })(typeof window==='undefined'?globalThis:window);
