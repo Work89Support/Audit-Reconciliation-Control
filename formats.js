@@ -271,10 +271,11 @@ const Formats = (() => {
     return { terminal, channel: canonicalPm(s) || channel || terminal.toUpperCase(), isBankAccount: /^\d{9,15}$/.test(terminal) };
   }
 
-  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "123PAY", "MYPAY", "LOCALPAY", "QPAY", "CELOX", "CLX"];
+  const PM_CHANNELS = ["CYBERPLUS", "CYNERPLUS", "CYBER", "AUTOPEER", "AZPAY", "ATP", "COREPAY", "CPPAY", "CP2", "CPXM", "12PAY", "123PAY", "MYPAY", "LOCALPAY", "QPAY", "CELOX", "CLX", "MONOPAY", "MNP"];
   const canonicalPm = (ch) => {
     if (/(?:^|[^A-Z0-9])(?:ANT|ANYPAY)(?=$|[^A-Z0-9])/i.test(String(ch || ""))) return "ANT";
     const s = String(ch || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/MONOPAY/.test(s) || /(?:^|[^A-Z0-9])MNP(?=$|[^A-Z0-9])/i.test(String(ch || ""))) return "MONOPAY";
     if (/CYBER|CYNER|CBY/.test(s)) return "CYBERPLUS";
     if (/AUTOPEER|ATP/.test(s)) return "AUTOPEER";
     if (/AZPAY|^AZ$/.test(s)) return "AZPAY";
@@ -331,7 +332,7 @@ const Formats = (() => {
   };
 
   /* ---------------- ตัวแปลงต่อรูปแบบ ---------------- */
-  const PM_PROVIDERS = [["celox", "CELOX"], ["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
+  const PM_PROVIDERS = [["monopay", "MONOPAY"], ["mnp", "MONOPAY"], ["celox", "CELOX"], ["localpay", "LOCALPAY"], ["locelpay", "LOCALPAY"], ["qpay", "QPAY"], ["mypay", "MYPAY"], ["autopeer", "AUTOPEER"], ["atp", "AUTOPEER"], ["azpay", "AZPAY"], ["corepay", "COREPAY"], ["cppay", "COREPAY"], ["cp2", "COREPAY"], ["cpxm", "COREPAY"], ["cyberplus", "CYBERPLUS"], ["cyberpay", "CYBERPLUS"], ["cby", "CYBERPLUS"], ["12pay", "12PAY"]];
   function pmProviderOf(fileName) {
     const s = String(fileName || "").toLowerCase();
     if (canonicalPm(s) === "ANT") return "ANT";
@@ -606,7 +607,7 @@ const Formats = (() => {
         || (provRaw ? provRaw.toUpperCase() : "PM");
       // CELOX withdrawals use transactionId as the BO transaction code.
       // Column A `id` is a provider order identifier, not BO column `รหัส`.
-      const reconcileRef = provider === "CELOX" && dir === "withdraw"
+      const reconcileRef = ["CELOX", "MONOPAY"].includes(provider) && dir === "withdraw"
         ? transactionId : transactionRef;
       const subco = normalizeCompany((meta && meta.subco) || company);
       if (XB_COMPANIES.has(subco) && provider === "ANT") {
@@ -614,12 +615,13 @@ const Formats = (() => {
       }
       const xbProviders = ["AUTOPEER", "AZPAY", "COREPAY", "CYBERPLUS", "12PAY", "MYPAY"];
       const threeXbOnlyProvider = subco === "3XB" && ["LOCALPAY", "CELOX"].includes(provider);
-      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !threeXbOnlyProvider) {
+      const mr9OnlyProvider = subco === "MR9" && provider === "MONOPAY";
+      if (XB_COMPANIES.has(subco) && !xbProviders.includes(provider) && !threeXbOnlyProvider && !mr9OnlyProvider) {
         return drop(provider === "QPAY"
           ? "QPAY ยังไม่เปิดใช้โดยแอดมิน จึงไม่นำมากระทบยอด"
-          : "Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M/CYBER/12PAY และ LOCALPAY/CELOX เฉพาะ 3XB)"), null;
+          : "Provider นอกขอบเขต Audit เครือ XB (ใช้ AT/AZ/CP/M/CYBER/12PAY และ LOCALPAY/CELOX เฉพาะ 3XB และ MONOPAY เฉพาะ MR9)"), null;
       }
-      const xbPolicy = XB_COMPANIES.has(subco) && (xbProviders.includes(provider) || threeXbOnlyProvider);
+      const xbPolicy = XB_COMPANIES.has(subco) && (xbProviders.includes(provider) || threeXbOnlyProvider || mr9OnlyProvider);
       const partial = ["partial", "success-partial"].includes(status);
       // Partial payouts are a provider rule, not a company/date exception.
       // Unsupported partials must not pass the worker's "no successful rows" gate.
@@ -640,8 +642,16 @@ const Formats = (() => {
         return drop("รายการไม่สำเร็จ (PM: " + (status || "-") + (submitStatus ? "/" + submitStatus : "") + ")"), null;
       }
       let timeSource = xbPolicy
-        ? firstValue(f, r, dir === "deposit" ? ["paymentTime", "expiredTime"] : ["updateTime"])
+        ? firstValue(f, r, dir === "deposit" ? (mr9OnlyProvider ? ["paymentTime"] : ["paymentTime", "expiredTime"]) : ["updateTime"])
         : firstValue(f, r, ["paymentTime", "updateTime", "วันเวลาอัพเดต", "วันเวลา", "วันที่ทำรายการ", "วันที่", "requestTime"]);
+      if (mr9OnlyProvider) {
+        const required = dir === "deposit" ? ["customerId", "realAmount", "paymentTime"] : ["amount", "transactionId", "updateTime"];
+        const missing = required.filter(name => !String(valExact(f, r, name)).trim());
+        const value = num(valExact(f, r, dir === "deposit" ? "realAmount" : "amount"));
+        if (missing.length || !stamp(timeSource.value) || !(value > 0)) {
+          throw new Error(`MONOPAY แถว ${i + 1}: ข้อมูลสำคัญไม่ครบ/ไม่ถูกต้อง (${missing.join(", ") || "ยอดหรือเวลา"}) — ต้องตรวจไฟล์ก่อนกระทบยอด`);
+        }
+      }
       const settlement = stamp(timeSource.value);
       const requestSource = firstValue(f, r, ["requestTime", "วันที่ทำรายการ", "วันเวลาทำรายการ", "เวลาทำรายการ", "createdAt", "createTime"]);
       const request = stamp(requestSource.value);
@@ -730,7 +740,7 @@ const Formats = (() => {
         subco,
         timeColumn: timeSource.column,
         amountColumn,
-        memberCode: valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
+        memberCode: mr9OnlyProvider ? valExact(f, r, "customerId") : valAny(f, r, ["รหัสสมาชิก", "Username", "user ที่ฝาก", "ยูสเซอร์", "customerId"]),
         custAccount: valAny(f, r, ["เลขบัญชีสมาชิก", "เลขบัญชีลูกค้า", "bankAccountNo", "เลขบัญชี"]),
         custName: valAny(f, r, ["ชื่อบัญชีสมาชิก", "ชื่อ - นามสกุล ผู้รับ", "payee"]),
         custBank: valAny(f, r, ["ชื่อธนาคารสมาชิก", "ธนาคารลูกค้า", "ธนาคาร", "ธนาคารต้นทาง"]),

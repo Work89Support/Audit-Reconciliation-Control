@@ -85,7 +85,7 @@ const workflow = JSON.parse(fs.readFileSync(new URL('../n8n/audit-mail-ingest.js
 const worker = JSON.parse(fs.readFileSync(new URL('../n8n/audit-headless-worker.json', import.meta.url), 'utf8'));
 const normalizeNode = worker.nodes.find(node => node.name === 'แปลงรายการเป็นมาตรฐาน');
 const matcherNode = worker.nodes.find(node => node.name === 'กระทบยอดและสร้าง Exception');
-assert.match(normalizeNode.parameters.jsCode, /1\.9\.99-3xb-celox/);
+assert.match(normalizeNode.parameters.jsCode, /1\.9\.100-mr9-monopay/);
 assert.match(normalizeNode.parameters.jsCode, /CELOX withdrawal:|CELOX withdrawals use transactionId/);
 assert.match(matcherNode.parameters.jsCode, /celoxIdentityMatches/);
 assert.equal(Formats.canonicalPm('123PAY'), '12PAY');

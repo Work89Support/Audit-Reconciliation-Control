@@ -127,7 +127,7 @@ const Engine = (() => {
     if (map.txid !== undefined && map.username !== undefined) source = "bo";
     else if (map.status !== undefined && map.amount !== undefined && map.username === undefined) source = "pm";
     else if (map.balance !== undefined || (map.debit !== undefined && map.credit !== undefined)) source = "stm";
-    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes("celox") || blob.includes(" atp ")) source = "pm";
+    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes("celox") || blob.includes("monopay") || blob.includes(" atp ")) source = "pm";
     if (name.startsWith("bo_")) source = "bo";
 
     let bank = null;
@@ -139,7 +139,7 @@ const Engine = (() => {
     }
 
     let company = null;
-    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "CELOX", "SYS123"].forEach((c) => {
+    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "CELOX", "MONOPAY", "SYS123"].forEach((c) => {
       if (blob.toUpperCase().includes(c)) company = c;
     });
 
@@ -678,8 +678,43 @@ const Engine = (() => {
       }
       return false;
     };
+    // MR9 MONOPAY: all three user-approved fields are mandatory even when
+    // a Sapan provider id agrees. BO has minute precision; preserve PM seconds.
+    const monopayFieldsMatch = (s, b) => {
+      const isMono = r => String(r.account || r.channel || "").toUpperCase() === "MONOPAY";
+      if (!isMono(s) && !isMono(b)) return true;
+      if (!isMono(s) || !isMono(b)
+        || String(s.subco || s.company || "").toUpperCase() !== "MR9"
+        || String(b.subco || b.company || "").toUpperCase() !== "MR9"
+        || s.direction !== b.direction || !s.date || s.date !== b.date
+        || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)
+        || Math.floor(s.sec / 60) !== Math.floor(b.sec / 60)
+        || !Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
+      if (s.direction === "deposit") {
+        const user = memberIdentityText(s.memberCode);
+        return !!user && user === memberIdentityText(b.memberCode);
+      }
+      if (s.direction === "withdraw") {
+        const transaction = identityText(s.transactionId);
+        return !!transaction && transaction === identityText(b.ref);
+      }
+      return false;
+    };
+    // Reserve only reciprocal 1:1 candidates. A tie must not be resolved by
+    // the order of rows in a file or by the generic nearest-time passes.
+    const monopayByStatement = new Map(), monopayByBo = new Map();
+    for (const s of stmRecords.filter(r => String(r.account || "").toUpperCase() === "MONOPAY")) {
+      const candidates = boRecords.filter(b => monopayFieldsMatch(s, b));
+      monopayByStatement.set(s, candidates);
+      for (const b of candidates) monopayByBo.set(b, (monopayByBo.get(b) || 0) + 1);
+    }
+    const monopayIdentityMatches = (s, b) => {
+      if (![s, b].some(r => String(r.account || r.channel || "").toUpperCase() === "MONOPAY")) return true;
+      const candidates = monopayByStatement.get(s) || [];
+      return candidates.length === 1 && candidates[0] === b && monopayByBo.get(b) === 1;
+    };
     const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase()
-      && celoxIdentityMatches(s, b);
+      && celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b);
     const plausibleTmnOcrAmount = (ocrAmount, boAmount) => {
       if (!Number.isInteger(ocrAmount) || !Number.isInteger(boAmount) || ocrAmount <= boAmount || boAmount <= 0) return false;
       const ratio = ocrAmount / boAmount;
@@ -882,7 +917,7 @@ const Engine = (() => {
     const xbProviderRefMatched = new Set();
     // An exact Sapan/Spean provider id is stronger than inconsistent upstream
     // company/provider labels (for example `3xbet` instead of `3XB`).
-    const xbProviderRefCandidate = (s, b) => celoxIdentityMatches(s, b)
+    const xbProviderRefCandidate = (s, b) => celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b)
       && Number.isFinite(s.amount) && Math.abs(s.amount) > 0
       // The 24-character provider `_id` is the transaction identity. Some BO
       // exports keep withdrawals as a signed amount or classify their type
@@ -949,6 +984,7 @@ const Engine = (() => {
       const rows = sourceRows.filter((i) => {
         if (boUsed[i]) return false;
         const b = boRecords[i];
+        if (!monopayIdentityMatches(s, b)) return false;
         if (providerId) return xbProviderRefCandidate(s, b);
         const boProviderId = sapanProviderId(b && b.note) || sapanProviderId(b && b.raw);
         return !!boProviderId
