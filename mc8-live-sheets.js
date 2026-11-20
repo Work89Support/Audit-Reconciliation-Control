@@ -91,6 +91,7 @@
     if(/AZPAY|\bAZP?\b/.test(s))return 'AZ';
     if(/COREPAY|CPPAY|CP2|CPXM|\bCP\b/.test(s))return 'CP';
     if(/CYBERPLUS|CYNERPLUS|\bCBY\b|\bCY\b/.test(s))return 'CY';
+    if(/MONOPAY|\bMNP\b/.test(s))return 'MNP';
     if(/MYPAY|\bM24\b|MYPAYS24/.test(s))return 'M';
     if(/LOCALPAY|LOCELPAY|\bLP\b/.test(s))return 'LP';
     return 'OTHER';
@@ -103,7 +104,7 @@
     return 'OTHER';
   }
   function providerDisplayName(provider){
-    return {AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY'}[provider]||'';
+    return {AT:'AUTOPEER',CP:'COREPAY',CY:'CYBERPLUS',AZ:'AZPAY',LP:'LOCALPAY',M:'MYPAY',ANT:'ANYPAY',MNP:'MONOPAY'}[provider]||'';
   }
   function isCanonicalProviderLabel(value,provider){
     const canonical=providerDisplayName(provider).replace(/[^A-Z0-9]/g,'');

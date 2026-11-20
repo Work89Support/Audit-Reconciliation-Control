@@ -5,8 +5,8 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
-const WORKER_VERSION = "1.9.99-3xb-celox";
-const PARSER_VERSION = "1.9.99-3xb-celox";
+const WORKER_VERSION = "1.9.100-mr9-monopay";
+const PARSER_VERSION = "1.9.100-mr9-monopay";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview, reviewedPdfRecovery] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
@@ -758,17 +758,21 @@ await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringif
 // browser parsers. That workflow has its own orchestration graph, so replace
 // only source segments inside code nodes that already embed them.
 const roundWorkerPath = path.join(root, "n8n/audit-round-worker.json");
-const roundWorker = JSON.parse(await readFile(roundWorkerPath, "utf8"));
+let roundWorkerText = await readFile(roundWorkerPath, "utf8");
+const roundWorker = JSON.parse(roundWorkerText);
 for (const node of roundWorker.nodes || []) {
   let code = node.parameters?.jsCode;
   if (typeof code !== "string") continue;
-  if (code.includes("const Formats")) {
-    const declaration = code.indexOf("const Formats");
-    const parserStart = code.lastIndexOf("/*", declaration);
-    const nextDeclaration = code.indexOf("const Rules", declaration);
-    const parserEnd = code.lastIndexOf("/*", nextDeclaration);
-    if (parserStart < 0 || nextDeclaration < 0 || parserEnd < parserStart) throw new Error(`หา Formats segment ไม่พบใน node ${node.name}`);
-    code = code.slice(0, parserStart) + formats.trimEnd() + "\n\n\n" + code.slice(parserEnd);
+  const previousCode = code;
+  for (const [name, source] of [["Formats", formats], ["Registry", registry], ["Engine", engine]]) {
+    const declaration = `const ${name} =`;
+    const start = code.indexOf(declaration);
+    if (start < 0) continue;
+    const end = code.indexOf("\n})();", start);
+    const sourceStart = source.indexOf(declaration);
+    const sourceEnd = source.indexOf("\n})();", sourceStart);
+    if (end < 0 || sourceStart < 0 || sourceEnd < 0) throw new Error(`Missing ${name} runtime boundary in ${node.name}`);
+    code = code.slice(0, start) + source.slice(sourceStart, sourceEnd + 7) + code.slice(end + 7);
   }
   if (code.includes("const PdfStm")) {
     const declaration = code.indexOf("const PdfStm");
@@ -777,7 +781,8 @@ for (const node of roundWorker.nodes || []) {
     if (parserStart < 0 || parserEnd < 0) throw new Error(`หา PdfStm segment ไม่พบใน node ${node.name}`);
     code = code.slice(0, parserStart) + pdf.trim() + code.slice(parserEnd);
   }
-  node.parameters.jsCode = code;
+  node.parameters.jsCode = code.replace(/1\.9\.\d+(?:-[a-z0-9-]+)?/g, WORKER_VERSION);
+  roundWorkerText = roundWorkerText.replace(JSON.stringify(previousCode), JSON.stringify(node.parameters.jsCode));
 }
-await writeFile(roundWorkerPath, JSON.stringify(roundWorker, null, 2) + "\n");
+await writeFile(roundWorkerPath, roundWorkerText);
 console.log(`built n8n/audit-headless-worker.json (${workflow.nodes.length} nodes)`);
