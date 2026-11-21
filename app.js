@@ -2761,7 +2761,7 @@ function manualFollowupItems(rows) {
     const latest=new Map(),primary=row.primaryResult;
     const jobs=[...(row.rechecks||[])].filter(q=>q.mode==='account'&&q.company===row.company&&q.business_date===row.business_date).sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))||String(b.id).localeCompare(String(a.id)));
     for(const q of jobs){const scope=JSON.stringify([q.account,q.direction]);if(latest.has(scope))continue;latest.set(scope,q);
-      if(!['ready','confirmed'].includes(q.status)||q.id===primary?.recheck_id||seen.has(q.id))continue;
+      if(!['ready','confirmed'].includes(q.status)||q.base_is_current===false||q.id===primary?.recheck_id||seen.has(q.id))continue;
       if(primary&&Date.parse(q.created_at)<=Date.parse(primary.accepted_at))continue;
       seen.add(q.id);output.push({...q});
     }
@@ -2775,7 +2775,7 @@ function dailyResultStatus(row,run={}) {
   const manual=row.latestRecheck;
   const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
   return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
-    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?labels[manual.status]||manual.status:null,
+    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?(['ready','confirmed'].includes(manual.status)&&manual.base_is_current===false?'รายงานรันมือเดิม · อ้างอิงรอบก่อนหน้า':labels[manual.status]||manual.status):null,
     review:primary?.review_needed?(primary.review_reason||'มีไฟล์เพิ่มหลังยืนยัน · กรุณาทบทวน'):null,
     automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
     error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};

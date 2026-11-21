@@ -23,3 +23,52 @@ const recheck=readFileSync(new URL('../account-recheck.js',import.meta.url),'utf
 assert.match(recheck,/const detail=await opts.detail\(target.id\)/);
 assert.match(recheck,/if\(!active\|\|!sameActor\(\)\)return;opened=detail/);
 console.log('PASS manual followups: latest scope, accepted history suppressed, compare/foreign/stale excluded, read-only role/company/current-state guarded deep link');
+
+// A completed automatic run may supersede the accepted manual primary. The
+// staged report remains downloadable, but must not return as pending work.
+const obsolete={...q('sk8-old','confirmed'),company:'SK8',business_date:'2026-11-20',base_run_id:'old-run',base_is_current:false};
+const sk8={company:'SK8',business_date:'2026-11-20',job_status:'completed',primaryResult:null,rechecks:[obsolete]};
+assert.deepEqual(followups([sk8]),[]);
+assert.deepEqual(followups([{...sk8,rechecks:[{...obsolete,status:'ready'}]}]),[]);
+assert.deepEqual(followups([{...sk8,rechecks:[{...obsolete,id:'sk8-current',base_is_current:true}]}]).map(q=>q.id),['sk8-current']);
+assert.deepEqual(followups([{...sk8,rechecks:[{...obsolete,base_is_current:undefined}]}]).map(q=>q.id),['sk8-old'],'unknown lineage is not silently treated as obsolete');
+const status=new Function('LIVE_STATUS',`${app.match(/function dailyResultStatus\([^]*?\n}/)[0]};return dailyResultStatus;`)({completed:{label:'เสร็จ'}});
+assert.match(status({...sk8,latestRecheck:obsolete}).manual,/อ้างอิงรอบก่อนหน้า/);
+
+const {createRequire}=await import('node:module');
+const require=createRequire(import.meta.url),ui=require('../account-recheck.js');
+assert.equal(ui.currentBase(obsolete,{last_run_id:'new-run'}),false);
+assert.equal(ui.currentBase({...obsolete,base_is_current:true},{last_run_id:'new-run'}),false);
+assert.equal(ui.currentBase({...obsolete,base_is_current:true},{last_run_id:'old-run'}),true);
+assert.equal(ui.currentBase({base_run_id:null},{last_run_id:null}),true,'null-base manual runs remain supported');
+assert.equal(ui.currentBase({base_run_id:'old-run'},null),true,'missing state must not invent a replacement run');
+const source=readFileSync(new URL('../supabase.js',import.meta.url),'utf8');
+const overlay=source.slice(source.indexOf('  async function primaryOverlays('),source.indexOf('  const dailyStatus ='));
+const {runInNewContext}=await import('node:vm');
+let jobReadFails=false;const requests=[];
+const ctx={json:async path=>{requests.push(path);if(path.includes('manual_primary_results'))return [];if(path.includes('account_recheck_jobs'))return [{...obsolete,base_is_current:undefined}];if(path.includes('audit_run_holds'))return [];if(path.includes('daily_recon_jobs')){if(jobReadFails)throw Error('timeout');return [{company:'SK8',business_date:'2026-11-20',last_run_id:'new-run',status:'completed'}];}throw Error('Unexpected request');},readManualPrimary:async()=>{throw Error('No manual primary');}};
+runInNewContext(overlay,ctx);
+const input=[{company:'SK8',business_date:'2026-11-20',job_status:'completed',matched_count:706,open_count:0}];
+const inputBefore=JSON.stringify(input),reportBefore=JSON.stringify(obsolete);
+const enriched=await ctx.primaryOverlays(input,{caseCountsOnly:true});
+assert.equal(enriched[0].rechecks[0].base_is_current,false);
+assert.deepEqual(followups(enriched),[]);
+assert.equal(enriched[0].matched_count,706);assert.equal(enriched[0].open_count,0);
+assert.equal(JSON.stringify(input),inputBefore);assert.equal(JSON.stringify(obsolete),reportBefore);
+assert.equal(requests.filter(p=>p.includes('daily_recon_jobs')).length,1);
+assert.ok(requests.every(p=>!p.includes('/rpc/')),'lineage enrichment reads tables only');
+jobReadFails=true;const uncertain=await ctx.primaryOverlays(input,{caseCountsOnly:true});
+assert.equal(uncertain[0].rechecks[0].base_is_current,undefined);
+assert.match(uncertain[0].workflowStatusError,/รอบอ้างอิงรันมือยังโหลดไม่สำเร็จ/);
+assert.equal(followups(uncertain).length,1,'a failed read must not silently hide work');
+
+const rendered=[];const controls=new Map();let primaryButtons=0;
+const host={set innerHTML(v){rendered.push(v);},get innerHTML(){return rendered.at(-1);},querySelector(selector){if(!controls.has(selector))controls.set(selector,{after(){primaryButtons++;},addEventListener(){}});return controls.get(selector);},querySelectorAll(){return [];}};
+const stop=ui.mount(host,{company:'SK8',date:'2026-11-20',accounts:['ALL'],role:()=> 'admin',actor:()=> 'test-actor',list:async()=>[{...obsolete,result:{stm_count:706,bo_count:706,matched:706,exception_count:0}}],loadState:async()=>({job:{last_run_id:'new-run',status:'completed'}}),onPrimary:()=>{throw Error('Must not open obsolete confirmation');}});
+await new Promise(resolve=>setImmediate(resolve));
+assert.match(host.innerHTML,/data-obsolete-report/);
+assert.match(host.innerHTML,/ไม่ใช่งานรอยืนยันผลหลัก/);
+assert.match(host.innerHTML,/data-detail="sk8-old"/,'history and download remain available');
+assert.equal(primaryButtons,0);
+stop();
+console.log('PASS superseded SK8 manual report: bounded read-only lineage, no pending card or primary button, history retained, uncertain reads disclosed; current/null-base reports unchanged');

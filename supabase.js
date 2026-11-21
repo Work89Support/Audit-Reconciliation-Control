@@ -497,16 +497,20 @@ const Sb = (() => {
         try{const v=await readManualPrimary(row.company,row.business_date);if(v?.stale)unavailable.set(key,v);else if(v)resolved.set(key,v);}
         catch(e){unavailable.set(key,{stale:false,message:e.message});}
       }));
-    let manual=[],holds=[],workflowStatusError='';
+    let manual=[],holds=[],jobs=null,workflowStatusError='';
     if(caseCountsOnly){
       const filter=`business_date=gte.${dates[0]}&business_date=lte.${dates[dates.length-1]}&company=in.(${companies.map(encodeURIComponent).join(',')})`;
       const extra=await Promise.allSettled([
-        json(`/rest/v1/account_recheck_jobs?${filter}&select=id,company,business_date,account,direction,mode,status,created_at,confirmed_at,selected_file_ids&order=created_at.desc,id.desc&limit=1000`),
-        json(`/rest/v1/audit_run_holds?${filter}&select=company,business_date,paused&limit=1000`)
+        json(`/rest/v1/account_recheck_jobs?${filter}&select=id,company,business_date,account,direction,mode,status,created_at,confirmed_at,selected_file_ids,base_run_id&order=created_at.desc,id.desc&limit=1000`),
+        json(`/rest/v1/audit_run_holds?${filter}&select=company,business_date,paused&limit=1000`),
+        json(`/rest/v1/daily_recon_jobs?${filter}&is_archived=eq.false&select=company,business_date,last_run_id,status&limit=1000`)
       ]);
       if(extra[0].status==='fulfilled')manual=extra[0].value;else workflowStatusError='สถานะรันมือยังโหลดไม่สำเร็จ';
       if(manual.length>=1000)workflowStatusError='สถานะรันมือมีมากกว่าขอบเขตที่โหลด กรุณาเลือกช่วงวันหรือบริษัทให้แคบลง';
       if(extra[1].status==='fulfilled')holds=extra[1].value;else workflowStatusError+=' · สถานะพักรันยังโหลดไม่สำเร็จ';
+      if(extra[2].status==='fulfilled')jobs=extra[2].value;else workflowStatusError+=' · รอบอ้างอิงรันมือยังโหลดไม่สำเร็จ';
+      if(jobs?.length>=1000)workflowStatusError+=' · รอบอ้างอิงมีมากกว่าขอบเขตที่โหลด กรุณาเลือกช่วงวันให้แคบลง';
+      manual=manual.map(q=>{if(!jobs||jobs.length>=1000)return q;const job=jobs.find(j=>j.company===q.company&&j.business_date===q.business_date);return {...q,base_is_current:!!job&&(q.base_run_id??null)===(job.last_run_id??null)};});
     }
 return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get(key),problem=unavailable.get(key),scopedError=[workflowStatusError,problem?row.company+' '+row.business_date+' · '+problem.message:''].filter(Boolean).join(' · ');const counts=v?.case_set?{open_count:v.case_set.open_count,closed_count:v.case_set.closed_count,resolved_count:v.case_set.closed_count}:v?{open_count:null,closed_count:null,resolved_count:null}:{};if(caseCountsOnly)return {...row,primaryResult:v||null,primaryFileCount:v?manual.find(q=>q.id===v.recheck_id)?.selected_file_ids?.length??null:null,...counts,rechecks:manual.filter(q=>q.company===row.company&&q.business_date===row.business_date),latestRecheck:manual.find(q=>q.company===row.company&&q.business_date===row.business_date)||null,autoPaused:holds.some(q=>q.company===row.company&&q.business_date===row.business_date&&q.paused),primaryUnavailable:problem||null,workflowStatusError:scopedError};if(!v)return problem?{...row,primaryResult:null,primaryUnavailable:problem,workflowStatusError:scopedError}:row;const r=v.report;return {...row,stm_count:r.stm_count,bo_count:r.bo_count,matched:r.matched,exception_count:(r.exceptions?.length||0)+(r.summary?.waiting_bo?.length||0),match_rate:r.stm_count?100*r.matched/r.stm_count:0,primaryResult:v,...counts};});
   }
