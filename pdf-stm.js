@@ -81,7 +81,14 @@ const PdfStm = (() => {
   /* ---------------- ตรวจธนาคารและเลขบัญชี ---------------- */
   function header(pages) {
     const blob = (pages[0] || []).map((l) => l.text).join("\n");
-    const heading = blob.split(/\n\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/)[0];
+    // A statement-period date is metadata, not the first transaction. Native
+    // extraction can emit the bank's legal name after this date range.
+    const headingLines = [];
+    for (const line of pages[0] || []) {
+      if (/^\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/.test(line.text) && !isStatementPeriod(line.text)) break;
+      headingLines.push(line.text);
+    }
+    const heading = headingLines.join("\n");
     let bank = null;
     // Identify the statement owner from the heading, not transaction details.
     // A KBANK statement can contain descriptions such as "รับโอนจาก SCB" or
@@ -779,7 +786,10 @@ const PdfStm = (() => {
         if (!/^\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(t)) return;
         const firstAmtIdx = l.items.findIndex((it) => AMT.test(it.s.trim()));
         const amts = l.items.filter((it) => AMT.test(it.s.trim()));
-        if (firstAmtIdx < 1 || amts.length < 2) return;                    // ต้องมี ถอน/ฝาก + คงเหลือ
+        // Never silently take the last two amounts from several collapsed
+        // transactions. An incomplete/unknown layout must remain unread.
+        const dateCount = (t.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g) || []).length;
+        if (firstAmtIdx < 1 || amts.length !== 2 || dateCount !== 1) return;
         const particulars = l.items.slice(1, firstAmtIdx).map((it) => it.s).join(" ").trim();
         const via = (l.items[l.items.length - 1] || {}).s || "";
         rows.push({
@@ -891,7 +901,18 @@ const PdfStm = (() => {
   }
 
   async function parseText(fileName, text, businessDate) {
-    return parse(fileName, pagesFromText(text), businessDate);
+    let pages = pagesFromText(text);
+    if (header(pages).bank === "BBL") {
+      // Both n8n's native extractor and OCR may collapse a complete BBL table
+      // into one physical line. Restore only explicit dated BBL row starts;
+      // keep page breaks, order, repeated amounts and every printed digit.
+      const restored = String(text || "").replace(
+        /(^|\s)(\d{1,2}\/\d{1,2}\/\d{2,4})(?=\s+(?:TRF\b|TRANSFER\b|BANK\s+CHARGE\b|CASH\b|ATM\b|CDM\b|INTEREST\b|INT\b|FEE\b|CHQ\b|CHEQUE\b|DEPOSIT\b|WITHDRAWAL\b|B\/F\b|C\/F\b))/g,
+        (match, space, date) => space === "\f" ? "\f" + date : "\n" + date
+      ).replace(/\s+(?=จ(?:ำ|ํา)นวนรายการ(?:ถอน|ฝาก)|Total No\. of (?:Debits|Credits)\b)/gi, "\n");
+      pages = pagesFromText(restored);
+    }
+    return parse(fileName, pages, businessDate);
   }
 
   /* Google Document AI เก็บทั้งข้อความ OCR และแถวตารางที่จัดโครงสร้างแล้วไว้คู่กัน
@@ -1046,7 +1067,9 @@ const PdfStm = (() => {
   }
 
   function isStatementPeriod(text) {
-    return /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*[-–]\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*$/.test(text);
+    // OCR sometimes appends the table headings to the date range. Accept
+    // only known heading words, never a transaction or a monetary value.
+    return /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s*[-–]\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+(?:ผ[่]านทาง|Date|Particulars|Chq\.No\.|Withdrawal|Deposit|Balance|Via|วันที่|รายการ|เลขที่เช็ค|ถอน|ฝาก|คงเหลือ))*\s*$/i.test(text);
   }
 
   // BBL opening/closing balances have one amount, not a transaction amount
