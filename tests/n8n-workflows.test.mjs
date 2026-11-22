@@ -256,7 +256,7 @@ assert.match(workerText, /records:f\.format\.source==='bo'\?\(f\.records\|\|\[\]
 assert.match(workerText, /aux:\(f\.aux\|\|\[\]\)\.map\(r=>stampSource\(r,f\)\)/,
   "business rules must receive auxiliary rows with source-file lineage");
 assert.match(workerText, /boFirstCoverage\.source_parse=parseResults\.map/, "the run summary must retain per-file parser version, usable rows and dropped controls");
-assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.100-mr9-monopay'/,
+assert.match(workerText, /boFirstCoverage\.worker_version='1\.9\.101-tmn-absolute-owner'/,
   "the auditable BO-first summary must identify the complete workflow build");
 assert.equal(worker.connections["เตรียม PDF สำหรับ OCR"].main[0][0].node, "เป็น Word ภาพรายการ?");
 assert.equal(worker.connections["เป็น Word ภาพรายการ?"].main[0][0].node, "เตรียม Word เป็น ZIP");
@@ -288,7 +288,7 @@ assert.match(workerText, /matchedBoKeys/, "worker must suppress rule exceptions 
 assert.match(workerText, /resolvedRuleExceptions/, "worker must keep only unresolved business-rule exceptions");
 assert.match(workerText, /!\(e\.sourceKey&&matchedBoKeys\.has\(e\.sourceKey\)\)/, "every Rules exception for an Engine-matched BO row must be suppressed");
 assert.doesNotMatch(workerText, /e\.type==='cross_day'&&e\.sourceKey&&matchedBoKeys/, "matched BO suppression must not be limited to cross-day warnings");
-assert.match(workerText, /worker_version:'1\.9\.100-mr9-monopay'/, "worker version must identify the deployed reconciliation release");
+assert.match(workerText, /worker_version:'1\.9\.101-tmn-absolute-owner'/, "worker version must identify the deployed reconciliation release");
 assert.match(workerText, /mr9_effective_source_scope:true/, "MR9 release must record effective source revision scope");
 assert.match(workerText, /mc8_effective_source_scope:true/, "MC8 release must record effective source revision scope");
 assert.match(workerText, /mc8_azpay_rows_preserved:true/, "MC8 release must preserve every AZPAY physical source row");
