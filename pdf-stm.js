@@ -394,6 +394,16 @@ const PdfStm = (() => {
     };
 
     const explicitDates = pages.map((lines) => dateOf(lines.map((line) => line.text).join("\n")));
+    // New wallet captures put an absolute date ABOVE their rows. The app can
+    // also print "เมื่อวานนี้" beside that same date; it is a label, not another
+    // day to subtract. Keep legacy footer-heading captures on their own path.
+    const datedPage = pages.find((lines) => lines.some((line) => dateOf(line.text)));
+    const headingFirst = !!datedPage && (() => {
+      const cells = datedPage.map((line) => String(line.text || "").trim());
+      const heading = cells.findIndex((cell) => dateOf(cell));
+      const event = cells.findIndex((cell) => depositText.test(cell) || withdrawText.test(cell) || feeText.test(cell));
+      return heading >= 0 && (event < 0 || heading < event);
+    })();
     const inferredDates = [...explicitDates];
     // TMN Word exports are a chronological sequence of phone screenshots. A
     // date label usually appears near the bottom of the first screenshot for
@@ -427,6 +437,20 @@ const PdfStm = (() => {
       const boundaries = content.map((cell, index) => ({ index, date: dateOf(cell) })).filter((item) => item.date);
       if (!boundaries.length) {
         parseSegment(content, pageDate);
+        return;
+      }
+
+      if (headingFirst) {
+        let start = 0;
+        // A later page may end with the next (older) day's heading. Rows above
+        // it still belong to the preceding proven date, including across pages.
+        let date = pageIndex > 0 ? inferredDates[pageIndex - 1] : pageDate;
+        for (const boundary of boundaries) {
+          parseSegment(content.slice(start, boundary.index), date);
+          date = boundary.date;
+          start = boundary.index + 1;
+        }
+        parseSegment(content.slice(start), date);
         return;
       }
 
@@ -1099,6 +1123,22 @@ const PdfStm = (() => {
     if (/(?:^|[_\s-])TMN(?:[_\s-]|$)|TRUEMONEY/i.test(String(fileName || ""))) head.bank = "TMN";
     let rows =
       head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages, businessDate) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
+    // Screenshots contain counterparty names, not the wallet owner's number.
+    // Use only a unique registered TMN owner for the explicitly named company;
+    // never borrow another company's account or override a printed account.
+    if (!head.account && head.bank === "TMN" && rows.some((row) => row.ocrWalletScreenshot)
+        && typeof Registry !== "undefined" && typeof Formats !== "undefined") {
+      const identified = Registry.matchFile(fileName);
+      const tag = identified?.match;
+      const company = Formats.companyOf(fileName);
+      const canonical = (value) => value === "7M" ? "UFABET7M" : value;
+      if (!identified?.ambiguous && tag?.bank === "TMN" && tag.source === "bank"
+          && company && canonical(tag.subco) === canonical(company) && /^0\d{9}$/.test(tag.account || "")) {
+        head.account = tag.account;
+        head.holder = head.holder || tag.name;
+        head.accountSource = "registered_tmn_owner";
+      }
+    }
     // Never reinterpret an unreadable TMN statement with the generic bank
     // parser.  TMN has three monetary columns (movement, opening, closing), so
     // the generic two-column rule turns balances into transactions and can

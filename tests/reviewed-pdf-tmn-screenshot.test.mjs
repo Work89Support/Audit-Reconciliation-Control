@@ -26,6 +26,16 @@ assert.equal(result.records[0].sourcePage, 1);
 assert.equal(result.format.realCode, 'stm_pdf_reviewed_tmn_screenshot');
 assert.equal(result.records.map(row => row.sec).join(','), '31440,84420');
 
+// Equal visible values on separate source rows are retained unless an explicit
+// review marks a row as a duplicate. Matching must never infer that from value.
+const retained = structuredClone(recovery);
+delete retained.payload.rows[1].duplicateOf;
+retained.payload.controls.withdraw = {count:2,amount:8000};
+const retainedResult = context.recovery.normalize(retained,file,job);
+assert.equal(retainedResult.records.length,3);
+assert.equal(retainedResult.records.filter(row=>row.amount===4000).length,2);
+assert.deepEqual(retainedResult.records.filter(row=>row.amount===4000).map(row=>row.sourceRowId).join(','),'P1-R1,P2-R1');
+
 for (const change of [
   value => value.payload.bank = 'SCB',
   value => value.payload.sourceType = '',
