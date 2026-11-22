@@ -688,6 +688,14 @@
     if(!hasSide(row,side))return '';
     const detail=row[side]||{},amount=cents(row[`${side}Amount`]);
     const source=row[`${side}Source`]||{};
+    // TMN descriptions repeat across genuine customer transactions. Count
+    // their physical source rows, including unmatched cases, before text keys.
+    const tmnOrigin=source.fileId?source:row.case?.customer_details?.source_rows?.stm||source;
+    if(side==='pm'&&row.company==='UFABET7M'
+      &&['0812792075','0639274201'].includes(String(row.account||'').replace(/\D/g,''))
+      &&String(tmnOrigin.fileId||'').trim()
+      &&/^[1-9][0-9]*$/.test(String(tmnOrigin.row??'')))
+      return `src:${tmnOrigin.fileId}:${Number(tmnOrigin.row)}`;
     // Count physical BO rows before display references or operator notes.
     // Shared by all companies, summaries, footers and exports; no pair writes.
     const boOrigin=source.fileId?source:row.case?.customer_details?.source_rows?.bo||source;
