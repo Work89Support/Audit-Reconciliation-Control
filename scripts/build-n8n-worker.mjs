@@ -6,7 +6,7 @@ import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
 const WORKER_VERSION = "1.9.100-mr9-monopay";
-const PARSER_VERSION = "1.9.100-mr9-monopay";
+const PARSER_VERSION = "1.9.101-tmn-absolute-owner";
 const [formats, rules, registry, engine, pdfOriginal, tmnVisualReview, reviewedPdfRecovery] = await Promise.all([
   read("formats.js"),
   read("rules.js"),
