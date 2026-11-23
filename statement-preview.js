@@ -66,5 +66,17 @@ const StatementPreview = (() => {
     }catch(error){if(valid())host.textContent='เปิดภาพสเตทเมนต์ไม่ได้: '+error.message+' — คู่ที่เตรียมไว้ยังอยู่';dispose();}
     return dispose;
   }
-  return {mount,pageCountOf};
+  // ตัวตรวจต้นฉบับใช้ bytes ที่ดาวน์โหลดและตรวจ hash แล้ว ไม่ดาวน์โหลดใหม่ต่อแถว
+  async function mountReview(host,bytes){
+    const lib=await loadLib(),buffer=bytes instanceof Blob?await bytes.arrayBuffer():bytes;
+    const task=lib.getDocument({data:new Uint8Array(buffer.slice(0)),isEvalSupported:false});
+    const doc=await task.promise;let renderTask,disposed=false,page=1;
+    host.innerHTML='<p data-review-page-status role="status"></p><div style="overflow:auto;max-height:65vh"><canvas aria-label="ภาพต้นฉบับสำหรับตรวจแถว"></canvas></div>';
+    const canvas=host.querySelector('canvas'),status=host.querySelector('[data-review-page-status]');
+    const showPage=async n=>{if(disposed||!host.isConnected)return;page=Number(n);if(!Number.isInteger(page)||page<1||page>doc.numPages)throw Error('เลขหน้าอยู่นอก PDF');renderTask?.cancel();status.textContent=`กำลังแสดงหน้า ${page}/${doc.numPages}`;const p=await doc.getPage(page);if(disposed)return;const base=p.getViewport({scale:1}),viewport=p.getViewport({scale:Math.min(2,Math.max(.6,(host.clientWidth||600)/base.width))});canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);renderTask=p.render({canvasContext:canvas.getContext('2d'),viewport});try{await renderTask.promise;if(!disposed){status.textContent=`หน้า ${page}/${doc.numPages} · ภาพต้นฉบับ`;host.dataset.page=String(page);}}catch(e){if(e.name!=='RenderingCancelledException')throw e;}};
+    const observer=new MutationObserver(()=>{if(!host.isConnected)dispose();});
+    const dispose=()=>{if(disposed)return;disposed=true;observer.disconnect();renderTask?.cancel();task.destroy()?.catch(()=>{});};observer.observe(document.body,{childList:true,subtree:true});
+    await showPage(1);return {pageCount:doc.numPages,showPage,dispose};
+  }
+  return {mount,pageCountOf,mountReview};
 })();
