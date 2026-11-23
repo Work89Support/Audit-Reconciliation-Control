@@ -2610,3 +2610,15 @@ tr.on { background: #f0f7ff; }
 .clarification-instructions ol{padding-left:22px;margin:0}
 .clarification-instructions li+li{margin-top:14px}
 .clarification-request-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px}
+
+/* พื้นที่ตรวจ TMN ไม่เปลี่ยนตารางกระทบยอด */
+.tmn-review-editor .tmn-review-layout{display:grid;grid-template-columns:minmax(260px,40%) minmax(0,1fr);gap:16px;align-items:start}
+.tmn-review-editor [data-preview]{position:relative}
+.tmn-review-editor canvas{max-width:100%;height:auto}
+.tmn-review-editor .pdf-review-grid{overflow:auto;max-height:65vh}
+.tmn-review-editor table{min-width:950px}
+.tmn-review-editor input[data-edit],.tmn-review-editor select[data-edit]{min-width:95px;width:100%;box-sizing:border-box}
+.tmn-review-editor input[data-edit="description"],.tmn-review-editor input[data-edit="reviewNote"]{min-width:240px}
+.tmn-review-editor [data-issues]{border-left:4px solid #d19a20;padding:8px 12px;margin:12px 0;background:#fff9e8}
+.tmn-review-editor pre{white-space:pre-wrap;max-width:360px}
+@media(max-width:900px){.tmn-review-editor .tmn-review-layout{grid-template-columns:1fr}.tmn-review-editor [data-preview]{position:static}}
