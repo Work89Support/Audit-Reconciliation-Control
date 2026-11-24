@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+let active=false,drawn=[],destroyed=0,releasePage2;
+const nodes={canvas:{getContext:()=>({})},'[data-review-page-status]':{textContent:''}};
+const host={isConnected:true,clientWidth:600,dataset:{},querySelector:k=>nodes[k],innerHTML:''};
+const tick=()=>new Promise(r=>setTimeout(r,0));
+const context={Uint8Array,Blob,document:{body:{}},MutationObserver:class{observe(){}disconnect(){}},pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({destroy:async()=>{destroyed++;},promise:Promise.resolve({numPages:9,getPage:async n=>{if(n===2)await new Promise(r=>releasePage2=r);return{getViewport:()=>({width:600,height:800}),render:()=>{assert.equal(active,false,'never draw twice on the same canvas');active=true;drawn.push(n);let reject,settled=false;const promise=new Promise((res,rej)=>{reject=rej;setTimeout(()=>{if(!settled){settled=true;active=false;res();}},15);});return{promise,cancel(){if(!settled)setTimeout(()=>{if(!settled){settled=true;active=false;const e=Error('cancelled');e.name='RenderingCancelledException';reject(e);}},0);}};}};}})})}};
+vm.runInNewContext(fs.readFileSync('statement-preview.js','utf8')+';this.preview=StatementPreview;',context);
+(async()=>{const view=await context.preview.mountReview(host,new Uint8Array([1,2,3]).buffer);
+ const slow=view.showPage(2);await tick();const next=view.showPage(3);await next;releasePage2();await slow;
+ assert.equal(host.dataset.page,'3');assert.deepEqual(drawn,[1,3],'late page lookup never overwrites a newer request');
+ const inFlight=view.showPage(4);await tick();assert.equal(active,true);const latest=view.showPage(9);await Promise.all([inFlight,latest]);
+ assert.equal(host.dataset.page,'9');assert.match(nodes['[data-review-page-status]'].textContent,/หน้า 9\/9/);assert.equal(active,false);view.dispose();assert.equal(destroyed,1);
+ console.log('PASS review canvas: await cancellation before reuse; discard stale page fetches; latest requested page wins; source buffer and dispose remain isolated.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
