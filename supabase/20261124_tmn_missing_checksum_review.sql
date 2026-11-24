@@ -2,6 +2,31 @@
 begin;
 set local lock_timeout='5s';
 set local statement_timeout='30s';
+-- Registering the first digest of an already bound TMN review draft is metadata only.
+-- Preserve the existing refresh path for replacements and every other source change.
+create or replace function public.on_source_file_change()
+returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_batch uuid;v_date date;v_company text;
+begin
+ if TG_OP='UPDATE' then
+  if nullif(old.checksum,'') is null and new.checksum ~ '^[a-f0-9]{64}$'
+   and new.company='UFABET7M' and new.kind='stm_pdf'
+   and (to_jsonb(new)-'checksum') is not distinct from (to_jsonb(old)-'checksum')
+   and exists(select 1 from public.tmn_ocr_review_drafts d
+    where d.source_file_id=new.id and d.source_checksum=new.checksum
+      and d.company='UFABET7M' and d.draft->>'sourceId'=new.id::text
+      and d.draft->>'sourceChecksum'=new.checksum
+      and d.draft->>'sourceType'='tmn-ocr-review-draft-v1'
+      and d.draft->'reviewed'='false'::jsonb) then
+   return new;
+  end if;
+ end if;
+ v_batch:=coalesce(new.batch_id,old.batch_id);
+ select business_date,company into v_date,v_company from public.mail_batches where id=v_batch;
+ if v_date is not null and v_company is not null then perform public.refresh_daily_recon_job(v_date,v_company);end if;
+ return coalesce(new,old);
+end $$;
+
 create or replace function public.store_tmn_review_drafts(p_company text,p_date date,p_files jsonb,p_allowed uuid[])
 returns void language plpgsql security definer set search_path=public,pg_temp as $$
 declare item jsonb;d jsonb;f public.source_files%rowtype;b public.mail_batches%rowtype;
@@ -24,14 +49,13 @@ begin
    or jsonb_typeof(d->'issues') is distinct from 'array'
    or jsonb_array_length(d->'rows')>10000 or octet_length(d::text)>2000000
    then raise exception 'TMN review draft source identity invalid';end if;
-  -- The caller is the service_role receipt wrapper after its original lease/scope check.
-  -- Bind only a previously missing digest computed from downloaded PDF bytes; never replace one.
+  -- Store the validated receipt first so the narrow trigger guard can recognize it.
+  insert into public.tmn_ocr_review_drafts values(f.id,d->>'sourceChecksum',p_company,b.business_date,d,now())
+   on conflict(source_file_id,source_checksum) do update set draft=excluded.draft,updated_at=excluded.updated_at;
+  -- Bind only a missing digest from downloaded bytes; never replace one or requeue work.
   if nullif(f.checksum,'') is null then
    update public.source_files set checksum=d->>'sourceChecksum' where id=f.id and nullif(checksum,'') is null;
-   f.checksum:=d->>'sourceChecksum';
   end if;
-  insert into public.tmn_ocr_review_drafts values(f.id,f.checksum,p_company,b.business_date,d,now())
-   on conflict(source_file_id,source_checksum) do update set draft=excluded.draft,updated_at=excluded.updated_at;
  end loop;
 end $$;
 revoke all on function public.store_tmn_review_drafts(text,date,jsonb,uuid[]) from public,anon,authenticated;
