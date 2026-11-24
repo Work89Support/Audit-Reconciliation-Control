@@ -16,3 +16,7 @@ const missing=E.build({}, {...source,checksum:null},sha,'UFABET7M_STM_TMN_รุ
 console.log('PASS fresh source digest is bound to downloaded-byte SHA; different existing digests remain rejected; missing OCR has no fabricated row or zero total.');
 
 assert(code.includes('checked.clear();pages.clear();page=1'));assert(code.includes("q('[data-all-pages]').checked=false"));
+
+const corrected={...draft,rows:draft.rows.map((r,i)=>i===0?{...r,amount:4100,time:'08:45',reviewNote:'ตรวจแก้จากภาพต้นฉบับแล้ว'}:r)};
+const reopened=E.build({},source,sha,'UFABET7M_STM_TMN_รุ่งฟ้า_DW_2026-11-22.pdf','tester',{draft,approved:{payload:corrected}});assert.equal(reopened.rows[0].amount,4100);assert.equal(reopened.rows[0].time,'08:45');assert.equal(reopened.rows[0].reviewNote,'ตรวจแก้จากภาพต้นฉบับแล้ว');assert.equal(reopened.controls.deposit.amount,8100);
+console.log('PASS reopening a reviewed source uses approved corrections instead of the older OCR draft.');
