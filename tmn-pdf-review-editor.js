@@ -11,7 +11,7 @@ const TmnPdfReviewEditor=(()=>{
   const bound=x=>x&&x.sourceId===source.id&&x.sourceChecksum===source.checksum&&x.sourceChecksum===sha;
   if(draft&&!bound(draft))throw Error('ร่าง OCR ไม่ตรงกับ checksum ต้นฉบับ ต้องตรวจแหล่งข้อมูลใหม่');
   if(approved&&!bound(approved))throw Error('หลักฐานเดิมไม่ตรงกับ checksum ต้นฉบับ');
-  const seed=bound(draft)?draft:bound(approved)?approved:null;
+  const seed=bound(approved)?approved:bound(draft)?draft:null;
   const raw=seed?.rows||PdfReview.rowsOf(evidence).filter(r=>!/ค่าธรรมเนียม/.test(r.raw||''));
   const rows=raw.map(r=>({...r,id:r.id||r.sourceRowId,page:r.page||1,date:String(r.date||'').slice(0,10),time:String(r.time||'').slice(0,5),direction:r.direction||'',amount:r.amount===null||r.amount===undefined?null:Number(r.amount),description:String(r.description||r.raw||'').trim(),issues:[...(r.issues||[])],reviewed:false}));
   reindex(rows);return {version:1,sourceType:'tmn-screenshot-list-v1',sourceId:source.id,sourceChecksum:source.checksum,pdfSha256:sha,company:source.company,businessDate:source.business_date,account,bank:'TMN',reviewSourceReady:source.checksum===sha&&rows.length>0,coverageReviewed:false,coverageEvidence:'',pageCount:Number(seed?.pageCount||evidence?.page_count||1),pagesReviewed:[],transcribedBy:reviewer||'web-auditor',rows,expectedRowIds:rows.map(r=>r.id),controls:totals(rows),excludedRows:structuredClone(seed?.excludedRows||[]),sourceIssues:structuredClone(draft?.issues||[])};
