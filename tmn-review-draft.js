@@ -3,7 +3,7 @@ const TmnReviewDraft=(()=>{
  const months=['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
  const dateOf=text=>{const m=String(text).match(new RegExp('(\\d{1,2})\\s+('+months.join('|')+')\\s+(\\d{4})'));if(!m)return '';const y=+m[3]>2400?+m[3]-543:+m[3],v=`${y}-${String(months.indexOf(m[2])+1).padStart(2,'0')}-${m[1].padStart(2,'0')}`;const parsed=new Date(v+'T00:00:00Z');return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===v?v:'';};
  function build(envelope,file,job){
-  if(envelope.sourceFileId!==file.id||envelope.sourceSha256!==file.checksum)throw Error('TMN review source checksum mismatch');
+  if(envelope.sourceFileId!==file.id||!/^[a-f0-9]{64}$/.test(envelope.sourceSha256||'')||(file.checksum&&envelope.sourceSha256!==file.checksum))throw Error('TMN review source checksum mismatch');
   const pages=[...envelope.pages].sort((a,b)=>a.page-b.page),rows=[],excludedRows=[],issues=[];let date='';
   for(const p of pages){
    const raw=String(p.originalOcr??p.text??''),markers=[...raw.matchAll(/\bROW\s*(\d{1,4})\b/gi)],head=raw.slice(0,markers[0]?.index??raw.length);date=dateOf(head)||date;

@@ -22,10 +22,17 @@ insert into public.source_files values('11111111-1111-4111-8111-111111111111','2
 insert into public.daily_recon_jobs values('55555555-5555-4555-8555-555555555555','UFABET7M','2026-11-22','running','66666666-6666-4666-8666-666666666666',9,8,null,false);
 insert into public.account_recheck_jobs(id,company,business_date,status,selected_file_ids,account,direction,mode,base_run_id) values('77777777-7777-4777-8777-777777777777','UFABET7M','2026-11-22','failed',array['11111111-1111-4111-8111-111111111111']::uuid[],'ALL','all','account','66666666-6666-4666-8666-666666666666');`);
 await db.exec(fs.readFileSync(root+'/supabase/20261123_tmn_review_workspace.sql','utf8'));
+await db.exec(fs.readFileSync(root+'/supabase/20261124_tmn_missing_checksum_review.sql','utf8'));
 const id='11111111-1111-4111-8111-111111111111',job='55555555-5555-4555-8555-555555555555',draft={version:1,sourceType:'tmn-ocr-review-draft-v1',sourceId:id,sourceChecksum:'a'.repeat(64),company:'UFABET7M',businessDate:'2026-11-22',pageCount:2,rows:[{id:'P2-R1',page:2,amount:null}],issues:[{page:2,row:1,message:'amount missing'}],reviewed:false};
 const files=[{id,tmn_review_draft:draft}];
+await db.exec("update public.source_files set checksum=null");
+
+await assert.rejects(db.query('select public.record_source_file_parse_results_tmn_review($1,$2::jsonb)',[job,JSON.stringify([{id,tmn_review_draft:{...draft,sourceChecksum:'invalid'}}])]),/identity invalid/);
+assert.equal((await db.query('select checksum from public.source_files')).rows[0].checksum,null);
 let r=await db.query('select public.record_source_file_parse_results_tmn_review($1,$2::jsonb) r',[job,JSON.stringify(files)]);assert(r.rows[0].r.unchanged_test_contract);
 assert.equal((await db.query('select count(*) n from public.tmn_ocr_review_drafts')).rows[0].n,1);
+assert.equal((await db.query('select checksum from public.source_files')).rows[0].checksum,'a'.repeat(64));
+
 await assert.rejects(db.query('select public.record_source_file_parse_results_tmn_review($1,$2::jsonb)',[job,JSON.stringify([{id,tmn_review_draft:{...draft,sourceChecksum:'b'.repeat(64)}}])]),/identity invalid/);
 await assert.rejects(db.query('select public.record_source_file_parse_results_tmn_review($1,$2::jsonb)',[job,JSON.stringify([{id,tmn_review_draft:{...draft,sourceType:null}}])]),/identity invalid/);
 r=await db.query('select public.finish_account_recheck_compact_tmn_review($1,1,$2::jsonb,\'gate\') r',['77777777-7777-4777-8777-777777777777',JSON.stringify({source_files:files})]);assert(r.rows[0].r.unchanged_test_contract);
