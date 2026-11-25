@@ -442,7 +442,7 @@ const exceptions=[...best.values()].sort((a,b)=>{
     &&Number.isFinite(Number(a.statementOrder))&&Number.isFinite(Number(b.statementOrder));
   return sameNoTimeStatement?Number(a.statementOrder)-Number(b.statementOrder):(a.sortSec||0)-(b.sortSec||0);
 }).map((e,i)=>({
-  code:caseCode(e,i),business_date:job.business_date,occurred_at:e.time||'00:00:00',company:e.company||job.company,
+  code:caseCode(e,i),business_date:job.business_date,occurred_at:e.typeName==='TMN ไม่เห็นเวลาในต้นฉบับ'?null:(e.time||'00:00:00'),company:e.company||job.company,
   bo_date:e.boDate||null,bo_time:e.boTime&&e.boTime!=='-'?e.boTime:null,
   stm_date:e.stmDate||null,stm_time:e.stmTime&&e.stmTime!=='-'?e.stmTime:null,
   bank:e.bank||null,account:e.account||null,direction:e.direction||null,member_code:e.member||null,ex_type:e.type,type_name:e.typeName||e.type,
