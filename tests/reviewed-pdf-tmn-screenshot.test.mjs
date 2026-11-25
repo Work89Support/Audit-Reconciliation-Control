@@ -47,4 +47,24 @@ for (const change of [
   assert.throws(() => context.recovery.normalize(invalid, file, job), /PDF recovery:/);
 }
 
-console.log('TMN screenshot recovery preserves real rows and removes page overlap only');
+const obscured = structuredClone(recovery);
+Object.assign(obscured.payload.rows[2], {
+  time: '', timeDisposition: 'not_visible', timeEvidence: 'The screenshot clips the time below the amount.',
+});
+const withoutTime = context.recovery.normalize(obscured,file,job).records.find(row => row.sourceRowId === 'P9-R1');
+assert.equal(withoutTime.sec,null);
+assert.equal(withoutTime.noTime,true);
+assert.equal(withoutTime.amount,80);
+vm.runInContext(fs.readFileSync('engine.js','utf8') + ';globalThis.engine=Engine;', context);
+const bo = {...withoutTime,source:'bo',sec:18*3600,noTime:false,timeDisposition:undefined};
+const output = await context.engine.reconcile([withoutTime],[bo],{toleranceDeposit:90,toleranceWithdraw:180},[]);
+assert.equal(output.stmCount,1);
+assert.equal(output.matched,0);
+assert(output.exceptions.some(row => row.bankAmount===80 && row.stmTime==='-' && row.typeName==='TMN ไม่เห็นเวลาในต้นฉบับ'));
+for (const invalidTime of [{timeEvidence:''},{time:'00:00'},{timeDisposition:''}]) {
+  const invalid = structuredClone(obscured);
+  Object.assign(invalid.payload.rows[2], invalidTime);
+  assert.throws(() => context.recovery.normalize(invalid,file,job), /invalid row/);
+}
+
+console.log('TMN recovery preserves visible amounts and keeps obscured time unknown');

@@ -596,6 +596,9 @@ const Engine = (() => {
     const ktbNextDayCandidates = stmRecords.filter((row) => !!row.ktbNextDayCandidateOnly);
     const adjacentDayCandidates = stmRecords.filter((row) => !!row.adjacentDayCandidateOnly);
     stmRecords = stmRecords.filter((row) => !row.ocrDateCandidateOnly && !row.ktbNextDayCandidateOnly && !row.adjacentDayCandidateOnly);
+    const tmnRowsWithoutVisibleTime = stmRecords.filter(row => row.bank === 'TMN' && row.noTime && row.timeDisposition === 'not_visible');
+    const deferredTmnRows = new Set(tmnRowsWithoutVisibleTime);
+    stmRecords = stmRecords.filter(row => !deferredTmnRows.has(row));
     const t0 = Date.now();
     const tolDep = settings.toleranceDeposit;
     const tolWit = settings.toleranceWithdraw;
@@ -625,7 +628,7 @@ const Engine = (() => {
     const masterSet = new Set((masterAccounts || []).map((a) => a.id));
 
     /* บัญชี/ช่องทางที่มีไฟล์ฝั่ง statement จริง — ที่ไม่มีจะไม่ถูกนับเป็น exception */
-    const statementCoverageRecords = stmRecords.concat(bankCharges, tmnDateCandidates, ktbNextDayCandidates, adjacentDayCandidates);
+    const statementCoverageRecords = stmRecords.concat(bankCharges, tmnDateCandidates, ktbNextDayCandidates, adjacentDayCandidates, tmnRowsWithoutVisibleTime);
     const stmAccounts = new Set(statementCoverageRecords.map((r) => r.account));
     const stmChannels = new Set(statementCoverageRecords.map((r) => (r.channel || r.bank || "").toUpperCase()).filter(Boolean));
     const hasStmSide = (b) => stmAccounts.has(b.account) || (b.channel && stmChannels.has(String(b.channel).toUpperCase()));
@@ -2261,6 +2264,16 @@ const Engine = (() => {
     });
 
     // pass 3: STM ที่เหลือ = ไม่มีฝั่ง BO
+    for (const row of tmnRowsWithoutVisibleTime) {
+      const review = mkException('missing_bo', row, null, 0);
+      review.typeName = 'TMN ไม่เห็นเวลาในต้นฉบับ';
+      review.cause = row.timeEvidence;
+      review.time = '-';
+      review.hour = null;
+      review.shift = '-';
+      review.riskAmount = 0;
+      exceptions.push(review);
+    }
     stmLeft2.forEach((s) => {
       if (!rescuedStm.has(s) && !threeXbBankResidualMatched.has(s) && !fr8BankNameMatched.has(s)) exceptions.push(mkException(s.crossDay ? "cross_day" : "missing_bo", s, null, 0));
     });
@@ -2432,7 +2445,7 @@ const Engine = (() => {
     exceptions.forEach((e, i) => (e.id = "EX-" + String(3001 + i)));
 
     const elapsed = Math.round(Date.now() - t0);
-    const reconciledStmCount = stmRecords.length + bankCharges.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size + adjacentDayCandidateMatched.size;
+    const reconciledStmCount = stmRecords.length + bankCharges.length + tmnDateCandidateMatched.size + ktbNextDayCandidateMatched.size + adjacentDayCandidateMatched.size + tmnRowsWithoutVisibleTime.length;
     return {
       matched: matched.length,
       internalTransferMatched: matched.filter(m => m.internalTransferMatch).length,

@@ -6,6 +6,9 @@ const ReviewedPdfRecovery = (() => {
     return Math.round(n * 100);
   };
   const dateOK = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) && new Date(s).toISOString().slice(0,10) === s;
+  const timeObscured = row => row.timeDisposition === 'not_visible' &&
+    (row.time === '' || row.time == null) && typeof row.timeEvidence === 'string' &&
+    row.timeEvidence.trim().length >= 10;
   function normalize(recovery, file, job) {
     if (!recovery || recovery.status !== 'approved' || !recovery.approved_by || !recovery.approved_at || !recovery.id) fail('source approval missing');
     const p = recovery.payload;
@@ -25,8 +28,10 @@ const ReviewedPdfRecovery = (() => {
       const page = Number(r.id.match(/^P(\d+)/)[1]);
       if (!tmnScreenshot && page < previousPage) fail('source page order changed');
       previousPage = Math.max(previousPage, page);
-      if (r.reviewed !== true || !dateOK(r.date) || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(r.time || '') || !['deposit','withdraw'].includes(r.direction)) fail('unreviewed or invalid row');
-      const stamp = r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time);
+      const noTime = tmnScreenshot && timeObscured(r);
+      const validTime = !r.timeDisposition && /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(r.time || '');
+      if (r.reviewed !== true || !dateOK(r.date) || (!validTime && !noTime) || !['deposit','withdraw'].includes(r.direction)) fail('unreviewed or invalid row');
+      const stamp = noTime ? '' : r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time);
       if (!tmnScreenshot && previousStamp && stamp < previousStamp) fail('transaction order changed');
       previousStamp = tmnScreenshot ? previousStamp : stamp;
       const amount = cents(r.amount);
@@ -47,19 +52,21 @@ const ReviewedPdfRecovery = (() => {
       const signature = [r.date,r.time,r.direction,amount,r.description.trim()].join('|');
       if (r.duplicateOf) {
         const original = sourceRows.get(r.duplicateOf);
-        if (!tmnScreenshot || !original || original.signature !== signature) fail('invalid duplicate source row');
+        if (!tmnScreenshot || noTime || !original || original.signature !== signature) fail('invalid duplicate source row');
         continue;
       }
       sourceRows.set(r.id,{signature});
       if (r.date !== p.businessDate) continue;
       const t = totals[r.direction]; t.count++; t.amount += amount;
-      const [h,m,s='0'] = r.time.split(':'); const sec = +h*3600 + +m*60 + +s;
+      const [h,m,s='0'] = (r.time || '').split(':');
+      const sec = noTime ? null : +h*3600 + +m*60 + +s;
       records.push({rowNo:records.length+1,source:'stm',formatCode:'stm_pdf',company:p.company,subco:p.company,
         account:p.account,bank:p.bank,channel:p.bank,date:r.date,sourceDate:r.date,sec,amount:r.amount,balance:tmnScreenshot?null:r.balance,
         direction:r.direction,code:r.code || '',desc:r.description,raw:r.raw || r.description,
         custAccount:null,custAccountLast4:r.last4 || null,custBank:r.customerBank || null,custName:r.customerName || null,
         memberCode:null,username:null,ref:null,customerDescription:r.description,customerIdentitySource:'reviewed-pdf-description',
-        minutePrecision:r.time.length===5,noTime:false,crossDay:false,lateNight:sec>=82800,
+        minutePrecision:!noTime && r.time.length===5,noTime,crossDay:false,lateNight:!noTime && sec>=82800,
+        ...(noTime ? {timeDisposition:'not_visible',timeEvidence:r.timeEvidence.trim()} : {}),
         recoveryId:recovery.id,sourceRowId:r.id,sourcePage:page,source_file_id:file.id,source_checksum:file.checksum});
     }
     for (const direction of ['deposit','withdraw']) {
@@ -67,11 +74,11 @@ const ReviewedPdfRecovery = (() => {
       if (!control || control.count !== totals[direction].count || cents(control.amount) !== totals[direction].amount) fail('daily control totals mismatch');
     }
     if (!records.length) fail('zero activity requires a separate source check');
-    records.sort((a,b)=>a.date.localeCompare(b.date) || a.sec-b.sec);
+    records.sort((a,b)=>a.date.localeCompare(b.date) || (a.sec??86400)-(b.sec??86400));
     records.forEach((record,index)=>{record.rowNo=index+1;});
     return {format:{source:'stm',realCode:tmnScreenshot?'stm_pdf_reviewed_tmn_screenshot':'stm_pdf_reviewed'},records,aux:[],dropped:{},
       warnings:['ข้อมูล PDF ผ่านการยืนยันต้นฉบับ — ยังไม่ใช่การอนุมัติปิดเคส'],
       quality:{complete:true,unreadRows:[],invalidRows:[]}};
   }
-  return {normalize};
+  return {normalize,timeObscured};
 })();

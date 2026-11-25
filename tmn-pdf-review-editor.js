@@ -16,7 +16,14 @@ const TmnPdfReviewEditor=(()=>{
   const rows=raw.map(r=>({...r,id:r.id||r.sourceRowId,page:r.page||1,date:String(r.date||'').slice(0,10),time:String(r.time||'').slice(0,5),direction:r.direction||'',amount:r.amount===null||r.amount===undefined?null:Number(r.amount),description:String(r.description||r.raw||'').trim(),issues:[...(r.issues||[])],reviewed:false}));
   reindex(rows);return {version:1,sourceType:'tmn-screenshot-list-v1',sourceId:source.id,sourceChecksum:source.checksum,pdfSha256:sha,company:source.company,businessDate:source.business_date,account,bank:'TMN',reviewSourceReady:source.checksum===sha&&rows.length>0,coverageReviewed:false,coverageEvidence:'',pageCount:Number(seed?.pageCount||evidence?.page_count||1),pagesReviewed:[],transcribedBy:reviewer||'web-auditor',rows,expectedRowIds:rows.map(r=>r.id),controls:totals(rows),excludedRows:structuredClone(seed?.excludedRows||[]),sourceIssues:structuredClone(draft?.issues||[])};
  }
- function validRow(r,c){return Number.isInteger(r.page)&&r.page>=1&&r.page<=c.pageCount&&/^P\d+-R\d+$/.test(r.id)&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(r.time)&&r.date===c.businessDate&&['deposit','withdraw'].includes(r.direction)&&Number.isFinite(r.amount)&&Math.abs(r.amount*100-cents(r.amount))<1e-6&&cents(r.amount)>0&&!!r.description.trim()&&(!(r.issues||[]).length||String(r.reviewNote||'').trim().length>=10);}
+ function validRow(r,c){
+  const obscured=ReviewedPdfRecovery.timeObscured(r);
+  const timed=!r.timeDisposition&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(r.time);
+  return Number.isInteger(r.page)&&r.page>=1&&r.page<=c.pageCount&&/^P\d+-R\d+$/.test(r.id)
+    &&(timed||obscured)&&r.date===c.businessDate&&['deposit','withdraw'].includes(r.direction)
+    &&Number.isFinite(r.amount)&&Math.abs(r.amount*100-cents(r.amount))<1e-6&&cents(r.amount)>0
+    &&!!r.description.trim()&&(!(r.issues||[]).length||obscured||String(r.reviewNote||'').trim().length>=10);
+ }
  function payload(candidate,source,sha,checked,coverage,pages){
   const c=structuredClone(candidate);reindex(c.rows);c.expectedRowIds=c.rows.map(r=>r.id);c.controls=totals(c.rows);c.coverageEvidence=coverage.trim();c.coverageReviewed=true;
   c.pagesReviewed=[...(pages||[])].sort((a,b)=>a-b);
@@ -36,7 +43,12 @@ const TmnPdfReviewEditor=(()=>{
   const status=s=>q('[data-status]').textContent=s;
   const readonly=()=>saved||['retained','running','paused','completed'].includes(modeOf(context));
   const canSave=()=>{q('[data-save]').textContent=modeOf(context)==='manual'?'ยืนยันต้นฉบับและรันมือต่อ (รายงานแยก)':'ยืนยันต้นฉบับและเข้าคิวรันต่อ';q('[data-save]').disabled=busy||readonly()||!candidate||!candidate.rows.length||candidate.reviewSourceReady===false||candidate.rows.some(r=>!validRow(r,candidate))||checked.size!==candidate.rows.length||pages.size!==candidate.pageCount||!q('[data-all-pages]').checked||q('[data-coverage]').value.trim().length<10||q('[data-note]').value.trim().length<10;q('[data-start]').disabled=busy||!!candidate?.rows.length;};
-  const input=(r,k,type='text')=>`<input aria-label="${esc(r.id+' '+k)}" type="${type}" data-edit="${k}" data-row-id="${esc(r.id)}" value="${esc(r[k])}" ${readonly()?'disabled':''}>`;
+  function input(r,k,type='text'){
+   const disabled=readonly()?'disabled':'';
+   const field=`<input aria-label="${esc(r.id+' '+k)}" type="${type}" data-edit="${k}" data-row-id="${esc(r.id)}" value="${esc(r[k])}" ${disabled}>`;
+   if(k!=='time')return field;
+   return field+`<select aria-label="สถานะเวลา ${esc(r.id)}" data-edit="timeDisposition" data-row-id="${esc(r.id)}" ${disabled}><option value="">ใช้เวลาที่เห็น</option><option value="not_visible" ${r.timeDisposition==='not_visible'?'selected':''}>ไม่เห็นเวลาในต้นฉบับ</option></select><label>หลักฐานเมื่อไม่เห็นเวลา ${input(r,'timeEvidence')}</label>`;
+  }
   async function showPage(n){page=Number(n);q('[data-page-filter]').value=String(page);drawRows();try{await preview.showPage(page);}catch(e){status('เปิดภาพไม่ได้: '+e.message);}}
   function drawRows(){const rows=candidate.rows.filter(r=>r.page===page);q('[data-grid]').innerHTML=`<table><thead><tr><th>ยืนยัน</th><th>หน้า/แถว</th><th>วันที่</th><th>เวลา</th><th>ประเภท</th><th>ยอด</th><th>รายละเอียด/จุดตรวจ</th></tr></thead><tbody>${rows.map(r=>`<tr data-source-row="${esc(r.id)}"><td><input type="checkbox" aria-label="ยืนยันแถว ${esc(r.id)}" data-check="${esc(r.id)}" ${checked.has(r.id)?'checked':''} ${readonly()||!validRow(r,candidate)?'disabled':''}></td><td><button type="button" data-open-row="${esc(r.id)}">${esc(r.id)}</button></td><td>${input(r,'date','date')}</td><td>${input(r,'time','time')}</td><td><select aria-label="${esc(r.id+' direction')}" data-edit="direction" data-row-id="${esc(r.id)}" ${readonly()?'disabled':''}><option value="">เลือกประเภท</option><option value="deposit" ${r.direction==='deposit'?'selected':''}>ฝาก</option><option value="withdraw" ${r.direction==='withdraw'?'selected':''}>ถอน</option></select></td><td>${input(r,'amount','number')}</td><td>${input(r,'description')} ${(r.issues||[]).length?`<p role="note">${esc(r.issues.join(' · '))}</p><label>หลักฐานแก้ไขแถว ${esc(r.id)}${input(r,'reviewNote')}</label>`:''}<details><summary>ข้อความ OCR และพิกัดต้นฉบับ</summary><pre>${esc(r.rawOcr||r.raw||'ไม่มีข้อความ OCR — ต้องถอดจากภาพจริง')}</pre><code>${esc(JSON.stringify(r.sourceRegions||{}))}</code></details></td></tr>`).join('')}</tbody></table>`;
    q('[data-summary]').textContent=candidate.reviewSourceReady===false?`${candidate.pageCount} หน้า · ยังไม่มีข้อมูลแถว OCR — ยังไม่ทราบจำนวนรายการและยอด`:`${candidate.pageCount} หน้า · ${candidate.rows.length} รายการ · ยืนยัน ${checked.size}/${candidate.rows.length} แถว · ตรวจหน้า ${pages.size}/${candidate.pageCount} · ค่าธรรมเนียมแยกไว้ ${candidate.excludedRows.length} รายการ · ฝาก ${candidate.controls.deposit.amount.toLocaleString()} / ถอน ${candidate.controls.withdraw.amount.toLocaleString()} บาท`;
