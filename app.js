@@ -2774,8 +2774,12 @@ function dailyResultStatus(row,run={}) {
   const primary=unavailable?null:run.primaryResult||row.primaryResult;
   const manual=row.latestRecheck;
   const labels={ready:'รันมือสำเร็จ · รอหัวหน้า/ผู้ดูแลยืนยัน',confirmed:'รายงานรันมือยืนยันแล้ว · ยังไม่ใช้เป็นผลหลัก',queued:'รันมือเข้าคิว',running:'กำลังรันมือ',failed:'รันมือล้มเหลว · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องตรวจมือใหม่'};
+  const compareLabels={ready:'ทดสอบเปรียบเทียบสำเร็จ',queued:'ทดสอบเปรียบเทียบเข้าคิว',running:'กำลังทดสอบเปรียบเทียบ',failed:'ทดสอบเปรียบเทียบไม่สำเร็จ · ตรวจรายละเอียด',stale:'ไฟล์เปลี่ยน · ต้องทดสอบเปรียบเทียบใหม่'};
+  const manualStatus=manual?.mode==='compare'
+    ? (manual.status==='ready'&&manual.base_is_current===false?'ผลทดสอบเปรียบเทียบเดิม · อ้างอิงรอบก่อนหน้า':compareLabels[manual.status]||manual.status)
+    : (['ready','confirmed'].includes(manual?.status)&&manual.base_is_current===false?'รายงานรันมือเดิม · อ้างอิงรอบก่อนหน้า':labels[manual?.status]||manual?.status);
   return {primary, label:primary?'ใช้ผลรันมือเป็นผลหลักแล้ว':null,
-    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?(['ready','confirmed'].includes(manual.status)&&manual.base_is_current===false?'รายงานรันมือเดิม · อ้างอิงรอบก่อนหน้า':labels[manual.status]||manual.status):null,
+    manual:unavailable?(unavailable.stale?'ผลหลักเดิมต้องทบทวน · มีไฟล์/รอบใหม่':'ยังตรวจผลหลักไม่ได้ · โหลดใหม่อีกครั้ง'):manual&&manual.id!==primary?.recheck_id?manualStatus:null,
     review:primary?.review_needed?(primary.review_reason||'มีไฟล์เพิ่มหลังยืนยัน · กรุณาทบทวน'):null,
     automatic:row.autoPaused?'รอบอัตโนมัติ: พักรัน':`รอบอัตโนมัติ: ${(LIVE_STATUS[row.job_status||run.status]||{}).label||row.job_status||run.status||'รอไฟล์'}`,
     error:[...new Set([row.workflowStatusError,unavailable?.message].filter(Boolean))].join(' · ')};
