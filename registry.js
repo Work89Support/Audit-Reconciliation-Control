@@ -1451,6 +1451,10 @@ const Registry = (() => {
 ];
 
   const TITLE_RE = /^(คุณ|นางสาว|นาง|นาย|น\.ส\.|น\.ส|ที่)/;
+  // สองบัญชีใหม่นี้เปิดเฉพาะ 3XB ตามกฎฝาก/ถอนที่ผู้ใช้ยืนยัน
+  for (const [provider, label] of [['CATPAY','3xbet_catpay(catpay)(P2P)'],['JINLIPAY','พร้อมเพย์-JLP(jinlipay)(P2P)']]) {
+    for (const direction of ['ถอน','ฝาก']) ACCOUNTS.push({subco:'3XB',provider,bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:provider,source:'pm',file:`3XB_PM_${provider}_${direction === 'ฝาก' ? 'D' : 'W'}_ว-ด-ป.xlsx`,note:label+' · 3XB'});
+  }
   // CELOX is enabled for 3XB only until source and BO samples are verified
   // for another XB company.
   for (const direction of ['ถอน', 'ฝาก']) ACCOUNTS.push({subco:'3XB',provider:'CELOX',bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:'CELOX',source:'pm',file:`3X_PM_CELOX_${direction === 'ฝาก' ? 'D' : 'W'}_ว-ด-ป.csv`,note:'พร้อมเพย์-CLX(celox)(P2P) · 3XB'});
@@ -1461,7 +1465,7 @@ const Registry = (() => {
     for (const direction of ['ถอน','ฝาก']) ACCOUNTS.push({subco,provider:'ANT',bank:'',account:'',accountRaw:'',name:'',type:'PM',channel:'ANT',source:'pm',file:`${subco} ANT ${direction} ว/ด/ป.xlsx`,note:'ANT-AU (anypay) · เครือ XB'});
   }
   const BANK_KW = { scb:"SCB", kb:"KBANK", kbank:"KBANK", ktb:"KTB", bbl:"BBL", gsb:"GSB", tmn:"TMN", bay:"BAY", lbk:"LBK", krungsri:"BAY", ttb:"TTB", uob:"UOB" };
-  const PM_KW = { atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
+  const PM_KW = { catpay:"CATPAY", jinlipay:"JINLIPAY", jlp:"JINLIPAY", atp:"AUTOPEER", autopeer:"AUTOPEER", az:"AZPAY", azpay:"AZPAY",
                   cby:"CYBERPLUS", cyber:"CYBERPLUS", cyberplus:"CYBERPLUS", cynerplus:"CYBERPLUS", "12pay":"12PAY", "123pay":"12PAY", mypay:"MYPAY",
                   localpay:"LOCALPAY", locelpay:"LOCALPAY", qpay:"QPAY", celox:"CELOX", clx:"CELOX", monopay:"MONOPAY", mnp:"MONOPAY" };
 
@@ -1509,6 +1513,7 @@ const Registry = (() => {
       // 1) จับชื่อบริษัทย่อยแบบเต็ม เช่น "sk8" (รวมกรณีเขียนติดกับคำอื่น)
       let hit = ACCOUNTS.filter((a)=>a.source==="pm" && a.provider===pm && norm(a.subco).length>=2 && raw.includes(norm(a.subco)));
       if (!hit.length && pm === 'CELOX' && fileToks.includes('3x')) hit = ACCOUNTS.filter((a)=>a.source==='pm' && a.provider==='CELOX' && a.subco==='3XB');
+      if (!hit.length && ['CATPAY','JINLIPAY'].includes(pm) && (fileToks.includes('3x') || fileToks.includes('3xbet'))) hit = ACCOUNTS.filter((a)=>a.source==='pm' && a.provider===pm && a.subco==='3XB');
       // 2) ถ้าไม่เจอ ลองตัวย่อ = ตัดเลขท้าย (sk8->sk, mr9->mr) แต่ต้องเป็น "คำเดี่ยว" ในชื่อไฟล์ และชี้ชัดบริษัทเดียว
       if (!hit.length){
         const shortHit = ACCOUNTS.filter((a)=>{

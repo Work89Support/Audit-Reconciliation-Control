@@ -127,7 +127,7 @@ const Engine = (() => {
     if (map.txid !== undefined && map.username !== undefined) source = "bo";
     else if (map.status !== undefined && map.amount !== undefined && map.username === undefined) source = "pm";
     else if (map.balance !== undefined || (map.debit !== undefined && map.credit !== undefined)) source = "stm";
-    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes("celox") || blob.includes("monopay") || blob.includes(" atp ")) source = "pm";
+    if (name.startsWith("pm_") || blob.includes("autopeer") || blob.includes("azpay") || blob.includes("cyberplus") || blob.includes("12pay") || blob.includes("mypay") || blob.includes("celox") || blob.includes("monopay") || blob.includes("catpay") || blob.includes("jinlipay") || blob.includes(" atp ")) source = "pm";
     if (name.startsWith("bo_")) source = "bo";
 
     let bank = null;
@@ -139,7 +139,7 @@ const Engine = (() => {
     }
 
     let company = null;
-    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "CELOX", "MONOPAY", "SYS123"].forEach((c) => {
+    ["AUTOPEER", "AZPAY", "COREPAY", "CPPAY", "CPXM", "CYBERPLUS", "12PAY", "MYPAY", "CELOX", "MONOPAY", "CATPAY", "JINLIPAY", "SYS123"].forEach((c) => {
       if (blob.toUpperCase().includes(c)) company = c;
     });
 
@@ -557,6 +557,8 @@ const Engine = (() => {
     const providerSeen = new Map();
     let xbProviderDuplicateRowsSuppressed = 0;
     stmRecords = stmRecords.filter((row) => {
+      // สอง Provider ใหม่นี้เก็บแถวจริงทั้งหมด ให้กฎสามช่องตรวจความกำกวมก่อนจับคู่
+      if (auditCompanyOf(row) === "3XB" && ["CATPAY", "JINLIPAY"].includes(String(row.account || row.channel || "").toUpperCase())) return true;
       const id = providerIdOf(row);
       if (!id) return true;
       const amount = Math.abs(Number(row && row.amount) || 0);
@@ -716,8 +718,41 @@ const Engine = (() => {
       const candidates = monopayByStatement.get(s) || [];
       return candidates.length === 1 && candidates[0] === b && monopayByBo.get(b) === 1;
     };
+    // 3XB CATPAY/JINLIPAY ต้องตรงครบสามช่อง ไม่ใช้ Sapan หรือยอดอย่างเดียวข้ามกฎ
+    const threeXbNewProviders = new Set(["CATPAY", "JINLIPAY"]);
+    const newProviderOf = r => String(r.account || r.channel || "").toUpperCase();
+    const threeXbNewProviderFieldsMatch = (s, b) => {
+      const provider = newProviderOf(s);
+      if (!threeXbNewProviders.has(provider) || provider !== newProviderOf(b)
+        || auditCompanyOf(s) !== "3XB" || auditCompanyOf(b) !== "3XB"
+        || s.direction !== b.direction || !s.date || s.date !== b.date
+        || !Number.isFinite(s.sec) || !Number.isFinite(b.sec)
+        || (s.minutePrecision === false && b.minutePrecision === false
+          ? s.sec !== b.sec : Math.floor(s.sec / 60) !== Math.floor(b.sec / 60))
+        || !Number.isFinite(s.amount) || s.amount <= 0 || s.amount !== b.amount) return false;
+      if (s.direction === "deposit") {
+        const user = memberIdentityText(s.memberCode);
+        return !!user && user === memberIdentityText(b.memberCode);
+      }
+      if (s.direction === "withdraw") {
+        const transaction = identityText(s.transactionId);
+        return !!transaction && transaction === identityText(b.ref);
+      }
+      return false;
+    };
+    const threeXbNewByStatement = new Map(), threeXbNewByBo = new Map();
+    for (const s of stmRecords.filter(r => threeXbNewProviders.has(newProviderOf(r)))) {
+      const candidates = boRecords.filter(b => threeXbNewProviderFieldsMatch(s, b));
+      threeXbNewByStatement.set(s, candidates);
+      for (const b of candidates) threeXbNewByBo.set(b, (threeXbNewByBo.get(b) || 0) + 1);
+    }
+    const threeXbNewProviderIdentityMatches = (s, b) => {
+      if (![s, b].some(r => threeXbNewProviders.has(newProviderOf(r)))) return true;
+      const candidates = threeXbNewByStatement.get(s) || [];
+      return candidates.length === 1 && candidates[0] === b && threeXbNewByBo.get(b) === 1;
+    };
     const sameCompany = (s, b) => String(s.subco || s.company || "").toUpperCase() === String(b.subco || b.company || "").toUpperCase()
-      && celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b);
+      && celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b) && threeXbNewProviderIdentityMatches(s, b);
     const plausibleTmnOcrAmount = (ocrAmount, boAmount) => {
       if (!Number.isInteger(ocrAmount) || !Number.isInteger(boAmount) || ocrAmount <= boAmount || boAmount <= 0) return false;
       const ratio = ocrAmount / boAmount;
@@ -920,7 +955,7 @@ const Engine = (() => {
     const xbProviderRefMatched = new Set();
     // An exact Sapan/Spean provider id is stronger than inconsistent upstream
     // company/provider labels (for example `3xbet` instead of `3XB`).
-    const xbProviderRefCandidate = (s, b) => celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b)
+    const xbProviderRefCandidate = (s, b) => celoxIdentityMatches(s, b) && monopayIdentityMatches(s, b) && threeXbNewProviderIdentityMatches(s, b)
       && Number.isFinite(s.amount) && Math.abs(s.amount) > 0
       // The 24-character provider `_id` is the transaction identity. Some BO
       // exports keep withdrawals as a signed amount or classify their type
