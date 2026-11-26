@@ -667,7 +667,89 @@ const PdfStm = (() => {
      19/06/2026 22:28:12 | โอนเงิน | 144.00 | 1,278.86 | MOBILE | SCB PIMPORN KAEWS
        (บรรทัดถัดไป "บัญชีปลายทาง : X..." เป็นรายละเอียดต่อ)
      คอลัมน์ ถอน/ฝาก รวมเป็นช่องเดียว -> ทิศทางคำนวณจากผลต่างยอดคงเหลือใน applyDirection */
+  // กำหนดได้เฉพาะทะเบียนที่ผู้ดูแลตรวจ BO และหัว statement แล้วเท่านั้น
+  // เก็บค่าจริงในระบบ worker ส่วนตัว ไม่ใส่บัญชีจริงลง source สาธารณะ
+  let bayOwners = [];
+  const ownerKey = (value) => String(value || "").normalize("NFC").toLowerCase().replace(/[\s._()\-]/g, "");
+  function configureBayOwners(entries) {
+    if (!Array.isArray(entries) || entries.some((entry) => !entry.company
+      || !/^\d{10}$/.test(entry.account || "") || !entry.holder || !entry.sourceRef
+      || !Array.isArray(entry.aliases) || !entry.aliases.length || entry.aliases.some((alias) => ownerKey(alias).length < 6))) {
+      throw new Error("ทะเบียนเจ้าของ statement BAY ไม่ครบ");
+    }
+    bayOwners = entries.map((entry) => ({ ...entry, aliases: [...entry.aliases] }));
+  }
+  function bayOwner(fileName) {
+    const parts = String(fileName).match(/^([A-Z0-9]+)[_\s-]+STM[_\s-]+BAY[_\s-]+(.+?)[_\s-]+DW[_\s-]+\d{4}[-_]\d{2}[-_]\d{2}\.pdf$/i);
+    if (!parts) return null;
+    const found = bayOwners.filter((entry) => entry.company.toUpperCase() === parts[1].toUpperCase()
+      && entry.aliases.some((alias) => ownerKey(alias) === ownerKey(parts[2])));
+    const accounts = new Set(found.map((entry) => entry.account));
+    return accounts.size === 1 ? found[0] : null;
+  }
+  const bayColumnHeader = (text) => /วันที่\s*\/\s*เวลา\s+ถอน\s+ฝาก\s+ยอดเงินในบัญชี\s+รหัส/.test(text);
+  function parseBayColumns(pages) {
+    const rows = [];
+    let previousBalance = null;
+    pages.forEach((lines, pageIndex) => {
+      const columnHeader = lines.find((line) => bayColumnHeader(line.text));
+      const column = (label) => columnHeader?.items?.find((item) => item.s.trim() === label)?.x;
+      const withdrawX = column("ถอน"), depositX = column("ฝาก"), balanceX = column("ยอดเงินในบัญชี");
+      lines.forEach((line, lineIndex) => {
+        const start = line.text.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\b/);
+        if (!start || isStatementPeriod(line.text)) {
+          const opening = line.text.match(/^([\d,]+\.\d{2})\s+B\/F\b/);
+          if (opening && !rows.length) previousBalance = numOf(opening[1]);
+          return;
+        }
+        const block = [line];
+        for (let j = lineIndex + 1; j < lines.length; j++) {
+          const text = lines[j].text;
+          if (/^\d{1,2}\/\d{1,2}\/\d{4}\b/.test(text) || bayColumnHeader(text)
+            || /^(?:หน้า\s+\d+|ธนาคารกรุงศรี|ถอนเงินรวม|ฝากเงินรวม)/.test(text)) break;
+          block.push(lines[j]);
+        }
+        const raw = block.map((item) => item.text).join("\n");
+        const flat = raw.replace(/\s+/g, " ");
+        const times = [...flat.matchAll(/\b(\d{2}:\d{2}:\d{2})\b/g)];
+        const time = times.length === 1 && /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(times[0][1]) ? times[0][1] : null;
+        const values = flat.replace(start[0], "").replace(/\b\d{2}:\d{2}:\d{2}\b/g, "").trim()
+          .match(/^((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s+((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2})\s+(TN|TW)\s+(.+)$/);
+        const row = { date: isoOf(start[1]), sec: time ? secOf(time) : null, amount: values ? numOf(values[1]) : null,
+          balance: values ? numOf(values[2]) : null, code: values?.[3] || "", desc: values?.[4] || "",
+          channel: (values?.[4].match(/\b(MOBILE|INTERNET|ATM|COUNTER)\b/) || [])[1] || "",
+          direction: values?.[3] === "TN" ? "deposit" : values?.[3] === "TW" ? "withdraw" : null,
+          page: pageIndex + 1, sourceLine: lineIndex + 1, raw, bayColumns: true };
+        const detailDirection = /^รับโอนเงิน\b|^รับโอนเงิน\s/.test(row.desc) ? "deposit"
+          : /^โอนเงิน\b|^โอนเงิน\s/.test(row.desc) ? "withdraw" : null;
+        const validDate = row.date && !Number.isNaN(Date.parse(row.date))
+          && new Date(row.date).toISOString().slice(0, 10) === row.date;
+        if (!values || !time || !validDate || (raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || []).length !== 1
+          || !(row.amount > 0) || !Number.isFinite(row.balance)
+          || !detailDirection || detailDirection !== row.direction) row.bayError = "BAY วันที่ เวลา ยอด หรือรหัสรายการยังยืนยันไม่ได้";
+        // ตำแหน่งคอลัมน์เป็นหลักฐานเพิ่มเมื่อ PDF.js มีพิกัดจริง
+        // native extraction ไม่มีพิกัด จึงต้องใช้ทั้งรหัส TN/TW ข้อความ และยอดคงเหลือ
+        if (Number.isFinite(withdrawX) && Number.isFinite(depositX) && Number.isFinite(balanceX)
+          && withdrawX < depositX && depositX < balanceX) {
+          const monies = line.items.filter((item) => /^[\d,]+\.\d{2}$/.test(item.s.trim())
+            && item.x < (depositX + balanceX) / 2);
+          const printedDirection = monies.length === 1 ? (monies[0].x < (withdrawX + depositX) / 2 ? "withdraw" : "deposit") : null;
+          if (!printedDirection || printedDirection !== row.direction) row.bayError = "BAY คอลัมน์ฝากถอนขัดกับรหัสรายการ";
+        }
+        if (previousBalance !== null && Number.isFinite(row.balance) && Number.isFinite(row.amount)) {
+          const signedAmount = row.direction === "deposit" ? row.amount : -row.amount;
+          if (Math.round(row.balance * 100) - Math.round(previousBalance * 100) !== Math.round(signedAmount * 100)) {
+            row.bayError = "BAY ยอดคงเหลือไม่ต่อเนื่อง ต้องตรวจแถวต้นฉบับ";
+          }
+        }
+        previousBalance = Number.isFinite(row.balance) ? row.balance : null;
+        rows.push(row);
+      });
+    });
+    return rows;
+  }
   function parseBAY(pages) {
+    if (pages.some((lines) => lines.some((line) => bayColumnHeader(line.text)))) return parseBayColumns(pages);
     const rows = [];
     /* description ใช้ greedy (.+) เพื่อให้ยอด+ยอดคงเหลือผูกกับ "สองเลขสุดท้ายก่อน channel" เสมอ
        กันกรณีมีเลขทศนิยมในรายละเอียดมาแย่งคอลัมน์ยอด · ทศนิยมเป็น optional เผื่อยอดจำนวนเต็ม */
@@ -725,6 +807,7 @@ const PdfStm = (() => {
     rows.forEach((r, i) => {
       const scbCode = String(r.code || "").toUpperCase();
       let dir = bank === "SCB" ? ({ X1: "deposit", X2: "withdraw", XB: "adjustment" }[scbCode] || null) : null;
+      if (bank === "BAY" && r.bayColumns) dir = r.direction;
       // A BBL balance error must not silently flip a printed FR/TO direction.
       // Preserve the explicit direction so the continuity gate can reject it.
       if (bank === 'BBL') {
@@ -1123,6 +1206,19 @@ const PdfStm = (() => {
     if (/(?:^|[_\s-])TMN(?:[_\s-]|$)|TRUEMONEY/i.test(String(fileName || ""))) head.bank = "TMN";
     let rows =
       head.bank === "SCB" ? parseScb(pages) : (head.bank === "KBANK" || head.bank === "LBK") ? parseKbank(pages) : head.bank === "KTB" ? parseKtb(pages) : head.bank === "BBL" ? parseBbl(pages) : head.bank === "TMN" ? parseTMN(pages, businessDate) : head.bank === "BAY" ? parseBAY(pages) : parseGeneric(pages);
+    const bayColumns = head.bank === "BAY" && pages.some((lines) => lines.some((line) => bayColumnHeader(line.text)));
+    let bayOwnerError = null;
+    if (bayColumns) {
+      const owner = bayOwner(fileName);
+      if (owner && head.account && owner.account !== head.account) {
+        bayOwnerError = "BAY เลขบัญชีบน statement ขัดกับทะเบียนเจ้าของไฟล์";
+      } else if (!head.account && owner) {
+        head.account = owner.account;
+        head.holder = owner.holder;
+        head.accountSource = "verified_bay_owner";
+        head.accountSourceRef = owner.sourceRef;
+      } else if (!head.account) bayOwnerError = "BAY ไม่มีหัวเลขบัญชีและยังไม่มีทะเบียนเจ้าของไฟล์ที่ยืนยันตรงบริษัท";
+    }
     // Screenshots contain counterparty names, not the wallet owner's number.
     // Use only a unique registered TMN owner for the explicitly named company;
     // never borrow another company's account or override a printed account.
@@ -1144,7 +1240,7 @@ const PdfStm = (() => {
     // the generic two-column rule turns balances into transactions and can
     // falsely close or open cases.  An unrecognized TMN layout must fail the
     // quality gate instead of producing financial evidence from wrong fields.
-    if (!rows.length && head.bank !== "TMN") rows = parseGeneric(pages);
+    if (!rows.length && head.bank !== "TMN" && !bayColumns) rows = parseGeneric(pages);
     applyDirection(rows, head.bank);
     // A flattened PDF line can begin with an opening-balance date and later
     // contain the actual transaction date immediately followed by its time.
@@ -1184,7 +1280,7 @@ const PdfStm = (() => {
       // placeholder/noTime value is retained as evidence but must never pass
       // the quality gate or enter automatic matching/case creation.
       const ktbTimeMissing = head.bank === "KTB" && r.noTime === true;
-      const invalid = !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction || ktbTimeMissing;
+      const invalid = !r.date || r.sec === null || !Number.isFinite(r.amount) || !r.direction || ktbTimeMissing || !!r.bayError;
       const olderPrintedDate = businessDate && /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
         && /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') && r.date < businessDate;
       if (invalid && head.bank === 'BBL' && olderPrintedDate
@@ -1225,16 +1321,17 @@ const PdfStm = (() => {
         }
       });
     }
+    if (bayOwnerError) invalidRows.push({ raw: fileName, bayError: bayOwnerError });
     const quality = { complete: unreadRows.length === 0 && invalidRows.length === 0, parsedRows: rows.length,
       unreadRows, invalidRows: invalidRows.map((r) => ({
         raw: r.raw,
         page: r.page || null,
         sourceLine: r.sourceLine || null,
-        reason: r.continuityError
+        reason: r.bayError || (r.continuityError
           ? "BBL ยอดคงเหลือวันที่ตรวจไม่ต่อเนื่องหรือยืนยันทิศทางไม่ได้"
           : head.bank === "KTB" && r.noTime === true
           ? "KTB ไม่มีเวลาธนาคารที่ยืนยันได้ — ห้ามจับคู่หรือสร้างเคสอัตโนมัติ"
-          : "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้",
+          : "วันที่ เวลา ยอด หรือทิศทางยังยืนยันไม่ได้"),
       })),
       outOfDayDirectionRows,
       ...(head.bank==='BBL'?{businessDayPolicy:'bbl_older_day_direction_with_balance_v2',businessDate:businessDate||null}:{}) };
@@ -1316,7 +1413,7 @@ const PdfStm = (() => {
         lateNight: r.sec >= 82800,
         minutePrecision: true, // statement ให้เวลาแค่ HH:MM
         noTime: !!r.noTime, // BBL ไม่มีคอลัมน์เวลา — engine ผ่อนกรอบเวลาเป็นทั้งวัน
-        ...(['BBL', 'KTB'].includes(head.bank) ? {page:r.page,sourceLine:r.sourceLine} : {}),
+        ...(['BBL', 'KTB', 'BAY'].includes(head.bank) ? {page:r.page,sourceLine:r.sourceLine} : {}),
         internalTransferHint: !!r.internalTransferHint,
         ocrWalletScreenshot: !!r.ocrWalletScreenshot,
         ocrDateCandidateOnly,
@@ -1360,7 +1457,7 @@ const PdfStm = (() => {
     };
   }
 
-  return { parse, parseText, parseStructuredOcr, pagesFromText, textLines, header, isoOf, parseBAY, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
+  return { parse, parseText, parseStructuredOcr, pagesFromText, textLines, header, isoOf, parseBAY, configureBayOwners, parseKbank, parseKtb, parseBbl, parseGeneric, applyDirection };
 })();
 
 if (typeof window !== "undefined") window.PdfStm = PdfStm;

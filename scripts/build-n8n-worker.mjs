@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {receiptExpression} from './patch-parse-receipt-worker.mjs';
+import {bayOwnerConfiguration} from './bay-owner-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
@@ -72,6 +73,7 @@ return out;`;
 
 const normalizeCode = `${runtime}
 const meta=$('วนทีละไฟล์').item.json;
+${bayOwnerConfiguration}
 const file=meta.file, job=meta.job, ext=file.ext;
 const input=$input.all();
 let norm, rawRows=[], extractedText='';
@@ -526,6 +528,7 @@ const driveHttp = (id, name, position, parameters) => ({
 
 const nativePdfProbe = `${runtime}
 const meta=$('วนทีละไฟล์').item.json;
+${bayOwnerConfiguration}
 const source=$json;
 const text=typeof source.text==='string'?source.text:typeof source.data==='string'?source.data:'';
 let readable=false, diagnostics=null;
