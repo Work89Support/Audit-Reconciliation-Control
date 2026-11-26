@@ -41,7 +41,7 @@ grouped.pages[1].text='รับเงินจาก ตัวอย่าง �
 assert.throws(()=>parse(grouped),/ambiguous row fields/,'matching column counts must never invent source-row bindings');
 const source=JSON.parse(fs.readFileSync('n8n/audit-headless-worker.json','utf8'));
 const candidate=patchTmnPageOcr(source);
-assert.equal(candidate.nodes.length,source.nodes.length+8);
+assert.equal(candidate.nodes.length,source.nodes.length+9);
 assert.deepEqual(candidate.settings,source.settings);
 const mutable=new Set(['จัดผล OCR','แปลงรายการเป็นมาตรฐาน','กระทบยอดและสร้าง Exception','ตรวจรายการ PDF ก่อน OCR']);
 for(const old of source.nodes){const next=candidate.nodes.find(n=>n.id===old.id);if(!mutable.has(old.name))assert.deepEqual(next,old);else assert.deepEqual({...next,parameters:{}},{...old,parameters:{}});}

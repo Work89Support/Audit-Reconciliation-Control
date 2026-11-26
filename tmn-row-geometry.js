@@ -16,7 +16,9 @@ const TmnRowGeometry=(()=>{
   const rows=bands.map(([top,bottom],i)=>{
    const desc=[Math.round(.18*w),Math.max(0,top-6),Math.round(.55*w),Math.min(h, bottom+8)-Math.max(0,top-6)];
    const amount=[Math.round(.74*w),desc[1],Math.round(.25*w),desc[3]];
-   const time=[Math.round(.18*w),Math.min(h,bottom+6),Math.round(.27*w),Math.max(0,Math.round(Math.min(h-.10*w,bottom+.10*w)-Math.min(h,bottom+6)))];
+   // ภาพที่ตัดแถบนำทางออกอาจยังมีเวลาของแถวสุดท้ายอยู่ล่างสุด
+   // ห้ามกันพื้นที่ท้ายภาพตามสัดส่วนตายตัวจนตัดเวลาที่เห็นในต้นฉบับ
+   const time=[Math.round(.18*w),Math.min(h,bottom+6),Math.round(.27*w),Math.max(0,Math.round(Math.min(h,bottom+.10*w)-Math.min(h,bottom+6)))];
    let ink=0;for(let y=amount[1];y<amount[1]+amount[3];y++)for(let x=amount[0];x<amount[0]+amount[2];x++){const p=(y*w+x)*3;if(Math.min(data[p],data[p+1],data[p+2])<180)ink++;}
    if(ink<8)throw Error('TMN physical amount missing at row '+(i+1));
    return {row:i+1,desc,amount,time,bottomClipped:bottom>h-.16*w};

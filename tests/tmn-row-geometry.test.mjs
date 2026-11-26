@@ -17,4 +17,10 @@ for(const y of [140,300]){black(90,y,120,10);black(320,y,30,10);}
 const geometry=G.analyze({width,height,data:pixels});assert.equal(geometry.rows.length,2);for(const r of geometry.rows)assert.ok(r.desc.every(Number.isInteger)&&r.time.every(Number.isInteger));
 const flow=G.reflow({width,height,data:pixels},geometry),again=G.reflow({width,height,data:pixels},geometry);assert.deepEqual(flow.data,again.data);assert.equal(flow.blocks.length,4);assert.ok(flow.blocks[2].y>flow.blocks[1].y);assert.ok(flow.data.some(x=>x===0),'every later block must actually be painted');
 assert.throws(()=>G.analyze({width,height,data:new Uint8Array(width*height*3).fill(255)}),/bands unavailable/);
+// ภาพไม่มีแถบนำทาง: เวลาที่อยู่ท้ายภาพต้องไม่ถูกตัวครอปกันทิ้ง 10%
+const lower={width:400,height:800,data:new Uint8Array(400*800*3).fill(255)};
+const ink=(x,y,w,h,value)=>{for(let yy=y;yy<y+h;yy++)for(let xx=x;xx<x+w;xx++)lower.data.fill(value,(yy*400+xx)*3,(yy*400+xx)*3+3);};
+ink(90,750,120,10,0);ink(320,750,30,10,0);ink(90,780,40,8,145);
+const lowerGeometry=G.analyze(lower),clock=lowerGeometry.rows[0].time;
+assert.ok(clock[1]<=780&&clock[1]+clock[3]>=788,'ต้องเก็บเวลาในภาพจริงครบแม้อยู่ท้ายสุด');
 console.log('PASS physical TMN row crops, duplicate occurrences, source-region evidence, no mutation and strictly proven cropped continuation; no services or database writes');
