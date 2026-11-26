@@ -22,6 +22,29 @@ const TmnPageOcr = (() => {
     if (!Number.isSafeInteger(n) || n <= 0) fail('invalid amount');
     return n;
   };
+  function reversePageDateAnchor(pages) {
+    // บางชุดเรียงภาพจากช่วงเวลาเก่าไปใหม่ โดยหัววันที่อยู่ภาพสุดท้าย
+    // ใช้ได้เฉพาะวันเดียวที่พิมพ์ชัดในภาพ และช่วงเวลาแต่ละหน้าไม่ทับกัน
+    // ไม่ยืมวันที่จากชื่อไฟล์ BO หรือนาฬิกาบนโทรศัพท์
+    if(pages.length<2||pages.some(p=>p.error||!p.rowLayout||p.sourceGraphics?.version!=='tmn-single-image-graphics-v1'
+      ||p.rowEvidence?.length!==p.geometry?.rows?.length||!p.rowEvidence.length))return null;
+    const headings=pages.flatMap(p=>p.text.split(/\r?\n/).map((raw,line)=>({raw,line,page:p.page,date:dateOf(raw)})).filter(h=>h.date));
+    if(headings.length!==1||headings[0].page!==pages.length)return null;
+    const anchor=headings[0],last=pages.at(-1),firstEvent=last.text.split(/\r?\n/).findIndex(eventType);
+    if(firstEvent<0||anchor.line>=firstEvent)return null;
+    let previousMax=null;
+    for(const p of pages){
+      const values=p.rowEvidence.map(r=>times(r.rawOcr)).map(values=>{
+        if(values.length!==1)return NaN;const [h,m,s=0]=values[0].split(':').map(Number);return h*3600+m*60+s;
+      });
+      if(values.some((v,i)=>!Number.isFinite(v)||(i>0&&v>values[i-1])))return null;
+      const min=Math.min(...values),max=Math.max(...values);
+      if(previousMax!==null&&min<previousMax)return null;
+      previousMax=max;
+    }
+    return {policy:'single-absolute-heading-reverse-page-blocks-v1',date:anchor.date,page:anchor.page,
+      sourcePageSha256:last.pageSha256,rawHeading:anchor.raw};
+  }
   function normalize(envelope, file, job) {
     if (envelope?.version !== 'tmn-page-ocr-v1' || file.kind !== 'stm_pdf' || job.company !== 'UFABET7M' ||
         !/(?:^|[_\s-])TMN(?:[_\s-]|$)/i.test(file.file_name || '') || !/รุ[่้]งฟ้า/.test(file.file_name || '') ||
@@ -40,7 +63,8 @@ const TmnPageOcr = (() => {
       }
     }
     const rows=[],pageAudit=[];
-    let date=null;
+    const dateEvidence=invalidPages.size?null:reversePageDateAnchor(pages);
+    let date=dateEvidence?.date||null;
     for (const [i,p] of pages.entries()) {
       if(invalidPages.has(i))continue;
       try {
@@ -104,7 +128,7 @@ const TmnPageOcr = (() => {
           const physical=p.rowEvidence?.[ordinal-1];
           if(p.rowLayout&&(!physical||physical.sourceRowId!==sourceRowId))fail('page '+p.page+' physical row provenance incomplete');
           const lineage=physical?{sourceImageSha256:physical.sourceImageSha256,sourceRegions:physical.sourceRegions,
-            sourceFragments:physical.sourceFragments,rawRowOcr:physical.rawOcr}:{};
+            sourceFragments:physical.sourceFragments,rawRowOcr:physical.rawOcr,...(dateEvidence?{sourceDateEvidence:dateEvidence}:{})}:{};
           const sourceOcrLines=[...new Set([e.line,m.line,t.line])].sort((a,b)=>a-b);
           const original={sourceRowId,page:p.page,sourceLine:e.line,sourceOcrLines,sourcePageSha256:p.pageSha256,
             sourceFileSha256:envelope.sourceSha256,date:segment.date,time:t.value,direction:e.kind,amount:m.cents/100,description:e.description,...lineage};
@@ -125,7 +149,7 @@ const TmnPageOcr = (() => {
       }
       if(!ordinal) fail('page '+p.page+' has no independently verified transaction rows');
       pageAudit.push({page:p.page,pageSha256:p.pageSha256,principalCount,feeCount,rows:auditRows,
-        ...(p.rowLayout?{physicalRowCount:p.geometry.rows.length,sourceImageSha256:p.sourceImageSha256,geometry:p.geometry,originalOcr:p.originalOcr}:{}),
+        ...(p.rowLayout?{physicalRowCount:p.geometry.rows.length,sourceImageSha256:p.sourceImageSha256,geometry:p.geometry,originalOcr:p.originalOcr,sourceGraphics:p.sourceGraphics}:{}),
         confidence:{type:'structural',criticalFields:'exact-count/sign/absolute-date/registered-owner',numericOcrConfidence:null}});
       } catch(error) {
         pageErrors.push({page:p.page,message:String(error.message||error)});
@@ -135,7 +159,7 @@ const TmnPageOcr = (() => {
     return {format:{source:'stm',bank:'TMN',realCode:'stm_pdf_page_ocr'},records:rows,aux:[],warnings:[],
       dropped:{'ค่าธรรมเนียม TMN (ไม่นำเข้ากระทบยอด)':pageAudit.reduce((n,p)=>n+p.feeCount,0)},
       quality:{complete:true,parsedRows:rows.length,unreadRows:[],invalidRows:[],pageCount:pages.length,
-        pageLinkedOcr:true,sourceSha256:envelope.sourceSha256,pages:pageAudit}};
+        pageLinkedOcr:true,sourceSha256:envelope.sourceSha256,...(dateEvidence?{dateEvidence}:{}),pages:pageAudit}};
   }
   return {normalize};
 })();

@@ -69,7 +69,8 @@ export function rowSplitCode(){
  const base=splitCode(),prefix=base.slice(0,base.indexOf("const f=$('วนทีละไฟล์')"));
  const jpeg=fs.readFileSync(path.join(root,'vendor/jpeg-js-0.4.4-decoder.cjs'),'utf8');
  const geometry=fs.readFileSync(path.join(root,'tmn-row-geometry.js'),'utf8');
- return prefix+`\nconst JpegDecode=(()=>{const module={exports:{}},exports=module.exports;${jpeg}\nreturn module.exports;})();\nconst Geometry=(()=>{const module={exports:{}};${geometry}\nreturn module.exports;})();
+ const proof=fs.readFileSync(path.join(root,'tmn-pdf-image-proof.js'),'utf8');
+ return prefix+`\nconst JpegDecode=(()=>{const module={exports:{}},exports=module.exports;${jpeg}\nreturn module.exports;})();\nconst Geometry=(()=>{const module={exports:{}};${geometry}\nreturn module.exports;})();\nconst ImageProof=(()=>{const module={exports:{}};${proof}\nreturn module.exports;})();
 const f=$('วนทีละไฟล์').item.json.file,bytes=await this.helpers.getBinaryDataBuffer(0,'data'),hash=sha256(bytes);
 if(f.checksum&&f.checksum!==hash)throw Error('TMN PDF checksum changed');
 const pdf=await PDFLib.PDFDocument.load(new Uint8Array(bytes),{updateMetadata:false}),count=pdf.getPageCount(),out=[];
@@ -78,12 +79,16 @@ for(let i=0;i<count;i++){
  const original=pdf.getPage(i),objects=original.node.Resources()?.lookup(PDFLib.PDFName.of('XObject'));
  const contents=original.node.Contents(),parts=contents?.asArray?contents.asArray():contents?[contents]:[];
  const operators=parts.map(ref=>String.fromCharCode(...PDFLib.decodePDFRawStream(pdf.context.lookup(ref)).decode())).join('\\n');
- const nativeText=[...operators.matchAll(/\\bBT\\b([\\s\\S]*?)\\bET\\b/g)].some(m=>[...m[1].matchAll(/\\(([^()]*)\\)/g)].some(t=>t[1].trim())||/<[a-f0-9]+>/i.test(m[1]));
- const draws=[...operators.matchAll(/\\/([A-Za-z0-9_.-]+)\\s+Do\\b/g)],matrices=[...operators.matchAll(/([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+cm/g)];
- const matrix=matrices.length===1?matrices[0].slice(1).map(Number):null,box=original.getCropBox();
- if(nativeText||draws.length!==1||!matrix||matrix[1]!==0||matrix[2]!==0||matrix[0]<=0||matrix[3]<=0||matrix[4]<box.x-.1||matrix[5]<box.y-.1||matrix[4]+matrix[0]>box.x+box.width+.1||matrix[5]+matrix[3]>box.y+box.height+.1||[...operators.matchAll(/([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+([\\d.+-]+)\\s+re/g)].some(r=>{const [x,y,w,h]=r.slice(1).map(Number);return matrix[4]<x-.1||matrix[5]<y-.1||matrix[4]+matrix[0]>x+w+.1||matrix[5]+matrix[3]>y+h+.1;}))throw Error('TMN row OCR cannot discard native text, clipping or transforms');
+ const states=original.node.Resources()?.lookup(PDFLib.PDFName.of('ExtGState'));
+ const sourceGraphics=ImageProof.inspect(operators,original.getCropBox(),{rotation:original.getRotation().angle,safeGraphicsState:name=>{
+  const state=states?.lookup(PDFLib.PDFName.of(name));if(!state?.keys)return false;
+  const allowed=['/Type','/AIS','/BM','/CA','/ca','/SMask'];if(state.keys().some(key=>!allowed.includes(key.toString())))return false;
+  const value=key=>state.get(PDFLib.PDFName.of(key))?.toString();
+  return (!value('Type')||value('Type')==='/ExtGState')&&(!value('AIS')||value('AIS')==='false')&&(!value('BM')||value('BM')==='/Normal')&&(!value('CA')||Number(value('CA'))===1)&&(!value('ca')||Number(value('ca'))===1)&&(!value('SMask')||value('SMask')==='/None');
+ }});
  if(!objects||objects.keys().length!==1)throw Error('TMN row OCR requires one physical screenshot per page '+(i+1));
- const image=objects.lookup(objects.keys()[0]);if(image?.dict?.get(PDFLib.PDFName.of('Subtype'))?.toString()!=='/Image')throw Error('TMN page image unavailable');
+ const image=objects.lookup(PDFLib.PDFName.of(sourceGraphics.imageName));if(image?.dict?.get(PDFLib.PDFName.of('Subtype'))?.toString()!=='/Image')throw Error('TMN page image unavailable');
+ if(['ImageMask','SMask','Mask','Decode'].some(key=>image.dict.get(PDFLib.PDFName.of(key))))throw Error('TMN masked or color-transformed screenshot requires rendered review');
  const filter=image.dict.get(PDFLib.PDFName.of('Filter'))?.toString(),width=image.dict.get(PDFLib.PDFName.of('Width')).asNumber(),height=image.dict.get(PDFLib.PDFName.of('Height')).asNumber();
  if(width*height>16000000)throw Error('TMN screenshot too large');let pixels;
  if(filter==='/DCTDecode')pixels=JpegDecode(image.contents,{useTArray:true,formatAsRGBA:false,maxMemoryUsageInMB:128});
@@ -93,9 +98,36 @@ for(let i=0;i<count;i++){
  const ref=one.context.register(one.context.flateStream(flow.data,{Type:'XObject',Subtype:'Image',Width:flow.width,Height:flow.height,ColorSpace:'DeviceRGB',BitsPerComponent:8})),page=one.addPage([flow.width/2,flow.height/2]),key=page.node.newXObject('Rows',ref);
  page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.scale(flow.width/2,flow.height/2),PDFLib.drawObject(key),PDFLib.popGraphicsState());
  const data=await one.save({useObjectStreams:false,updateFieldAppearances:false}),binary=await this.helpers.prepareBinaryData(Buffer.from(data),'tmn-rows-page-'+(i+1)+'.pdf','application/pdf');
- out.push({json:{tmn_page:{sourceFileId:f.id,sourceSha256:hash,pageCount:count,page:i+1,pageSha256:sha256(data),sourceImageSha256:sha256(image.contents),rowLayout:true,geometry}},binary:{data:binary},pairedItem:{item:0}});
+ out.push({json:{tmn_page:{sourceFileId:f.id,sourceSha256:hash,pageCount:count,page:i+1,pageSha256:sha256(data),sourceImageSha256:sha256(image.contents),sourceGraphics,rowLayout:true,geometry}},binary:{data:binary},pairedItem:{item:0}});
 }
 return out;`;
+}
+export function guardSplitCode(code){
+ if(code.includes('// TMN split failure receipt v1'))return code;
+ const start=code.indexOf("const f=$('วนทีละไฟล์')");
+ if(start<0||code.indexOf("const f=$('วนทีละไฟล์')",start+1)>=0)throw Error('Ambiguous TMN splitter metadata');
+ return code.slice(0,start)+'// TMN split failure receipt v1\ntry{\n'+code.slice(start)+`\n}catch(error){
+ const file=$('วนทีละไฟล์').item.json.file;
+ return [{json:{tmn_split_error:true,sourceFileId:file.id,error:{message:'TMN แยกหน้าต้องตรวจต้นฉบับ: '+String(error.message||error)}},pairedItem:{item:0}}];
+}`;
+}
+export function installTmnSplitFailure(workflow){
+ const w=structuredClone(workflow),split=w.nodes.find(n=>n.name===PAGE_NODE),format=w.nodes.find(n=>n.name==='จัดผล OCR');
+ if(!split||!format)throw Error('Missing TMN split/error destination');
+ split.parameters.jsCode=guardSplitCode(split.parameters.jsCode);
+ const marker='// TMN split error passthrough v1';
+ if(!format.parameters.jsCode.includes(marker))format.parameters.jsCode=marker+`\nconst splitError=$input.all().find(item=>item.json?.tmn_split_error);
+if(splitError)return [{json:{text:'',ocr_used:true,error:splitError.json.error,tmn_split_error:true},pairedItem:{item:0}}];
+`+format.parameters.jsCode;
+ const name='TMN แยกหน้าล้มเหลว?',edge=node=>({node,type:'main',index:0});
+ if(!w.nodes.some(n=>n.name===name)){
+  if(JSON.stringify(w.connections[PAGE_NODE])!==JSON.stringify({main:[[edge('TMN OCR วนทีละหน้า')]]}))throw Error('Unexpected TMN split route');
+  const [x,y]=split.position;
+  w.nodes.push({id:'tmn-split-error-gate-v1',name,type:'n8n-nodes-base.if',typeVersion:2.2,position:[x+100,y+180],parameters:{conditions:{options:{caseSensitive:true,leftValue:'',typeValidation:'strict',version:2},conditions:[{id:'tmn-split-failed-v1',leftValue:'={{ $json.tmn_split_error === true }}',rightValue:true,operator:{type:'boolean',operation:'true',singleValue:true}}],combinator:'and'},options:{}}});
+  w.connections[PAGE_NODE]={main:[[edge(name)]]};
+  w.connections[name]={main:[[edge('จัดผล OCR')],[edge('TMN OCR วนทีละหน้า')]]};
+ }
+ return w;
 }
 export const collectCode=`
 const meta=$('วนทีละไฟล์').item.json;
@@ -123,9 +155,10 @@ export function patchTmnPageOcr(workflow,{rowLayout=false}={}) {
   if(!normalizer.parameters.jsCode.includes('norm=PdfStm.parseStructuredOcr'))throw Error('Unknown normalizer baseline');
   formatter.parameters.jsCode=collectCode+formatter.parameters.jsCode;
   const moduleCode=fs.readFileSync(path.join(root,'tmn-page-ocr.js'),'utf8');
-  normalizer.parameters.jsCode=moduleCode+'\n'+normalizer.parameters.jsCode.replace(
-    "norm=PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,parseBusinessDate)",
-    "norm=input[0]?.json?.tmn_page_ocr ? TmnPageOcr.normalize("+(rowLayout?"TmnRowGeometry.bind(input[0].json.tmn_page_ocr)":"input[0].json.tmn_page_ocr")+",file,{...job,business_date:parseBusinessDate}) : PdfStm.parseStructuredOcr(file.file_name,storedOcr,extractedText,parseBusinessDate)");
+  const nativeAnchor=/norm=PdfStm\.parseStructuredOcr\(file\.file_name,storedOcr,extractedText,(parseBusinessDate|job\.business_date)\)/g;
+  if([...normalizer.parameters.jsCode.matchAll(nativeAnchor)].length!==1)throw Error('Ambiguous normalizer native PDF route');
+  normalizer.parameters.jsCode=moduleCode+'\n'+normalizer.parameters.jsCode.replace(nativeAnchor,(original,date)=>
+    "norm=input[0]?.json?.tmn_page_ocr ? TmnPageOcr.normalize("+(rowLayout?"TmnRowGeometry.bind(input[0].json.tmn_page_ocr)":"input[0].json.tmn_page_ocr")+",file,{...job,business_date:"+date+"}) : "+original.slice(5));
   if(rowLayout)normalizer.parameters.jsCode=fs.readFileSync(path.join(root,'tmn-row-geometry.js'),'utf8')+'\n'+normalizer.parameters.jsCode;
   const catchAnchor="}catch(error){\n  parseError='อ่านไฟล์ไม่สำเร็จ:";
   if(!normalizer.parameters.jsCode.includes(catchAnchor))throw Error('Normalizer error wrapper changed');
@@ -137,6 +170,9 @@ export function patchTmnPageOcr(workflow,{rowLayout=false}={}) {
   normalizer.parameters.jsCode=normalizer.parameters.jsCode.replace(
     'isTmnScreenshotPdf&&ocrUsed&&!usedManualTmnReview;',
     'isTmnScreenshotPdf&&ocrUsed&&!usedManualTmnReview&&!norm.quality?.pageLinkedOcr;');
+  normalizer.parameters.jsCode=normalizer.parameters.jsCode.replace(
+    'isTmnScreenshotPdf&&ocrUsed&&!usedManualReview;',
+    'isTmnScreenshotPdf&&ocrUsed&&!usedManualReview&&!norm.quality?.pageLinkedOcr;');
   // Include the full page/fee audit alongside parsed source records. This is
   // provenance, never a case approval or a replacement accepted result.
   normalizer.parameters.jsCode=normalizer.parameters.jsCode.replace('pdf_quality:norm.quality||null,','pdf_quality:norm.quality||null,tmn_page_diagnostics:tmnPageDiagnostics,tmn_page_audit:norm.quality?.pageLinkedOcr?norm.quality:null,');
@@ -177,7 +213,7 @@ export function patchTmnPageOcr(workflow,{rowLayout=false}={}) {
   w.connections[wait]={main:[[edge(read)]]};
   w.connections[read]={main:[[edge(result)]]};
   w.connections[result]={main:[[edge(loop)]]};
-  return w;
+  return installTmnSplitFailure(w);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const [input,output]=process.argv.slice(2);if(!input||!output||input===output)throw Error('Use separate INPUT.json OUTPUT.json');
