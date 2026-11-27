@@ -210,7 +210,7 @@
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 15000
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
