@@ -5,6 +5,9 @@ const before=structuredClone(base),patched=patchWorker(base,'synthetic-error-wor
 assert.deepEqual(patched.connections,before.connections);assert.equal(patched.nodes.length,before.nodes.length);
 assert.equal(patched.settings.errorWorkflow,'synthetic-error-workflow');
 const allowed=new Set(['Supabase: จองหนึ่งงาน','คืนชื่อไฟล์ต้นฉบับ','จบรอบ Worker']);
+const rename=patched.nodes.find(n=>n.name==='คืนชื่อไฟล์ต้นฉบับ');
+assert.equal(rename.retryOnFail,true);assert.equal(rename.maxTries,3);
+assert.equal(rename.waitBetweenTries,5000,'retry delay must match the Production editor limit');
 for(let i=0;i<before.nodes.length;i++)if(!allowed.has(before.nodes[i].name))assert.deepEqual(patched.nodes[i],before.nodes[i]);
 const expr=(code,context)=>vm.runInNewContext(code.slice(3,-2).trim(),context);
 assert.equal(JSON.parse(expr(claimBody,{$execution:{id:123}})).p_worker,'n8n-cloud-worker:123');

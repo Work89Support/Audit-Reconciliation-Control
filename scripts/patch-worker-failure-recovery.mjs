@@ -12,7 +12,7 @@ export function patchWorker(workflow,errorWorkflowId) {
  const rename=workflow.nodes.find(n=>n.name==='คืนชื่อไฟล์ต้นฉบับ');
  assert(rename?.type==='n8n-nodes-base.code');
  // โหนดนี้คืนชื่อไฟล์อย่างเดียว ไม่มีการเขียนผล จึงลองใหม่แบบมีขอบเขตได้
- Object.assign(rename,{retryOnFail:true,maxTries:3,waitBetweenTries:15000});
+ Object.assign(rename,{retryOnFail:true,maxTries:3,waitBetweenTries:5000});
  const summary=workflow.nodes.find(n=>n.name==='จบรอบ Worker');
  assert(summary?.type==='n8n-nodes-base.code');
  summary.parameters.jsCode="const job=$('Supabase: จองหนึ่งงาน').first().json; return [{json:{worked:!!job.id,job_id:job.id||null,finished_at:new Date().toISOString()}}];";
