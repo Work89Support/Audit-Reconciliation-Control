@@ -1,0 +1,78 @@
+{
+  "name": "Audit — Automatic worker failure finalizer (lease bound)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "automatic-worker-error",
+      "name": "รับข้อผิดพลาด Worker",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/fail_daily_recon_execution",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_execution_id:String($json.execution?.id||''),p_workflow_id:String($json.workflow?.id||''),p_error:String($json.execution?.error?.message||$json.trigger?.error?.message||'Worker failed').slice(0,1600),p_last_node:String($json.execution?.lastNodeExecuted||'').slice(0,200)}) }}",
+        "options": {
+          "response": {
+            "response": {}
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "fail-bound-execution",
+      "name": "Supabase: คืนสถานะเฉพาะ execution ที่ล้มเหลว",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "dGndiinLb7AKnjIu",
+          "name": "Supabase account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "รับข้อผิดพลาด Worker": {
+      "main": [
+        [
+          {
+            "node": "Supabase: คืนสถานะเฉพาะ execution ที่ล้มเหลว",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  }
+}

@@ -199,7 +199,8 @@
         "options": {
           "waitForSubWorkflow": true
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "id": "progress",
