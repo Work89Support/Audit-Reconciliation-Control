@@ -44,7 +44,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 1 }) }}",
+        "jsonBody": "={{ JSON.stringify({p_worker:'n8n-cloud-worker:'+String($execution.id),p_limit:1}) }}",
         "options": {
           "response": {
             "response": {}
@@ -207,7 +207,10 @@
       "position": [
         1090,
         340
-      ]
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000
     },
     {
       "parameters": {
@@ -1170,7 +1173,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];"
+        "jsCode": "const job=$('Supabase: จองหนึ่งงาน').first().json; return [{json:{worked:!!job.id,job_id:job.id||null,finished_at:new Date().toISOString()}}];"
       },
       "id": "summary",
       "name": "จบรอบ Worker",

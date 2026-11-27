@@ -1,0 +1,18 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import vm from 'node:vm';
+import {patchWorker,patchDispatcher,failureWorkflow,claimBody,failureBody} from '../scripts/patch-worker-failure-recovery.mjs';
+const base=JSON.parse(fs.readFileSync('n8n/audit-headless-worker.json','utf8'));base.id='hggaOLqKPXB5roGM';
+const before=structuredClone(base),patched=patchWorker(base,'synthetic-error-workflow');
+assert.deepEqual(patched.connections,before.connections);assert.equal(patched.nodes.length,before.nodes.length);
+assert.equal(patched.settings.errorWorkflow,'synthetic-error-workflow');
+const allowed=new Set(['Supabase: จองหนึ่งงาน','คืนชื่อไฟล์ต้นฉบับ','จบรอบ Worker']);
+for(let i=0;i<before.nodes.length;i++)if(!allowed.has(before.nodes[i].name))assert.deepEqual(patched.nodes[i],before.nodes[i]);
+const expr=(code,context)=>vm.runInNewContext(code.slice(3,-2).trim(),context);
+assert.equal(JSON.parse(expr(claimBody,{$execution:{id:123}})).p_worker,'n8n-cloud-worker:123');
+const receipt=JSON.parse(expr(failureBody,{$json:{execution:{id:123,error:{message:'runner unavailable'},lastNodeExecuted:'source-name'},workflow:{id:'hggaOLqKPXB5roGM'}}}));
+assert.equal(receipt.p_execution_id,'123');assert.equal(receipt.p_workflow_id,'hggaOLqKPXB5roGM');assert.equal(receipt.p_error,'runner unavailable');
+const error=failureWorkflow(patched);assert.equal(error.nodes.length,2);assert.equal(error.nodes[0].type,'n8n-nodes-base.errorTrigger');assert.equal(error.nodes[1].type,'n8n-nodes-base.httpRequest');assert(!error.nodes.some(n=>n.type.endsWith('.code')),'error recovery must work when Code runner is unavailable');
+const summary=patched.nodes.find(n=>n.name==='จบรอบ Worker').parameters.jsCode;
+for(const id of ['synthetic-job',null])assert.equal(vm.runInNewContext('(function(){'+summary+'})()',{$:()=>({first:()=>({json:{id}})})})[0].json.worked,!!id);
+const dispatcher={id:'UBddGOySmAWzCgTu',nodes:[{name:'ทำหนึ่งงานและรอให้จบ',parameters:{workflowId:{value:'hggaOLqKPXB5roGM'},options:{waitForSubWorkflow:false}}}],settings:{timezone:'Asia/Bangkok'},connections:{unchanged:true}};
+const d=patchDispatcher(structuredClone(dispatcher));assert.equal(d.nodes[0].parameters.options.waitForSubWorkflow,true);assert.equal(d.nodes[0].onError,'continueRegularOutput');assert.deepEqual(d.settings,dispatcher.settings);assert.deepEqual(d.connections,dispatcher.connections);
+console.log('PASS worker failure envelope, pure-node retry, no-Code error handler, accurate progress and sequential dispatcher.');

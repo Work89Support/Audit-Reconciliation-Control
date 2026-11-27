@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {receiptExpression} from './patch-parse-receipt-worker.mjs';
 import {bayOwnerConfiguration} from './bay-owner-config.mjs';
+import {claimBody,failureWorkflow} from './patch-worker-failure-recovery.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (name) => readFile(path.join(root, name), "utf8");
@@ -552,7 +553,7 @@ const nodes = [
   http("claim", "Supabase: จองหนึ่งงาน", [-160, 160], {
     method: "POST", url: "={{ $vars.SUPABASE_URL }}/rest/v1/rpc/claim_daily_recon_jobs", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
-    jsonBody: "={{ JSON.stringify({ p_worker: 'n8n-cloud-worker', p_limit: 1 }) }}", options: { response: { response: {} } },
+    jsonBody: claimBody, options: { response: { response: {} } },
   }),
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-job", leftValue: "={{ !!$json.id }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-job", name: "มีงานในคิว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [60, 160] },
   http("files", "Supabase: อ่านรายการไฟล์ของวัน", [300, 220], {
@@ -566,7 +567,7 @@ const nodes = [
     url: "={{ $vars.SUPABASE_URL }}/storage/v1/object/audit-files/{{ $json.file.storage_path }}", authentication: "predefinedCredentialType", nodeCredentialType: "supabaseApi",
     options: { response: { response: { responseFormat: "file", outputPropertyName: "data" } }, timeout: 120000 },
   }),
-  { parameters: { jsCode: "const item=$input.first(); const meta=$('วนทีละไฟล์').item.json; const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบข้อมูลไฟล์ '+meta.file.file_name); binary.data={...binary.data,fileName:meta.file.file_name,fileExtension:meta.file.ext}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, id: "restore-original-file-name", name: "คืนชื่อไฟล์ต้นฉบับ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1090, 340] },
+  { parameters: { jsCode: "const item=$input.first(); const meta=$('วนทีละไฟล์').item.json; const binary={...(item.binary||{})}; if(!binary.data) throw new Error('ไม่พบข้อมูลไฟล์ '+meta.file.file_name); binary.data={...binary.data,fileName:meta.file.file_name,fileExtension:meta.file.ext}; return [{json:item.json,binary,pairedItem:{item:0}}];" }, retryOnFail:true,maxTries:3,waitBetweenTries:15000,id: "restore-original-file-name", name: "คืนชื่อไฟล์ต้นฉบับ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1090, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "is-statement-document", leftValue: "={{ ['pdf','docx'].includes($('วนทีละไฟล์').item.json.file.ext) }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-pdf", name: "เป็น PDF?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1200, 340] },
   { parameters: { conditions: { options: { caseSensitive: true, leftValue: "", typeValidation: "strict", version: 2 }, conditions: [{ id: "has-reviewed-tmn-pdf", leftValue: "={{ (()=>{const f=$('วนทีละไฟล์').item.json.file;const o=Array.isArray(f.source_file_ocr)?f.source_file_ocr[0]:f.source_file_ocr;return f.ext==='pdf'&&(o?.provider==='tmn_visual_review_v1'||o?.reviewed_recovery?.payload?.sourceType==='tmn-screenshot-list-v1');})() }}", rightValue: true, operator: { type: "boolean", operation: "true", singleValue: true } }], combinator: "and" }, options: {} }, id: "if-reviewed-tmn", name: "TMN ตรวจภาพครบแล้ว?", type: "n8n-nodes-base.if", typeVersion: 2.2, position: [1310, 220] },
   { parameters: { jsCode: "return [{json:{text:'',manual_visual_review:true},pairedItem:{item:0}}];" }, id: "use-reviewed-tmn", name: "ใช้รายการ TMN ที่ตรวจภาพ", type: "n8n-nodes-base.code", typeVersion: 2, position: [1420, 120] },
@@ -703,7 +704,7 @@ return closing.length?closing.map(json=>({json,pairedItem:{item:0}})):[{json:{sk
     sendHeaders: true, headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] }, sendBody: true, specifyBody: "json",
     jsonBody: "={{ (()=>{const x=$('กระทบยอดและสร้าง Exception').first().json;return JSON.stringify({p_job_id:x.job.id});})() }}", options: { response: { response: {} } },
   }),
-  { parameters: { jsCode: "return [{json:{finished_at:new Date().toISOString(),message:'ประมวลผลรอบนี้เสร็จแล้ว'}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
+  { parameters: { jsCode: "const job=$('Supabase: จองหนึ่งงาน').first().json; return [{json:{worked:!!job.id,job_id:job.id||null,finished_at:new Date().toISOString()}}];" }, id: "summary", name: "จบรอบ Worker", type: "n8n-nodes-base.code", typeVersion: 2, position: [-140, 40] },
 ];
 
 const connections = {
@@ -753,9 +754,10 @@ const connections = {
   "บันทึกว่าอ่านแล้วและรอไฟล์": { main: [[{ node: "จบรอบ Worker", type: "main", index: 0 }]] },
 };
 
-const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true }, pinData: {}, active: false };
+const workflow = { name: "Audit - Headless Reconciliation Worker - Hybrid PDF", nodes, connections, settings: { executionOrder: "v1", binaryMode: "separate", saveManualExecutions: true,...(process.env.AUTOMATIC_RECON_ERROR_WORKFLOW_ID?{errorWorkflow:process.env.AUTOMATIC_RECON_ERROR_WORKFLOW_ID}:{}) }, pinData: {}, active: false };
 const {patchWorkerPreflightGate}=await import('./worker-preflight-gate.mjs');
 patchWorkerPreflightGate(workflow);
+await writeFile(path.join(root, "n8n/audit-worker-error.json"),JSON.stringify(failureWorkflow(workflow),null,2)+"\n");
 await writeFile(path.join(root, "n8n/audit-headless-worker.json"), JSON.stringify(workflow, null, 2) + "\n");
 // Keep the manual/round worker's embedded parsers in lockstep with the tested
 // browser parsers. That workflow has its own orchestration graph, so replace
