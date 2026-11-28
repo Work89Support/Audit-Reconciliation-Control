@@ -165,7 +165,7 @@ begin
  ), batches as (
  select b.id, s.company,s.business_date,b.received_at,
  to_jsonb(b)||jsonb_build_object('company',s.company,'business_date',s.business_date,'original_company',b.company,
- 'source_files',jsonb_agg(s.f||jsonb_build_object('reference_company',s.company,'reference_date',s.business_date) order by s.f->>'created_at',s.f->>'id')) payload
+ 'source_files',jsonb_agg((s.f-'source_file_ocr')||jsonb_build_object('reference_company',s.company,'reference_date',s.business_date) order by s.f->>'created_at',s.f->>'id')) payload
  from files s join public.mail_batches b on b.id=(s.f->>'batch_id')::uuid
  group by b.id,s.company,s.business_date
  ) select coalesce(jsonb_agg(payload order by received_at desc,id),'[]') from batches);

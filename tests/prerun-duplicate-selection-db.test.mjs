@@ -33,7 +33,7 @@ for(const [i,c]of companies.entries()){
  assert.equal((await db.query('select count(*)::int n from audit_run_holds where company=$1',[c])).rows[0].n,0);
  const inbox=(await db.query("select audit_source_inbox_batches('2026-11-27','2026-11-27',$1) v",[c])).rows[0].v;
  assert.equal(inbox.length,2,'file company must include source attached to mislabelled PS mail');
- const files=inbox.flatMap(b=>b.source_files);assert.equal(files.length,2);assert.equal(files.filter(f=>f.kind==='stm_pdf').length,1);assert.equal(files.find(f=>f.id===id(n+2)).revision,2);
+ const files=inbox.flatMap(b=>b.source_files);assert.equal(files.some(f=>'source_file_ocr' in f),false,'inbox must not download OCR payloads');assert.equal(files.length,2);assert.equal(files.filter(f=>f.kind==='stm_pdf').length,1);assert.equal(files.find(f=>f.id===id(n+2)).revision,2);
  const manager=(await db.query("select file_run_management_state($1,'2026-11-27') v",[c])).rows[0].v;
  assert.deepEqual(files.map(f=>[f.id,f.kind,f.revision]).sort(),manager.files.map(f=>[f.id,f.kind,f.revision]).sort());
  await assert.rejects(correct(n,c),/เวอร์ชัน/);

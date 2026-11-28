@@ -175,7 +175,7 @@
     <label>ฉบับแทน <select data-replacement><option value="">ใช้ไฟล์เดิม</option>${files.filter(x=>x.id!==f.fileId&&!x.excluded).map(x=>`<option value="${esc(x.id)}" ${f.replacementId===x.id?'selected':''}>${esc(x.file_name)}</option>`).join('')}</select></label>
     <label>หรืออัปโหลดฉบับแก้ไข <input type="file" data-upload accept=".xlsx,.xls,.xlsm,.csv,.pdf,.docx"></label>
     ${upload?`<p>เลือกฉบับอัปโหลดไว้: ${esc(upload.name)} · ${upload.size} ไบต์</p>`:''}</div><label class="manual-check"><input type="checkbox" data-exclude ${f.excluded?'checked':''}>กักไฟล์นี้ ไม่นำเข้ารัน</label>
-    <label>เหตุผล <input data-reason maxlength="2000" value="${esc(f.reason)}"></label><p>บันทึกแล้วพักบอทรอบหลักของวัน/บริษัทที่เกี่ยวข้อง ใช้ตรวจมือและยืนยันรายงานแยกก่อน เพื่อรักษาเคสเดิมและป้องกันเคสซ้ำ</p><button data-save ${busy?'disabled':''}>ทบทวนและบันทึกเวอร์ชันใหม่</button><button data-cancel-edit ${busy?'disabled':''}>ยกเลิกการแก้ไข</button></div>`;}
+    <label>เหตุผล <input data-reason maxlength="2000" value="${esc(f.reason)}"></label><p>ก่อนเริ่มรอบ: ถ้าเป็นไฟล์ซ้ำที่ตรวจยืนยันแล้ว ระบบจะกันเฉพาะไฟล์นี้และคงคิวบริษัทตามปกติ กรณีอื่นจะพักรอบเพื่อทบทวน เก็บผลเดิมและเคสที่ปิดแล้วครบ</p><button data-save ${busy?'disabled':''}>ทบทวนและบันทึกเวอร์ชันใหม่</button><button data-cancel-edit ${busy?'disabled':''}>ยกเลิกการแก้ไข</button></div>`;}
   function bindEditor(){
    for(const [selector,key] of [['name','name'],['company','company'],['date','date'],['kind','kind'],['replacement','replacementId'],['reason','reason']])host.querySelector('[data-'+selector+']').oninput=e=>{editor[key]=e.target.value||null;};
    host.querySelector('[data-exclude]').onchange=e=>{editor.excluded=e.target.checked;};
