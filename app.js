@@ -7186,7 +7186,7 @@ VIEWS.cloud = (root) => {
         : true;
   const visibleBatches = batches.map((batch) => ({ ...batch, source_files: (batch.source_files || []).filter(visibleFile) })).filter((batch) => batch.source_files.length);
   const daily = cloudState.daily || [];
-  const operations = cloudState.operations || [];
+  const operations = (cloudState.operations || []).filter((row) => isLiveCompanyRow(row) && !row.is_archived);
   const fileSnapshot = Sb.fileSnapshotInfo({
     from: state.filters.from || state.filters.to || DB.BUSINESS_DATE,
     to: state.filters.to || DB.BUSINESS_DATE,

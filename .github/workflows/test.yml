@@ -42,7 +42,7 @@ jobs:
       - name: Verify current-primary read deduplication without business writes
         run: node tests/summary-primary-read-flight.test.mjs
       - name: Verify cloud filter races and independent bounded reads without writes
-        run: node tests/cloud-load-race.test.mjs
+        run: node tests/cloud-load-race.test.mjs && node tests/cloud-current-company-queue.test.mjs
       - name: Verify exclusion metadata UI without production writes
         run: node tests/source-exclusion.test.cjs && node tests/file-snapshot.test.mjs
       - name: Verify source intake and selected-source handoff without production writes

@@ -473,6 +473,8 @@ const Sb = (() => {
     const opts = typeof input === "number" ? { limit: input } : (input || {});
     const columns = name === 'v_recon_quality' ? 'business_date,company,business_system,status,missing_groups,file_count,error_count,is_archived,run_id,run_at,stm_count,bo_count,matched,match_rate,exception_count' : '*';
     const filters = [`select=${columns}`, `order=${order}`, `limit=${opts.limit || defaultLimit}`];
+    // Archived queue rows remain in history, but cannot occupy the current queue.
+    if (name === 'v_recon_operations') filters.push('is_archived=eq.false');
     if (opts.from) filters.push(`business_date=gte.${encodeURIComponent(opts.from)}`);
     if (opts.to) filters.push(`business_date=lte.${encodeURIComponent(opts.to)}`);
     if (opts.company && opts.company !== "ALL") filters.push(`company=eq.${encodeURIComponent(opts.company)}`);
