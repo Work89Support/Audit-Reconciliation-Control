@@ -917,7 +917,7 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
   }
 
   const readOnlyCaseRpcs = new Set(['get_my_access','account_review_hold_scopes','account_review_hold_for_case','account_review_hold_continuation_report','case_clarification_instructions','case_clarification_history',
-    'read_manual_primary','read_manual_primary_saved','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices','audit_source_exclusion_states','audit_source_exclusion_preview','audit_source_workspace',
+    'read_manual_primary','read_manual_primary_saved','read_manual_primary_case_set','list_account_rechecks','audit_daily_checklist','audit_run_notices','audit_source_inbox_batches','audit_source_exclusion_states','audit_source_exclusion_preview','audit_source_workspace',
     'audit_current_cases_scoped','audit_search_current_cases_scoped']);
   const rpc = (name, body = {}) =>
     json(`/rest/v1/rpc/${name}`, {
@@ -1278,18 +1278,12 @@ return rows.map(row=>{const key=row.company+'|'+row.business_date,v=resolved.get
 
   /* เมลทั้งหมดของช่วงวันที่ พร้อมไฟล์ */
   async function batches({ from, to, company, force = false } = {}) {
-    const filters = ["select=*,source_files(*)", "order=received_at.desc"];
-    if (from) filters.push(`business_date=gte.${from}`);
-    if (to) filters.push(`business_date=lte.${to}`);
-    if (company && company !== "ALL") filters.push(`company=eq.${company}`);
     return fileSnapshotRead('batches', batchSnapshotKey({from, to, company}), force, async () => {
-      const rows=await json(`/rest/v1/mail_batches?${filters.join("&")}`),files=rows.flatMap(b=>b.source_files||[]),states=new Map();
-      for(let i=0;i<files.length;i+=500){
-        const page=await rpc('audit_source_exclusion_states',{p_ids:files.slice(i,i+500).map(f=>f.id)});
-        for(const f of page)states.set(f.id,f);
-      }
-      if(files.some(f=>!states.has(f.id)))throw Error('โหลดสถานะยกเว้นไฟล์ไม่ครบ กรุณารีเฟรช ไม่อนุญาตให้เลือกไฟล์จากข้อมูลไม่ครบ');
-      return rows.map(b=>({...b,source_files:(b.source_files||[]).map(f=>({...f,...states.get(f.id)}))}));
+      const rows=await rpc('audit_source_inbox_batches',{p_from:from,p_to:to,p_company:company||null});
+      if(!Array.isArray(rows)||rows.some(b=>!Array.isArray(b.source_files)||b.source_files.some(f=>
+        typeof f.excluded!=='boolean'||!f.reference_company||!f.reference_date)))
+        throw Error('โหลดสถานะยกเว้นไฟล์ไม่ครบ กรุณารีเฟรช ไม่อนุญาตให้เลือกไฟล์จากข้อมูลไม่ครบ');
+      return rows;
     });
   }
 
