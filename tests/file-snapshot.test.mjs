@@ -9,12 +9,12 @@ const context = {window:{APP_CONFIG:{}},Store:{data:{supabase:{url:'https://test
   localStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)},
   AbortController,setTimeout,clearTimeout,Date:Clock,console,
   fetch:async (url, options) => {
-    if(url.includes('/rpc/audit_source_exclusion_states'))return new Response(JSON.stringify([{id:'file',excluded:false,reference_date:'2026-10-07'}]));
+
     calls++;
     if (release) await new Promise(r=>{release=r;});
     if (fail) return new Response('{}',{status:522});
     if (url.includes('/storage/')) return new Response(new Uint8Array([1,2,3]));
-    return new Response(JSON.stringify([{id:'mail',source_files:[{id:'file'}]}]));
+    return new Response(JSON.stringify([{id:'mail',source_files:[{id:'file',excluded:false,reference_company:'FR8',reference_date:'2026-10-07'}]}]));
   }};
 vm.runInNewContext(source, context);
 const sb = context.window.Sb;

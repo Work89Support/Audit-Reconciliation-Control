@@ -65,7 +65,7 @@
  }
  function selectionSummary(files,selected){
   const chosen=files.filter(f=>selected.has(f.id)&&!f.excluded),count=kind=>chosen.filter(f=>f.kind===kind).length;
-  return `เลือกใช้ตรวจ ${chosen.length} ไฟล์ · BO ${count('bo_main')} · STM ${count('stm_pdf')} · PM ${count('pm_statement')} — ยังไม่รัน`;
+  return `รับเข้า ${files.length} ไฟล์ · เลือกใช้ตรวจ ${chosen.length} ไฟล์ · BO ${count('bo_main')} · STM ${count('stm_pdf')} · PM ${count('pm_statement')} — ยังไม่รัน`;
  }
  function initialSelection(files,company,date,previous){
   return new Set(files.filter(f=>!f.excluded&&['bo_main','stm_pdf','pm_statement'].includes(f.kind)

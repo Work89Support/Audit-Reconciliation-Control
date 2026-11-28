@@ -1237,7 +1237,7 @@ function openFileRunManagement({company,date,accounts,fileId=null,onUpdated=null
     confirmHold:b=>FileRunManagement.confirmAction({title:`${b.paused?'พัก':'เปิด'}บอทรอบหลัก · ${company} · ${date}`,message:`${b.reason}\nไม่แก้ยอดหรือปิดเคส\nการพักบอทไม่เริ่มรันมือให้เอง`,confirmLabel:b.paused?'ยืนยันพักบอท':'ยืนยันเปิดบอท',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     uploadCorrection:Sb.uploadAuditSourceCorrection,
     onFile:file=>openStoredFilePreview({path:file.storage_path,name:file.file_name,mime:file.mime_type,id:file.id,kind:file.kind,company:file.company,date,size:file.size_bytes}),
-    confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับ เพิ่มเวอร์ชันใหม่ และพักบอทรอบที่เกี่ยวข้อง ไม่รันหรือยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
+    confirmCorrection:b=>FileRunManagement.confirmAction({title:'ทบทวนแก้วัน/ข้อมูลไฟล์',message:`${b.name}\nบริษัท ${b.company} · วันอ้างอิง ${b.date}\n${b.reason}\nเก็บต้นฉบับและเวอร์ชันใหม่ · ถ้ายังไม่เริ่มรอบและตรวจยืนยันว่าเป็นไฟล์ซ้ำ จะกันเฉพาะไฟล์นี้และคงคิวปกติ · กรณีอื่นพักรอบเพื่อทบทวน · ไม่ยืนยันผลหลัก`,confirmLabel:'ยืนยันบันทึกเวอร์ชันใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmReparse:file=>FileRunManagement.confirmAction({title:'อ่านไฟล์เดิมใหม่จากหน้าระบบ',message:`${file.file_name}\nบริษัท ${file.company} · วันอ้างอิง ${file.business_date}\nอ่านด้วยกฎปัจจุบันและบันทึกเฉพาะผล Parse ไม่กระทบยอด ไม่สร้างหรือปิดเคส และไม่เปลี่ยนผลหลัก`,confirmLabel:'ยืนยันอ่านไฟล์ใหม่',allowed:()=>Sb.signedIn()&&FileRunManagement.canManage(state.role)&&canAccessCompany(company)}),
     confirmRunWarnings:b=>FileRunManagement.confirmAction({title:`ทบทวนคำเตือน · ${b.company} · ${b.date}`,message:`พบคำเตือน ${b.warnings.length} รายการ\n${b.warnings.map(w=>[w.file_name,w.detail].filter(Boolean).join(' · ')).join('\n')}\nไปทบทวนขอบเขตรันตรวจมือเท่านั้น ยังไม่รันจนกดยืนยันในขั้นถัดไป ไม่เปิดบอท ไม่ยืนยันผลหลักหรือส่งชี้แจง`,confirmLabel:'ไปเลือกขอบเขต · ยังไม่รัน',allowed:()=>Sb.signedIn()&&canAccessCompany(company)}),
     onRun:async fileIds=>{
@@ -6615,6 +6615,8 @@ async function openStoredFilePreview(meta) {
   ];
   const selectedKindHelp = (kindOptions.find(([kind]) => kind === meta.kind) || kindOptions[kindOptions.length - 1])[2];
   const canReclassify = !meta.readOnly && !String(meta.path || '').startsWith('case-evidence/') && state.dataset === "production" && meta.id && typeof Sb !== "undefined" && Sb.signedIn();
+  const canManageVersion = canReclassify && ['stm_pdf','pm_statement','bo_main','doc_clarify','unknown'].includes(meta.kind);
+  const canLegacyReclassify = canReclassify && !canManageVersion;
   const canMatchClarification = canReclassify && meta.kind === "doc_clarify";
   const clarificationPanel = canMatchClarification ? `<section class="file-clarification-match" id="fileClarificationMatch">
     <div class="file-clarification-head"><div><small>ใช้ไฟล์นี้เป็นหลักฐาน</small><b>จับคู่กับเคสที่ยังไม่พบคู่ของ ${h(meta.company || "บริษัทนี้")}</b><span>เลือกได้หลายเคสหรือเลือกทั้งหมด ระบบจะส่งสถานะเป็น “มีคำชี้แจง—รอ Audit ตรวจ” และยังไม่ปิดเคสอัตโนมัติ</span></div><span class="spinner" id="fileClarificationSpinner"></span></div>
@@ -6629,13 +6631,16 @@ async function openStoredFilePreview(meta) {
   </section>` : "";
   openModal(
     h(name),
-    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${clarificationPanel}${canReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><div class="file-replacement-ready-head"><i aria-hidden="true">✓</i><div><b>ไฟล์ใหม่พร้อมตรวจ</b><small>ระบบยังเก็บไฟล์เดิมไว้ จนกว่าคุณจะกด “บันทึกและรันต่อ”</small></div></div><div class="file-replacement-compare"><div><small>ไฟล์เดิม</small><span>${h(name)}</span></div><i aria-hidden="true">→</i><div><small>ไฟล์ใหม่</small><span id="fileReplacementReadyName"></span></div></div></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
-    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
+    `<div class="file-preview-meta"><span><b>บริษัท</b>${h(meta.company || "ไม่ระบุ")}</span><span><b>วันที่</b>${h(meta.date || "-")}</span><span><b>ประเภท</b>${h(KIND_LABEL[meta.kind] || meta.kind || ext.toUpperCase() || "-")}</span><span><b>ขนาด</b><i id="filePreviewSize">${h(sizeLabel)}</i></span><span><b>สถานะ</b><i id="filePreviewStatus">${h(status)}</i></span></div>${clarificationPanel}${canLegacyReclassify ? `<div class="file-replacement-ready" id="fileReplacementReady" hidden><div class="file-replacement-ready-head"><i aria-hidden="true">✓</i><div><b>ไฟล์ใหม่พร้อมตรวจ</b><small>ระบบยังเก็บไฟล์เดิมไว้ จนกว่าคุณจะกด “บันทึกและรันต่อ”</small></div></div><div class="file-replacement-compare"><div><small>ไฟล์เดิม</small><span>${h(name)}</span></div><i aria-hidden="true">→</i><div><small>ไฟล์ใหม่</small><span id="fileReplacementReadyName"></span></div></div></div><div class="file-preview-editor"><div><label for="fileCompanySelect">บริษัท</label><select id="fileCompanySelect">${companyOptions.map((company) => `<option value="${h(company)}" ${company === meta.company ? "selected" : ""}>${h(company)}</option>`).join("")}</select></div><div><label for="fileKindSelect">ประเภทไฟล์</label><select id="fileKindSelect">${kindOptions.map(([kind, label, description]) => `<option value="${h(kind)}" title="${h(description)}" ${kind === meta.kind ? "selected" : ""}>${h(label)}</option>`).join("")}</select><small class="file-kind-help" id="fileKindHelp">${h(selectedKindHelp)}</small></div><p>เลือกให้ถูกต้องแล้วกด “บันทึกและรันต่อ” ระบบจะล้างข้อผิดพลาดเดิมและส่งไฟล์กลับไปตรวจใหม่</p></div>` : ""}<div class="file-preview-content" id="filePreviewContent"><span class="spinner"></span><p>กำลังเตรียมตัวอย่างไฟล์...</p></div>`,
+    `<button class="ghost-button" id="filePreviewClose">ปิด</button><button class="ghost-button" id="fileOpenOriginal">เปิดต้นฉบับในแท็บใหม่</button><button class="ghost-button" id="fileDownload">ดาวน์โหลดไฟล์</button>${canLegacyReclassify ? `<input id="fileReplacementInput" type="file" accept=".xlsx,.xlsm,.csv,.txt,.pdf,.docx" hidden><button class="ghost-button" id="fileReplaceUpload">อัปโหลดไฟล์ใหม่แทนที่</button><button class="primary-button" id="fileReclassify">บันทึกและรันต่อ</button>` : ""}${canManageVersion ? `<button class="primary-button" id="fileManageVersion">แก้ข้อมูล / เลือกฉบับแทน</button>` : ""}${canMatchClarification ? `<button class="primary-button" id="fileMatchClarification" disabled>จับคู่กับเคสที่เลือก</button>` : ""}`,
   );
   $("#modal").classList.add("file-preview-modal");
   if(meta.readOnly) $('#filePreviewContent').insertAdjacentHTML('beforebegin',
     `<section class="panel"><b>หลักฐานในคลัง · เปิดอ่านเท่านั้น</b><p>${h(meta.evidenceOrigin || 'หลักฐาน')} · ${h(meta.caseCode || 'ไฟล์จากเมล')} · ไม่อ่านเป็นรายการกระทบยอด</p>${meta.uploadedBy ? `<small>ผู้แนบ/ผู้ส่ง: ${h(meta.uploadedBy)} · เวลา: ${h(meta.uploadedAt || '—')}</small>` : ''}${meta.correctionReason ? `<p>เหตุผลแก้หลักฐาน: ${h(meta.correctionReason)}</p><small>อ้างถึงไฟล์เดิม: ${h(meta.replacesEvidenceId || meta.replacesSourceFileId || '—')} · ไฟล์เดิมยังอยู่ในคลัง</small>` : ''}</section>`);
   if (canMatchClarification) EvidenceRecommendations.mount($("#modal .modal-body"), meta, companyOptions, Sb, openStoredFilePreview);
+  if(canManageVersion) $('#fileManageVersion').addEventListener('click',()=>openFileRunManagement({
+    company:meta.company,date:meta.date,fileId:meta.id,onUpdated:()=>{if(state.route==='cloud')cloudLoad(true);}
+  }));
   $("#filePreviewClose").addEventListener("click", closeModal);
   let signedUrl = "";
   let downloaded = null;
@@ -6750,11 +6755,11 @@ async function openStoredFilePreview(meta) {
     button.disabled = false;
     button.textContent = old;
   });
-  if (canReclassify) $("#fileKindSelect").addEventListener("change", (event) => {
+  if (canLegacyReclassify) $("#fileKindSelect").addEventListener("change", (event) => {
     const option = kindOptions.find(([kind]) => kind === event.target.value);
     $("#fileKindHelp").textContent = option ? option[2] : "ตรวจเนื้อหาไฟล์ก่อนยืนยันประเภท";
   });
-  if (canReclassify) $("#fileReclassify").addEventListener("click", async (event) => {
+  if (canLegacyReclassify) $("#fileReclassify").addEventListener("click", async (event) => {
     const button = event.currentTarget;
     const old = button.textContent;
     const company = $("#fileCompanySelect").value;
@@ -6812,7 +6817,7 @@ async function openStoredFilePreview(meta) {
       button.textContent = old;
     }
   });
-  if (canReclassify) {
+  if (canLegacyReclassify) {
     const replacementInput = $("#fileReplacementInput");
     const replacementButton = $("#fileReplaceUpload");
     replacementButton.addEventListener("click", () => {
